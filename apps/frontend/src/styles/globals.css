@@ -2,37 +2,221 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
+/* ============================================
+   Academic Precision Design System
+   ============================================ */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #F5F5DC;
+    color: #1B1D0E;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  h1 {
+    font-size: 32px;
+    line-height: 40px;
+    font-weight: 700;
+    color: #800000;
+  }
+
+  h2 {
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 600;
+    color: #1B1D0E;
+  }
+
+  h3 {
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 600;
+    color: #1B1D0E;
+  }
+
+  /* Focus ring for accessibility */
+  *:focus-visible {
+    outline: 2px solid #FFB800;
+    outline-offset: 2px;
+  }
 }
 
-body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
-  color: #0f172a;
+@layer components {
+  /* ----- Cards ----- */
+  .card {
+    @apply bg-white rounded-lg p-6 shadow-card;
+  }
+
+  .card-header {
+    @apply border-b border-surface-low pb-4 mb-4;
+  }
+
+  /* ----- Buttons ----- */
+  .btn {
+    @apply inline-flex items-center justify-center rounded font-medium transition;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-white;
+    @apply hover:bg-primary-dark;
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-secondary {
+    @apply btn bg-transparent text-primary border border-secondary;
+    @apply hover:bg-secondary;
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-danger {
+    @apply btn bg-error text-white;
+    @apply hover:opacity-90;
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-primary;
+    @apply hover:bg-surface-low;
+    @apply px-4 py-2 text-sm;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  /* ----- Inputs ----- */
+  .input {
+    @apply w-full px-3 py-2 text-sm rounded;
+    @apply bg-surface-low border border-outline-variant;
+    @apply text-on-surface;
+    @apply transition;
+  }
+
+  .input::placeholder {
+    @apply text-on-surface-variant;
+  }
+
+  .input:focus {
+    @apply border-secondary outline-none;
+    box-shadow: 0 0 0 2px rgba(255, 184, 0, 0.2);
+  }
+
+  /* ----- Chips ----- */
+  .chip {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium;
+  }
+
+  .chip-primary {
+    @apply chip bg-primary/10 text-primary;
+  }
+
+  .chip-secondary {
+    @apply chip bg-secondary/20 text-secondary-dark;
+  }
+
+  .chip-success {
+    @apply chip bg-status-success/10 text-status-success;
+  }
+
+  .chip-warning {
+    @apply chip bg-status-warning/20 text-secondary-dark;
+  }
+
+  .chip-error {
+    @apply chip bg-error-container text-error-on-container;
+  }
+
+  /* ----- Labels ----- */
+  .label {
+    @apply text-xs font-semibold uppercase tracking-wider text-on-surface-variant;
+  }
+
+  /* ----- Sidebar ----- */
+  .sidebar {
+    @apply bg-surface-low flex flex-col;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded text-sm transition;
+    @apply text-on-surface-variant;
+    @apply hover:bg-surface-high hover:text-primary;
+  }
+
+  .sidebar-item-active {
+    @apply sidebar-item bg-primary text-white font-medium;
+    @apply hover:bg-primary;
+  }
+
+  /* ----- Data Table ----- */
+  .data-table {
+    @apply w-full text-sm;
+  }
+
+  .data-table thead {
+    @apply border-b border-outline-variant;
+  }
+
+  .data-table th {
+    @apply text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-on-surface-variant;
+  }
+
+  .data-table td {
+    @apply px-4 py-3 text-on-surface;
+  }
+
+  .data-table tbody tr:nth-child(even) {
+    @apply bg-surface-low;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-surface-high;
+  }
+
+  /* ----- Status Indicators ----- */
+  .status-dot {
+    @apply inline-block w-2 h-2 rounded-full;
+  }
+
+  .status-dot-conflict { @apply status-dot bg-status-conflict; }
+  .status-dot-pending  { @apply status-dot bg-status-pending; }
+  .status-dot-confirmed { @apply status-dot bg-status-confirmed; }
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+@layer utilities {
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
+  ::-webkit-scrollbar-track {
+    background: #EFEFD7;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
+  ::-webkit-scrollbar-thumb {
+    background: #E2BFB9;
+    border-radius: 4px;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  ::-webkit-scrollbar-thumb:hover {
+    background: #8E706C;
+  }
 }
