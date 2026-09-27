@@ -172,12 +172,9 @@ Make sure the following are installed:
 ## 1. Clone the Repository
 
 ```bash
-git clone https://github.com/<org>/SCHEDULING-SYSTEM-WMSU-.git
+git clone https://github.com/radenzzz/SCHEDULING-SYSTEM-WMSU-.git
 cd SCHEDULING-SYSTEM-WMSU-
 ```
-
-> Replace `<org>` with the GitHub organization or account containing the repository.
-
 ---
 
 ## 2. Install Dependencies
