@@ -195,13 +195,13 @@ pnpm approve-builds
 
 ---
 
-## 3. Configure Environment Variables
+## 3. How to start fromt End Localy:
 
 Copy the example environment files:
 
 ```bash
-cp apps/backend/.env.example apps/backend/.env
-cp apps/frontend/.env.example apps/frontend/.env
+cd apps\frontend
+pnpm dev
 ```
 
 Then configure the generated `.env` files according to your local PostgreSQL, Redis, API, and frontend settings.
