@@ -206,7 +206,6 @@ cd apps\frontend
 pnpm dev
 ```
 
-> **Never commit your `.env` files or production credentials to GitHub.**
 
 ---
 
