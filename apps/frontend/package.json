@@ -2,14 +2,13 @@
   "name": "@coe-nnect/frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "CoE-NNECT Scheduling System - Frontend",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext ts,tsx"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.23",
