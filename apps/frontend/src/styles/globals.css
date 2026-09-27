@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================
-   Academic Precision Design System
+   Academic Precision / Lumina Design System
    ============================================ */
 
 @layer base {
@@ -19,17 +19,30 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #F5F5DC;
+    background-color: #FBFBE2;
     color: #1B1D0E;
-    font-size: 14px;
-    line-height: 20px;
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  /* Material Symbols default settings */
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    font-size: 24px;
+    line-height: 1;
+    display: inline-block;
+    user-select: none;
+  }
+
+  .icon-fill-1 {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
 
   h1 {
     font-size: 32px;
     line-height: 40px;
     font-weight: 700;
-    color: #800000;
+    color: #570000;
   }
 
   h2 {
@@ -46,9 +59,8 @@
     color: #1B1D0E;
   }
 
-  /* Focus ring for accessibility */
   *:focus-visible {
-    outline: 2px solid #FFB800;
+    outline: 2px solid #FEB700;
     outline-offset: 2px;
   }
 }
@@ -56,167 +68,62 @@
 @layer components {
   /* ----- Cards ----- */
   .card {
-    @apply bg-white rounded-lg p-6 shadow-card;
-  }
-
-  .card-header {
-    @apply border-b border-surface-low pb-4 mb-4;
+    @apply bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant;
   }
 
   /* ----- Buttons ----- */
   .btn {
-    @apply inline-flex items-center justify-center rounded font-medium transition;
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary;
+    @apply inline-flex items-center justify-center rounded-lg font-semibold transition-colors;
     @apply disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-primary {
-    @apply btn bg-primary text-white;
-    @apply hover:bg-primary-dark;
-    @apply px-4 py-2 text-sm;
+    @apply btn bg-primary text-on-primary hover:bg-tertiary;
+    @apply px-4 py-2 text-label-md;
   }
 
   .btn-secondary {
-    @apply btn bg-transparent text-primary border border-secondary;
-    @apply hover:bg-secondary;
-    @apply px-4 py-2 text-sm;
-  }
-
-  .btn-danger {
-    @apply btn bg-error text-white;
-    @apply hover:opacity-90;
-    @apply px-4 py-2 text-sm;
-  }
-
-  .btn-ghost {
-    @apply btn bg-transparent text-primary;
-    @apply hover:bg-surface-low;
-    @apply px-4 py-2 text-sm;
-  }
-
-  .btn-sm {
-    @apply px-3 py-1.5 text-xs;
-  }
-
-  .btn-lg {
-    @apply px-6 py-3 text-base;
+    @apply btn bg-transparent text-primary border border-outline-variant;
+    @apply hover:bg-surface-container-high;
+    @apply px-4 py-2 text-label-md;
   }
 
   /* ----- Inputs ----- */
   .input {
-    @apply w-full px-3 py-2 text-sm rounded;
-    @apply bg-surface-low border border-outline-variant;
-    @apply text-on-surface;
-    @apply transition;
-  }
-
-  .input::placeholder {
-    @apply text-on-surface-variant;
+    @apply w-full px-4 py-2 text-body-md rounded-lg;
+    @apply bg-surface-container-low border border-surface-variant;
+    @apply text-on-surface placeholder:text-on-surface-variant;
+    @apply transition-colors;
   }
 
   .input:focus {
-    @apply border-secondary outline-none;
-    box-shadow: 0 0 0 2px rgba(255, 184, 0, 0.2);
-  }
-
-  /* ----- Chips ----- */
-  .chip {
-    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium;
-  }
-
-  .chip-primary {
-    @apply chip bg-primary/10 text-primary;
-  }
-
-  .chip-secondary {
-    @apply chip bg-secondary/20 text-secondary-dark;
-  }
-
-  .chip-success {
-    @apply chip bg-status-success/10 text-status-success;
-  }
-
-  .chip-warning {
-    @apply chip bg-status-warning/20 text-secondary-dark;
-  }
-
-  .chip-error {
-    @apply chip bg-error-container text-error-on-container;
+    @apply outline-none border-secondary-container;
+    box-shadow: 0 0 0 1px #FEB700;
   }
 
   /* ----- Labels ----- */
   .label {
-    @apply text-xs font-semibold uppercase tracking-wider text-on-surface-variant;
+    @apply text-label-md text-on-surface-variant;
   }
-
-  /* ----- Sidebar ----- */
-  .sidebar {
-    @apply bg-surface-low flex flex-col;
-  }
-
-  .sidebar-item {
-    @apply flex items-center gap-3 px-4 py-2.5 rounded text-sm transition;
-    @apply text-on-surface-variant;
-    @apply hover:bg-surface-high hover:text-primary;
-  }
-
-  .sidebar-item-active {
-    @apply sidebar-item bg-primary text-white font-medium;
-    @apply hover:bg-primary;
-  }
-
-  /* ----- Data Table ----- */
-  .data-table {
-    @apply w-full text-sm;
-  }
-
-  .data-table thead {
-    @apply border-b border-outline-variant;
-  }
-
-  .data-table th {
-    @apply text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-on-surface-variant;
-  }
-
-  .data-table td {
-    @apply px-4 py-3 text-on-surface;
-  }
-
-  .data-table tbody tr:nth-child(even) {
-    @apply bg-surface-low;
-  }
-
-  .data-table tbody tr:hover {
-    @apply bg-surface-high;
-  }
-
-  /* ----- Status Indicators ----- */
-  .status-dot {
-    @apply inline-block w-2 h-2 rounded-full;
-  }
-
-  .status-dot-conflict { @apply status-dot bg-status-conflict; }
-  .status-dot-pending  { @apply status-dot bg-status-pending; }
-  .status-dot-confirmed { @apply status-dot bg-status-confirmed; }
 }
 
 @layer utilities {
-  /* Scrollbar styling */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-
   ::-webkit-scrollbar-track {
     background: #EFEFD7;
   }
-
   ::-webkit-scrollbar-thumb {
     background: #E2BFB9;
     border-radius: 4px;
   }
-
   ::-webkit-scrollbar-thumb:hover {
     background: #8E706C;
+  }
+
+  .no-shadows {
+    box-shadow: none !important;
   }
 }
