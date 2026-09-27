@@ -1,5 +1,6 @@
 # CoE-NNECT
-
+# (UNDER DEVELOPMENT)
+## (Eperimental/Prototyping Phase)
 ### College of Engineering Scheduling System
 
 > A web-based class scheduling and faculty workload management system for the **College of Engineering at Western Mindanao State University (WMSU)**.
