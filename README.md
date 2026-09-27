@@ -197,14 +197,14 @@ pnpm approve-builds
 
 ## 3. How to start fromt End Localy:
 
-Copy the example environment files:
+Dapat nasa Directory ka nung repo:
+SCHEDULING-SYSTEM-WMSU->
 
+then I enter mo to sa PShell or CMD lang to run localy:
 ```bash
 cd apps\frontend
 pnpm dev
 ```
-
-Then configure the generated `.env` files according to your local PostgreSQL, Redis, API, and frontend settings.
 
 > **Never commit your `.env` files or production credentials to GitHub.**
 
