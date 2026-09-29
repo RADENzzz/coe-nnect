@@ -1,13 +1,31 @@
 import Icon from '../ui/Icon';
+import { useUiStore } from '../../store/ui.store';
 
 export default function TopBar() {
+  const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
+
   return (
-    <header className="hidden md:flex justify-between items-center px-6 w-full h-16 sticky top-0 z-40 bg-surface-bright border-b border-surface-variant">
-      <div className="flex items-center gap-4">
-        <span className="text-xl font-bold text-primary">Lumina Schedule</span>
+    <header className="flex justify-between items-center px-4 md:px-6 w-full h-16 sticky top-0 z-40 bg-surface-bright border-b border-surface-variant">
+      {/* Left: Hamburger (mobile) + Title (desktop) */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={openMobileDrawer}
+          className="md:hidden w-10 h-10 rounded-full hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant"
+          aria-label="Open menu"
+        >
+          <Icon name="menu" />
+        </button>
+
+        <span className="hidden md:inline text-xl font-bold text-primary">
+          Lumina Schedule
+        </span>
+        <span className="md:hidden text-lg font-bold text-primary">
+          CoE-NNECT
+        </span>
       </div>
 
-      <div className="flex items-center gap-4">
+      {/* Right: Search (desktop) + actions + avatar */}
+      <div className="flex items-center gap-2 md:gap-4">
         <div className="relative hidden lg:block">
           <Icon
             name="search"
@@ -20,15 +38,28 @@ export default function TopBar() {
           />
         </div>
 
-        <button className="w-10 h-10 rounded-full hover:bg-surface-container-high transition-colors flex items-center justify-center text-on-surface-variant">
+        <button
+          className="hidden md:flex w-10 h-10 rounded-full hover:bg-surface-container-high transition-colors items-center justify-center text-on-surface-variant"
+          aria-label="Search"
+        >
+          <Icon name="search" className="md:hidden" />
+        </button>
+
+        <button
+          className="w-10 h-10 rounded-full hover:bg-surface-container-high transition-colors flex items-center justify-center text-on-surface-variant"
+          aria-label="Notifications"
+        >
           <Icon name="notifications" />
         </button>
 
-        <button className="w-10 h-10 rounded-full hover:bg-surface-container-high transition-colors flex items-center justify-center text-on-surface-variant">
+        <button
+          className="hidden md:flex w-10 h-10 rounded-full hover:bg-surface-container-high transition-colors items-center justify-center text-on-surface-variant"
+          aria-label="Settings"
+        >
           <Icon name="settings" />
         </button>
 
-        <div className="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden border border-surface-variant cursor-pointer flex items-center justify-center text-primary font-bold">
+        <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-primary text-on-primary overflow-hidden border border-surface-variant cursor-pointer flex items-center justify-center font-bold text-sm">
           A
         </div>
       </div>

@@ -2,14 +2,18 @@ import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { ROUTES } from '../../router';
 
-const mainNav = [
+export const mainNavItems = [
   { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: 'dashboard' },
   { label: 'Schedule Planner', path: ROUTES.TIMETABLE, icon: 'calendar_view_month' },
   { label: 'Faculty Directory', path: ROUTES.FACULTY, icon: 'groups' },
   { label: 'Conflict Resolver', path: ROUTES.APPROVALS, icon: 'report_problem' },
+  { label: 'Rooms', path: ROUTES.ROOMS, icon: 'meeting_room' },
+  { label: 'Subjects', path: ROUTES.SUBJECTS, icon: 'menu_book' },
+  { label: 'Sections', path: ROUTES.SECTIONS, icon: 'view_module' },
+  { label: 'Reports', path: ROUTES.REPORTS, icon: 'bar_chart' },
 ];
 
-const footerNav = [
+export const footerNavItems = [
   { label: 'Archive', path: ROUTES.AUDIT_TRAIL, icon: 'archive' },
   { label: 'Help', path: '/help', icon: 'help_outline' },
 ];
@@ -41,8 +45,8 @@ export default function Sidebar() {
       </div>
 
       {/* Main Nav */}
-      <div className="flex-1 flex flex-col gap-1">
-        {mainNav.map((item) => (
+      <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
+        {mainNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -64,7 +68,7 @@ export default function Sidebar() {
 
       {/* Footer Nav */}
       <div className="flex flex-col gap-1 mt-auto">
-        {footerNav.map((item) => (
+        {footerNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
