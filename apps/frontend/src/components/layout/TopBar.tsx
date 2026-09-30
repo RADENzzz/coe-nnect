@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
+import { supabase } from '../../lib/supabase';
 
 export default function TopBar() {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
@@ -10,8 +11,8 @@ export default function TopBar() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    function handleClickOutside(event: any) {
-      if (profileRef.current && !profileRef.current.contains(event.target)) {
+    function handleClickOutside(event: Event) {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
       }
     }
@@ -19,7 +20,8 @@ export default function TopBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     navigate('/login');
   };
 
