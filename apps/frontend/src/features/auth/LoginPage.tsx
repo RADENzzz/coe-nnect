@@ -326,7 +326,7 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── DEV LOGIN POPUP (dev only) ───────── */}
-      {import.meta.env.DEV && (
+      {/*import.meta.env.DEV &&*/ (
         <DevLoginPopup
           onFill={(devEmail, devPassword) => {
             setEmail(devEmail);
