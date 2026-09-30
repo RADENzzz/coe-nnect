@@ -113,7 +113,7 @@ export default function DashboardPage() {
       {/* Welcome Header */}
       <div className="mb-8 mt-4 md:mt-0">
         <h2 className="text-4xl font-bold text-on-surface mb-2 tracking-tight">
-          Welcome back, DenZ
+          Welcome back, test123
         </h2>
         <p className="text-base text-on-surface-variant">
           Here is the current status of the Computer Engineering department
