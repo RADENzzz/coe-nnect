@@ -1,4 +1,15 @@
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+
 export default function LoginPage() {
+  const navigate = useNavigate();
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    navigate('/dashboard');
+  };
+
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface-low">
       <div className="card w-full max-w-md p-8">
@@ -9,7 +20,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleLogin}>
           <div>
             <label className="label block mb-2">
               Email or Username
@@ -32,8 +43,8 @@ export default function LoginPage() {
             />
           </div>
 
-          <button type="button" className="btn-primary w-full mt-2">
-            Sign In
+          <button type="submit" className="btn-primary w-full mt-2">
+            Login
           </button>
         </form>
 
