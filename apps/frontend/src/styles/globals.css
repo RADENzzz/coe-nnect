@@ -42,7 +42,7 @@
     font-size: 32px;
     line-height: 40px;
     font-weight: 700;
-    color: #f9f6f6;
+    color: #570000;
   }
 
   h2 {
@@ -104,76 +104,6 @@
   /* ----- Labels ----- */
   .label {
     @apply text-label-md text-on-surface-variant;
-  }
-}
-
-/* ============================================
-   Animations
-   ============================================ */
-@layer utilities {
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  @keyframes fade-up {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes slide-in {
-    from {
-      opacity: 0;
-      transform: translateX(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-8px); }
-    40% { transform: translateX(8px); }
-    60% { transform: translateX(-5px); }
-    80% { transform: translateX(5px); }
-  }
-
-  @keyframes pulse-slow {
-    0%, 100% { opacity: 0.3; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.05); }
-  }
-
-  @keyframes pulse-slower {
-    0%, 100% { opacity: 0.2; transform: scale(1); }
-    50% { opacity: 0.35; transform: scale(1.08); }
-  }
-
-  .animate-fade-in {
-    animation: fade-in 300ms ease-out;
-  }
-
-  .animate-fade-up {
-    animation: fade-up 500ms cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-
-  .animate-slide-in {
-    animation: slide-in 400ms cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-
-  .animate-pulse-slow {
-    animation: pulse-slow 6s ease-in-out infinite;
-  }
-
-  .animate-pulse-slower {
-    animation: pulse-slower 9s ease-in-out infinite;
   }
 }
 
