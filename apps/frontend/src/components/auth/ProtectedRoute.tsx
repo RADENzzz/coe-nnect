@@ -1,74 +1,62 @@
-// components/auth/ProtectedRoute.tsx
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
 import { supabase } from '../../lib/supabase';
 
-type Role = 'administrator' | 'department_head' | 'college_dean';
-
-export default function ProtectedRoute({
-  allowedRoles,
-  redirectTo = '/login',
-}: {
-  allowedRoles: Role[];
+interface ProtectedRouteProps {
+  allowedRoles?: string[];
   redirectTo?: string;
-}) {
+}
+
+export default function ProtectedRoute({ allowedRoles, redirectTo = '/login' }: ProtectedRouteProps) {
+  const { user, profile, isLoading, setUser, setProfile, setLoading } = useAuthStore();
   const location = useLocation();
-  const [status, setStatus] = useState<'loading' | 'authed' | 'unauthed'>('loading');
-  const [role, setRole] = useState<Role | null>(null);
 
   useEffect(() => {
-    let mounted = true;
-
-    // Initial check — but rely on the event, not just getSession
-    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (!session?.user) {
-          setRole(null);
-          setStatus('unauthed');
-          return;
+    // onAuthStateChange fires immediately with the existing session (SIGNED_IN event),
+    // so we don't need a separate initAuth() call — that was causing the race condition.
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          const { data } = await supabase
+            .from('users')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .single();
+          if (data) setProfile(data);
+        } else {
+          setUser(null);
+          setProfile(null);
         }
-
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single();
-
-        if (!mounted) return;
-        setRole((profile?.role as Role) ?? null);
-        setStatus(profile ? 'authed' : 'unauthed');
+        setLoading(false);
       }
-
-      if (event === 'SIGNED_OUT') {
-        setRole(null);
-        setStatus('unauthed');
-      }
-    });
+    );
 
     return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [setUser, setProfile, setLoading]);
 
-  if (status === 'loading') {
-    // small spinner so we never flash-redirect during hydration
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-low">
-        <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-surface-low text-primary">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-on-surface-variant">Loading...</span>
+        </div>
       </div>
     );
   }
 
-  if (status === 'unauthed') {
-    return <Navigate to={redirectTo} replace state={{ from: location }} />;
+  if (!user) {
+    return <Navigate to={redirectTo} state={{ from: location }} replace />;
   }
 
-  if (role && !allowedRoles.includes(role)) {
-    // logged in but wrong role
-    return <Navigate to="/dashboard" replace />;
+  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+    // Admins always go to /admin; everyone else to /dashboard
+    const fallback = profile.role === 'administrator' ? '/admin' : '/dashboard';
+    return <Navigate to={fallback} replace />;
   }
 
   return <Outlet />;
