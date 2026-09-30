@@ -1,8 +1,27 @@
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
 
 export default function TopBar() {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    function handleClickOutside(event: any) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setIsProfileOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleLogout = () => {
+    navigate('/login');
+  };
 
   return (
     <header className="flex justify-between items-center px-4 md:px-6 w-full h-16 sticky top-0 z-40 bg-surface-bright border-b border-surface-variant">
@@ -59,8 +78,25 @@ export default function TopBar() {
           <Icon name="settings" />
         </button>
 
-        <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-primary text-on-primary overflow-hidden border border-surface-variant cursor-pointer flex items-center justify-center font-bold text-sm">
-          A
+        <div className="relative" ref={profileRef}>
+          <div 
+            className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-primary text-on-primary overflow-hidden border border-surface-variant cursor-pointer flex items-center justify-center font-bold text-sm"
+            onClick={() => setIsProfileOpen(!isProfileOpen)}
+          >
+            A
+          </div>
+          
+          {isProfileOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-surface-bright rounded-md shadow-lg py-1 border border-surface-variant z-50">
+              <button
+                onClick={handleLogout}
+                className="flex items-center w-full px-4 py-2 text-sm text-on-surface hover:bg-surface-container-high transition-colors"
+              >
+                <Icon name="logout" className="mr-2 text-base" />
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
