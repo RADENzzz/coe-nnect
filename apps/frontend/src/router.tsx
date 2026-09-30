@@ -21,7 +21,7 @@ export const ROUTES = {
   AUDIT_TRAIL: '/audit-trail',
   USERS: '/users',
   VACANT_SLOTS: '/vacant-slots',
-  PLOT_SUBJECT: '/plot-subject',
+  CREATE_DEPARTMENT: '/admin/create-department',
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

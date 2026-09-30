@@ -20,12 +20,21 @@ export default function LoginPage() {
         password,
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
       
       if (data.user) {
-        navigate('/dashboard');
+        // Fetch the user's role to determine where to redirect
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (profile?.role === 'administrator') {
+          navigate('/admin');
+        } else {
+          navigate('/dashboard');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred during login');
