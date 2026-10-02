@@ -14,6 +14,8 @@ import { PlotSubjectDto } from './dto/plot-subject.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { ValidatePlotDto } from './dto/validate-plot.dto';
+import { UpdateRemarksDto } from './dto/update-remarks.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/schedules')
@@ -57,4 +59,19 @@ export class SchedulingController {
   async remove(@Param('id') id: string) {
     return this.service.remove(id);
   }
+
+    @Post('validate')
+    async validate(@Body() dto: ValidatePlotDto) {
+    const data = await this.service.validate(dto);
+    return { data };
+    }
+
+    @Patch(':id/remarks')
+    async updateRemarks(
+    @Param('id') id: string,
+    @Body() dto: UpdateRemarksDto,
+    ) {
+    const data = await this.service.updateRemarks(id, dto.remarks ?? null);
+    return { data };
+    }
 }

@@ -68,6 +68,9 @@ export class Schedule {
   @Column({ name: 'end_time', type: 'time', nullable: true })
   endTime: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  remarks: string | null;
+
   @Column({
     type: 'enum',
     enum: ['draft', 'review', 'finalized', 'published'],

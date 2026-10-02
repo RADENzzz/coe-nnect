@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import TimetableGrid from './components/TimetableGrid';
 import type { ScheduleEntry, Day, LoadType } from './types';
@@ -13,6 +13,9 @@ import { timeToMinutes, minutesToTime } from './utils/time.util';
 import LoadingState from '../../components/feedback/LoadingState';
 import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
+import Icon from '../../components/ui/Icon';
+import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
+import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -34,7 +37,6 @@ const DAY_MAP_REVERSE: Record<Day, string> = {
 };
 
 function toEntry(raw: RawSchedule): ScheduleEntry {
-  // Prefer schedule-level day/time over timeslot
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
@@ -55,6 +57,8 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     day: DAY_MAP[day] ?? 'MON',
     startTime: start.slice(0, 5),
     endTime: end.slice(0, 5),
+    status: raw.status,          // ← NEW
+    remarks: raw.remarks,
     loadType: (raw.loadType ?? 'lecture') as LoadType,
     deptId: '',
     deptColor: '#800000',
@@ -64,8 +68,10 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+  const [plotOpen, setPlotOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
 
-  // ── 1. Fetch the active term ──
+  // ── Fetch active term ──
   const {
     data: activeTerm,
     isLoading: termLoading,
@@ -76,7 +82,7 @@ export default function TimetablePage() {
     enabled: !!user,
   });
 
-  // ── 2. Fetch schedule entries for that term ──
+  // ── Fetch schedules ──
   const {
     data: schedules,
     isLoading: schedulesLoading,
@@ -87,13 +93,12 @@ export default function TimetablePage() {
     enabled: !!user && !!activeTerm,
   });
 
-  // ── 3. Convert to grid entries ──
   const entries = useMemo(
     () => (schedules ?? []).map(toEntry),
     [schedules],
   );
 
-  // ── 4. Move mutation ──
+  // ── Move mutation ──
   const moveMutation = useMutation({
     mutationFn: (args: {
       id: string;
@@ -113,7 +118,6 @@ export default function TimetablePage() {
     },
     onError: (err: any) => {
       console.error('[Move] Failed:', err);
-      // TODO: show toast notification
       alert(
         err?.response?.data?.message ??
           err?.message ??
@@ -122,7 +126,6 @@ export default function TimetablePage() {
     },
   });
 
-  // ── 5. Drag handler ──
   const handleMove = useCallback(
     (entryId: string, newDay: string, newStartTime: string) => {
       const existing = entries.find((e) => e.id === entryId);
@@ -133,7 +136,6 @@ export default function TimetablePage() {
         timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
       const newEnd = minutesToTime(startMin + duration);
 
-      // Optimistic update: apply locally first
       queryClient.setQueryData<RawSchedule[]>(
         ['schedules', activeTerm?.termId],
         (old) => {
@@ -150,7 +152,6 @@ export default function TimetablePage() {
         },
       );
 
-      // Persist to backend
       moveMutation.mutate({
         id: entryId,
         dayOfWeek: DAY_MAP_REVERSE[newDay as Day] ?? 'Monday',
@@ -161,11 +162,33 @@ export default function TimetablePage() {
     [entries, moveMutation, queryClient, activeTerm?.termId],
   );
 
-  // ── 6. Click handler (detail drawer later) ──
   const handleClick = useCallback((entry: ScheduleEntry) => {
-    console.log('Clicked schedule entry:', entry);
-    // TODO: open detail drawer
+    setSelectedEntry(entry);
   }, []);
+
+  const handleEdit = useCallback((entry: ScheduleEntry) => {
+    // TODO: open PlotSubjectModal in "edit mode" (Option A1.1 — future)
+    console.log('TODO: open edit form for', entry);
+  }, []);
+
+  // ── Hardcoded dropdown data (replace with API later) ──
+  const subjects = [
+    { subjectId: '1', subjectCode: 'CPE 101', title: 'Programming Logic & Design' },
+    { subjectId: '2', subjectCode: 'CPE 102', title: 'Computer Programming 2' },
+    { subjectId: '3', subjectCode: 'MATH 101', title: 'Engineering Calculus' },
+    { subjectId: '4', subjectCode: 'PHYS 101', title: 'Physics for Engineers' },
+  ];
+  const faculty = [
+    { facultyId: '1', firstName: 'Juan', lastName: 'Dela Cruz' },
+    { facultyId: '2', firstName: 'Maria', lastName: 'Santos' },
+    { facultyId: '3', firstName: 'Pedro', lastName: 'Reyes' },
+  ];
+  const rooms = [
+    { roomId: '1', roomNumber: '205', roomType: 'laboratory' },
+    { roomId: '2', roomNumber: '206', roomType: 'lecture_room' },
+    { roomId: '3', roomNumber: '203', roomType: 'computer_lab' },
+    { roomId: '4', roomNumber: '204', roomType: 'computer_lab' },
+  ];
 
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
@@ -182,19 +205,32 @@ export default function TimetablePage() {
               : 'Loading term...'}
           </p>
         </div>
-        {activeTerm && !isLoading && !error && (
-          <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-            <span className="material-symbols-outlined text-base">
-              calendar_view_month
-            </span>
-            {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
-            {moveMutation.isPending && (
-              <span className="ml-2 text-primary font-medium animate-pulse">
-                Saving…
+
+        <div className="flex items-center gap-3">
+          {activeTerm && !isLoading && !error && (
+            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+              <span className="material-symbols-outlined text-base">
+                calendar_view_month
               </span>
-            )}
-          </div>
-        )}
+              {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+              {moveMutation.isPending && (
+                <span className="ml-2 text-primary font-medium animate-pulse">
+                  Saving…
+                </span>
+              )}
+            </div>
+          )}
+
+          {activeTerm && (
+            <button
+              onClick={() => setPlotOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary transition"
+            >
+              <Icon name="add" size={16} />
+              Plot Subject
+            </button>
+          )}
+        </div>
       </div>
 
       {/* States */}
@@ -215,7 +251,7 @@ export default function TimetablePage() {
       {!isLoading && !error && activeTerm && entries.length === 0 && (
         <EmptyState
           title="No schedule entries yet"
-          description="Plot a subject to get started."
+          description='Click "Plot Subject" to add your first class.'
         />
       )}
       {!isLoading && !error && activeTerm && entries.length > 0 && (
@@ -223,6 +259,28 @@ export default function TimetablePage() {
           entries={entries}
           onEntryMove={handleMove}
           onEntryClick={handleClick}
+        />
+      )}
+
+      {/* Plot Subject Modal */}
+      {activeTerm && (
+        <PlotSubjectModal
+          open={plotOpen}
+          onClose={() => setPlotOpen(false)}
+          termId={activeTerm.termId}
+          subjects={subjects}
+          faculty={faculty}
+          rooms={rooms}
+        />
+      )}
+
+      {/* Detail Drawer ← ADD THIS */}
+      {activeTerm && (
+        <ScheduleDetailDrawer
+          entry={selectedEntry}
+          onClose={() => setSelectedEntry(null)}
+          onEdit={handleEdit}
+          termId={activeTerm.termId}
         />
       )}
     </div>
