@@ -5,6 +5,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { SchedulingModule } from './modules/scheduling/scheduling.module';
+import { ConstraintsModule } from './modules/constraints/constraints.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SchedulingModule } from './modules/scheduling/scheduling.module';
     UsersModule,
     DepartmentsModule,
     SchedulingModule,
+    ConstraintsModule,
   ],
 })
 export class AppModule {}
