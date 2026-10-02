@@ -41,8 +41,11 @@ export default function ProtectedRoute({
 
   // 4. Role check
   if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
-    // Admins go to /admin, others to /dashboard
-    const fallback = profile.role === 'administrator' ? '/admin' : '/dashboard';
+    // Admins go to /admin, Deans to /dean, others to /dashboard
+    let fallback = '/dashboard';
+    if (profile.role === 'administrator') fallback = '/admin';
+    if (profile.role === 'college_dean') fallback = '/dean';
+    
     return <Navigate to={fallback} replace />;
   }
 

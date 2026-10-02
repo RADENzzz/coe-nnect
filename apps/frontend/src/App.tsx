@@ -7,6 +7,8 @@ import AdminShell from './components/layout/AdminShell';
 import AdminDashboardPage from './features/admin/AdminDashboardPage';
 import AdminDepartmentsPage from './features/admin/AdminDepartmentsPage';
 import AdminUsersPage from './features/admin/AdminUsersPage';
+import DeanDashboardPage from './features/dean/DeanDashboardPage';
+import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
@@ -32,11 +34,26 @@ function App() {
         </Route>
       </Route>
 
-      {/* Department heads / College Dean */}
+      {/* Dean portal */}
       <Route
         element={
           <ProtectedRoute
-            allowedRoles={['department_head', 'college_dean']}
+            allowedRoles={['college_dean']}
+            redirectTo="/login"
+          />
+        }
+      >
+        <Route path="/dean" element={<DeanShell />}>
+          <Route index element={<Navigate to="/dean/dashboard" replace />} />
+          <Route path="dashboard" element={<DeanDashboardPage />} />
+        </Route>
+      </Route>
+
+      {/* Department heads */}
+      <Route
+        element={
+          <ProtectedRoute
+            allowedRoles={['department_head']}
             redirectTo="/login"
           />
         }
