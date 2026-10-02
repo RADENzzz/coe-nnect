@@ -20,6 +20,8 @@ export interface ScheduleEntry {
   deptColor: string;
   hasConflict?: boolean;
   hasWarning?: boolean;
+  status?: 'draft' | 'review' | 'finalized' | 'published';   // ← NEW
+  remarks?: string | null;  
 }
 
 export interface DropCellData {

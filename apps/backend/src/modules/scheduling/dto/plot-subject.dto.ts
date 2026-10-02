@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsNumberString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNumberString,
+  IsIn,
+  Matches,
+} from 'class-validator';
 
 export class PlotSubjectDto {
   @IsNumberString()
@@ -16,14 +22,31 @@ export class PlotSubjectDto {
   roomId?: string;
 
   @IsOptional()
-  @IsNumberString()
-  timeslotId?: string;
-
-  @IsOptional()
   @IsString()
   section?: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn(['lecture', 'laboratory', 'other'])
   loadType?: 'lecture' | 'laboratory' | 'other';
+
+  @IsIn([
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ])
+  dayOfWeek: string;
+
+  @Matches(/^\d{2}:\d{2}(:\d{2})?$/, {
+    message: 'startTime must be in HH:MM or HH:MM:SS format',
+  })
+  startTime: string;
+
+  @Matches(/^\d{2}:\d{2}(:\d{2})?$/, {
+    message: 'endTime must be in HH:MM or HH:MM:SS format',
+  })
+  endTime: string;
 }
