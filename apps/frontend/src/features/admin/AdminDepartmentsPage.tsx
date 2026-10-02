@@ -7,6 +7,7 @@ import {
   toggleDepartmentActive,
   type Department,
 } from '../../api/departments.api';
+import { login } from '../../api/auth.api';
 
 export default function AdminDepartmentsPage() {
   const qc = useQueryClient();
@@ -20,6 +21,11 @@ export default function AdminDepartmentsPage() {
     deptName: '',
     description: '',
   });
+
+  const [deactivateTarget, setDeactivateTarget] = useState<string | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const { data: departments = [], isLoading } = useQuery({
     queryKey: ['departments'],
@@ -42,10 +48,27 @@ export default function AdminDepartmentsPage() {
 
   const toggleMutation = useMutation({
     mutationFn: toggleDepartmentActive,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['departments'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['departments'] });
+      setDeactivateTarget(null);
+      setAdminPassword('');
+    },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
   });
+
+  const handleConfirmDeactivate = async () => {
+    if (!user?.email || !deactivateTarget) return;
+    setIsVerifying(true);
+    setVerifyError(null);
+    try {
+      await login({ email: user.email, password: adminPassword });
+      toggleMutation.mutate(deactivateTarget);
+    } catch (err: any) {
+      setVerifyError(err?.response?.data?.message || 'Incorrect password');
+      setIsVerifying(false);
+    }
+  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -76,7 +99,7 @@ export default function AdminDepartmentsPage() {
         </div>
         <button
           onClick={() => {
-            setShowForm(!showForm);
+            setShowForm(true);
             setError(null);
             setSuccess(null);
           }}
@@ -99,71 +122,116 @@ export default function AdminDepartmentsPage() {
       )}
 
       {showForm && (
-        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-6">
-          <h2 className="text-base font-semibold text-on-surface mb-4">
-            Create New Department
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Department Code *
-                </label>
-                <input
-                  type="text"
-                  name="deptCode"
-                  required
-                  value={form.deptCode}
-                  onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                  placeholder="e.g. CE, CpE, ME"
-                />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <h2 className="text-base font-semibold text-on-surface mb-4">
+              Create New Department
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Department Code *
+                  </label>
+                  <input
+                    type="text"
+                    name="deptCode"
+                    required
+                    value={form.deptCode}
+                    onChange={handleChange}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
+                    placeholder="e.g. CE, CpE, ME"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Department Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="deptName"
+                    required
+                    value={form.deptName}
+                    onChange={handleChange}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
+                    placeholder="e.g. Civil Engineering"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition resize-none"
+                    placeholder="Optional"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Department Name *
-                </label>
-                <input
-                  type="text"
-                  name="deptName"
-                  required
-                  value={form.deptName}
-                  onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                  placeholder="e.g. Civil Engineering"
-                />
+
+              <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                  className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+                >
+                  {createMutation.isPending ? 'Creating...' : 'Create Department'}
+                </button>
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Description
-                </label>
-                <textarea
-                  name="description"
-                  value={form.description}
-                  onChange={handleChange}
-                  rows={2}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition resize-none"
-                  placeholder="Optional"
-                />
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-red-600 mb-2">Confirm Deactivation</h2>
+            <p className="text-sm text-on-surface-variant mb-4">
+              Please enter your password to confirm this action.
+            </p>
+            {verifyError && (
+              <div className="mb-4 p-2 bg-red-100 text-red-700 text-xs rounded-lg">
+                {verifyError}
               </div>
-            </div>
-            <div className="flex gap-3 justify-end">
+            )}
+            <input
+              type="password"
+              placeholder="Admin password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-on-surface text-sm focus:outline-none focus:border-red-500 transition mb-4"
+            />
+            <div className="flex justify-end gap-2">
               <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+                onClick={() => {
+                  setDeactivateTarget(null);
+                  setAdminPassword('');
+                  setVerifyError(null);
+                }}
+                className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-low rounded-lg transition"
               >
                 Cancel
               </button>
               <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+                onClick={handleConfirmDeactivate}
+                disabled={isVerifying || !adminPassword}
+                className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition disabled:opacity-50"
               >
-                {createMutation.isPending ? 'Creating...' : 'Create Department'}
+                {isVerifying ? 'Verifying...' : 'Confirm'}
               </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
@@ -223,7 +291,13 @@ export default function AdminDepartmentsPage() {
                   </td>
                   <td className="px-5 py-3.5 text-right">
                     <button
-                      onClick={() => toggleMutation.mutate(dept.deptId)}
+                      onClick={() => {
+                        if (dept.isActive) {
+                          setDeactivateTarget(dept.deptId);
+                        } else {
+                          toggleMutation.mutate(dept.deptId);
+                        }
+                      }}
                       disabled={toggleMutation.isPending}
                       className={`text-xs px-3 py-1 rounded-lg border transition ${
                         dept.isActive
