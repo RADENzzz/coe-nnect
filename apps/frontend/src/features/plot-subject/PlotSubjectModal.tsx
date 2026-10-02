@@ -4,9 +4,9 @@ import {
   plotSubject,
   validatePlot,
   type PlotSubjectPayload,
+  type ValidateResult,
 } from '../../api/schedule.api';
 import Icon from '../../components/ui/Icon';
-import clsx from 'clsx';
 
 const DAYS = [
   'Monday',
@@ -72,10 +72,7 @@ export default function PlotSubjectModal({
     loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
   });
 
-  const [validation, setValidation] = useState<{
-    valid: boolean;
-    violations: string[];
-  } | null>(null);
+  const [validation, setValidation] = useState<ValidateResult | null>(null);
 
   const [touched, setTouched] = useState(false);
 
@@ -146,7 +143,7 @@ export default function PlotSubjectModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validation?.valid) return;
+    if ((validation?.hardConflicts.length ?? 0) > 0) return;
     plotMutation.mutate({
       termId,
       subjectId: form.subjectId,
@@ -166,7 +163,7 @@ export default function PlotSubjectModal({
     plotMutation.isPending ||
     !form.subjectId ||
     !form.roomId ||
-    (touched && validation?.valid === false);
+    (touched && (validation?.hardConflicts.length ?? 0) > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -351,34 +348,77 @@ export default function PlotSubjectModal({
 
           {/* Validation feedback */}
           {touched && validation && (
-            <div
-              className={clsx(
-                'rounded-lg p-3 text-sm flex items-start gap-2',
-                validation.valid
-                  ? 'bg-green-50 text-green-800 border border-green-200'
-                  : 'bg-red-50 text-red-800 border border-red-200',
-              )}
-            >
-              <Icon
-                name={validation.valid ? 'check_circle' : 'error'}
-                filled
-                size={18}
-                className="shrink-0 mt-0.5"
-              />
-              <div>
-                {validation.valid ? (
-                  <p className="font-medium">No conflicts detected ✓</p>
-                ) : (
-                  <>
-                    <p className="font-medium">Conflicts detected:</p>
+            <div className="space-y-2">
+              {/* Hard conflicts — block submission */}
+              {validation.hardConflicts.length > 0 && (
+                <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-red-50 text-red-800 border border-red-200">
+                  <Icon
+                    name="error"
+                    filled
+                    size={18}
+                    className="shrink-0 mt-0.5"
+                  />
+                  <div>
+                    <p className="font-medium">
+                      {validation.hardConflicts.length} hard conflict
+                      {validation.hardConflicts.length === 1 ? '' : 's'} — cannot
+                      plot:
+                    </p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5">
-                      {validation.violations.map((v, i) => (
-                        <li key={i}>{v}</li>
+                      {validation.hardConflicts.map((c) => (
+                        <li key={c.ruleId}>
+                          <span className="font-mono text-xs opacity-70">
+                            {c.ruleId}
+                          </span>{' '}
+                          {c.reason}
+                        </li>
                       ))}
                     </ul>
-                  </>
+                  </div>
+                </div>
+              )}
+
+              {/* Soft warnings — advisory only */}
+              {validation.softWarnings.length > 0 && (
+                <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
+                  <Icon
+                    name="warning"
+                    filled
+                    size={18}
+                    className="shrink-0 mt-0.5"
+                  />
+                  <div>
+                    <p className="font-medium">
+                      {validation.softWarnings.length} warning
+                      {validation.softWarnings.length === 1 ? '' : 's'}:
+                    </p>
+                    <ul className="mt-1 list-disc list-inside space-y-0.5">
+                      {validation.softWarnings.map((w) => (
+                        <li key={w.ruleId}>
+                          <span className="font-mono text-xs opacity-70">
+                            {w.ruleId}
+                          </span>{' '}
+                          {w.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Clean pass */}
+              {validation.hardConflicts.length === 0 &&
+                validation.softWarnings.length === 0 && (
+                  <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-green-50 text-green-800 border border-green-200">
+                    <Icon
+                      name="check_circle"
+                      filled
+                      size={18}
+                      className="shrink-0 mt-0.5"
+                    />
+                    <p className="font-medium">No conflicts detected ✓</p>
+                  </div>
                 )}
-              </div>
             </div>
           )}
 

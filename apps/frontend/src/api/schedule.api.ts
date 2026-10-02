@@ -78,9 +78,17 @@ export interface ValidatePlotPayload {
   endTime: string;
 }
 
+export interface ValidateConflict {
+  ruleId: string;
+  ruleName: string;
+  reason: string;
+}
+
 export interface ValidateResult {
   valid: boolean;
-  violations: string[];
+  hardConflicts: ValidateConflict[];
+  softWarnings: ValidateConflict[];
+  alternatives: unknown[];
 }
 
 // ────────────────────────────────────────────

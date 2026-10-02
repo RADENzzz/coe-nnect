@@ -6,9 +6,10 @@ import { Term } from '../terms/entities/term.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { Room } from '../rooms/entities/room.entity';
-import { User } from '../users/entities/user.entity';   // ← ADD THIS
+import { User } from '../users/entities/user.entity';  
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
+import { RuleContextBuilder } from './services/rule-context.builder';
 
 @Module({
   imports: [
@@ -19,11 +20,11 @@ import { SchedulingController } from './scheduling.controller';
       Subject,
       Faculty,
       Room,
-      User,   // ← ADD THIS
+      User,
     ]),
   ],
   controllers: [SchedulingController],
-  providers: [SchedulingService],
+  providers: [SchedulingService, RuleContextBuilder],
   exports: [SchedulingService],
 })
 export class SchedulingModule {}
