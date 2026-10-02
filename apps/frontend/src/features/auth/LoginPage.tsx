@@ -179,27 +179,36 @@ export default function LoginPage() {
       if (signInError) throw signInError;
       if (!data.user) throw new Error('No user returned from login');
 
-      // Fetch profile (gracefully handles missing row)
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('role')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
+      // Try reading role from app_metadata first (set by service role, no RLS issues)
+      const metaRole = data.user.app_metadata?.role as string | undefined;
 
-      if (profileError) throw profileError;
+      // Fallback: fetch from users table (works if RLS allows self-read)
+      let role = metaRole;
+      if (!role) {
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
 
-      if (!profile) {
-        await supabase.auth.signOut();
-        throw new Error(
-          'Your account exists but has no profile. Contact the administrator.',
-        );
+        if (profileError) throw profileError;
+
+        if (!profile) {
+          await supabase.auth.signOut();
+          throw new Error(
+            'Your account exists but has no profile. Contact the administrator.',
+          );
+        }
+        role = profile.role;
       }
 
-      // Redirect: back to original page, or role-based default
+      // Redirect based on role
       if (from) {
         navigate(from, { replace: true });
-      } else if (profile.role === 'administrator') {
+      } else if (role === 'administrator') {
         navigate('/admin/dashboard', { replace: true });
+      } else if (role === 'college_dean') {
+        navigate('/dean/dashboard', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
       }
