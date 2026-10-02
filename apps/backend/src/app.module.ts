@@ -9,8 +9,8 @@ import { DepartmentsModule } from './modules/departments/departments.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // Only load .env file locally — Vercel provides env vars directly
-      ignoreEnvFile: process.env.NODE_ENV === 'production',
+      // Don't try to load .env on Vercel — use process.env directly
+      ignoreEnvFile: process.env.VERCEL === '1',
     }),
     DatabaseModule,
     AuthModule,

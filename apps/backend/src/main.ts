@@ -1,9 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { INestApplication } from '@nestjs/common';
 
-async function createApp() {
+async function createApp(): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
   app.setGlobalPrefix(process.env.API_PREFIX ?? 'api');
@@ -18,14 +18,11 @@ async function createApp() {
       if (!origin) return callback(null, true);
       if (envOrigins.includes(origin)) return callback(null, true);
 
-      // Allow Vercel preview URLs and localhost
       const isVercel = /^https:\/\/.*\.vercel\.app$/.test(origin);
       const isLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(origin);
       const isLanIp = /^https?:\/\/(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(origin);
 
-      if (isVercel || isLocalhost || isLanIp) {
-        return callback(null, true);
-      }
+      if (isVercel || isLocalhost || isLanIp) return callback(null, true);
 
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
@@ -43,28 +40,30 @@ async function createApp() {
     }),
   );
 
-  await app.init();
   return app;
 }
 
-// ─── Local development: start a real server ───
-if (process.env.NODE_ENV !== 'production') {
-  (async () => {
-    const app = await createApp();
-    const port = process.env.PORT ?? 3000;
-    await app.listen(port, '0.0.0.0');
-    console.log(`🚀 Backend running on port ${port}`);
-    console.log(`   Allowed origins: ${(process.env.FRONTEND_URL ?? 'http://localhost:5173').split(',').map(s => s.trim()).join(', ')}`);
-  })();
-}
+// ─── Vercel serverless handler ───
+let cachedApp: INestApplication | null = null;
 
-// ─── Vercel serverless: export a handler ───
-let cachedApp: any = null;
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (!cachedApp) {
     cachedApp = await createApp();
+    await cachedApp.init();
   }
   const instance = cachedApp.getHttpAdapter().getInstance();
   return instance(req, res);
+}
+
+// ─── Local dev: start the server normally ───
+async function bootstrap() {
+  const app = await createApp();
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 Backend running on port ${port}`);
+}
+
+// Only run listen() if NOT on Vercel
+if (process.env.VERCEL !== '1') {
+  bootstrap();
 }
