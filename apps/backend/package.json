@@ -21,7 +21,7 @@
     "@nestjs/config": "^3.2.3",
     "@nestjs/core": "^10.4.0",
     "@nestjs/jwt": "^10.2.0",
-    "@nestjs/mapped-types": "^12.0.0",
+    "@nestjs/mapped-types": "^1.2.2",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/schedule": "^4.1.0",
