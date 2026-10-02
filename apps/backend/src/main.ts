@@ -1,9 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { INestApplication } from '@nestjs/common';
 
-async function createApp(): Promise<INestApplication> {
+async function createApp() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
   app.setGlobalPrefix(process.env.API_PREFIX ?? 'api');
@@ -17,13 +16,10 @@ async function createApp(): Promise<INestApplication> {
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (envOrigins.includes(origin)) return callback(null, true);
-
       const isVercel = /^https:\/\/.*\.vercel\.app$/.test(origin);
       const isLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(origin);
       const isLanIp = /^https?:\/\/(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(origin);
-
       if (isVercel || isLocalhost || isLanIp) return callback(null, true);
-
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
@@ -43,27 +39,24 @@ async function createApp(): Promise<INestApplication> {
   return app;
 }
 
-// ─── Vercel serverless handler ───
-let cachedApp: INestApplication | null = null;
+// ─── Local development ───
+if (process.env.VERCEL !== '1') {
+  (async () => {
+    const app = await createApp();
+    const port = process.env.PORT ?? 3000;
+    await app.listen(port, '0.0.0.0');
+    console.log(`🚀 Backend running on port ${port}`);
+  })();
+}
+
+// ─── Vercel serverless ───
+let cachedApp: any = null;
 
 export default async function handler(req: any, res: any) {
   if (!cachedApp) {
     cachedApp = await createApp();
-    await cachedApp.init();
+    await cachedApp.init();   // ← CRITICAL: registers routes
   }
   const instance = cachedApp.getHttpAdapter().getInstance();
   return instance(req, res);
-}
-
-// ─── Local dev: start the server normally ───
-async function bootstrap() {
-  const app = await createApp();
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port, '0.0.0.0');
-  console.log(`🚀 Backend running on port ${port}`);
-}
-
-// Only run listen() if NOT on Vercel
-if (process.env.VERCEL !== '1') {
-  bootstrap();
 }
