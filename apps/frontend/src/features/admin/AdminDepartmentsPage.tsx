@@ -1,81 +1,67 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-
-interface Department {
-  dept_id: number;
-  dept_code: string;
-  dept_name: string;
-  description: string | null;
-  is_active: boolean;
-}
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '../../store/auth.store';
+import {
+  fetchDepartments,
+  createDepartment,
+  toggleDepartmentActive,
+  type Department,
+} from '../../api/departments.api';
 
 export default function AdminDepartmentsPage() {
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);  // ← NEW
+
+  const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-
   const [form, setForm] = useState({
-    dept_code: '',
-    dept_name: '',
+    deptCode: '',
+    deptName: '',
     description: '',
   });
 
-  useEffect(() => {
-    fetchDepartments();
-  }, []);
+  const { data: departments = [], isLoading } = useQuery({
+    queryKey: ['departments'],
+    queryFn: fetchDepartments,
+    enabled: !!user,  // ← NEW
+  });
 
-  const fetchDepartments = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('department')
-      .select('*')
-      .order('dept_name');
-    if (data) setDepartments(data);
-    if (error) setError(error.message);
-    setLoading(false);
+  const createMutation = useMutation({
+    mutationFn: createDepartment,
+    onSuccess: (dept) => {
+      setSuccess(`Department "${dept.deptName}" created.`);
+      setForm({ deptCode: '', deptName: '', description: '' });
+      setShowForm(false);
+      qc.invalidateQueries({ queryKey: ['departments'] });
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create');
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: toggleDepartmentActive,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['departments'] }),
+    onError: (err: any) =>
+      setError(err?.response?.data?.message ?? 'Toggle failed'),
+  });
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
     setSuccess(null);
-
-    const { data, error } = await supabase
-      .from('department')
-      .insert({
-        dept_code: form.dept_code.toUpperCase(),
-        dept_name: form.dept_name,
-        description: form.description || null,
-        is_active: true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setSuccess(`Department "${data.dept_name}" created with ID: ${data.dept_id}`);
-      setForm({ dept_code: '', dept_name: '', description: '' });
-      setShowForm(false);
-      await fetchDepartments();
-    }
-    setSubmitting(false);
-  };
-
-  const toggleActive = async (dept: Department) => {
-    const { error } = await supabase
-      .from('department')
-      .update({ is_active: !dept.is_active })
-      .eq('dept_id', dept.dept_id);
-    if (!error) fetchDepartments();
+    createMutation.mutate({
+      deptCode: form.deptCode.toUpperCase(),
+      deptName: form.deptName,
+      description: form.description || undefined,
+    });
   };
 
   return (
@@ -84,10 +70,16 @@ export default function AdminDepartmentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Departments</h1>
-          <p className="text-on-surface-variant text-sm mt-1">{departments.length} department(s) registered</p>
+          <p className="text-on-surface-variant text-sm mt-1">
+            {departments.length} department(s) registered
+          </p>
         </div>
         <button
-          onClick={() => { setShowForm(!showForm); setError(null); setSuccess(null); }}
+          onClick={() => {
+            setShowForm(!showForm);
+            setError(null);
+            setSuccess(null);
+          }}
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
         >
           <span className="material-symbols-outlined text-base">add</span>
@@ -95,53 +87,63 @@ export default function AdminDepartmentsPage() {
         </button>
       </div>
 
-      {/* Alerts */}
       {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 text-sm">{error}</div>
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 text-sm">
+          {error}
+        </div>
       )}
       {success && (
-        <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-700 text-sm">{success}</div>
+        <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20 text-green-700 text-sm">
+          {success}
+        </div>
       )}
 
-      {/* Create Form */}
       {showForm && (
         <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-6">
-          <h2 className="text-base font-semibold text-on-surface mb-4">Create New Department</h2>
+          <h2 className="text-base font-semibold text-on-surface mb-4">
+            Create New Department
+          </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">Department Code *</label>
+                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Department Code *
+                </label>
                 <input
                   type="text"
-                  name="dept_code"
+                  name="deptCode"
                   required
-                  value={form.dept_code}
+                  value={form.deptCode}
                   onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm placeholder-on-surface-variant focus:outline-none focus:border-primary transition"
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
                   placeholder="e.g. CE, CpE, ME"
                 />
               </div>
               <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">Department Name *</label>
+                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Department Name *
+                </label>
                 <input
                   type="text"
-                  name="dept_name"
+                  name="deptName"
                   required
-                  value={form.dept_name}
+                  value={form.deptName}
                   onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm placeholder-on-surface-variant focus:outline-none focus:border-primary transition"
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
                   placeholder="e.g. Civil Engineering"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">Description</label>
+                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Description
+                </label>
                 <textarea
                   name="description"
                   value={form.description}
                   onChange={handleChange}
                   rows={2}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm placeholder-on-surface-variant focus:outline-none focus:border-primary transition resize-none"
-                  placeholder="Optional description..."
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition resize-none"
+                  placeholder="Optional"
                 />
               </div>
             </div>
@@ -155,17 +157,16 @@ export default function AdminDepartmentsPage() {
               </button>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={createMutation.isPending}
                 className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
               >
-                {submitting ? 'Creating...' : 'Create Department'}
+                {createMutation.isPending ? 'Creating...' : 'Create Department'}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Departments Table */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -179,7 +180,7 @@ export default function AdminDepartmentsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {isLoading ? (
               <tr>
                 <td colSpan={6} className="px-5 py-8 text-center text-on-surface-variant">
                   <div className="flex items-center justify-center gap-2">
@@ -191,39 +192,46 @@ export default function AdminDepartmentsPage() {
             ) : departments.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-5 py-12 text-center text-on-surface-variant">
-                  <span className="material-symbols-outlined text-4xl block mb-2">domain_disabled</span>
-                  No departments yet. Click "New Department" to get started.
+                  No departments yet.
                 </td>
               </tr>
             ) : (
-              departments.map((dept, i) => (
-                <tr
-                  key={dept.dept_id}
-                  className={`border-b border-white/5 hover:bg-surface-container-low transition ${i % 2 === 0 ? '' : 'bg-white/[0.02]'}`}
-                >
-                  <td className="px-5 py-3.5 text-on-surface-variant font-mono">{dept.dept_id}</td>
-                  <td className="px-5 py-3.5 font-bold font-mono text-primary">{dept.dept_code}</td>
-                  <td className="px-5 py-3.5 text-on-surface font-medium">{dept.dept_name}</td>
-                  <td className="px-5 py-3.5 text-on-surface-variant max-w-xs truncate">{dept.description || '—'}</td>
+              departments.map((dept: Department) => (
+                <tr key={dept.deptId} className="border-b border-white/5 hover:bg-surface-container-low">
+                  <td className="px-5 py-3.5 text-on-surface-variant font-mono">
+                    {dept.deptId}
+                  </td>
+                  <td className="px-5 py-3.5 font-bold font-mono text-primary">
+                    {dept.deptCode}
+                  </td>
+                  <td className="px-5 py-3.5 text-on-surface font-medium">
+                    {dept.deptName}
+                  </td>
+                  <td className="px-5 py-3.5 text-on-surface-variant max-w-xs truncate">
+                    {dept.description || '—'}
+                  </td>
                   <td className="px-5 py-3.5">
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                      dept.is_active
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {dept.is_active ? 'Active' : 'Inactive'}
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+                        dept.isActive
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}
+                    >
+                      {dept.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-right">
                     <button
-                      onClick={() => toggleActive(dept)}
+                      onClick={() => toggleMutation.mutate(dept.deptId)}
+                      disabled={toggleMutation.isPending}
                       className={`text-xs px-3 py-1 rounded-lg border transition ${
-                        dept.is_active
+                        dept.isActive
                           ? 'border-red-300 text-red-700 hover:bg-red-100'
                           : 'border-green-300 text-green-700 hover:bg-green-100'
                       }`}
                     >
-                      {dept.is_active ? 'Deactivate' : 'Activate'}
+                      {dept.isActive ? 'Deactivate' : 'Activate'}
                     </button>
                   </td>
                 </tr>
@@ -235,4 +243,3 @@ export default function AdminDepartmentsPage() {
     </div>
   );
 }
-
