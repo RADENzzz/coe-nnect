@@ -1,6 +1,5 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
-import { useAuthStore } from '../../store/auth.store';
+import { Outlet, NavLink } from 'react-router-dom';
+import { useLogout } from '../../hooks/use-logout';
 
 const navItems = [
   { label: 'Dashboard', icon: 'dashboard', path: '/admin' },
@@ -9,14 +8,7 @@ const navItems = [
 ];
 
 export default function AdminShell() {
-  const navigate = useNavigate();
-  const { clearAuth } = useAuthStore();
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    clearAuth();
-    navigate('/login');
-  };
+  const logout = useLogout();
 
   return (
     <div className="min-h-screen flex bg-background text-on-background">
@@ -26,7 +18,9 @@ export default function AdminShell() {
         <div className="p-6 border-b border-surface-variant">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-on-primary text-lg">admin_panel_settings</span>
+              <span className="material-symbols-outlined text-on-primary text-lg">
+                admin_panel_settings
+              </span>
             </div>
             <div>
               <p className="text-sm font-bold text-primary">CoE-NNECT</p>
@@ -59,7 +53,7 @@ export default function AdminShell() {
         {/* Logout */}
         <div className="p-4 border-t border-surface-variant">
           <button
-            onClick={handleLogout}
+            onClick={logout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-on-surface-variant hover:bg-error/10 hover:text-error transition-all w-full"
           >
             <span className="material-symbols-outlined text-xl">logout</span>
@@ -85,4 +79,3 @@ export default function AdminShell() {
     </div>
   );
 }
-
