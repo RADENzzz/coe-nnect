@@ -28,3 +28,10 @@ export interface DropCellData {
   endTime: string;
   cellId: string;
 }
+
+export interface GridMetrics {
+  cellHeight: number;
+  dayWidth: number;
+  axisWidth: number;
+  gridHeight: number;
+}

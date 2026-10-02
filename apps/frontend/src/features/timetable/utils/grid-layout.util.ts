@@ -1,37 +1,39 @@
-import { timeToMinutes, OPERATING_HOURS } from './time.util';
+import { timeToMinutes, OPERATING_HOURS, SLOT_MINUTES } from './time.util';
 
-// Grid dimensions (can be dynamic; keep constants for now)
-export const CELL_HEIGHT_PX = 24;   // 30 min = 24px
-export const DAY_WIDTH_PX = 180;    // each day column
-export const TIME_AXIS_WIDTH_PX = 80;
+/** Pixel height per SLOT_MINUTES (30 min) — big enough to fit 3 lines of text */
+export const CELL_HEIGHT_PX = 48;
+
+/** Pixel width per day column */
+export const DAY_WIDTH_PX = 180;
+
+/** Pixel width of the time axis column */
+export const TIME_AXIS_WIDTH_PX = 72;
+
+/** Total number of 30-min slots between operating hours */
+export function getSlotCount(): number {
+  const startMin = timeToMinutes(OPERATING_HOURS.start);
+  const endMin = timeToMinutes(OPERATING_HOURS.end);
+  return (endMin - startMin) / SLOT_MINUTES;
+}
+
+/** Total grid height in pixels */
+export function getGridHeightPx(): number {
+  return getSlotCount() * CELL_HEIGHT_PX;
+}
 
 const DAY_START_MIN = timeToMinutes(OPERATING_HOURS.start);
 
-/**
- * Convert minutes since midnight → Y pixel offset in grid.
- */
+/** Convert minutes-since-midnight → Y pixel offset */
 export function minutesToY(minutes: number): number {
-  return ((minutes - DAY_START_MIN) / 30) * CELL_HEIGHT_PX;
+  return ((minutes - DAY_START_MIN) / SLOT_MINUTES) * CELL_HEIGHT_PX;
 }
 
-/**
- * Convert Y pixel offset → minutes since midnight.
- */
+/** Convert Y pixel offset → minutes-since-midnight (snapped to slot) */
 export function yToMinutes(y: number): number {
-  return DAY_START_MIN + Math.round(y / CELL_HEIGHT_PX) * 30;
+  return DAY_START_MIN + Math.round(y / CELL_HEIGHT_PX) * SLOT_MINUTES;
 }
 
-/**
- * Snap a Y coordinate to the nearest 30-min boundary.
- */
-export function snapY(y: number): number {
-  return Math.round(y / CELL_HEIGHT_PX) * CELL_HEIGHT_PX;
-}
-
-/**
- * Total grid height.
- */
-export function getGridHeightPx(): number {
-  const endMin = timeToMinutes(OPERATING_HOURS.end);
-  return ((endMin - DAY_START_MIN) / 30) * CELL_HEIGHT_PX;
+/** Convert duration in minutes → pixel height */
+export function durationToHeight(minutes: number): number {
+  return (minutes / SLOT_MINUTES) * CELL_HEIGHT_PX;
 }
