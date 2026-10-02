@@ -8,7 +8,7 @@
 CoE-NNECT is designed to replace manual, spreadsheet-based scheduling with a centralized system featuring **automated conflict detection, faculty workload management, scheduling constraints, approval workflows, and auditable timetables**.
 
 ---
-
+..
 ## roject Information
 
 |                   |                                          |
