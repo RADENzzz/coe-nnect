@@ -249,7 +249,7 @@ export default function LoginPage() {
               <br />
               Engineering
               <br />
-              <span className="text-secondary-container">Scheduling System</span>
+              <span className="text-secondary-container">Schedulingg System</span>
             </h1>
           </div>
 

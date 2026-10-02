@@ -13,6 +13,7 @@ export default function ProtectedRoute({
   const { user, profile, isLoading } = useAuthStore();
   const location = useLocation();
 
+  // 1. Still checking session — show spinner, do not redirect yet
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-low text-primary">
@@ -24,10 +25,12 @@ export default function ProtectedRoute({
     );
   }
 
+  // 2. Not logged in — redirect to login
   if (!user) {
     return <Navigate to={redirectTo} state={{ from: location }} replace />;
   }
 
+  // 3. Logged in but waiting for profile — show spinner
   if (allowedRoles && !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-low text-primary">
@@ -36,9 +39,13 @@ export default function ProtectedRoute({
     );
   }
 
+  // 4. Role check
   if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
-    return <Navigate to="/dashboard" replace />;
+    // Admins go to /admin, others to /dashboard
+    const fallback = profile.role === 'administrator' ? '/admin' : '/dashboard';
+    return <Navigate to={fallback} replace />;
   }
 
+  // 5. All good
   return <Outlet />;
 }
