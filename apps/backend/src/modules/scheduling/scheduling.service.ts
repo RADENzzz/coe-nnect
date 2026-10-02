@@ -10,6 +10,8 @@ import { Term } from '../terms/entities/term.entity';
 import { PlotSubjectDto } from './dto/plot-subject.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ValidatePlotDto } from './dto/validate-plot.dto';
+import { ConstraintsService } from '../constraints/constraints.service';
+import { RuleContextBuilder } from './services/rule-context.builder';
 
 type DayOfWeek =
   | 'Monday'
@@ -25,6 +27,8 @@ export class SchedulingService {
   constructor(
     @InjectRepository(Schedule) private scheduleRepo: Repository<Schedule>,
     @InjectRepository(Term) private termRepo: Repository<Term>,
+    private readonly ruleContextBuilder: RuleContextBuilder,
+    private readonly constraints: ConstraintsService,
   ) {}
 
   // ────────────────────────────────────────────
@@ -51,96 +55,33 @@ export class SchedulingService {
   }
 
 
-    async validate(
-    dto: ValidatePlotDto,
-    ): Promise<{ valid: boolean; violations: string[] }> {
-    const violations: string[] = [];
+  async validate(dto: ValidatePlotDto): Promise<{
+  valid: boolean;
+  hardConflicts: Array<{ ruleId: string; ruleName: string; reason: string }>;
+  softWarnings: Array<{ ruleId: string; ruleName: string; reason: string }>;
+  alternatives: unknown[];
+}> {
+  const context = await this.ruleContextBuilder.build({
+    termId: dto.termId,
+    subjectId: dto.subjectId,
+    facultyId: dto.facultyId,
+    roomId: dto.roomId,
+    section: dto.section,
+    dayOfWeek: dto.dayOfWeek,
+    startTime: dto.startTime,
+    endTime: dto.endTime,
+    excludeScheduleId: dto.excludeId,
+  });
 
-    const startMin = this.timeToMinutes(dto.startTime);
-    const endMin = this.timeToMinutes(dto.endTime);
+  const engineResult = this.constraints.evaluate(context);
 
-    // Rule 1: start < end
-    if (endMin <= startMin) {
-        violations.push('End time must be after start time');
-    }
-
-    // Rule 2: within operating hours (7:00 – 19:00)
-    if (startMin < 7 * 60) {
-        violations.push('Class cannot start before 7:00 AM');
-    }
-    if (endMin > 19 * 60) {
-        violations.push('Class cannot end after 7:00 PM');
-    }
-
-    // Load all entries for the term
-    const termEntries = await this.scheduleRepo.find({
-        where: { termId: dto.termId },
-    });
-
-    // Rule 3: Room overlap
-    if (dto.roomId) {
-        const roomOverlap = termEntries.some((e) => {
-        if (dto.excludeId && e.scheduleId === dto.excludeId) return false;
-        if (e.roomId !== dto.roomId) return false;
-        if (e.dayOfWeek !== dto.dayOfWeek) return false;
-        if (!e.startTime || !e.endTime) return false;
-        return this.overlaps(
-            dto.startTime,
-            dto.endTime,
-            e.startTime,
-            e.endTime,
-        );
-        });
-        if (roomOverlap) {
-        violations.push('Room is already booked at this time');
-        }
-    }
-
-    // Rule 4: Faculty overlap
-    if (dto.facultyId) {
-        const facultyOverlap = termEntries.some((e) => {
-        if (dto.excludeId && e.scheduleId === dto.excludeId) return false;
-        if (e.facultyId !== dto.facultyId) return false;
-        if (e.dayOfWeek !== dto.dayOfWeek) return false;
-        if (!e.startTime || !e.endTime) return false;
-        return this.overlaps(
-            dto.startTime,
-            dto.endTime,
-            e.startTime,
-            e.endTime,
-        );
-        });
-        if (facultyOverlap) {
-        violations.push('Faculty is already teaching at this time');
-        }
-    }
-
-    // Rule 5: Section overlap
-    if (dto.section) {
-        const sectionOverlap = termEntries.some((e) => {
-        if (dto.excludeId && e.scheduleId === dto.excludeId) return false;
-        if (e.section !== dto.section) return false;
-        if (e.dayOfWeek !== dto.dayOfWeek) return false;
-        if (!e.startTime || !e.endTime) return false;
-        return this.overlaps(
-            dto.startTime,
-            dto.endTime,
-            e.startTime,
-            e.endTime,
-        );
-        });
-        if (sectionOverlap) {
-        violations.push('Section already has a class at this time');
-        }
-    }
-
-    // TODO: Add more rules here (consecutive blocks, lab split, faculty load, etc.)
-
-    return {
-        valid: violations.length === 0,
-        violations,
-    };
-    }
+  return {
+    valid: engineResult.valid,
+    hardConflicts: engineResult.hardConflicts,
+    softWarnings: engineResult.softWarnings,
+    alternatives: [],
+  };
+}
 
     async updateRemarks(id: string, remarks: string | null): Promise<Schedule> {
     const found = await this.scheduleRepo.findOne({
