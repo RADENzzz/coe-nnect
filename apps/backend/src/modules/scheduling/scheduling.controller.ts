@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { SchedulingService } from './scheduling.service';
 import { PlotSubjectDto } from './dto/plot-subject.dto';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
@@ -39,11 +40,15 @@ export class SchedulingController {
     return { data };
   }
 
+  // NEW: update a schedule entry
+    @Patch(':id')
+    async update(@Param('id') id: string, @Body() dto: UpdateScheduleDto) {
+    const data = await this.service.update(id, dto);
+    return { data };
+    }
+
   @Patch(':id/status')
-  async updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: any,
-  ) {
+  async updateStatus(@Param('id') id: string, @Body('status') status: any) {
     const data = await this.service.updateStatus(id, status);
     return { data };
   }

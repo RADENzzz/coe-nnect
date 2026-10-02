@@ -61,10 +61,16 @@ export async function deleteSchedule(id: string): Promise<void> {
   await api.delete(`/v1/schedules/${id}`);
 }
 
-export async function updateScheduleStatus(
+export async function updateSchedule(
   id: string,
-  status: 'draft' | 'review' | 'finalized' | 'published',
+  payload: {
+    dayOfWeek?: string;
+    startTime?: string;
+    endTime?: string;
+    roomId?: string;
+    facultyId?: string;
+  },
 ): Promise<RawSchedule> {
-  const { data } = await api.patch(`/v1/schedules/${id}/status`, { status });
+  const { data } = await api.patch(`/v1/schedules/${id}`, payload);
   return data.data;
 }
