@@ -18,6 +18,13 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    const req = ctx.switchToHttp().getRequest();
+
+    // 🔑 Skip OPTIONS preflight
+    if (req.method === 'OPTIONS') {
+      return true;
+    }
+
     const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
       ctx.getHandler(),
       ctx.getClass(),
@@ -25,7 +32,6 @@ export class RolesGuard implements CanActivate {
 
     if (!requiredRoles || requiredRoles.length === 0) return true;
 
-    const req = ctx.switchToHttp().getRequest();
     const authUser = req.user;
     if (!authUser?.id) throw new ForbiddenException('Not authenticated');
 

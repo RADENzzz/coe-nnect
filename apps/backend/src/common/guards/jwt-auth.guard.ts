@@ -12,8 +12,13 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
-    const authHeader = req.headers.authorization;
 
+    // 🔑 Skip OPTIONS preflight — let CORS middleware handle it
+    if (req.method === 'OPTIONS') {
+      return true;
+    }
+
+    const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Missing bearer token');
     }
