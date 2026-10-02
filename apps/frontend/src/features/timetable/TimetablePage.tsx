@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import TimetableGrid from './components/TimetableGrid';
 import type { ScheduleEntry, Day, LoadType } from './types';
 import {
   fetchSchedules,
   fetchActiveTerm,
+  updateSchedule,
   type RawSchedule,
 } from '../../api/schedule.api';
 import { useAuthStore } from '../../store/auth.store';
@@ -23,8 +24,17 @@ const DAY_MAP: Record<string, Day> = {
   Sunday: 'MON',
 };
 
+const DAY_MAP_REVERSE: Record<Day, string> = {
+  MON: 'Monday',
+  TUE: 'Tuesday',
+  WED: 'Wednesday',
+  THU: 'Thursday',
+  FRI: 'Friday',
+  SAT: 'Saturday',
+};
+
 function toEntry(raw: RawSchedule): ScheduleEntry {
-  // Prefer schedule-level times over timeslot
+  // Prefer schedule-level day/time over timeslot
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
@@ -53,12 +63,9 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
 
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
+  const queryClient = useQueryClient();
 
-  // Local state for pending moves — applied immediately on drop
-  const [pendingMoves, setPendingMoves] = useState<
-    Record<string, { day: Day; startTime: string; endTime: string }>
-  >({});
-
+  // ── 1. Fetch the active term ──
   const {
     data: activeTerm,
     isLoading: termLoading,
@@ -69,6 +76,7 @@ export default function TimetablePage() {
     enabled: !!user,
   });
 
+  // ── 2. Fetch schedule entries for that term ──
   const {
     data: schedules,
     isLoading: schedulesLoading,
@@ -79,38 +87,81 @@ export default function TimetablePage() {
     enabled: !!user && !!activeTerm,
   });
 
-  const entries = useMemo(() => {
-    return (schedules ?? []).map((raw) => {
-      const base = toEntry(raw);
-      const override = pendingMoves[base.id];
-      return override ? { ...base, ...override } : base;
-    });
-  }, [schedules, pendingMoves]);
-
-  const handleMove = useCallback(
-    (entryId: string, newDay: string, newStartTime: string) => {
-      setPendingMoves((prev) => {
-        const existing = entries.find((e) => e.id === entryId);
-        if (!existing) return prev;
-
-        const startMin = timeToMinutes(newStartTime);
-        const duration =
-          timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
-        const newEnd = minutesToTime(startMin + duration);
-
-        return {
-          ...prev,
-          [entryId]: {
-            day: newDay as Day,
-            startTime: newStartTime,
-            endTime: newEnd,
-          },
-        };
-      });
-    },
-    [entries],
+  // ── 3. Convert to grid entries ──
+  const entries = useMemo(
+    () => (schedules ?? []).map(toEntry),
+    [schedules],
   );
 
+  // ── 4. Move mutation ──
+  const moveMutation = useMutation({
+    mutationFn: (args: {
+      id: string;
+      dayOfWeek: string;
+      startTime: string;
+      endTime: string;
+    }) =>
+      updateSchedule(args.id, {
+        dayOfWeek: args.dayOfWeek,
+        startTime: args.startTime,
+        endTime: args.endTime,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['schedules', activeTerm?.termId],
+      });
+    },
+    onError: (err: any) => {
+      console.error('[Move] Failed:', err);
+      // TODO: show toast notification
+      alert(
+        err?.response?.data?.message ??
+          err?.message ??
+          'Failed to move schedule entry',
+      );
+    },
+  });
+
+  // ── 5. Drag handler ──
+  const handleMove = useCallback(
+    (entryId: string, newDay: string, newStartTime: string) => {
+      const existing = entries.find((e) => e.id === entryId);
+      if (!existing) return;
+
+      const startMin = timeToMinutes(newStartTime);
+      const duration =
+        timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
+      const newEnd = minutesToTime(startMin + duration);
+
+      // Optimistic update: apply locally first
+      queryClient.setQueryData<RawSchedule[]>(
+        ['schedules', activeTerm?.termId],
+        (old) => {
+          if (!old) return old;
+          return old.map((raw) => {
+            if (raw.scheduleId !== entryId) return raw;
+            return {
+              ...raw,
+              dayOfWeek: DAY_MAP_REVERSE[newDay as Day] ?? raw.dayOfWeek,
+              startTime: `${newStartTime}:00`,
+              endTime: `${newEnd}:00`,
+            };
+          });
+        },
+      );
+
+      // Persist to backend
+      moveMutation.mutate({
+        id: entryId,
+        dayOfWeek: DAY_MAP_REVERSE[newDay as Day] ?? 'Monday',
+        startTime: newStartTime,
+        endTime: newEnd,
+      });
+    },
+    [entries, moveMutation, queryClient, activeTerm?.termId],
+  );
+
+  // ── 6. Click handler (detail drawer later) ──
   const handleClick = useCallback((entry: ScheduleEntry) => {
     console.log('Clicked schedule entry:', entry);
     // TODO: open detail drawer
@@ -137,6 +188,11 @@ export default function TimetablePage() {
               calendar_view_month
             </span>
             {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+            {moveMutation.isPending && (
+              <span className="ml-2 text-primary font-medium animate-pulse">
+                Saving…
+              </span>
+            )}
           </div>
         )}
       </div>
