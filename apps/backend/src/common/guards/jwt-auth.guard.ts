@@ -13,7 +13,7 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
 
-    // 🔑 Skip OPTIONS preflight — let CORS middleware handle it
+    //Skip OPTIONS preflight — let CORS middleware handle it
     if (req.method === 'OPTIONS') {
       return true;
     }
