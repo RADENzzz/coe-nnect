@@ -7,7 +7,11 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Only load .env file locally — Vercel provides env vars directly
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
+    }),
     DatabaseModule,
     AuthModule,
     UsersModule,
