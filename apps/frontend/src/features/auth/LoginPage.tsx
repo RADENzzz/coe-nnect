@@ -4,29 +4,42 @@ import { supabase } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 
 /* ────────────────────────────────────────────
-   DEV TEST ACCOUNTS
+   DEV TEST ACCOUNTS (loaded from env)
    ──────────────────────────────────────────── */
 const DEV_ACCOUNTS = [
   {
     label: 'Administrator',
     description: 'Admin Dashboard',
-    email: 'admin@wmsu.edu.ph',
-    password: '@admin_123',
+    email: import.meta.env.VITE_DEV_ADMIN_EMAIL ?? '',
+    password: import.meta.env.VITE_DEV_ADMIN_PASSWORD ?? '',
     icon: 'admin_panel_settings',
   },
   {
     label: 'Head / Dean',
     description: 'Head & Dean Dashboard',
-    email: 'tester@gmail.com',
-    password: '@Tester123',
+    email: import.meta.env.VITE_DEV_HEAD_EMAIL ?? '',
+    password: import.meta.env.VITE_DEV_HEAD_PASSWORD ?? '',
     icon: 'manage_accounts',
   },
-] as const;
+].filter((a) => a.email && a.password);
 
 /* ────────────────────────────────────────────
    DEV LOGIN POPUP
    ──────────────────────────────────────────── */
-function DevLoginPopup({ onFill }: { onFill: (email: string, password: string) => void }) {
+interface DevAccount {
+  label: string;
+  description: string;
+  email: string;
+  password: string;
+  icon: string;
+}
+
+interface DevLoginPopupProps {
+  accounts: DevAccount[];
+  onFill: (email: string, password: string) => void;
+}
+
+function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -35,6 +48,8 @@ function DevLoginPopup({ onFill }: { onFill: (email: string, password: string) =
     setCopied(email);
     setTimeout(() => setCopied(null), 1500);
   };
+
+  if (accounts.length === 0) return null;
 
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
@@ -68,7 +83,7 @@ function DevLoginPopup({ onFill }: { onFill: (email: string, password: string) =
 
           {/* Accounts */}
           <div className="p-3 space-y-2">
-            {DEV_ACCOUNTS.map((acct) => (
+            {accounts.map((acct) => (
               <div
                 key={acct.email}
                 className="group rounded-lg bg-surface-container-low border border-outline-variant/60 p-3 hover:border-secondary-container transition-colors"
@@ -164,18 +179,27 @@ export default function LoginPage() {
       if (signInError) throw signInError;
       if (!data.user) throw new Error('No user returned from login');
 
+      // Fetch profile (gracefully handles missing row)
       const { data: profile, error: profileError } = await supabase
         .from('users')
         .select('role')
         .eq('user_id', data.user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) throw profileError;
 
+      if (!profile) {
+        await supabase.auth.signOut();
+        throw new Error(
+          'Your account exists but has no profile. Contact the administrator.',
+        );
+      }
+
+      // Redirect: back to original page, or role-based default
       if (from) {
         navigate(from, { replace: true });
-      } else if (profile?.role === 'administrator') {
-        navigate('/admin', { replace: true });
+      } else if (profile.role === 'administrator') {
+        navigate('/admin/dashboard', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
       }
@@ -326,8 +350,9 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── DEV LOGIN POPUP (dev only) ───────── */}
-      {import.meta.env.DEV && (
+      {import.meta.env.DEV && DEV_ACCOUNTS.length > 0 && (
         <DevLoginPopup
+          accounts={DEV_ACCOUNTS}
           onFill={(devEmail, devPassword) => {
             setEmail(devEmail);
             setPassword(devPassword);

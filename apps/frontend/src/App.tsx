@@ -15,17 +15,32 @@ function App() {
       {/* Public */}
       <Route path="/login" element={<LoginPage />} />
 
-      {/* Admin-only portal — completely separate shell */}
-      <Route element={<ProtectedRoute allowedRoles={['administrator']} redirectTo="/login" />}>
+      {/* Admin-only portal */}
+      <Route
+        element={
+          <ProtectedRoute
+            allowedRoles={['administrator']}
+            redirectTo="/login"
+          />
+        }
+      >
         <Route path="/admin" element={<AdminShell />}>
-          <Route index element={<AdminDashboardPage />} />
+          <Route index element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="departments" element={<AdminDepartmentsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
         </Route>
       </Route>
 
-      {/* Department heads / college dean */}
-      <Route element={<ProtectedRoute allowedRoles={['department_head', 'college_dean']} redirectTo="/login" />}>
+      {/* Department heads / College Dean */}
+      <Route
+        element={
+          <ProtectedRoute
+            allowedRoles={['department_head', 'college_dean']}
+            redirectTo="/login"
+          />
+        }
+      >
         <Route path="/" element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
@@ -33,9 +48,10 @@ function App() {
         </Route>
       </Route>
 
+      {/* Fallback */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
 
-export default App;
+export default App;
