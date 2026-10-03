@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
-import { supabase } from '../../lib/supabase';
+import { useAuthStore } from '../../store/auth.store';
+import { useLogout } from '../../hooks/use-logout';
 
 export default function TopBar() {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
+  const profile = useAuthStore((s) => s.profile);
+  const logout = useLogout();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
+  const initial = profile?.username?.[0]?.toUpperCase() ?? 'U';
 
   useEffect(() => {
     function handleClickOutside(event: Event) {
@@ -20,13 +22,8 @@ export default function TopBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/login');
-  };
-
   return (
-    <header className="flex justify-between items-center px-4 md:px-6 w-full h-13 sticky top-0 z-40 bg-white border-b border-slate-200" style={{height:'48px'}}>
+    <header className="flex justify-between items-center px-4 md:px-6 w-full sticky top-0 z-40 bg-white border-b border-slate-200" style={{ height: '48px' }}>
       {/* Left: Hamburger (mobile) + Title (desktop) */}
       <div className="flex items-center gap-3">
         <button
@@ -38,7 +35,7 @@ export default function TopBar() {
         </button>
 
         <span className="hidden md:inline text-base font-extrabold text-slate-900 tracking-tight">
-          Lumina Schedule
+          CoE-NNECT
         </span>
         <span className="md:hidden text-base font-extrabold text-slate-900 tracking-tight">
           CoE-NNECT
@@ -73,21 +70,26 @@ export default function TopBar() {
           <Icon name="settings" />
         </button>
 
+        {/* Profile Avatar + Dropdown */}
         <div className="relative" ref={profileRef}>
           <div
-            className="w-8 h-8 bg-[#5c1219] text-white overflow-hidden border border-slate-200 cursor-pointer flex items-center justify-center font-bold text-sm"
+            className="w-9 h-9 rounded-full bg-[#5c1219] text-white overflow-hidden border border-slate-200 cursor-pointer flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity"
             onClick={() => setIsProfileOpen(!isProfileOpen)}
           >
-            A
+            {initial}
           </div>
 
           {isProfileOpen && (
-            <div className="absolute right-0 mt-1 w-44 bg-white shadow-sm py-1 border border-slate-200 z-50">
+            <div className="absolute right-0 mt-2 w-52 bg-white shadow-md rounded-md py-1 border border-slate-200 z-50">
+              <div className="px-4 py-2.5 border-b border-slate-100">
+                <p className="text-sm font-semibold text-slate-900">{profile?.username ?? 'User'}</p>
+                <p className="text-xs text-slate-400 truncate">{profile?.email ?? ''}</p>
+              </div>
               <button
-                onClick={handleLogout}
-                className="flex items-center w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium"
+                onClick={logout}
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium"
               >
-                <Icon name="logout" className="mr-2 text-base" />
+                <Icon name="logout" className="mr-3 text-base" />
                 Logout
               </button>
             </div>

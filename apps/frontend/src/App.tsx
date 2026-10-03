@@ -8,6 +8,8 @@ import AdminDashboardPage from './features/admin/AdminDashboardPage';
 import AdminDepartmentsPage from './features/admin/AdminDepartmentsPage';
 import AdminUsersPage from './features/admin/AdminUsersPage';
 import DeanDashboardPage from './features/dean/DeanDashboardPage';
+import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
+import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
 import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
@@ -46,6 +48,8 @@ function App() {
         <Route path="/dean" element={<DeanShell />}>
           <Route index element={<Navigate to="/dean/dashboard" replace />} />
           <Route path="dashboard" element={<DeanDashboardPage />} />
+          <Route path="departments" element={<DeanDepartmentsPage />} />
+          <Route path="approvals" element={<DeanApprovalsPage />} />
         </Route>
       </Route>
 
