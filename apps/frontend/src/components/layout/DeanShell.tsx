@@ -1,5 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { useLogout } from '../../hooks/use-logout';
+import { useState, useRef, useEffect } from 'react';
+import Icon from '../ui/Icon';
 
 const navItems = [
   { label: 'Dashboard', icon: 'dashboard', path: '/dean' },
@@ -7,6 +9,18 @@ const navItems = [
 
 export default function DeanShell() {
   const logout = useLogout();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: Event) {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
@@ -45,22 +59,31 @@ export default function DeanShell() {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-slate-100">
-          <button
-            onClick={logout}
-            className="flex items-center gap-2.5 px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all w-full"
-          >
-            <span className="material-symbols-outlined text-[18px]">logout</span>
-            Logout
-          </button>
-        </div>
       </aside>
 
       <div className="flex-1 ml-60 flex flex-col min-h-screen">
-        <header className="h-12 flex items-center justify-between px-6 border-b border-slate-200 bg-white sticky top-0 z-20">
+        <header className="h-14 flex items-center justify-between px-6 border-b border-slate-200 bg-white sticky top-0 z-20">
           <p className="text-sm text-slate-500 font-medium">College Dean</p>
-          <div className="w-7 h-7 bg-[#5c1219] text-white flex items-center justify-center text-xs font-bold">
-            D
+          
+          <div className="relative" ref={profileRef}>
+            <div
+              className="w-10 h-10 rounded-full bg-[#5c1219] text-white overflow-hidden border border-slate-200 cursor-pointer flex items-center justify-center font-bold text-base hover:opacity-90 transition-opacity"
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+            >
+              D
+            </div>
+
+            {isProfileOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white shadow-md rounded-md py-1 border border-slate-200 z-50">
+                <button
+                  onClick={logout}
+                  className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium"
+                >
+                  <Icon name="logout" className="mr-3 text-lg" />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
