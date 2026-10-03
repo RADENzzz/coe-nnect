@@ -20,18 +20,18 @@ export const footerNavItems = [
 
 export default function Sidebar() {
   return (
-    <nav className="hidden md:flex flex-col h-screen w-[240px] bg-white border-r border-slate-200 fixed left-0 top-0 z-50">
+    <nav className="hidden md:flex flex-col h-screen w-64 bg-white border-r border-slate-200 fixed left-0 top-0 z-50">
       {/* Brand */}
-      <div className="px-5 py-4 border-b border-slate-100">
+      <div className="px-5 py-5 border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-[#5c1219] flex items-center justify-center shrink-0">
-            <Icon name="school" filled className="text-white" />
+            <Icon name="school" filled className="text-white" size={20} />
           </div>
           <div>
             <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
               Computer Engineering
             </p>
-            <p className="text-xs text-slate-500">Department Admin</p>
+            <p className="text-xs text-slate-500">Department Head</p>
           </div>
         </div>
       </div>
@@ -52,8 +52,8 @@ export default function Sidebar() {
             to={item.path}
             className={({ isActive }) =>
               isActive
-                ? 'flex items-center gap-2.5 px-3 py-2 bg-[#5c1219] text-white font-semibold text-sm transition-all'
-                : 'flex items-center gap-2.5 px-3 py-2 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-all'
+                ? 'flex items-center gap-3 px-3 py-2.5 bg-[#5c1219] text-white font-semibold text-sm transition-all'
+                : 'flex items-center gap-3 px-3 py-2.5 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-all'
             }
           >
             {({ isActive }) => (
@@ -74,8 +74,8 @@ export default function Sidebar() {
             to={item.path}
             className={({ isActive }) =>
               isActive
-                ? 'flex items-center gap-2.5 px-3 py-2 bg-[#5c1219] text-white font-semibold text-sm transition-all'
-                : 'flex items-center gap-2.5 px-3 py-2 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-all'
+                ? 'flex items-center gap-3 px-3 py-2.5 bg-[#5c1219] text-white font-semibold text-sm transition-all'
+                : 'flex items-center gap-3 px-3 py-2.5 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-all'
             }
           >
             <Icon name={item.icon} />
