@@ -293,6 +293,7 @@ export class RuleContextBuilder {
       defaultRequiredHours: num('default_required_hours', 18),
       releaseHoursGranularity: num('release_hours_granularity', 3),
       labSplitHours: num('lab_split_hours', 3),
+      lectureBlockMinutes: num('lecture_block_minutes', 90),
       daytimePriorityEndHour: str('daytime_priority_end_hour', '17:30'),
     };
   }

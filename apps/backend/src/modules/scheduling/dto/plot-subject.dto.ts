@@ -13,9 +13,8 @@ export class PlotSubjectDto {
   @IsNumberString()
   subjectId: string;
 
-  @IsOptional()
   @IsNumberString()
-  facultyId?: string;
+  facultyId: string;
 
   @IsOptional()
   @IsNumberString()

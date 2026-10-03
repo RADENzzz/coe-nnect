@@ -73,10 +73,8 @@ export default function PlotSubjectModal({
   });
 
   const [validation, setValidation] = useState<ValidateResult | null>(null);
-
   const [touched, setTouched] = useState(false);
 
-  // Reset form when modal closes
   useEffect(() => {
     if (!open) {
       setForm({
@@ -94,7 +92,6 @@ export default function PlotSubjectModal({
     }
   }, [open]);
 
-  // Debounced live validation
   useEffect(() => {
     if (!open || !form.subjectId || !form.roomId || !form.dayOfWeek) return;
 
@@ -121,7 +118,6 @@ export default function PlotSubjectModal({
     return () => clearTimeout(timeout);
   }, [open, form, termId]);
 
-  // Plot mutation
   const plotMutation = useMutation({
     mutationFn: (payload: PlotSubjectPayload) => plotSubject(payload),
     onSuccess: () => {
@@ -143,6 +139,7 @@ export default function PlotSubjectModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.facultyId) return;
     if ((validation?.hardConflicts.length ?? 0) > 0) return;
     plotMutation.mutate({
       termId,
@@ -163,19 +160,17 @@ export default function PlotSubjectModal({
     plotMutation.isPending ||
     !form.subjectId ||
     !form.roomId ||
+    !form.facultyId ||
     (touched && (validation?.hardConflicts.length ?? 0) > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Modal */}
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant sticky top-0 bg-surface-container-lowest z-10">
           <div>
             <h2 className="text-lg font-bold text-primary">Plot Subject</h2>
@@ -192,7 +187,6 @@ export default function PlotSubjectModal({
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Subject */}
           <div>
@@ -251,15 +245,16 @@ export default function PlotSubjectModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Faculty
+                Faculty *
               </label>
               <select
                 name="facultyId"
+                required
                 value={form.facultyId}
                 onChange={handleChange}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
-                <option value="">Unassigned</option>
+                <option value="">Select a faculty…</option>
                 {faculty.map((f) => (
                   <option key={f.facultyId} value={f.facultyId}>
                     {f.lastName}, {f.firstName}
@@ -349,15 +344,9 @@ export default function PlotSubjectModal({
           {/* Validation feedback */}
           {touched && validation && (
             <div className="space-y-2">
-              {/* Hard conflicts — block submission */}
               {validation.hardConflicts.length > 0 && (
                 <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-red-50 text-red-800 border border-red-200">
-                  <Icon
-                    name="error"
-                    filled
-                    size={18}
-                    className="shrink-0 mt-0.5"
-                  />
+                  <Icon name="error" filled size={18} className="shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium">
                       {validation.hardConflicts.length} hard conflict
@@ -378,15 +367,9 @@ export default function PlotSubjectModal({
                 </div>
               )}
 
-              {/* Soft warnings — advisory only */}
               {validation.softWarnings.length > 0 && (
                 <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
-                  <Icon
-                    name="warning"
-                    filled
-                    size={18}
-                    className="shrink-0 mt-0.5"
-                  />
+                  <Icon name="warning" filled size={18} className="shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium">
                       {validation.softWarnings.length} warning
@@ -406,7 +389,6 @@ export default function PlotSubjectModal({
                 </div>
               )}
 
-              {/* Clean pass */}
               {validation.hardConflicts.length === 0 &&
                 validation.softWarnings.length === 0 && (
                   <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-green-50 text-green-800 border border-green-200">
@@ -422,7 +404,6 @@ export default function PlotSubjectModal({
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex justify-end gap-3 pt-2 border-t border-surface-variant">
             <button
               type="button"

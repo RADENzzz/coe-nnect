@@ -62,6 +62,7 @@ const defaultConfig: SchedulingConfig = {
   defaultRequiredHours: 18,
   releaseHoursGranularity: 3,
   labSplitHours: 3,
+  lectureBlockMinutes: 90,
   daytimePriorityEndHour: '17:30',
 };
 

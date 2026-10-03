@@ -109,6 +109,7 @@ export interface SchedulingConfig {
   defaultRequiredHours: number;     // 18
   releaseHoursGranularity: number;  // 3
   labSplitHours: number;            // 3
+  lectureBlockMinutes: number;
   daytimePriorityEndHour: string;   // '17:30'
 }
 
