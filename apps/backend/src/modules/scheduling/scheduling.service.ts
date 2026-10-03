@@ -139,6 +139,9 @@ async validate(dto: ValidatePlotDto): Promise<{
   // ────────────────────────────────────────────
 
     async plot(dto: PlotSubjectDto): Promise<Schedule> {
+    if (!dto.facultyId) {
+    throw new BadRequestException('facultyId is required to plot a subject.');
+  }
     const entry = this.scheduleRepo.create({
         termId: dto.termId,
         subjectId: dto.subjectId,

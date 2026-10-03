@@ -25,6 +25,7 @@ const ctx = {
     lunchBreakMinutes: 60, lunchBreakOverlapMinutes: 30,
     visitingLecturerMaxHours: 24, defaultRequiredHours: 18,
     releaseHoursGranularity: 3, labSplitHours: 3,
+    lectureBlockMinutes: 90,
     daytimePriorityEndHour: '17:30',
   },
 } satisfies RuleContext;
