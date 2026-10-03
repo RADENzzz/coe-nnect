@@ -35,6 +35,17 @@ export interface FacultyContext {
   requiredHours?: number;
   /** Subject IDs this faculty is qualified to teach. */
   qualifiedSubjectIds?: string[];
+    /**
+   * Total contact hours already assigned to this faculty in the term
+   * (lecture_units × 1 + lab_units × 3, summed across all schedule rows).
+   * Populated by RuleContextBuilder; optional in tests.
+   */
+  assignedHours?: number; 
+    /**
+   * Total units already assigned to this faculty in the term
+   * (lecture_units + lab_units, summed across all schedule rows).
+   */
+  assignedUnits?: number;
 }
 
 export interface RoomContext {

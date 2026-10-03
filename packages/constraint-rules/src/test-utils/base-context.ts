@@ -32,6 +32,8 @@ const defaultFaculty: FacultyContext = {
   classification: 'regular',
   requiredHours: 18,
   qualifiedSubjectIds: ['s1'],
+  assignedHours: 0,
+  assignedUnits: 0,
 };
 
 const defaultRoom: RoomContext = {

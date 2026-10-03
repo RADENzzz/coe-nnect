@@ -3,6 +3,11 @@ import type { RuleContext } from '../../types/rule-context.type';
 import type { RuleResult } from '../../types/rule-result.type';
 import { toMinutes } from '../../utils/time.util';
 
+// TEMP DEBUG — remove after diagnosing H-11
+declare const console: {
+  log: (...args: unknown[]) => void;
+};
+
 /**
  * H-11: Every plot must be a "legitimate" duration for its load type.
  *
@@ -18,8 +23,6 @@ import { toMinutes } from '../../utils/time.util';
  *
  * Source: WMSU analysis PDF, section 5 ("Day Pairing & Block Splitting Rules").
  */
-
-
 export const blockDurationSanityRule: ConstraintRule = {
   id: 'H-11',
   name: 'Block Duration Sanity',
@@ -31,18 +34,25 @@ export const blockDurationSanityRule: ConstraintRule = {
   validate(ctx: RuleContext): RuleResult {
     const { subject, timeSlot, config, loadType } = ctx;
 
+    // TEMP DEBUG — remove after diagnosing H-11
+    console.log('[H-11] invoked', {
+      loadType,
+      lectureUnits: subject.lectureUnits,
+      labUnits: subject.labUnits,
+      lectureBlockMinutes: config.lectureBlockMinutes,
+      start: timeSlot.startTime,
+      end: timeSlot.endTime,
+      duration: toMinutes(timeSlot.endTime) - toMinutes(timeSlot.startTime),
+    });
+
     const start = toMinutes(timeSlot.startTime);
     const end = toMinutes(timeSlot.endTime);
     const duration = end - start;
 
-    // If loadType is set, trust it. Fall back to unit inference only
-    // when loadType is null (older callers, tests without the field set).
     const isLabSession = loadType === 'laboratory';
     const isLectureSession = loadType === 'lecture';
     const unknownLoadType = loadType == null;
 
-
-    
     if (!isLabSession && !isLectureSession && !unknownLoadType) {
       // 'other' — no duration constraint.
       return { status: 'pass' };
@@ -50,8 +60,6 @@ export const blockDurationSanityRule: ConstraintRule = {
 
     // ── Lab sessions ──
     if (isLabSession || (unknownLoadType && subject.labUnits > 0)) {
-      // H-9 and H-10 cover lab_units 1 and 2 respectively. H-11 is the
-      // fallback for everything else, to keep messages from stacking.
       if (subject.labUnits === 1 || subject.labUnits === 2) {
         return { status: 'pass' };
       }
@@ -69,14 +77,12 @@ export const blockDurationSanityRule: ConstraintRule = {
         },
       };
     }
-    
 
     // ── Lecture sessions ──
     if (isLectureSession || (unknownLoadType && subject.lectureUnits > 0)) {
       const expected = config.lectureBlockMinutes;
       if (duration === expected) return { status: 'pass' };
 
-      // 3-hour single-block lectures are permitted as a soft warning.
       if (duration === expected * 2) {
         return {
           status: 'warn',
@@ -101,8 +107,6 @@ export const blockDurationSanityRule: ConstraintRule = {
         },
       };
     }
-
-    
 
     // Nothing to constrain.
     return { status: 'pass' };
