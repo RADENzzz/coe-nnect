@@ -4,13 +4,17 @@ import { baseContext } from '../../test-utils/base-context';
 
 describe('H-9 1-unit lab is unsplittable', () => {
   it('passes for non-1-unit labs', () => {
-    const ctx = baseContext({ subject: { labUnits: 0 } });
+    const ctx = baseContext({
+      subject: { labUnits: 0 },
+      loadType: 'laboratory',
+    });
     expect(unsplittable1UnitLabRule.validate(ctx).status).toBe('pass');
   });
 
   it('passes for 2-unit labs (different rule handles those)', () => {
     const ctx = baseContext({
       subject: { labUnits: 2 },
+      loadType: 'laboratory',
       timeSlot: { dayOfWeek: 'Monday', startTime: '08:00', endTime: '11:00' },
     });
     expect(unsplittable1UnitLabRule.validate(ctx).status).toBe('pass');
@@ -19,6 +23,7 @@ describe('H-9 1-unit lab is unsplittable', () => {
   it('passes for a 1-unit lab scheduled as exactly 3 hours', () => {
     const ctx = baseContext({
       subject: { labUnits: 1 },
+      loadType: 'laboratory',
       timeSlot: { dayOfWeek: 'Monday', startTime: '08:00', endTime: '11:00' },
     });
     expect(unsplittable1UnitLabRule.validate(ctx).status).toBe('pass');
@@ -27,6 +32,7 @@ describe('H-9 1-unit lab is unsplittable', () => {
   it('fails for a 1-unit lab scheduled as 1.5 hours', () => {
     const ctx = baseContext({
       subject: { labUnits: 1 },
+      loadType: 'laboratory',
       timeSlot: { dayOfWeek: 'Monday', startTime: '08:00', endTime: '09:30' },
     });
     expect(unsplittable1UnitLabRule.validate(ctx).status).toBe('fail');
@@ -35,8 +41,18 @@ describe('H-9 1-unit lab is unsplittable', () => {
   it('fails for a 1-unit lab scheduled as 1 hour', () => {
     const ctx = baseContext({
       subject: { labUnits: 1 },
+      loadType: 'laboratory',
       timeSlot: { dayOfWeek: 'Monday', startTime: '08:00', endTime: '09:00' },
     });
     expect(unsplittable1UnitLabRule.validate(ctx).status).toBe('fail');
+  });
+
+  it('passes when loadType is lecture, even for a lab-containing subject', () => {
+    const ctx = baseContext({
+      subject: { labUnits: 1 },
+      loadType: 'lecture',
+      timeSlot: { dayOfWeek: 'Monday', startTime: '08:00', endTime: '09:30' },
+    });
+    expect(unsplittable1UnitLabRule.validate(ctx).status).toBe('pass');
   });
 });

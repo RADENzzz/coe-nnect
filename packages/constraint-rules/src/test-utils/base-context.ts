@@ -73,6 +73,7 @@ export interface BaseContextOverrides {
   faculty?: Partial<FacultyContext> | null;
   room?: Partial<RoomContext> | null;
   timeSlot?: Partial<TimeSlotContext>;
+  loadType?: 'lecture' | 'laboratory' | 'other' | null;   // ← NEW
   existingSchedule?: ScheduleEntryContext[];
   facultyCommitments?: FacultyCommitmentContext[];
   minorBlocks?: MinorBlockContext[];
@@ -96,6 +97,7 @@ export function baseContext(overrides: BaseContextOverrides = {}): RuleContext {
     faculty,
     room,
     timeSlot: { ...defaultTimeSlot, ...(overrides.timeSlot ?? {}) },
+    loadType: overrides.loadType ?? 'lecture',              // ← NEW
     existingSchedule: overrides.existingSchedule ?? [],
     facultyCommitments: overrides.facultyCommitments ?? [],
     minorBlocks: overrides.minorBlocks ?? [],
