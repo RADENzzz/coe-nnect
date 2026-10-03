@@ -22,6 +22,7 @@ export interface BuildContextInput {
   dayOfWeek: string;
   startTime: string;
   endTime: string;
+  loadType?: 'lecture' | 'laboratory' | 'other';
   excludeScheduleId?: string;
 }
 
@@ -72,6 +73,7 @@ export class RuleContextBuilder {
       faculty,
       room,
       timeSlot,
+      loadType: input.loadType ?? null,
       existingSchedule,
       facultyCommitments,
       minorBlocks,

@@ -107,6 +107,7 @@ export default function PlotSubjectModal({
           dayOfWeek: form.dayOfWeek,
           startTime: form.startTime,
           endTime: form.endTime,
+          loadType: form.loadType,
         });
         setValidation(result);
       } catch (err) {

@@ -124,6 +124,8 @@ export interface RuleContext {
   faculty: FacultyContext | null;
   room: RoomContext | null;
   timeSlot: TimeSlotContext;
+  /** The session type being plotted. Gates lab-only rules. */
+  loadType: 'lecture' | 'laboratory' | 'other' | null;   // ← NEW
   existingSchedule: ScheduleEntryContext[];
   facultyCommitments: FacultyCommitmentContext[];
   minorBlocks: MinorBlockContext[];
