@@ -49,6 +49,8 @@ export { blockDurationSanityRule } from './rules/time/block-duration-sanity.rule
 
 // Rules — faculty
 export { facultyQualificationRule } from './rules/faculty/faculty-qualification.rule';
+export { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
+export { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
 
 // Rules — lab (Phase B1)
 export { noBackToBackLabsRule } from './rules/lab/no-back-to-back-labs.rule';
@@ -68,6 +70,8 @@ import { unsplittable1UnitLabRule } from './rules/lab/unsplittable-1unit-lab.rul
 import { splittable2UnitLabRule } from './rules/lab/splittable-2unit-lab.rule';
 import type { ConstraintRule } from './types/rule.interface';
 import { blockDurationSanityRule } from './rules/time/block-duration-sanity.rule';
+import { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
+import { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
@@ -81,4 +85,6 @@ export const allRules: ConstraintRule[] = [
   unsplittable1UnitLabRule,
   splittable2UnitLabRule,
   blockDurationSanityRule,
+  workloadOverloadRule,       
+  visitingLecturerCapRule, 
 ];

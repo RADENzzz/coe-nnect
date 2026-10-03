@@ -44,7 +44,7 @@ export class RuleContextBuilder {
     ] = await Promise.all([
       this.loadSubject(input.subjectId),
       input.facultyId
-        ? this.loadFaculty(input.facultyId)
+        ? this.loadFaculty(input.facultyId, input.termId)
         : Promise.resolve(null),
       input.roomId ? this.loadRoom(input.roomId) : Promise.resolve(null),
       this.loadExistingSchedule(input.termId, input.dayOfWeek),
@@ -117,7 +117,7 @@ export class RuleContextBuilder {
     };
   }
 
-  private async loadFaculty(facultyId: string): Promise<FacultyContext> {
+  private async loadFaculty(facultyId: string, termId: string): Promise<FacultyContext> {
     const { data, error } = await this.db
       .from('faculty')
       .select(
@@ -156,6 +156,34 @@ export class RuleContextBuilder {
         ? Number(data.required_hours)
         : Math.max(0, 18 - releaseHours);
 
+    // Compute the faculty's term-wide assigned hours and units.
+    // Sums across ALL rows in the term for this faculty.
+    const { data: assigned, error: assignedErr } = await this.db
+      .from('schedule')
+      .select(
+        `
+        schedule_id,
+        subject:subject_id ( lecture_units, lab_units )
+        `,
+      )
+      .eq('term_id', termId)
+      .eq('faculty_id', facultyId);
+
+    if (assignedErr) {
+      this.logger.warn(
+        `Failed to load assigned workload for faculty ${facultyId}: ${assignedErr.message}`,
+      );
+    }
+
+    let assignedHours = 0;
+    let assignedUnits = 0;
+    for (const row of assigned ?? []) {
+      const lec = Number((row as any).subject?.lecture_units ?? 0);
+      const lab = Number((row as any).subject?.lab_units ?? 0);
+      assignedHours += lec * 1 + lab * 3;
+      assignedUnits += lec + lab;
+    }
+
     return {
       facultyId: String(data.faculty_id),
       firstName: data.first_name,
@@ -165,6 +193,8 @@ export class RuleContextBuilder {
       releaseHours,
       requiredHours,
       qualifiedSubjectIds,
+      assignedHours,
+      assignedUnits,
     };
   }
 
