@@ -55,12 +55,52 @@ export class SchedulingService {
   }
 
 
-  async validate(dto: ValidatePlotDto): Promise<{
+async validate(dto: ValidatePlotDto): Promise<{
   valid: boolean;
   hardConflicts: Array<{ ruleId: string; ruleName: string; reason: string }>;
   softWarnings: Array<{ ruleId: string; ruleName: string; reason: string }>;
   alternatives: unknown[];
 }> {
+  // ── Pre-flight guards (not full rules — just structural validation) ──
+  const guards: Array<{ ruleId: string; ruleName: string; reason: string }> = [];
+
+  const startMin = this.timeToMinutes(dto.startTime);
+  const endMin = this.timeToMinutes(dto.endTime);
+
+  if (endMin <= startMin) {
+    guards.push({
+      ruleId: 'H-7',
+      ruleName: 'Time Ordering',
+      reason: 'End time must be after start time.',
+    });
+  }
+
+  if (startMin < 7 * 60) {
+    guards.push({
+      ruleId: 'H-8',
+      ruleName: 'Operating Hours',
+      reason: 'Class cannot start before 7:00 AM.',
+    });
+  }
+  if (endMin > 19 * 60) {
+    guards.push({
+      ruleId: 'H-8',
+      ruleName: 'Operating Hours',
+      reason: 'Class cannot end after 7:00 PM.',
+    });
+  }
+
+  // If guards fail, return immediately — no point running the engine.
+  if (guards.length > 0) {
+    return {
+      valid: false,
+      hardConflicts: guards,
+      softWarnings: [],
+      alternatives: [],
+    };
+  }
+
+  // ── Full engine pass ──
   const context = await this.ruleContextBuilder.build({
     termId: dto.termId,
     subjectId: dto.subjectId,
@@ -92,19 +132,7 @@ export class SchedulingService {
     return this.scheduleRepo.save(found);
     }
 
-    /** Helper: do two time ranges overlap? */
-    private overlaps(
-    aStart: string,
-    aEnd: string,
-    bStart: string,
-    bEnd: string,
-    ): boolean {
-    const a1 = this.timeToMinutes(aStart);
-    const a2 = this.timeToMinutes(aEnd);
-    const b1 = this.timeToMinutes(bStart);
-    const b2 = this.timeToMinutes(bEnd);
-    return a1 < b2 && b1 < a2;
-    }
+    
 
   // ────────────────────────────────────────────
   // Mutations
