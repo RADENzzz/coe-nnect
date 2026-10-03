@@ -46,6 +46,9 @@ export const blockDurationSanityRule: ConstraintRule = {
     }
 
     if (isLabSubject) {
+       if (subject.labUnits === 1 || subject.labUnits === 2) {
+        return { status: 'pass' };
+      }
       const expected = config.labSplitHours * 60;
       if (duration === expected) return { status: 'pass' };
       return {
