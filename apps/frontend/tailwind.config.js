@@ -8,96 +8,135 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Lumina / Academic Precision palette ──
+        // ── New Design System ──
+        // Brand
+        brand: {
+          DEFAULT: '#5c1219',
+          hover: '#4a0e14',
+        },
+        // Backgrounds
+        'app-root': '#020617',         // slate-950
+        'workspace': '#f8fafc',        // slate-50
+        surface: '#ffffff',
+
+        // Text
+        'text-primary': '#0f172a',     // slate-900
+        'text-secondary': '#64748b',   // slate-500
+        'text-muted': '#475569',       // slate-600
+
+        // Borders
+        'border-default': '#e2e8f0',   // slate-200
+        'border-subtle': '#f1f5f9',    // slate-100
+        'border-outline': '#cbd5e1',   // slate-300
+
+        // ── Legacy aliases so existing code keeps working ──
         surface: {
-          DEFAULT: '#FBFBE2',
-          dim: '#DBDCC3',
-          bright: '#FBFBE2',
-          variant: '#E4E4CC',
-          'container-lowest': '#FFFFFF',
-          'container-low': '#F5F5DC',
-          'container': '#EFEFD7',
-          'container-high': '#EAEAD1',
-          'container-highest': '#E4E4CC',
+          DEFAULT: '#ffffff',
+          dim: '#e2e8f0',
+          bright: '#ffffff',
+          variant: '#e2e8f0',
+          'container-lowest': '#ffffff',
+          'container-low': '#f8fafc',
+          'container': '#f1f5f9',
+          'container-high': '#e2e8f0',
+          'container-highest': '#cbd5e1',
         },
         'on-surface': {
-          DEFAULT: '#1B1D0E',
-          variant: '#5A413D',
+          DEFAULT: '#0f172a',
+          variant: '#64748b',
         },
-        'inverse-surface': '#303221',
-        'inverse-on-surface': '#F2F2D9',
-        'surface-tint': '#B22B1D',
+        'inverse-surface': '#1e293b',
+        'inverse-on-surface': '#f8fafc',
+        'surface-tint': '#5c1219',
 
         primary: {
-          DEFAULT: '#570000',
-          container: '#800000',
-          fixed: '#FFDAD4',
-          'fixed-dim': '#FFB4A8',
+          DEFAULT: '#5c1219',
+          container: '#4a0e14',
+          fixed: '#fecdd3',
+          'fixed-dim': '#fda4af',
         },
         'on-primary': {
-          DEFAULT: '#FFFFFF',
-          container: '#FF8371',
-          fixed: '#410000',
-          'fixed-variant': '#8F0F07',
+          DEFAULT: '#ffffff',
+          container: '#fda4af',
+          fixed: '#3b0007',
+          'fixed-variant': '#7f1d1d',
         },
-        'inverse-primary': '#FFB4A8',
+        'inverse-primary': '#fda4af',
 
         secondary: {
-          DEFAULT: '#7C5800',
-          container: '#FEB700',
-          fixed: '#FFDEA8',
-          'fixed-dim': '#FFBA20',
+          DEFAULT: '#475569',
+          container: '#cbd5e1',
+          fixed: '#e2e8f0',
+          'fixed-dim': '#94a3b8',
         },
         'on-secondary': {
-          DEFAULT: '#FFFFFF',
-          container: '#6B4B00',
-          fixed: '#271900',
-          'fixed-variant': '#5E4200',
+          DEFAULT: '#ffffff',
+          container: '#1e293b',
+          fixed: '#0f172a',
+          'fixed-variant': '#334155',
         },
 
         tertiary: {
-          DEFAULT: '#570000',
-          container: '#800000',
-          fixed: '#FFDAD4',
-          'fixed-dim': '#FFB4A8',
+          DEFAULT: '#5c1219',
+          container: '#4a0e14',
+          fixed: '#fecdd3',
+          'fixed-dim': '#fda4af',
         },
         'on-tertiary': {
-          DEFAULT: '#FFFFFF',
-          container: '#FF8371',
-          fixed: '#410000',
-          'fixed-variant': '#930000',
+          DEFAULT: '#ffffff',
+          container: '#fda4af',
+          fixed: '#3b0007',
+          'fixed-variant': '#7f1d1d',
         },
 
         error: {
-          DEFAULT: '#BA1A1A',
-          container: '#FFDAD6',
+          DEFAULT: '#b91c1c',
+          container: '#fee2e2',
         },
         'on-error': {
-          DEFAULT: '#FFFFFF',
-          container: '#93000A',
+          DEFAULT: '#ffffff',
+          container: '#991b1b',
         },
 
         outline: {
-          DEFAULT: '#8E706C',
-          variant: '#E2BFB9',
+          DEFAULT: '#cbd5e1',
+          variant: '#e2e8f0',
         },
 
-        background: '#FBFBE2',
-        'on-background': '#1B1D0E',
+        background: '#f8fafc',
+        'on-background': '#0f172a',
+
+        // Tone / badge colors
+        emerald: {
+          50: '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          500: '#10b981',
+          700: '#047857',
+        },
+        amber: {
+          50: '#fffbeb',
+          100: '#fef3c7',
+          200: '#fde68a',
+          500: '#f59e0b',
+          700: '#b45309',
+        },
       },
 
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        'display-lg': ['Inter', 'sans-serif'],
-        'headline-lg': ['Inter', 'sans-serif'],
-        'headline-md': ['Inter', 'sans-serif'],
-        'title-lg': ['Inter', 'sans-serif'],
-        'body-lg': ['Inter', 'sans-serif'],
-        'body-md': ['Inter', 'sans-serif'],
-        'label-md': ['Inter', 'sans-serif'],
+        sans: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          'Helvetica',
+          'Arial',
+          'sans-serif',
+        ],
       },
 
       fontSize: {
+        // Keep custom sizes used elsewhere
         'display-lg': ['48px', { lineHeight: '56px', letterSpacing: '-0.02em', fontWeight: '700' }],
         'headline-lg': ['32px', { lineHeight: '40px', fontWeight: '700' }],
         'headline-lg-mobile': ['24px', { lineHeight: '32px', fontWeight: '700' }],
@@ -109,10 +148,12 @@ export default {
       },
 
       borderRadius: {
-        DEFAULT: '0.25rem',
-        lg: '0.5rem',
-        xl: '0.75rem',
-        '2xl': '1rem',
+        DEFAULT: '0px',
+        sm: '0px',
+        md: '0px',
+        lg: '0px',
+        xl: '0px',
+        '2xl': '0px',
         full: '9999px',
       },
 
@@ -126,7 +167,8 @@ export default {
       },
 
       boxShadow: {
-        card: '0 4px 12px rgba(87, 0, 0, 0.05)',
+        card: '0 1px 3px rgba(0,0,0,0.06)',
+        sm: '0 1px 2px rgba(0,0,0,0.05)',
       },
     },
   },

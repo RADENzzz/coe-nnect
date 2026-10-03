@@ -6,7 +6,7 @@ import BottomNav from './BottomNav';
 
 export default function AppShell() {
   return (
-    <div className="bg-background text-on-background min-h-screen flex">
+    <div className="bg-slate-50 text-slate-900 min-h-screen flex">
       {/* Desktop sidebar */}
       <Sidebar />
 
@@ -14,7 +14,7 @@ export default function AppShell() {
       <MobileDrawer />
 
       {/* Main column */}
-      <div className="flex-1 flex flex-col min-w-0 md:ml-[280px]">
+      <div className="flex-1 flex flex-col min-w-0 md:ml-[240px]">
         <TopBar />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">

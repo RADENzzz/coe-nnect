@@ -20,46 +20,46 @@ export const footerNavItems = [
 
 export default function Sidebar() {
   return (
-    <nav className="hidden md:flex flex-col h-screen w-[280px] bg-surface-container-low fixed left-0 top-0 py-6 px-3 gap-2 z-50">
+    <nav className="hidden md:flex flex-col h-screen w-[240px] bg-white border-r border-slate-200 fixed left-0 top-0 z-50">
       {/* Brand */}
-      <div className="px-3 mb-6 flex flex-col gap-2">
+      <div className="px-5 py-4 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary">
-            <Icon name="school" filled />
+          <div className="w-9 h-9 bg-[#5c1219] flex items-center justify-center shrink-0">
+            <Icon name="school" filled className="text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-lg text-primary leading-tight tracking-tight">
+            <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
               Computer Engineering
-            </h1>
-            <p className="label">Department Admin</p>
+            </p>
+            <p className="text-xs text-slate-500">Department Admin</p>
           </div>
         </div>
       </div>
 
       {/* CTA */}
-      <div className="px-3 mb-6">
-        <button className="w-full bg-primary text-on-primary font-semibold text-xs py-3 rounded-lg hover:bg-tertiary transition-colors flex items-center justify-center gap-2">
+      <div className="px-4 py-3 border-b border-slate-100">
+        <button className="w-full bg-[#5c1219] text-white font-semibold text-sm py-2 hover:opacity-90 transition flex items-center justify-center gap-2">
           <Icon name="add" />
           Create New Term
         </button>
       </div>
 
       {/* Main Nav */}
-      <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2">
         {mainNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
               isActive
-                ? 'flex items-center gap-3 px-3 py-2 text-primary font-bold bg-surface-container-highest rounded-lg transition-all'
-                : 'flex items-center gap-3 px-3 py-2 text-on-surface-variant font-medium hover:text-secondary hover:bg-surface-container-high transition-all rounded-lg'
+                ? 'flex items-center gap-2.5 px-3 py-2 bg-[#5c1219] text-white font-semibold text-sm transition-all'
+                : 'flex items-center gap-2.5 px-3 py-2 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-all'
             }
           >
             {({ isActive }) => (
               <>
                 <Icon name={item.icon} filled={isActive} />
-                <span className="text-xs font-semibold">{item.label}</span>
+                <span>{item.label}</span>
               </>
             )}
           </NavLink>
@@ -67,19 +67,19 @@ export default function Sidebar() {
       </div>
 
       {/* Footer Nav */}
-      <div className="flex flex-col gap-1 mt-auto">
+      <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2">
         {footerNavItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
               isActive
-                ? 'flex items-center gap-3 px-3 py-2 text-primary font-bold bg-surface-container-highest rounded-lg transition-all'
-                : 'flex items-center gap-3 px-3 py-2 text-on-surface-variant font-medium hover:text-secondary hover:bg-surface-container-high transition-all rounded-lg'
+                ? 'flex items-center gap-2.5 px-3 py-2 bg-[#5c1219] text-white font-semibold text-sm transition-all'
+                : 'flex items-center gap-2.5 px-3 py-2 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-all'
             }
           >
             <Icon name={item.icon} />
-            <span className="text-xs font-semibold">{item.label}</span>
+            <span>{item.label}</span>
           </NavLink>
         ))}
       </div>

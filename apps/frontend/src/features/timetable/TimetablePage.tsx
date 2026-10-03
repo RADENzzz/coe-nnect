@@ -24,7 +24,7 @@ const DAY_MAP: Record<string, Day> = {
   Thursday: 'THU',
   Friday: 'FRI',
   Saturday: 'SAT',
-  Sunday: 'MON',
+  Sunday: 'SUN',
 };
 
 const DAY_MAP_REVERSE: Record<Day, string> = {
@@ -34,6 +34,7 @@ const DAY_MAP_REVERSE: Record<Day, string> = {
   THU: 'Thursday',
   FRI: 'Friday',
   SAT: 'Saturday',
+  SUN: 'Sunday',
 };
 
 function toEntry(raw: RawSchedule): ScheduleEntry {

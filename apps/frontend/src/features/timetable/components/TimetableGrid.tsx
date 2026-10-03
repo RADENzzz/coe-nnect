@@ -32,6 +32,7 @@ const DAY_LABELS: Record<Day, string> = {
   THU: 'Thu',
   FRI: 'Fri',
   SAT: 'Sat',
+  SUN: 'Sun',
 };
 
 export default function TimetableGrid({

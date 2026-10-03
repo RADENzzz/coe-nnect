@@ -1,4 +1,4 @@
-export type Day = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT';
+export type Day = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
 export type LoadType = 'lecture' | 'laboratory';
 
 export interface ScheduleEntry {
