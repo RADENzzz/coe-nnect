@@ -57,6 +57,9 @@ export { noBackToBackLabsRule } from './rules/lab/no-back-to-back-labs.rule';
 export { unsplittable1UnitLabRule } from './rules/lab/unsplittable-1unit-lab.rule';
 export { splittable2UnitLabRule } from './rules/lab/splittable-2unit-lab.rule';
 
+// Rules — subject
+export { loadTypeMatchRule } from './rules/subject/load-type-match.rule';
+
 // Convenience — every rule the backend registers at boot
 import { roomTypeMatchRule } from './rules/room/room-type-match.rule';
 import { roomNoLabRule } from './rules/room/room-no-lab.rule';
@@ -72,6 +75,7 @@ import type { ConstraintRule } from './types/rule.interface';
 import { blockDurationSanityRule } from './rules/time/block-duration-sanity.rule';
 import { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
 import { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
+import { loadTypeMatchRule } from './rules/subject/load-type-match.rule';
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
@@ -87,4 +91,5 @@ export const allRules: ConstraintRule[] = [
   blockDurationSanityRule,
   workloadOverloadRule,       
   visitingLecturerCapRule, 
+  loadTypeMatchRule,
 ];
