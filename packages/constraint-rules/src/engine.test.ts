@@ -15,6 +15,7 @@ const ctx = {
   faculty: null,
   room: null,
   timeSlot: { dayOfWeek: 'Monday', startTime: '08:00', endTime: '09:30' },
+  loadType: 'lecture',
   existingSchedule: [],
   facultyCommitments: [],
   minorBlocks: [],
