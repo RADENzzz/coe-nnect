@@ -24,8 +24,10 @@ export const splittable2UnitLabRule: ConstraintRule = {
   category: 'subject',
 
   validate(ctx: RuleContext): RuleResult {
-    const { subject, timeSlot, config } = ctx;
+    const { subject, timeSlot, config, loadType } = ctx;
 
+    // Only actual laboratory sessions are affected.
+    if (loadType !== 'laboratory') return { status: 'pass' };
     // Only 2-unit labs are affected.
     if (subject.labUnits !== 2) return { status: 'pass' };
 

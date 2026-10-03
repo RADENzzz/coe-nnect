@@ -23,7 +23,28 @@ describe('R-3 room 206 never hosts labs', () => {
     const ctx = baseContext({
       subject: { labUnits: 1 },
       room: { roomNumber: '206' },
+      loadType: 'laboratory',
     });
     expect(roomNoLabRule.validate(ctx).status).toBe('fail');
   });
-});
+
+  // ▼▼▼ NEW TESTS — appended at the end, still inside `describe` ▼▼▼
+
+  it('passes when loadType is lecture, even in Room 206 for a lab-containing subject', () => {
+    const ctx = baseContext({
+      subject: { labUnits: 1 },
+      room: { roomNumber: '206' },
+      loadType: 'lecture',
+    });
+    expect(roomNoLabRule.validate(ctx).status).toBe('pass');
+  });
+
+  it('fails when loadType is laboratory in Room 206', () => {
+    const ctx = baseContext({
+      subject: { labUnits: 1 },
+      room: { roomNumber: '206' },
+      loadType: 'laboratory',
+    });
+    expect(roomNoLabRule.validate(ctx).status).toBe('fail');
+  });
+});   // ← the describe's closing brace — new tests are ABOVE this line

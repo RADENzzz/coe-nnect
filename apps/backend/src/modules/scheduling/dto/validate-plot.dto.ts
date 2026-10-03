@@ -29,6 +29,10 @@ export class ValidatePlotDto {
   @IsString()
   section?: string;
 
+  @IsOptional()
+  @IsIn(['lecture', 'laboratory', 'other'])
+  loadType?: 'lecture' | 'laboratory' | 'other';
+
   @IsIn([
     'Monday',
     'Tuesday',

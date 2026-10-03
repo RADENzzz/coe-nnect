@@ -18,6 +18,8 @@ import { toMinutes } from '../../utils/time.util';
  *
  * Source: WMSU analysis PDF, section 5 ("Day Pairing & Block Splitting Rules").
  */
+
+
 export const blockDurationSanityRule: ConstraintRule = {
   id: 'H-11',
   name: 'Block Duration Sanity',
@@ -27,28 +29,33 @@ export const blockDurationSanityRule: ConstraintRule = {
   category: 'time',
 
   validate(ctx: RuleContext): RuleResult {
-    const { subject, timeSlot, config } = ctx;
+    const { subject, timeSlot, config, loadType } = ctx;
 
     const start = toMinutes(timeSlot.startTime);
     const end = toMinutes(timeSlot.endTime);
     const duration = end - start;
 
-    // Load type is not part of RuleContext today (it's on the DTO).
-    // Infer it from the subject's unit composition:
-    //   - any lab units  -> treat as lab block
-    //   - lecture only   -> lecture block
-    //   - neither        -> unconstrained
-    const isLabSubject = subject.labUnits > 0;
-    const isLectureSubject = subject.lectureUnits > 0;
+    // If loadType is set, trust it. Fall back to unit inference only
+    // when loadType is null (older callers, tests without the field set).
+    const isLabSession = loadType === 'laboratory';
+    const isLectureSession = loadType === 'lecture';
+    const unknownLoadType = loadType == null;
 
-    if (!isLabSubject && !isLectureSubject) {
+
+    
+    if (!isLabSession && !isLectureSession && !unknownLoadType) {
+      // 'other' — no duration constraint.
       return { status: 'pass' };
     }
 
-    if (isLabSubject) {
-       if (subject.labUnits === 1 || subject.labUnits === 2) {
+    // ── Lab sessions ──
+    if (isLabSession || (unknownLoadType && subject.labUnits > 0)) {
+      // H-9 and H-10 cover lab_units 1 and 2 respectively. H-11 is the
+      // fallback for everything else, to keep messages from stacking.
+      if (subject.labUnits === 1 || subject.labUnits === 2) {
         return { status: 'pass' };
       }
+
       const expected = config.labSplitHours * 60;
       if (duration === expected) return { status: 'pass' };
       return {
@@ -62,17 +69,30 @@ export const blockDurationSanityRule: ConstraintRule = {
         },
       };
     }
+    
 
-    // Lecture subject.
-    const expected = config.lectureBlockMinutes;
-    if (duration === expected) return { status: 'pass' };
+    // ── Lecture sessions ──
+    if (isLectureSession || (unknownLoadType && subject.lectureUnits > 0)) {
+      const expected = config.lectureBlockMinutes;
+      if (duration === expected) return { status: 'pass' };
 
-    // PDF permits 3-hour single-block lectures for "special requests".
-    // Flag as a soft warning rather than a hard fail.
-    if (duration === expected * 2) {
+      // 3-hour single-block lectures are permitted as a soft warning.
+      if (duration === expected * 2) {
+        return {
+          status: 'warn',
+          reason: `Lecture subject ${subject.subjectCode} is plotted as a single ${duration}-minute block. The PDF recommends splitting it into two ${expected}-minute blocks across paired days.`,
+          metadata: {
+            subjectId: subject.subjectId,
+            expectedMinutes: expected,
+            actualMinutes: duration,
+            loadType: 'lecture',
+          },
+        };
+      }
+
       return {
-        status: 'warn',
-        reason: `Lecture subject ${subject.subjectCode} is plotted as a single ${duration}-minute block. The PDF recommends splitting it into two ${expected}-minute blocks across paired days.`,
+        status: 'fail',
+        reason: `Lecture subject ${subject.subjectCode} must be scheduled as a ${expected}-minute block (got ${duration} min).`,
         metadata: {
           subjectId: subject.subjectId,
           expectedMinutes: expected,
@@ -82,15 +102,9 @@ export const blockDurationSanityRule: ConstraintRule = {
       };
     }
 
-    return {
-      status: 'fail',
-      reason: `Lecture subject ${subject.subjectCode} must be scheduled as a ${expected}-minute block (got ${duration} min).`,
-      metadata: {
-        subjectId: subject.subjectId,
-        expectedMinutes: expected,
-        actualMinutes: duration,
-        loadType: 'lecture',
-      },
-    };
+    
+
+    // Nothing to constrain.
+    return { status: 'pass' };
   },
 };

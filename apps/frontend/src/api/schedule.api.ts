@@ -73,6 +73,7 @@ export interface ValidatePlotPayload {
   facultyId?: string;
   roomId?: string;
   section?: string;
+  loadType?: 'lecture' | 'laboratory' | 'other';
   dayOfWeek: string;
   startTime: string;
   endTime: string;

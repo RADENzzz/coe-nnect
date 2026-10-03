@@ -110,6 +110,7 @@ async validate(dto: ValidatePlotDto): Promise<{
     dayOfWeek: dto.dayOfWeek,
     startTime: dto.startTime,
     endTime: dto.endTime,
+    loadType: dto.loadType,
     excludeScheduleId: dto.excludeId,
   });
 
