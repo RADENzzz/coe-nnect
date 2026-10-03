@@ -20,6 +20,8 @@ export interface ScheduleEntry {
   deptColor: string;
   hasConflict?: boolean;
   hasWarning?: boolean;
+  status?: 'draft' | 'review' | 'finalized' | 'published';   // ← NEW
+  remarks?: string | null;  
 }
 
 export interface DropCellData {
@@ -27,4 +29,11 @@ export interface DropCellData {
   startTime: string;
   endTime: string;
   cellId: string;
+}
+
+export interface GridMetrics {
+  cellHeight: number;
+  dayWidth: number;
+  axisWidth: number;
+  gridHeight: number;
 }
