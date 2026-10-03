@@ -1,23 +1,31 @@
 export const theme = {
   colors: {
-    primary: {
-      DEFAULT: '#1E3A8A',
-      light: '#3B82F6',
-      dark: '#1E40AF',
+    brand: {
+      DEFAULT: '#5c1219',
+      hover: '#4a0e14',
     },
-    accent: {
-      DEFAULT: '#F59E0B',
-      light: '#FCD34D',
+    workspace: '#f8fafc',
+    surface: '#ffffff',
+    text: {
+      primary: '#0f172a',
+      secondary: '#64748b',
+      muted: '#475569',
     },
-    status: {
-      success: '#10B981',
-      warning: '#F59E0B',
-      error: '#EF4444',
-      info: '#3B82F6',
+    border: {
+      default: '#e2e8f0',
+      subtle: '#f1f5f9',
+      outline: '#cbd5e1',
+    },
+    badge: {
+      neutral: { bg: '#f8fafc', text: '#475569', border: '#e2e8f0' },
+      success: { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' },
+      warning: { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
+      danger: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca' },
+      brand: { bg: '#fef2f2', text: '#991b1b', border: '#fecaca' },
     },
   },
   fonts: {
-    sans: "'Inter', system-ui, -apple-system, sans-serif",
+    sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
   },
   breakpoints: {
     sm: '640px',

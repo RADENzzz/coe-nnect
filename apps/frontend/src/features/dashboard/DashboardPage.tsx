@@ -11,12 +11,12 @@ function QuickAction({
   label: string;
 }) {
   return (
-    <button className="bg-surface-container-low hover:border-secondary-container border border-transparent rounded-lg p-3 flex flex-col items-center justify-center gap-2 transition-all group">
+    <button className="bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center justify-center gap-2 transition-all group">
       <Icon
         name={icon}
-        className="text-primary group-hover:text-secondary-container"
+        className="text-[#5c1219] group-hover:scale-105 transition-transform"
       />
-      <span className="text-xs font-semibold text-on-surface text-center">
+      <span className="text-[11px] font-semibold text-slate-700 text-center">
         {label}
       </span>
     </button>
@@ -28,39 +28,41 @@ function QuickAction({
 // ─────────────────────────────────────────────
 function SummaryCard({
   icon,
-  iconBg,
-  iconColor,
   badge,
-  badgeClass,
+  badgeVariant = 'neutral',
   label,
   value,
   footer,
 }: {
   icon: string;
-  iconBg: string;
-  iconColor: string;
   badge?: string;
-  badgeClass?: string;
+  badgeVariant?: 'neutral' | 'success' | 'warning' | 'danger' | 'brand';
   label: string;
   value: string;
   footer?: React.ReactNode;
 }) {
+  const badgeClasses = {
+    neutral: 'bg-slate-50 text-slate-600 border-slate-200',
+    success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    warning: 'bg-amber-50 text-amber-700 border-amber-200',
+    danger: 'bg-red-50 text-red-700 border-red-200',
+    brand: 'bg-red-50 text-red-800 border-red-200',
+  };
+
   return (
-    <div className="bg-surface-container-lowest rounded-xl p-6 shadow-card border border-surface-variant/30 hover:border-secondary-container transition-all">
+    <div className="bg-white border border-slate-200 p-5 shadow-sm hover:border-slate-300 transition-all">
       <div className="flex justify-between items-start mb-4">
-        <div
-          className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBg} ${iconColor}`}
-        >
-          <Icon name={icon} filled />
+        <div className="w-9 h-9 bg-red-50 border border-red-200 flex items-center justify-center">
+          <Icon name={icon} filled className="text-[#5c1219]" />
         </div>
         {badge && (
-          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${badgeClass}`}>
+          <span className={`text-[11px] font-bold uppercase tracking-wide border px-2 py-0.5 ${badgeClasses[badgeVariant]}`}>
             {badge}
           </span>
         )}
       </div>
-      <h4 className="text-sm text-on-surface-variant mb-1">{label}</h4>
-      <div className="text-3xl font-bold text-on-surface">{value}</div>
+      <p className="text-sm text-slate-500 mb-1">{label}</p>
+      <div className="text-3xl font-extrabold text-slate-900 tracking-tight">{value}</div>
       {footer && <div className="mt-4">{footer}</div>}
     </div>
   );
@@ -85,19 +87,17 @@ function ActivityItem({
   actionLabel: string;
 }) {
   return (
-    <div className="p-4 px-6 flex items-center gap-4 hover:bg-surface-bright transition-colors">
+    <div className="p-4 px-5 flex items-center gap-4 hover:bg-slate-50 transition-colors">
       <div
-        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
       >
         <Icon name={icon} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-on-surface truncate">{text}</p>
-        <p className="text-xs font-semibold text-on-surface-variant mt-1">
-          {time}
-        </p>
+        <p className="text-sm text-slate-900 truncate">{text}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{time}</p>
       </div>
-      <button className="text-primary text-xs font-semibold hover:underline shrink-0">
+      <button className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0">
         {actionLabel}
       </button>
     </div>
@@ -111,24 +111,23 @@ export default function DashboardPage() {
   return (
     <>
       {/* Welcome Header */}
-      <div className="mb-8 mt-4 md:mt-0">
-        <h2 className="text-4xl font-bold text-on-surface mb-2 tracking-tight">
+      <div className="mb-6 mt-1 md:mt-0 border-b border-slate-200 pb-5">
+        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
           Welcome back, test123
-        </h2>
-        <p className="text-base text-on-surface-variant">
-          Here is the current status of the Computer Engineering department
-          schedule.
+        </h1>
+        <p className="text-sm text-slate-500">
+          Here is the current status of the Computer Engineering department schedule.
         </p>
       </div>
 
       {/* Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
         {/* Quick Actions */}
-        <div className="md:col-span-4 bg-surface-container-lowest rounded-xl p-6 shadow-card border border-surface-variant/30 flex flex-col">
-          <h3 className="text-xl font-semibold text-on-surface mb-4 border-b border-surface-container pb-2">
+        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm flex flex-col">
+          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500 mb-3 border-b border-slate-100 pb-3">
             Quick Actions
           </h3>
-          <div className="grid grid-cols-2 gap-3 flex-1">
+          <div className="grid grid-cols-2 gap-2 flex-1">
             <QuickAction icon="add_circle" label="New Schedule" />
             <QuickAction icon="search" label="Search Faculty" />
             <QuickAction icon="meeting_room" label="Room Status" />
@@ -137,54 +136,44 @@ export default function DashboardPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <SummaryCard
             icon="view_timeline"
-            iconBg="bg-primary-container/20"
-            iconColor="text-primary"
             badge="Term A"
-            badgeClass="text-on-surface-variant bg-surface-container-high"
+            badgeVariant="neutral"
             label="Active Schedules"
             value="142"
             footer={
-              <div className="flex items-center gap-1 text-sm">
-                <Icon name="trending_up" size={16} className="text-green-700" />
-                <span className="text-xs font-semibold text-green-700">+12%</span>
-                <span className="text-xs text-on-surface-variant">
-                  vs last term
-                </span>
+              <div className="flex items-center gap-1">
+                <Icon name="trending_up" size={14} className="text-emerald-600" />
+                <span className="text-xs font-semibold text-emerald-700">+12%</span>
+                <span className="text-xs text-slate-500">vs last term</span>
               </div>
             }
           />
 
           <SummaryCard
             icon="checklist"
-            iconBg="bg-secondary-container/20"
-            iconColor="text-secondary"
             badge="Urgent"
-            badgeClass="text-primary bg-primary-fixed"
+            badgeVariant="danger"
             label="Tasks to do"
             value="8"
             footer={
               <div className="flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-tertiary" />
-                <span className="text-xs text-on-surface-variant">
-                  3 conflict resolutions pending
-                </span>
+                <span className="inline-block w-2 h-2 bg-amber-500" />
+                <span className="text-xs text-slate-500">3 conflict resolutions pending</span>
               </div>
             }
           />
 
           <SummaryCard
             icon="donut_large"
-            iconBg="bg-primary/10"
-            iconColor="text-primary"
             label="Completion Rate"
             value="85%"
             footer={
-              <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-slate-100 h-1.5 overflow-hidden">
                 <div
-                  className="bg-primary h-2 rounded-full"
+                  className="bg-[#5c1219] h-1.5"
                   style={{ width: '85%' }}
                 />
               </div>
@@ -194,17 +183,17 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant/30 overflow-hidden">
-        <div className="p-6 border-b border-surface-container">
-          <h3 className="text-xl font-semibold text-on-surface">
+      <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
             Recent Scheduling Activity
           </h3>
         </div>
-        <div className="divide-y divide-surface-container">
+        <div className="divide-y divide-slate-100">
           <ActivityItem
             icon="edit_calendar"
-            iconBg="bg-secondary-container/20"
-            iconColor="text-secondary"
+            iconBg="bg-slate-100"
+            iconColor="text-slate-600"
             text={
               <>
                 Prof. Smith requested a room change for <strong>CPE 412</strong>.
@@ -215,12 +204,11 @@ export default function DashboardPage() {
           />
           <ActivityItem
             icon="check_circle"
-            iconBg="bg-green-100"
-            iconColor="text-green-800"
+            iconBg="bg-emerald-50"
+            iconColor="text-emerald-700"
             text={
               <>
-                Schedule for <strong>Term A</strong> has been finalized by Dr.
-                Allen.
+                Schedule for <strong>Term A</strong> has been finalized by Dr. Allen.
               </>
             }
             time="Yesterday"

@@ -55,18 +55,18 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
     <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
       {/* Panel */}
       {open && (
-        <div className="w-80 rounded-xl bg-surface-container-high border border-outline-variant shadow-2xl overflow-hidden animate-fade-up">
+        <div className="w-80 bg-white border border-slate-200 shadow-sm overflow-hidden animate-fade-up">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-surface-container-highest border-b border-outline-variant">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
             <div className="flex items-center gap-2">
-              <span className="flex items-center justify-center w-6 h-6 rounded-md bg-tertiary-container">
-                <Icon name="bug_report" filled size={14} className="text-on-tertiary-container" />
+              <span className="flex items-center justify-center w-6 h-6 bg-amber-50 border border-amber-200">
+                <Icon name="bug_report" filled size={14} className="text-amber-700" />
               </span>
               <div>
-                <p className="text-xs font-bold text-on-surface tracking-wide uppercase">
+                <p className="text-xs font-bold text-slate-900 tracking-wide uppercase">
                   Dev Login
                 </p>
-                <p className="text-[10px] text-on-surface-variant leading-none">
+                <p className="text-[10px] text-slate-500 leading-none">
                   Test accounts · local only
                 </p>
               </div>
@@ -74,7 +74,7 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="p-1 rounded-md text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
+              className="p-1 text-slate-400 hover:text-slate-700 transition-colors"
               aria-label="Close"
             >
               <Icon name="close" size={16} />
@@ -86,18 +86,18 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
             {accounts.map((acct) => (
               <div
                 key={acct.email}
-                className="group rounded-lg bg-surface-container-low border border-outline-variant/60 p-3 hover:border-secondary-container transition-colors"
+                className="bg-slate-50 border border-slate-200 hover:border-slate-300 p-3 transition-colors"
               >
                 <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 flex items-center justify-center w-8 h-8 rounded-md bg-primary-container text-on-primary-container shrink-0">
-                    <Icon name={acct.icon} filled size={16} />
+                  <span className="mt-0.5 flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 shrink-0">
+                    <Icon name={acct.icon} filled size={16} className="text-[#5c1219]" />
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-on-surface">{acct.label}</p>
-                    <p className="text-[10px] text-on-surface-variant mb-1.5">
+                    <p className="text-xs font-semibold text-slate-900">{acct.label}</p>
+                    <p className="text-[10px] text-slate-500 mb-1.5">
                       {acct.description}
                     </p>
-                    <div className="space-y-0.5 font-mono text-[10px] text-on-surface-variant">
+                    <div className="space-y-0.5 font-mono text-[10px] text-slate-500">
                       <p className="truncate">{acct.email}</p>
                       <p className="truncate">{acct.password}</p>
                     </div>
@@ -108,7 +108,7 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
                   <button
                     type="button"
                     onClick={() => onFill(acct.email, acct.password)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md bg-primary text-on-primary text-[11px] font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-[#5c1219] text-white text-[11px] font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
                   >
                     <Icon name="login" size={14} />
                     Fill
@@ -116,7 +116,7 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
                   <button
                     type="button"
                     onClick={() => handleCopy(acct.email, acct.password)}
-                    className="flex items-center justify-center w-9 rounded-md border border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface active:scale-[0.98] transition-all"
+                    className="flex items-center justify-center w-9 border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98] transition-all"
                     aria-label="Copy credentials"
                   >
                     <Icon name={copied === acct.email ? 'check' : 'content_copy'} size={14} />
@@ -126,8 +126,8 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
             ))}
           </div>
 
-          <div className="px-4 py-2 bg-surface-container-highest border-t border-outline-variant">
-            <p className="text-[10px] text-on-surface-variant flex items-center gap-1">
+          <div className="px-4 py-2 bg-slate-50 border-t border-slate-200">
+            <p className="text-[10px] text-slate-500 flex items-center gap-1">
               <Icon name="warning" size={12} />
               Visible in development mode only
             </p>
@@ -139,13 +139,11 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-tertiary-container text-on-tertiary-container shadow-lg hover:shadow-xl active:scale-[0.97] transition-all border border-tertiary/30"
+        className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-xs font-bold uppercase tracking-wide shadow-sm hover:bg-slate-800 active:scale-[0.97] transition-all border border-slate-700"
         aria-label="Toggle dev login helper"
       >
-        <Icon name={open ? 'close' : 'developer_mode'} filled size={18} />
-        <span className="text-xs font-bold tracking-wide uppercase">
-          {open ? 'Hide' : 'Dev Login'}
-        </span>
+        <Icon name={open ? 'close' : 'developer_mode'} filled size={16} />
+        {open ? 'Hide' : 'Dev Login'}
       </button>
     </div>
   );
@@ -223,91 +221,97 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-surface-low overflow-hidden">
+    <div className="min-h-screen flex bg-slate-50 overflow-hidden">
       {/* ───────── LEFT: Brand Panel ───────── */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-primary overflow-hidden">
-        <div className="absolute -top-20 -left-20 w-96 h-96 bg-tertiary rounded-full opacity-30 blur-3xl animate-pulse-slow" />
-        <div className="absolute bottom-0 right-0 w-[28rem] h-[28rem] bg-secondary rounded-full opacity-20 blur-3xl animate-pulse-slower" />
-
+      <div className="hidden lg:flex lg:w-[45%] relative bg-[#5c1219] overflow-hidden">
+        {/* Grid pattern */}
         <svg
-          className="absolute inset-0 w-full h-full opacity-10"
+          className="absolute inset-0 w-full h-full opacity-[0.07]"
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1" />
+            <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+              <path d="M 32 0 L 0 0 0 32" fill="none" stroke="white" strokeWidth="1" />
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
         </svg>
 
+        {/* Subtle accent blobs */}
+        <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/5 rounded-full blur-3xl animate-pulse-slow" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl animate-pulse-slower" />
+
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20">
-              <Icon name="school" filled className="text-white" size={28} />
+            <div className="w-10 h-10 border border-white/20 bg-white/10 flex items-center justify-center">
+              <Icon name="school" filled className="text-white" size={24} />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-white">CoE-NNECT</h2>
-              <p className="text-xs text-white/70">WMSU · College of Engineering</p>
+              <p className="text-sm font-bold tracking-tight text-white">CoE-NNECT</p>
+              <p className="text-[11px] text-white/60">WMSU · College of Engineering</p>
             </div>
           </div>
 
           <div className="animate-fade-up">
-            <h1 className="text-5xl font-bold leading-tight tracking-tight text-white">
+            <h1 className="text-5xl font-extrabold leading-tight tracking-tight text-white">
               College of
               <br />
               Engineering
               <br />
-              <span className="text-secondary-container">Scheduling System</span>
+              <span className="text-white/50">Scheduling System</span>
             </h1>
+            <p className="mt-4 text-sm text-white/60 max-w-xs">
+              Manage faculty schedules, resolve conflicts, and plan academic terms — all in one place.
+            </p>
           </div>
 
-          <p className="text-xs text-white/50">
+          <p className="text-[11px] text-white/30">
             © {new Date().getFullYear()} Western Mindanao State University
           </p>
         </div>
       </div>
 
       {/* ───────── RIGHT: Login Form ───────── */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-slate-50">
         <div
           key={shakeKey}
-          className="w-full max-w-md animate-slide-in"
+          className="w-full max-w-sm animate-slide-in"
           style={error ? { animation: 'shake 400ms ease-in-out' } : undefined}
         >
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
-              <Icon name="school" filled className="text-on-primary" size={28} />
+          {/* Mobile logo */}
+          <div className="lg:hidden flex items-center gap-3 mb-8">
+            <div className="w-9 h-9 bg-[#5c1219] flex items-center justify-center">
+              <Icon name="school" filled className="text-white" size={22} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-primary">CoE-NNECT</h2>
-              <p className="text-xs text-on-surface-variant">WMSU Scheduling</p>
+              <p className="text-sm font-bold text-slate-900">CoE-NNECT</p>
+              <p className="text-[11px] text-slate-500">WMSU Scheduling</p>
             </div>
           </div>
 
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-primary mb-2">Sign in</h2>
-            <p className="text-sm text-on-surface-variant">
+          <div className="mb-7">
+            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">Sign in</h2>
+            <p className="text-sm text-slate-500">
               Enter your credentials to continue.
             </p>
           </div>
 
           {error && (
-            <div className="mb-6 flex items-start gap-3 p-4 rounded-lg bg-error-container border border-error/30 animate-fade-in">
-              <Icon name="error" filled className="text-error shrink-0 mt-0.5" size={20} />
-              <p className="flex-1 text-sm font-medium text-on-error-container">{error}</p>
+            <div className="mb-5 flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 animate-fade-in">
+              <Icon name="error" filled className="text-red-600 shrink-0 mt-0.5" size={18} />
+              <p className="flex-1 text-sm font-medium text-red-800">{error}</p>
               <button
                 type="button"
                 onClick={() => setError(null)}
-                className="text-on-error-container/60 hover:text-on-error-container transition-colors"
+                className="text-red-400 hover:text-red-700 transition-colors"
                 aria-label="Dismiss"
               >
-                <Icon name="close" size={18} />
+                <Icon name="close" size={16} />
               </button>
             </div>
           )}
 
-          <form className="space-y-5" onSubmit={handleLogin}>
+          <form className="space-y-4" onSubmit={handleLogin}>
             <FloatingInput
               id="email"
               type="email"
@@ -333,7 +337,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading || !email || !password}
-              className="btn-primary w-full py-3 mt-2 relative overflow-hidden group"
+              className="w-full py-2.5 mt-1 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
             >
               <span
                 className={`flex items-center justify-center gap-2 transition-transform duration-200 ${
@@ -343,14 +347,14 @@ export default function LoginPage() {
                 <span>Sign in</span>
                 <Icon
                   name="arrow_forward"
-                  size={18}
+                  size={16}
                   className="group-hover:translate-x-1 transition-transform"
                 />
               </span>
               {loading && (
                 <span className="absolute inset-0 flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  <span>Signing in…</span>
+                  <span className="text-sm">Signing in…</span>
                 </span>
               )}
             </button>
@@ -406,10 +410,10 @@ function FloatingInput({
       {icon && (
         <span
           className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${
-            focused ? 'text-primary' : 'text-on-surface-variant'
+            focused ? 'text-[#5c1219]' : 'text-slate-400'
           }`}
         >
-          <Icon name={icon} size={20} />
+          <Icon name={icon} size={18} />
         </span>
       )}
 
@@ -424,22 +428,22 @@ function FloatingInput({
         required={required}
         placeholder=" "
         className={`peer w-full ${
-          icon ? 'pl-11' : 'pl-4'
-        } pr-4 pt-6 pb-2 text-body-md rounded-lg bg-surface-container-low border transition-all duration-200 outline-none ${
+          icon ? 'pl-10' : 'pl-3'
+        } pr-3 pt-5 pb-1.5 text-sm bg-white border transition-all duration-200 outline-none text-slate-900 ${
           focused
-            ? 'border-secondary-container shadow-[0_0_0_3px_rgba(254,183,0,0.15)]'
-            : 'border-surface-variant hover:border-outline-variant'
+            ? 'border-slate-500 shadow-[0_0_0_2px_rgba(92,18,25,0.12)]'
+            : 'border-slate-300 hover:border-slate-400'
         }`}
       />
 
       <label
         htmlFor={id}
         className={`absolute ${
-          icon ? 'left-11' : 'left-4'
+          icon ? 'left-10' : 'left-3'
         } pointer-events-none transition-all duration-200 ${
           isActive
-            ? 'top-2 text-[11px] font-semibold text-primary tracking-wide uppercase'
-            : 'top-1/2 -translate-y-1/2 text-sm text-on-surface-variant'
+            ? 'top-1.5 text-[10px] font-semibold text-[#5c1219] tracking-wide uppercase'
+            : 'top-1/2 -translate-y-1/2 text-sm text-slate-400'
         }`}
       >
         {label}
