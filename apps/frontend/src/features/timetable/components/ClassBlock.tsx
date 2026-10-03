@@ -3,7 +3,11 @@ import { useDraggable } from '@dnd-kit/react';
 import clsx from 'clsx';
 import type { ScheduleEntry } from '../types';
 import { timeToMinutes, formatTime } from '../utils/time.util';
-import { minutesToY, DAY_WIDTH_PX } from '../utils/grid-layout.util';
+import {
+  minutesToY,
+  DAY_WIDTH_PX,
+  CELL_HEIGHT_PX,
+} from '../utils/grid-layout.util';
 
 interface Props {
   entry: ScheduleEntry;
@@ -18,9 +22,8 @@ function ClassBlockBase({ entry, dayIndex, onClick }: Props) {
   });
 
   const top = minutesToY(timeToMinutes(entry.startTime));
-  const height =
-    ((timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)) / 30) *
-    24;
+  const durationMinutes = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
+  const height = (durationMinutes / 30) * CELL_HEIGHT_PX;   // ← use CELL_HEIGHT_PX
 
   const left = dayIndex * DAY_WIDTH_PX + 4;
   const width = DAY_WIDTH_PX - 8;
@@ -31,7 +34,6 @@ function ClassBlockBase({ entry, dayIndex, onClick }: Props) {
     left,
     width,
     height,
-    // v7 handles transform internally — we just need position
     willChange: isDragging ? 'transform' : undefined,
     contain: 'layout style paint',
     backgroundColor: entry.deptColor,
