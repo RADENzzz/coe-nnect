@@ -100,6 +100,16 @@ export default function AdminUsersPage() {
       return;
     }
 
+    // Strict Password Validation Rule
+    // Minimum 8 characters, at least 1 uppercase, 1 lowercase, 1 number and 1 special character
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(form.password)) {
+      setError(
+        'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.'
+      );
+      return;
+    }
+
     createMutation.mutate({
       email: form.email,
       password: form.password,
@@ -198,8 +208,11 @@ export default function AdminUsersPage() {
                     value={form.password}
                     onChange={handleChange}
                     className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                    placeholder="Min 8 characters"
+                    placeholder="Must be strong"
                   />
+                  <p className="text-[10px] text-on-surface-variant mt-1 leading-tight">
+                    Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 symbol.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">

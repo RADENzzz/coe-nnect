@@ -254,11 +254,11 @@ export default function LoginPage() {
 
           <div className="animate-fade-up">
             <h1 className="text-5xl font-extrabold leading-tight tracking-tight text-white">
-              College of
+              COLLEGE OF
               <br />
-              Engineering
+              ENGINEERING
               <br />
-              <span className="text-white/50">Scheduling System</span>
+              <span className="text-white/50">SCHEDULING SYSTEM</span>
             </h1>
             <p className="mt-4 text-sm text-white/60 max-w-xs">
               Manage faculty schedules, resolve conflicts, and plan academic terms — all in one place.
@@ -340,9 +340,8 @@ export default function LoginPage() {
               className="w-full py-2.5 mt-1 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
             >
               <span
-                className={`flex items-center justify-center gap-2 transition-transform duration-200 ${
-                  loading ? 'translate-y-8' : 'translate-y-0'
-                }`}
+                className={`flex items-center justify-center gap-2 transition-transform duration-200 ${loading ? 'translate-y-8' : 'translate-y-0'
+                  }`}
               >
                 <span>Sign in</span>
                 <Icon
@@ -409,9 +408,8 @@ function FloatingInput({
     <div className="relative">
       {icon && (
         <span
-          className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${
-            focused ? 'text-[#5c1219]' : 'text-slate-400'
-          }`}
+          className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${focused ? 'text-[#5c1219]' : 'text-slate-400'
+            }`}
         >
           <Icon name={icon} size={18} />
         </span>
@@ -427,24 +425,20 @@ function FloatingInput({
         autoComplete={autoComplete}
         required={required}
         placeholder=" "
-        className={`peer w-full ${
-          icon ? 'pl-10' : 'pl-3'
-        } pr-3 pt-5 pb-1.5 text-sm bg-white border transition-all duration-200 outline-none text-slate-900 ${
-          focused
+        className={`peer w-full ${icon ? 'pl-10' : 'pl-3'
+          } pr-3 pt-5 pb-1.5 text-sm bg-white border transition-all duration-200 outline-none text-slate-900 ${focused
             ? 'border-slate-500 shadow-[0_0_0_2px_rgba(92,18,25,0.12)]'
             : 'border-slate-300 hover:border-slate-400'
-        }`}
+          }`}
       />
 
       <label
         htmlFor={id}
-        className={`absolute ${
-          icon ? 'left-10' : 'left-3'
-        } pointer-events-none transition-all duration-200 ${
-          isActive
+        className={`absolute ${icon ? 'left-10' : 'left-3'
+          } pointer-events-none transition-all duration-200 ${isActive
             ? 'top-1.5 text-[10px] font-semibold text-[#5c1219] tracking-wide uppercase'
             : 'top-1/2 -translate-y-1/2 text-sm text-slate-400'
-        }`}
+          }`}
       >
         {label}
       </label>
