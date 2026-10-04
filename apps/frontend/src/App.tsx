@@ -15,6 +15,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import SectionsPage from './features/sections/SectionsPage';
 import ApprovalsPage from './features/approvals/ApprovalsPage';
 import SubjectsPage from './features/subjects/SubjectsPage';
+import FacultyPage from './features/faculty/FacultyPage';
 
 function App() {
   return (
@@ -73,6 +74,7 @@ function App() {
           <Route path="sections" element={<SectionsPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="subjects" element={<SubjectsPage />} />
+          <Route path="faculty" element={<FacultyPage />} />
         </Route>
       </Route>
 
