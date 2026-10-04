@@ -41,6 +41,7 @@ export { labPriorityRule } from './rules/room/lab-priority.rule';
 export { roomOwnershipRule } from './rules/room/room-ownership.rule';
 export { labHostsLectureRule } from './rules/room/lab-hosts-lecture.rule';
 export { servicingPriorityRule } from './rules/room/servicing-priority.rule';
+export { cohortOverflowRule } from './rules/room/cohort-overflow.rule';
 
 // Rules — overlap
 export { facultyOverlapRule } from './rules/overlap/faculty-overlap.rule';
@@ -92,7 +93,7 @@ import { labPriorityRule } from './rules/room/lab-priority.rule';
 import { roomOwnershipRule } from './rules/room/room-ownership.rule';
 import { labHostsLectureRule } from './rules/room/lab-hosts-lecture.rule';
 import { servicingPriorityRule } from './rules/room/servicing-priority.rule';
-
+import { cohortOverflowRule } from './rules/room/cohort-overflow.rule';
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
@@ -101,6 +102,7 @@ export const allRules: ConstraintRule[] = [
   roomOwnershipRule,          
   labHostsLectureRule,        
   servicingPriorityRule,
+  cohortOverflowRule,
   facultyOverlapRule,
   roomOverlapRule,
   sectionOverlapRule,
