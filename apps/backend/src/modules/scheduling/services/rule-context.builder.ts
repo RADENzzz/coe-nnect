@@ -40,6 +40,7 @@ export class RuleContextBuilder {
       existingSchedule,
       facultyCommitments,
       minorBlocks,
+      subjectRestrictions,
       config,
     ] = await Promise.all([
       this.loadSubject(input.subjectId),
@@ -56,6 +57,7 @@ export class RuleContextBuilder {
           )
         : Promise.resolve([]),
       this.loadMinorBlocks(input.termId, input.dayOfWeek),
+      this.loadSubjectRestrictions(input.termId),
       this.loadConfig(),
     ]);
 
@@ -77,6 +79,7 @@ export class RuleContextBuilder {
       existingSchedule,
       facultyCommitments,
       minorBlocks,
+      subjectRestrictions,
       config,
       excludeScheduleId: input.excludeScheduleId,
     };
@@ -146,6 +149,22 @@ export class RuleContextBuilder {
       .select('subject_id')
       .eq('faculty_id', facultyId);
 
+
+
+    const { data: prefs } = await this.db
+      .from('faculty_preference')
+      .select('preferred_day, preferred_start_time, preferred_end_time')
+      .eq('faculty_id', facultyId);
+
+    const preferences =
+      prefs && prefs.length > 0
+        ? prefs.map((p) => ({
+            preferredDay: p.preferred_day,
+            preferredStartTime: p.preferred_start_time,
+            preferredEndTime: p.preferred_end_time,
+          }))
+        : undefined;
+
     const qualifiedSubjectIds =
       quals && quals.length > 0
         ? quals.map((q) => String(q.subject_id))
@@ -195,6 +214,7 @@ export class RuleContextBuilder {
       qualifiedSubjectIds,
       assignedHours,
       assignedUnits,
+      preferences,
     };
   }
 
@@ -328,5 +348,21 @@ export class RuleContextBuilder {
       lectureBlockMinutes: num('lecture_block_minutes', 90),
       daytimePriorityEndHour: str('daytime_priority_end_hour', '17:30'),
     };
+  }
+
+    private async loadSubjectRestrictions(
+    termId: string,
+  ): Promise<import('@coe-nnect/constraint-rules').SubjectRestrictionContext[]> {
+    const { data } = await this.db
+      .from('subject_restriction')
+      .select('subject_id_1, subject_id_2, warning_message, term_id, is_active')
+      .eq('is_active', true)
+      .or(`term_id.is.null,term_id.eq.${termId}`);
+
+    return (data ?? []).map((row) => ({
+      subjectIdA: String(row.subject_id_1),
+      subjectIdB: String(row.subject_id_2),
+      warningMessage: row.warning_message ?? undefined,
+    }));
   }
 }

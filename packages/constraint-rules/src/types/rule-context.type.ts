@@ -46,6 +46,7 @@ export interface FacultyContext {
    * (lecture_units + lab_units, summed across all schedule rows).
    */
   assignedUnits?: number;
+  preferences?: FacultyPreferenceContext[];
 }
 
 export interface RoomContext {
@@ -125,6 +126,21 @@ export interface SchedulingConfig {
 }
 
 /**
+ * A pair of subjects that should not have overlapping schedules.
+ */
+export interface SubjectRestrictionContext {
+  subjectIdA: string;
+  subjectIdB: string;
+  warningMessage?: string;
+}
+
+export interface FacultyPreferenceContext {
+  preferredDay: string;      // 'Monday' | 'Tuesday' | ...
+  preferredStartTime: string; // 'HH:MM'
+  preferredEndTime: string;   // 'HH:MM'
+}
+
+/**
  * The full context handed to every rule.
  * `excludeScheduleId` lets edit operations ignore the row being edited.
  */
@@ -136,10 +152,12 @@ export interface RuleContext {
   room: RoomContext | null;
   timeSlot: TimeSlotContext;
   /** The session type being plotted. Gates lab-only rules. */
-  loadType: 'lecture' | 'laboratory' | 'other' | null;   // ← NEW
+  loadType: 'lecture' | 'laboratory' | 'other' | null;
   existingSchedule: ScheduleEntryContext[];
   facultyCommitments: FacultyCommitmentContext[];
   minorBlocks: MinorBlockContext[];
+  subjectRestrictions: SubjectRestrictionContext[];
   config: SchedulingConfig;
   excludeScheduleId?: string;
+  
 }
