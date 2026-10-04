@@ -8,6 +8,7 @@ import type {
   ScheduleEntryContext,
   MinorBlockContext,
   FacultyCommitmentContext,
+  SubjectRestrictionContext,
   SchedulingConfig,
 } from '../types/rule-context.type';
 
@@ -79,6 +80,7 @@ export interface BaseContextOverrides {
   existingSchedule?: ScheduleEntryContext[];
   facultyCommitments?: FacultyCommitmentContext[];
   minorBlocks?: MinorBlockContext[];
+  subjectRestrictions?: SubjectRestrictionContext[]; 
   config?: Partial<SchedulingConfig>;
   excludeScheduleId?: string;
 }
@@ -103,6 +105,7 @@ export function baseContext(overrides: BaseContextOverrides = {}): RuleContext {
     existingSchedule: overrides.existingSchedule ?? [],
     facultyCommitments: overrides.facultyCommitments ?? [],
     minorBlocks: overrides.minorBlocks ?? [],
+    subjectRestrictions: overrides.subjectRestrictions ?? [],
     config: { ...defaultConfig, ...(overrides.config ?? {}) },
     excludeScheduleId: overrides.excludeScheduleId,
   };

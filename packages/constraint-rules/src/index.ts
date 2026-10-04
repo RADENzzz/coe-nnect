@@ -17,6 +17,8 @@ export type {
   MinorBlockContext,
   FacultyCommitmentContext,
   SchedulingConfig,
+  SubjectRestrictionContext,
+  FacultyPreferenceContext,
 } from './types/rule-context.type';
 export type { ConstraintRule } from './types/rule.interface';
 
@@ -60,6 +62,7 @@ export { daytimePriorityRule } from './rules/time/daytime-priority.rule';
 export { facultyQualificationRule } from './rules/faculty/faculty-qualification.rule';
 export { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
 export { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
+export { facultyPreferenceRule } from './rules/faculty/faculty-preference.rule';
 
 // Rules — lab
 export { noBackToBackLabsRule } from './rules/lab/no-back-to-back-labs.rule';
@@ -68,6 +71,7 @@ export { splittable2UnitLabRule } from './rules/lab/splittable-2unit-lab.rule';
 
 // Rules — subject
 export { loadTypeMatchRule } from './rules/subject/load-type-match.rule';
+export { subjectRestrictionRule } from './rules/subject/subject-restriction.rule';
 
 // Convenience — every rule the backend registers at boot
 import { roomTypeMatchRule } from './rules/room/room-type-match.rule';
@@ -94,6 +98,8 @@ import { roomOwnershipRule } from './rules/room/room-ownership.rule';
 import { labHostsLectureRule } from './rules/room/lab-hosts-lecture.rule';
 import { servicingPriorityRule } from './rules/room/servicing-priority.rule';
 import { cohortOverflowRule } from './rules/room/cohort-overflow.rule';
+import { subjectRestrictionRule } from './rules/subject/subject-restriction.rule';
+import { facultyPreferenceRule } from './rules/faculty/faculty-preference.rule';
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
@@ -119,4 +125,6 @@ export const allRules: ConstraintRule[] = [
   dayPairingRule,
   lunchBreakRule,
   daytimePriorityRule,
+  subjectRestrictionRule,
+  facultyPreferenceRule,
 ];
