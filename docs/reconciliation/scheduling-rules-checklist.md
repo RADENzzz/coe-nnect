@@ -53,7 +53,7 @@ backend's `ConstraintsService` at `apps/backend/src/modules/constraints/`.
 | 16 | Lab subjects should be prioritized for lab rooms | S-5 | Lab Priority for Lab Rooms | ✅ | Soft complement to R-1 |
 | 17 | Servicing subjects should get priority for shared labs | S-6 | Servicing Priority for Shared Labs | ✅ | Rooms 203 and 204 |
 | 18 | Lunch break rule must be applied during validation | S-7 | Lunch Break | ✅ | Warns when session overlaps 12:00–13:00 without a break |
-| 19 | Large cohort should trigger overflow section splitting | S-8 | Cohort Overflow | ⏳ | Rule implemented + tested; **inactive until `section.student_count` exists**. See "Known gaps". |
+| 19 | Large cohort should trigger overflow section splitting | S-8 | Cohort Overflow | ✅ | Active — reads `section.student_count` from the new `section` table |
 | 20 | Daytime slots should be prioritized over evening slots | S-9 | Daytime Priority | ✅ | Evening starts at 17:30 |
 | 21 | Room ownership should guide scheduling priority | S-10 | Room Ownership Priority | ✅ | |
 | 22 | Straight lecture block may be allowed | (same as #15) | — | ✅ | Covered by H-11 |

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   plotSubject,
   validatePlot,
   type PlotSubjectPayload,
   type ValidateResult,
 } from '../../api/schedule.api';
+import { fetchSections } from '../../api/sections.api';
 import Icon from '../../components/ui/Icon';
 
 const DAYS = [
@@ -60,6 +61,11 @@ export default function PlotSubjectModal({
   rooms,
 }: Props) {
   const queryClient = useQueryClient();
+  const { data: sections = [] } = useQuery({
+    queryKey: ['sections'],
+    queryFn: fetchSections,
+    enabled: open,
+  });
 
   const [form, setForm] = useState({
     subjectId: '',
@@ -224,6 +230,28 @@ export default function PlotSubjectModal({
                 placeholder="e.g. 1A"
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               />
+            </div>            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Section
+              </label>
+              <select
+                name="section"
+                value={form.section}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">— none —</option>
+                {sections
+                  .filter((s) => s.isActive)
+                  .map((s) => (
+                    <option key={s.sectionId} value={s.sectionCode}>
+                      {s.sectionCode}
+                      {s.studentCount != null
+                        ? ` (${s.studentCount} students)`
+                        : ''}
+                    </option>
+                  ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">

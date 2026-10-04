@@ -61,7 +61,7 @@ export class RuleContextBuilder {
       this.loadConfig(),
     ]);
 
-    const section: SectionContext = { sectionCode: input.section ?? null };
+    const section = await this.loadSection(input.section ?? undefined);
     const timeSlot: TimeSlotContext = {
       dayOfWeek: input.dayOfWeek,
       startTime: input.startTime,
@@ -350,7 +350,7 @@ export class RuleContextBuilder {
     };
   }
 
-    private async loadSubjectRestrictions(
+  private async loadSubjectRestrictions(
     termId: string,
   ): Promise<import('@coe-nnect/constraint-rules').SubjectRestrictionContext[]> {
     const { data } = await this.db
@@ -364,5 +364,27 @@ export class RuleContextBuilder {
       subjectIdB: String(row.subject_id_2),
       warningMessage: row.warning_message ?? undefined,
     }));
+  }
+
+  private async loadSection(sectionCode?: string): Promise<SectionContext> {
+    if (!sectionCode) return { sectionCode: null };
+
+    const { data, error } = await this.db
+      .from('section')
+      .select('section_code, student_count')
+      .eq('section_code', sectionCode)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.warn(
+        `Failed to load section ${sectionCode}: ${error.message}`,
+      );
+      return { sectionCode };
+    }
+
+    return {
+      sectionCode,
+      studentCount: data?.student_count ?? undefined,
+    };
   }
 }
