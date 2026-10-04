@@ -253,10 +253,20 @@ export default function TimetablePage() {
     },
     [allEntries, moveMutation, queryClient, activeTerm?.termId],
   );
-
-  const handleClick = useCallback((entry: ScheduleEntry) => {
-    setSelectedEntry(entry);
-  }, []);
+  const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
+  const handleClick = useCallback(
+  (entry: ScheduleEntry) => {
+    const sameSlot = allEntries.filter(
+      (e) => e.day === entry.day && e.startTime === entry.startTime,
+    );
+    if (sameSlot.length > 1) {
+      setStackOpen(sameSlot);
+    } else {
+      setSelectedEntry(entry);
+    }
+  },
+  [allEntries],
+);
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
     console.log('TODO: open edit form for', entry);
