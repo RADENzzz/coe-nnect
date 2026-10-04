@@ -13,6 +13,7 @@ import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
 import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import SectionsPage from './features/sections/SectionsPage';
+import ApprovalsPage from './features/approvals/ApprovalsPage';
 
 function App() {
   return (
@@ -69,6 +70,7 @@ function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="timetable" element={<TimetablePage />} />
           <Route path="sections" element={<SectionsPage />} />
+          <Route path="approvals" element={<ApprovalsPage />} />
         </Route>
       </Route>
 

@@ -22,7 +22,7 @@ export class ApprovalsController {
 
   @Get()
   async findAll(@Req() req: any) {
-    return { data: await this.approvals.findAllForCurrentUser(req.user.userId) };
+    return { data: await this.approvals.findAllForCurrentUser(req.user.id) };
   }
 
   @Get(':id')
@@ -32,7 +32,7 @@ export class ApprovalsController {
 
   @Post()
   async create(@Body() dto: CreateFacultyRequestDto, @Req() req: any) {
-    return { data: await this.approvals.create(dto, req.user.userId) };
+    return { data: await this.approvals.create(dto, req.user.id) };
   }
 
   @Patch(':id/approve')
@@ -41,7 +41,7 @@ export class ApprovalsController {
     @Body() dto: RespondFacultyRequestDto,
     @Req() req: any,
   ) {
-    return { data: await this.approvals.approve(id, dto, req.user.userId) };
+    return { data: await this.approvals.approve(id, dto, req.user.id) };
   }
 
   @Patch(':id/reject')
@@ -50,11 +50,11 @@ export class ApprovalsController {
     @Body() dto: RespondFacultyRequestDto,
     @Req() req: any,
   ) {
-    return { data: await this.approvals.reject(id, dto, req.user.userId) };
+    return { data: await this.approvals.reject(id, dto, req.user.id) };
   }
 
   @Delete(':id')
   async cancel(@Param('id') id: string, @Req() req: any) {
-    return { data: await this.approvals.cancel(id, req.user.userId) };
+    return { data: await this.approvals.cancel(id, req.user.id) };
   }
 }
