@@ -59,6 +59,14 @@ export interface RoomContext {
   equipmentTags?: string[];
 }
 
+export interface ApprovedFacultyRequestContext {
+  facultyId: string;
+  subjectId: string;
+  termId: string;
+  requestId: string;
+}
+
+
 export interface TimeSlotContext {
   dayOfWeek: string;
   startTime: string; // 'HH:MM' or 'HH:MM:SS'
@@ -157,6 +165,7 @@ export interface RuleContext {
   facultyCommitments: FacultyCommitmentContext[];
   minorBlocks: MinorBlockContext[];
   subjectRestrictions: SubjectRestrictionContext[];
+  approvedFacultyRequests: ApprovedFacultyRequestContext[];
   config: SchedulingConfig;
   excludeScheduleId?: string;
   

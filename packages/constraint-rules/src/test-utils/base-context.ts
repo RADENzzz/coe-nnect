@@ -9,6 +9,7 @@ import type {
   MinorBlockContext,
   FacultyCommitmentContext,
   SubjectRestrictionContext,
+  ApprovedFacultyRequestContext,
   SchedulingConfig,
 } from '../types/rule-context.type';
 
@@ -81,6 +82,7 @@ export interface BaseContextOverrides {
   facultyCommitments?: FacultyCommitmentContext[];
   minorBlocks?: MinorBlockContext[];
   subjectRestrictions?: SubjectRestrictionContext[]; 
+  approvedFacultyRequests?: ApprovedFacultyRequestContext[];
   config?: Partial<SchedulingConfig>;
   excludeScheduleId?: string;
 }
@@ -101,11 +103,12 @@ export function baseContext(overrides: BaseContextOverrides = {}): RuleContext {
     faculty,
     room,
     timeSlot: { ...defaultTimeSlot, ...(overrides.timeSlot ?? {}) },
-    loadType: overrides.loadType ?? 'lecture',              // ← NEW
+    loadType: overrides.loadType ?? 'lecture',            
     existingSchedule: overrides.existingSchedule ?? [],
     facultyCommitments: overrides.facultyCommitments ?? [],
     minorBlocks: overrides.minorBlocks ?? [],
     subjectRestrictions: overrides.subjectRestrictions ?? [],
+    approvedFacultyRequests: overrides.approvedFacultyRequests ?? [],
     config: { ...defaultConfig, ...(overrides.config ?? {}) },
     excludeScheduleId: overrides.excludeScheduleId,
   };

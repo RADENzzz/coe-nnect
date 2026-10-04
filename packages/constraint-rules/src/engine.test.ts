@@ -20,6 +20,7 @@ const ctx = {
   facultyCommitments: [],
   minorBlocks: [],
   subjectRestrictions: [],
+  approvedFacultyRequests: [],
   config: {
     operatingHoursStart: '07:00', operatingHoursEnd: '19:00',
     maxConsecutiveHours: 3, minBreakMinutes: 30,
