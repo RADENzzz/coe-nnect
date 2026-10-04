@@ -6,11 +6,14 @@ import {
   fetchSchedules,
   fetchActiveTerm,
   updateSchedule,
+  validatePlot,
   type RawSchedule,
+  type ValidateResult,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchRooms } from '../../api/rooms.api';
+import { fetchSections } from '../../api/sections.api';
 import { useAuthStore } from '../../store/auth.store';
 import { timeToMinutes, minutesToTime } from './utils/time.util';
 import LoadingState from '../../components/feedback/LoadingState';
@@ -19,7 +22,6 @@ import EmptyState from '../../components/feedback/EmptyState';
 import Icon from '../../components/ui/Icon';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
-import { validatePlot, type ValidateResult } from '../../api/schedule.api';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -56,7 +58,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     facultyId: raw.facultyId ?? '',
     facultyName: raw.faculty
       ? `${raw.faculty.firstName} ${raw.faculty.lastName}`
-      : '—',
+      : 'VL',   // ← Various Lecturers
     roomId: raw.roomId ?? '',
     roomNumber: raw.room?.roomNumber ?? '—',
     day: DAY_MAP[day] ?? 'MON',
@@ -70,11 +72,15 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   };
 }
 
+type ViewMode = 'master' | 'room' | 'faculty' | 'section';
+
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('master');
+  const [viewTargetId, setViewTargetId] = useState('');
 
   // ── Fetch active term ──
   const {
@@ -99,31 +105,49 @@ export default function TimetablePage() {
   });
 
   // ── Fetch dropdown data ──
-const { data: subjects = [] } = useQuery({
-  queryKey: ['subjects'],
-  queryFn: () => fetchSubjects(false),
-  enabled: !!user,
-  staleTime: 5 * 60 * 1000,
-});
+  const { data: subjects = [] } = useQuery({
+    queryKey: ['subjects'],
+    queryFn: () => fetchSubjects(false),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
 
-const { data: faculty = [] } = useQuery({
-  queryKey: ['faculty'],
-  queryFn: () => fetchFaculty(false),
-  enabled: !!user,
-  staleTime: 5 * 60 * 1000,
-});
+  const { data: faculty = [] } = useQuery({
+    queryKey: ['faculty'],
+    queryFn: () => fetchFaculty(false),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
 
-const { data: rooms = [] } = useQuery({
-  queryKey: ['rooms'],
-  queryFn: () => fetchRooms(false),
-  enabled: !!user,
-  staleTime: 5 * 60 * 1000,
-});
+  const { data: rooms = [] } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: () => fetchRooms(false),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const entries = useMemo(
+  const { data: sections = [] } = useQuery({
+    queryKey: ['sections'],
+    queryFn: () => fetchSections(),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allEntries = useMemo(
     () => (schedules ?? []).map(toEntry),
     [schedules],
   );
+
+  // ── Apply filter ──
+  const entries = useMemo(() => {
+    if (viewMode === 'master' || !viewTargetId) return allEntries;
+    return allEntries.filter((e) => {
+      if (viewMode === 'room') return e.roomId === viewTargetId;
+      if (viewMode === 'faculty') return e.facultyId === viewTargetId;
+      if (viewMode === 'section') return e.sectionCode === viewTargetId;
+      return true;
+    });
+  }, [allEntries, viewMode, viewTargetId]);
 
   // ── Move mutation ──
   const moveMutation = useMutation({
@@ -154,81 +178,77 @@ const { data: rooms = [] } = useQuery({
   });
 
   const handleMove = useCallback(
-  async (entryId: string, newDay: string, newStartTime: string) => {
-    const existing = entries.find((e) => e.id === entryId);
-    if (!existing || !activeTerm) return;
+    async (entryId: string, newDay: string, newStartTime: string) => {
+      const existing = allEntries.find((e) => e.id === entryId);
+      if (!existing || !activeTerm) return;
 
-    const startMin = timeToMinutes(newStartTime);
-    const duration =
-      timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
-    const newEnd = minutesToTime(startMin + duration);
-    const newDayOfWeek = DAY_MAP_REVERSE[newDay as Day] ?? 'Monday';
+      const startMin = timeToMinutes(newStartTime);
+      const duration =
+        timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
+      const newEnd = minutesToTime(startMin + duration);
+      const newDayOfWeek = DAY_MAP_REVERSE[newDay as Day] ?? 'Monday';
 
-    // 1. Ask the engine first
-    let validation: ValidateResult;
-    try {
-      validation = await validatePlot({
-        termId: activeTerm.termId,
-        subjectId: existing.subjectId,
-        facultyId: existing.facultyId || undefined,
-        roomId: existing.roomId || undefined,
-        section: existing.sectionCode || undefined,
+      let validation: ValidateResult;
+      try {
+        validation = await validatePlot({
+          termId: activeTerm.termId,
+          subjectId: existing.subjectId,
+          facultyId: existing.facultyId || undefined,
+          roomId: existing.roomId || undefined,
+          section: existing.sectionCode || undefined,
+          dayOfWeek: newDayOfWeek,
+          startTime: newStartTime,
+          endTime: newEnd,
+          loadType: existing.loadType,
+          excludeId: entryId,
+        });
+      } catch (err) {
+        console.error('[Move] validate failed:', err);
+        alert('Failed to validate the move.');
+        return;
+      }
+
+      if (validation.hardConflicts.length > 0) {
+        const lines = validation.hardConflicts
+          .map((c) => `• ${c.ruleId}: ${c.reason}`)
+          .join('\n');
+        alert(`Move rejected:\n\n${lines}`);
+        return;
+      }
+
+      if (validation.softWarnings.length > 0) {
+        const lines = validation.softWarnings
+          .map((w) => `• ${w.ruleId}: ${w.reason}`)
+          .join('\n');
+        if (!window.confirm(`Move has warnings:\n\n${lines}\n\nProceed?`)) {
+          return;
+        }
+      }
+
+      queryClient.setQueryData<RawSchedule[]>(
+        ['schedules', activeTerm.termId],
+        (old) => {
+          if (!old) return old;
+          return old.map((raw) => {
+            if (raw.scheduleId !== entryId) return raw;
+            return {
+              ...raw,
+              dayOfWeek: newDayOfWeek,
+              startTime: `${newStartTime}:00`,
+              endTime: `${newEnd}:00`,
+            };
+          });
+        },
+      );
+
+      moveMutation.mutate({
+        id: entryId,
         dayOfWeek: newDayOfWeek,
         startTime: newStartTime,
         endTime: newEnd,
-        loadType: existing.loadType,
-        excludeId: entryId,
       });
-    } catch (err) {
-      console.error('[Move] validate failed:', err);
-      alert('Failed to validate the move.');
-      return;
-    }
-
-    // 2. Hard conflict → refuse, don't touch the grid or the server
-    if (validation.hardConflicts.length > 0) {
-      const lines = validation.hardConflicts
-        .map((c) => `• ${c.ruleId}: ${c.reason}`)
-        .join('\n');
-      alert(`Move rejected:\n\n${lines}`);
-      return;
-    }
-
-    // 3. Soft warnings → confirm, then proceed if the user says yes
-    if (validation.softWarnings.length > 0) {
-      const lines = validation.softWarnings
-        .map((w) => `• ${w.ruleId}: ${w.reason}`)
-        .join('\n');
-      if (!window.confirm(`Move has warnings:\n\n${lines}\n\nProceed?`)) {
-        return;
-      }
-    }
-
-    // 4. Optimistic update + PATCH
-    queryClient.setQueryData<RawSchedule[]>(
-      ['schedules', activeTerm.termId],
-      (old) => {
-        if (!old) return old;
-        return old.map((raw) => {
-          if (raw.scheduleId !== entryId) return raw;
-          return {
-            ...raw,
-            dayOfWeek: newDayOfWeek,
-            startTime: `${newStartTime}:00`,
-            endTime: `${newEnd}:00`,
-          };
-        });
-      },
-    );
-
-    moveMutation.mutate({
-      id: entryId,
-      dayOfWeek: newDayOfWeek,
-      startTime: newStartTime,
-      endTime: newEnd,
-    });
-  },
-  [entries, moveMutation, queryClient, activeTerm?.termId],
+    },
+    [allEntries, moveMutation, queryClient, activeTerm?.termId],
   );
 
   const handleClick = useCallback((entry: ScheduleEntry) => {
@@ -236,12 +256,47 @@ const { data: rooms = [] } = useQuery({
   }, []);
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
-    // TODO: open PlotSubjectModal in "edit mode" (Option A1.1 — future)
     console.log('TODO: open edit form for', entry);
   }, []);
 
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
+
+  // ── View target options depend on mode ──
+  const viewOptions = useMemo(() => {
+    if (viewMode === 'room') {
+      return rooms
+        .filter((r) => r.isActive)
+        .map((r) => ({
+          value: r.roomId,
+          label: `Room ${r.roomNumber} (${r.building})`,
+        }));
+    }
+    if (viewMode === 'faculty') {
+      return faculty
+        .filter((f) => f.isActive)
+        .map((f) => ({
+          value: f.facultyId,
+          label: `${f.lastName}, ${f.firstName}`,
+        }));
+    }
+    if (viewMode === 'section') {
+      return sections
+        .filter((s) => s.isActive)
+        .map((s) => ({
+          value: s.sectionCode,
+          label: s.sectionCode,
+        }));
+    }
+    return [];
+  }, [viewMode, rooms, faculty, sections]);
+
+  const viewModeLabel: Record<ViewMode, string> = {
+    master: 'Master View',
+    room: 'By Room',
+    faculty: 'By Faculty',
+    section: 'By Section',
+  };
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto">
@@ -263,6 +318,11 @@ const { data: rooms = [] } = useQuery({
                 calendar_view_month
               </span>
               {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+              {viewMode !== 'master' && (
+                <span className="text-primary font-medium">
+                  ({viewModeLabel[viewMode]})
+                </span>
+              )}
               {moveMutation.isPending && (
                 <span className="ml-2 text-primary font-medium animate-pulse">
                   Saving…
@@ -283,6 +343,66 @@ const { data: rooms = [] } = useQuery({
         </div>
       </div>
 
+      {/* ── View Filters ── */}
+      {activeTerm && (
+        <div className="mb-4 flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
+          <div>
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              View
+            </label>
+            <select
+              value={viewMode}
+              onChange={(e) => {
+                setViewMode(e.target.value as ViewMode);
+                setViewTargetId('');
+              }}
+              className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[150px]"
+            >
+              <option value="master">Master View</option>
+              <option value="room">By Room</option>
+              <option value="faculty">By Faculty</option>
+              <option value="section">By Section</option>
+            </select>
+          </div>
+
+          {viewMode !== 'master' && (
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                {viewMode === 'room'
+                  ? 'Room'
+                  : viewMode === 'faculty'
+                  ? 'Faculty'
+                  : 'Section'}
+              </label>
+              <select
+                value={viewTargetId}
+                onChange={(e) => setViewTargetId(e.target.value)}
+                className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[220px]"
+              >
+                <option value="">— select —</option>
+                {viewOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {viewMode !== 'master' && viewTargetId && (
+            <button
+              onClick={() => {
+                setViewMode('master');
+                setViewTargetId('');
+              }}
+              className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
+      )}
+
       {/* States */}
       {isLoading && <LoadingState message="Loading schedule…" />}
       {error && (
@@ -300,8 +420,16 @@ const { data: rooms = [] } = useQuery({
       )}
       {!isLoading && !error && activeTerm && entries.length === 0 && (
         <EmptyState
-          title="No schedule entries yet"
-          description='Click "Plot Subject" to add your first class.'
+          title={
+            viewMode !== 'master' && viewTargetId
+              ? 'No entries for this view'
+              : 'No schedule entries yet'
+          }
+          description={
+            viewMode !== 'master' && viewTargetId
+              ? 'Try selecting a different room, faculty, or section.'
+              : 'Click "Plot Subject" to add your first class.'
+          }
         />
       )}
       {!isLoading && !error && activeTerm && entries.length > 0 && (
@@ -319,12 +447,12 @@ const { data: rooms = [] } = useQuery({
           onClose={() => setPlotOpen(false)}
           termId={activeTerm.termId}
           subjects={subjects.map((s) => ({
-          subjectId: s.subjectId,
-          subjectCode: s.subjectCode,
-          title: s.title,
-          lectureUnits: s.lectureUnits,
-          labUnits: s.labUnits,
-        }))}
+            subjectId: s.subjectId,
+            subjectCode: s.subjectCode,
+            title: s.title,
+            lectureUnits: s.lectureUnits,
+            labUnits: s.labUnits,
+          }))}
           faculty={faculty.map((f) => ({
             facultyId: f.facultyId,
             firstName: f.firstName,
