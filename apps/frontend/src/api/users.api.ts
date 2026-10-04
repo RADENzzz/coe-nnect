@@ -46,3 +46,19 @@ export async function toggleUserActive(id: string): Promise<UserRecord> {
 export async function deleteUser(id: string): Promise<void> {
   await api.delete(`/v1/users/${id}`);
 }
+
+export interface UpdateUserInput {
+  username?: string;
+  role?: UserRole;
+  deptId?: string | null;
+  facultyId?: string | null;
+  isActive?: boolean;
+}
+
+export async function updateUser(
+  id: string,
+  input: UpdateUserInput,
+): Promise<UserRecord> {
+  const { data } = await api.patch(`/v1/users/${id}`, input);
+  return data.data;
+}
