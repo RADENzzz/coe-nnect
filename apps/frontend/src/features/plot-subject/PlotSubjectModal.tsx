@@ -35,6 +35,7 @@ interface FacultyOption {
   facultyId: string;
   firstName: string;
   lastName: string;
+  deptId?: string | null;
 }
 
 interface RoomOption {
@@ -287,6 +288,7 @@ export default function PlotSubjectModal({
                 {faculty.map((f) => (
                   <option key={f.facultyId} value={f.facultyId}>
                     {f.lastName}, {f.firstName}
+                    {f.deptId ? ` (dept ${f.deptId})` : ''}
                   </option>
                 ))}
               </select>
