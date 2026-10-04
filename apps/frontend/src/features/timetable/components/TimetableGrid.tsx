@@ -1,6 +1,8 @@
 import { useMemo, useState, useCallback } from 'react';
 import { DragDropProvider } from '@dnd-kit/react';
 import type { ScheduleEntry, DropCellData, Day } from '../types';
+import { computeLanes } from '../utils/lane-layout.util';
+
 import {
   DAYS,
   generateTimeSlots,
@@ -65,6 +67,26 @@ export default function TimetableGrid({
   }, []);
 
   const slotsPerDay = allCells.length / DAYS.length;
+
+  // ── Lane assignments for overlapping blocks ──
+  const laneInfo = useMemo(() => computeLanes(entries), [entries]);
+
+  // ── Overlap counts (for the +N badge) ──
+  const overlapCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const groups = new Map<string, ScheduleEntry[]>();
+    for (const e of entries) {
+      const key = `${e.day}-${e.startTime}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(e);
+    }
+    for (const group of groups.values()) {
+      for (const e of group) {
+        counts.set(e.id, group.length);
+      }
+    }
+    return counts;
+  }, [entries]);
 
   // ── Compute valid drop cells for a dragged entry ──
   const computeValidCells = useCallback(
@@ -200,7 +222,6 @@ export default function TimetableGrid({
                   const slotIndex = idx % slotsPerDay;
                   const x = dayIndex * DAY_WIDTH_PX;
                   const y = slotIndex * CELL_HEIGHT_PX;
-                  const isDragging = draggingId !== null;
                   const isValid = validCells.has(cell.cellId);
 
                   return (
@@ -221,11 +242,19 @@ export default function TimetableGrid({
                   const dayIndex = DAYS.indexOf(entry.day);
                   if (dayIndex === -1) return null;
 
+                  const info = laneInfo.get(entry.id);
+                  const laneCount = info?.laneCount ?? 1;
+                  const lane = info?.lane ?? 0;
+                  const overlapCount = overlapCounts.get(entry.id) ?? 1;
+
                   return (
                     <ClassBlock
                       key={entry.id}
                       entry={entry}
                       dayIndex={dayIndex}
+                      lane={lane}
+                      laneCount={laneCount}
+                      overlapCount={overlapCount}
                       onClick={onEntryClick}
                       isDragging={draggingId === entry.id}
                     />

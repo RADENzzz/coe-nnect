@@ -12,11 +12,22 @@ import {
 interface Props {
   entry: ScheduleEntry;
   dayIndex: number;
+  lane?: number;
+  laneCount?: number;
+  overlapCount?: number;
   onClick?: (entry: ScheduleEntry) => void;
   isDragging?: boolean;
 }
 
-function ClassBlockBase({ entry, dayIndex, onClick, isDragging }: Props) {
+function ClassBlockBase({
+  entry,
+  dayIndex,
+  lane = 0,
+  laneCount = 1,
+  overlapCount = 1,
+  onClick,
+  isDragging,
+}: Props) {
   const { ref, isDragging: isDraggingInternal } = useDraggable({
     id: entry.id,
     data: { entry },
@@ -27,14 +38,19 @@ function ClassBlockBase({ entry, dayIndex, onClick, isDragging }: Props) {
     timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
   const height = (durationMinutes / 30) * CELL_HEIGHT_PX;
 
-  const left = dayIndex * DAY_WIDTH_PX + 4;
-  const width = DAY_WIDTH_PX - 8;
+  // ── Lane math ──
+  const dayColumnWidth = DAY_WIDTH_PX;
+  const blockWidth = dayColumnWidth / laneCount;
+  const left = dayIndex * dayColumnWidth + lane * blockWidth + 2;
+  const width = blockWidth - 4;
 
   const dragging = isDragging || isDraggingInternal;
   const isLab = entry.loadType === 'laboratory';
 
   // Show the compact view when the block is only ~1 slot tall
   const isCompact = durationMinutes <= 30;
+  // Hide secondary info when the block is very narrow (3+ lanes)
+  const isNarrow = laneCount >= 3;
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -64,25 +80,32 @@ function ClassBlockBase({ entry, dayIndex, onClick, isDragging }: Props) {
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
+      {/* Overlap badge — shows when other entries share this exact slot */}
+      {overlapCount > 1 && (
+        <span className="absolute top-0.5 right-1 bg-black/70 text-white text-[9px] font-bold rounded px-1 py-px leading-none pointer-events-none">
+          +{overlapCount - 1}
+        </span>
+      )}
+
       {/* Line 1: subject code + section */}
-      <div className="font-bold truncate">
+      <div className="font-bold truncate pr-4">
         {entry.subjectCode}
-        {entry.sectionCode && !isCompact && (
+        {entry.sectionCode && !isCompact && !isNarrow && (
           <span className="font-normal opacity-90 ml-1">
             · {entry.sectionCode}
           </span>
         )}
       </div>
 
-      {/* Line 2: faculty — hidden when compact */}
-      {!isCompact && (
+      {/* Line 2: faculty — hidden when compact or narrow */}
+      {!isCompact && !isNarrow && (
         <div className="truncate opacity-90 text-[9px]">
           {entry.facultyName}
         </div>
       )}
 
-      {/* Line 3: time — hidden when very short */}
-      {!isCompact && durationMinutes >= 60 && (
+      {/* Line 3: time — only for taller blocks that aren't narrow */}
+      {!isCompact && !isNarrow && durationMinutes >= 60 && (
         <div className="truncate opacity-80 text-[9px]">
           {formatTime(entry.startTime)}–{formatTime(entry.endTime)}
         </div>
