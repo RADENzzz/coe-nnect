@@ -29,7 +29,7 @@ backend's `ConstraintsService` at `apps/backend/src/modules/constraints/`.
 | 9 | Visiting Lecturer cannot exceed maximum unit cap | F-6 | Visiting Lecturer Cap | ✅ | Cap default 24 units, tunable via `scheduling_setting` |
 | 10 | Plot must fall within operating hours | H-8 | Operating Hours | ✅ | Implemented as inline guard in `scheduling.service.ts` |
 | 11 | External minor subject schedules must block conflicting plots | H-12 | Minor Subject Blocks Plot | ✅ | Reads `minor_subject_schedule` |
-| 12 | Cross-department faculty assignment requires approved request | — | — | ❌ | **Needs `faculty_request` table + approval endpoints.** See "Known gaps" below. |
+| 12 | Cross-department faculty assignment requires approved request | F-8 | Cross-Department Request | ✅ | Reads `faculty_request` table; approval workflow in `apps/backend/src/modules/approvals/` |
 
 ### Supporting Required-tier rules
 

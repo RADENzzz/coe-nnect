@@ -41,6 +41,7 @@ export class RuleContextBuilder {
       facultyCommitments,
       minorBlocks,
       subjectRestrictions,
+      approvedFacultyRequests,
       config,
     ] = await Promise.all([
       this.loadSubject(input.subjectId),
@@ -58,6 +59,7 @@ export class RuleContextBuilder {
         : Promise.resolve([]),
       this.loadMinorBlocks(input.termId, input.dayOfWeek),
       this.loadSubjectRestrictions(input.termId),
+      this.loadApprovedFacultyRequests(input.facultyId, input.termId),
       this.loadConfig(),
     ]);
 
@@ -80,6 +82,7 @@ export class RuleContextBuilder {
       facultyCommitments,
       minorBlocks,
       subjectRestrictions,
+      approvedFacultyRequests,
       config,
       excludeScheduleId: input.excludeScheduleId,
     };
@@ -386,5 +389,27 @@ export class RuleContextBuilder {
       sectionCode,
       studentCount: data?.student_count ?? undefined,
     };
+  }
+
+    private async loadApprovedFacultyRequests(
+    facultyId: string | undefined,
+    termId: string,
+  ): Promise<
+    import('@coe-nnect/constraint-rules').ApprovedFacultyRequestContext[]
+  > {
+    if (!facultyId) return [];
+    const { data } = await this.db
+      .from('faculty_request')
+      .select('request_id, faculty_id, subject_id, term_id')
+      .eq('status', 'approved')
+      .eq('faculty_id', facultyId)
+      .eq('term_id', termId);
+
+    return (data ?? []).map((row) => ({
+      requestId: String(row.request_id),
+      facultyId: String(row.faculty_id),
+      subjectId: String(row.subject_id),
+      termId: String(row.term_id),
+    }));
   }
 }
