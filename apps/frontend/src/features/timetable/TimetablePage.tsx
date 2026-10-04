@@ -22,6 +22,7 @@ import EmptyState from '../../components/feedback/EmptyState';
 import Icon from '../../components/ui/Icon';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
+import { colorForSubject } from './utils/color.util';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -58,9 +59,10 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     facultyId: raw.facultyId ?? '',
     facultyName: raw.faculty
       ? `${raw.faculty.firstName} ${raw.faculty.lastName}`
-      : 'VL',   // ← Various Lecturers
+      : 'VL',
     roomId: raw.roomId ?? '',
     roomNumber: raw.room?.roomNumber ?? '—',
+    building: raw.room?.building ?? '',
     day: DAY_MAP[day] ?? 'MON',
     startTime: start.slice(0, 5),
     endTime: end.slice(0, 5),
@@ -69,6 +71,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     loadType: (raw.loadType ?? 'lecture') as LoadType,
     deptId: '',
     deptColor: '#800000',
+    color: colorForSubject(raw.subjectId),
   };
 }
 

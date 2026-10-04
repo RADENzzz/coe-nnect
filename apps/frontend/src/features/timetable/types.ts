@@ -12,12 +12,14 @@ export interface ScheduleEntry {
   facultyName: string;
   roomId: string;
   roomNumber: string;
+  building: string;
   day: Day;
   startTime: string;
   endTime: string;
   loadType: LoadType;
   deptId: string;
   deptColor: string;
+  color: string;
   hasConflict?: boolean;
   hasWarning?: boolean;
   status?: 'draft' | 'review' | 'finalized' | 'published';   // ← NEW
