@@ -8,6 +8,9 @@ import {
   updateSchedule,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { fetchSubjects } from '../../api/subjects.api';
+import { fetchFaculty } from '../../api/faculty.api';
+import { fetchRooms } from '../../api/rooms.api';
 import { useAuthStore } from '../../store/auth.store';
 import { timeToMinutes, minutesToTime } from './utils/time.util';
 import LoadingState from '../../components/feedback/LoadingState';
@@ -58,7 +61,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     day: DAY_MAP[day] ?? 'MON',
     startTime: start.slice(0, 5),
     endTime: end.slice(0, 5),
-    status: raw.status,          // ← NEW
+    status: raw.status,
     remarks: raw.remarks,
     loadType: (raw.loadType ?? 'lecture') as LoadType,
     deptId: '',
@@ -92,6 +95,28 @@ export default function TimetablePage() {
     queryKey: ['schedules', activeTerm?.termId],
     queryFn: () => fetchSchedules(activeTerm?.termId),
     enabled: !!user && !!activeTerm,
+  });
+
+  // ── Fetch dropdown data ──
+  const { data: subjects = [] } = useQuery({
+    queryKey: ['subjects'],
+    queryFn: fetchSubjects,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: faculty = [] } = useQuery({
+    queryKey: ['faculty'],
+    queryFn: fetchFaculty,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: rooms = [] } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: fetchRooms,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
 
   const entries = useMemo(
@@ -172,25 +197,6 @@ export default function TimetablePage() {
     console.log('TODO: open edit form for', entry);
   }, []);
 
-  // ── Hardcoded dropdown data (replace with API later) ──
-  const subjects = [
-    { subjectId: '1', subjectCode: 'CPE 101', title: 'Programming Logic & Design' },
-    { subjectId: '2', subjectCode: 'CPE 102', title: 'Computer Programming 2' },
-    { subjectId: '3', subjectCode: 'MATH 101', title: 'Engineering Calculus' },
-    { subjectId: '4', subjectCode: 'PHYS 101', title: 'Physics for Engineers' },
-  ];
-  const faculty = [
-    { facultyId: '1', firstName: 'Juan', lastName: 'Dela Cruz' },
-    { facultyId: '2', firstName: 'Maria', lastName: 'Santos' },
-    { facultyId: '3', firstName: 'Pedro', lastName: 'Reyes' },
-  ];
-  const rooms = [
-    { roomId: '1', roomNumber: '205', roomType: 'laboratory' },
-    { roomId: '2', roomNumber: '206', roomType: 'lecture_room' },
-    { roomId: '3', roomNumber: '203', roomType: 'computer_lab' },
-    { roomId: '4', roomNumber: '204', roomType: 'computer_lab' },
-  ];
-
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
 
@@ -269,13 +275,26 @@ export default function TimetablePage() {
           open={plotOpen}
           onClose={() => setPlotOpen(false)}
           termId={activeTerm.termId}
-          subjects={subjects}
-          faculty={faculty}
-          rooms={rooms}
+          subjects={subjects.map((s) => ({
+            subjectId: s.subjectId,
+            subjectCode: s.subjectCode,
+            title: s.title,
+          }))}
+          faculty={faculty.map((f) => ({
+            facultyId: f.facultyId,
+            firstName: f.firstName,
+            lastName: f.lastName,
+            deptId: f.deptId,
+          }))}
+          rooms={rooms.map((r) => ({
+            roomId: r.roomId,
+            roomNumber: r.roomNumber,
+            roomType: r.roomType,
+          }))}
         />
       )}
 
-      {/* Detail Drawer ← ADD THIS */}
+      {/* Detail Drawer */}
       {activeTerm && (
         <ScheduleDetailDrawer
           entry={selectedEntry}

@@ -8,6 +8,9 @@ import { SchedulingModule } from './modules/scheduling/scheduling.module';
 import { ConstraintsModule } from './modules/constraints/constraints.module';
 import { SectionsModule } from './modules/sections/sections.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
+import { FacultyModule } from './modules/faculty/faculty.module';
+import { SubjectsModule } from './modules/subjects/subjects.module';
+import { RoomsModule } from './modules/rooms/rooms.module';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
     ConstraintsModule,
     SectionsModule,
     ApprovalsModule,
+    FacultyModule,
+    SubjectsModule,
+    RoomsModule,
   ],
 })
 export class AppModule {}
