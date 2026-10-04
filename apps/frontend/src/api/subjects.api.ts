@@ -23,9 +23,9 @@ export interface CreateSubjectInput {
 }
 
 export async function fetchSubjects(
-  includeInactive = false,
+  includeInactive: boolean = false,
 ): Promise<SubjectRecord[]> {
-  const params = includeInactive ? { includeInactive: 'true' } : {};
+  const params = includeInactive === true ? { includeInactive: 'true' } : {};
   const { data } = await api.get('/v1/subjects', { params });
   return data.data;
 }

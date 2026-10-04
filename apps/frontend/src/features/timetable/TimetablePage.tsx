@@ -99,26 +99,26 @@ export default function TimetablePage() {
   });
 
   // ── Fetch dropdown data ──
-  const { data: subjects = [] } = useQuery({
-    queryKey: ['subjects'],
-    queryFn: fetchSubjects,
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
+const { data: subjects = [] } = useQuery({
+  queryKey: ['subjects'],
+  queryFn: () => fetchSubjects(false),
+  enabled: !!user,
+  staleTime: 5 * 60 * 1000,
+});
 
-  const { data: faculty = [] } = useQuery({
-    queryKey: ['faculty'],
-    queryFn: fetchFaculty,
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
+const { data: faculty = [] } = useQuery({
+  queryKey: ['faculty'],
+  queryFn: () => fetchFaculty(false),
+  enabled: !!user,
+  staleTime: 5 * 60 * 1000,
+});
 
-  const { data: rooms = [] } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: fetchRooms,
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
+const { data: rooms = [] } = useQuery({
+  queryKey: ['rooms'],
+  queryFn: () => fetchRooms(false),
+  enabled: !!user,
+  staleTime: 5 * 60 * 1000,
+});
 
   const entries = useMemo(
     () => (schedules ?? []).map(toEntry),

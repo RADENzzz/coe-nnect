@@ -35,9 +35,9 @@ export interface CreateFacultyInput {
 }
 
 export async function fetchFaculty(
-  includeInactive = false,
+  includeInactive: boolean = false,
 ): Promise<FacultyRecord[]> {
-  const params = includeInactive ? { includeInactive: 'true' } : {};
+  const params = includeInactive === true ? { includeInactive: 'true' } : {};
   const { data } = await api.get('/v1/faculty', { params });
   return data.data;
 }
