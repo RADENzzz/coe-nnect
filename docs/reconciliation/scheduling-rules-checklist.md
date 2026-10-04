@@ -4,17 +4,13 @@
 **Last updated:** [today's date]
 **Engine version:** 25 rules (`@coe-nnect/constraint-rules` v0.1.0)
 
-This document maps every flag from the PM's `SCHEDULING-RULES.docx` taxonomy
-to its implementation in the constraint engine. Rules marked ✅ are live in
-production; rules marked ⏳ are implemented but inactive pending schema work;
-rules marked ❌ are not implemented.
 
 The engine lives at `packages/constraint-rules/` and is consumed by the
 backend's `ConstraintsService` at `apps/backend/src/modules/constraints/`.
 
 ---
 
-## Required Flags (12 total — 11 done)
+## Required Flags (12 total — 12 done)
 
 | # | Flag | Rule ID | Rule Name | Status | Notes |
 |---|------|---------|-----------|--------|-------|
