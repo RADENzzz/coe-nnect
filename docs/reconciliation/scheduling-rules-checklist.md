@@ -124,10 +124,6 @@ Room and Overlap; H-6 is both Time and Lab; F-3 is both Faculty and Workload).
 
 ## Changelog
 
-- **Initial release (v0.1.0):** H-1 through H-13, F-3, F-5, F-6, F-7, R-1,
-  R-3, R-4, S-2, S-5, S-6, S-7, S-8, S-9, S-10, S-11
-- **Guards in backend:** H-7, H-8 (inline, not engine rules)
-
 ---
 
 ## How to run
