@@ -12,6 +12,7 @@ import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
 import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
 import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import SectionsPage from './features/sections/SectionsPage';
 
 function App() {
   return (
@@ -50,6 +51,7 @@ function App() {
           <Route path="dashboard" element={<DeanDashboardPage />} />
           <Route path="departments" element={<DeanDepartmentsPage />} />
           <Route path="approvals" element={<DeanApprovalsPage />} />
+          
         </Route>
       </Route>
 
@@ -66,6 +68,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="timetable" element={<TimetablePage />} />
+          <Route path="sections" element={<SectionsPage />} />
         </Route>
       </Route>
 
