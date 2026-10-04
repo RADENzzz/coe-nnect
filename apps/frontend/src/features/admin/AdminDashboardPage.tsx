@@ -1,64 +1,36 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase'; // Adjust path to where your supabase.ts is placed
-
-interface StatsState {
-  departments: number | string;
-  users: number | string;
-  activeAccounts: number | string;
-}
+import { useQuery } from '@tanstack/react-query';
+import { fetchDepartments } from '../../api/departments.api'; // Ensure path points to your api folder
+import { fetchUsers } from '../../api/users.api';             // Ensure path points to your api folder
+import { useAuthStore } from '../../store/auth.store';
 
 export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<StatsState>({
-    departments: '—',
-    users: '—',
-    activeAccounts: '—',
+  const user = useAuthStore((s) => s.user);
+
+  // Fetch departments using your API client
+  const { data: departments = [], isLoading: loadingDepts } = useQuery({
+    queryKey: ['departments'],
+    queryFn: fetchDepartments,
+    enabled: !!user,
   });
-  const [loading, setLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    async function fetchDashboardStats() {
-      try {
-        setLoading(true);
+  // Fetch users using your API client
+  const { data: users = [], isLoading: loadingUsers } = useQuery({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
+    enabled: !!user,
+  });
 
-        // 1. Fetch Total Departments Count
-        const { count: deptCount, error: deptError } = await supabase
-          .from('departments') // Adjust table name if different (e.g., 'department')
-          .select('*', { count: 'exact', head: true });
+  const isLoading = loadingDepts || loadingUsers;
 
-        // 2. Fetch Total Users Count
-        const { count: userCount, error: userError } = await supabase
-          .from('users') // Adjust table name if using 'profiles' or 'accounts'
-          .select('*', { count: 'exact', head: true });
-
-        // 3. Fetch Active Accounts Count
-        const { count: activeCount, error: activeError } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'active'); // Adjust column name/value (e.g., is_active: true)
-
-        if (deptError) console.error('Error fetching departments:', deptError);
-        if (userError) console.error('Error fetching users:', userError);
-        if (activeError) console.error('Error fetching active users:', activeError);
-
-        setStats({
-          departments: deptCount ?? 0,
-          users: userCount ?? 0,
-          activeAccounts: activeCount ?? 0,
-        });
-      } catch (err) {
-        console.error('Failed to load dashboard metrics:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchDashboardStats();
-  }, []);
+  // Calculate live stats directly from state
+  const totalDepartments = departments.length;
+  const totalUsers = users.length;
+  const activeAccounts = users.filter((u) => u.isActive).length;
 
   const cards = [
-    { label: 'Total Departments', icon: 'domain', value: stats.departments },
-    { label: 'Total Users', icon: 'manage_accounts', value: stats.users },
-    { label: 'Active Accounts', icon: 'verified_user', value: stats.activeAccounts },
+    { label: 'Total Departments', icon: 'domain', value: totalDepartments },
+    { label: 'Total Users', icon: 'manage_accounts', value: totalUsers },
+    { label: 'Active Accounts', icon: 'verified_user', value: activeAccounts },
   ];
 
   return (
@@ -80,7 +52,7 @@ export default function AdminDashboardPage() {
             </div>
             <div>
               <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                {loading ? '—' : card.value}
+                {isLoading ? '—' : card.value}
               </p>
               <p className="text-sm text-slate-500 mt-0.5">{card.label}</p>
             </div>
