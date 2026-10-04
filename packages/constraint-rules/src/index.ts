@@ -46,13 +46,17 @@ export { sectionOverlapRule } from './rules/overlap/section-overlap.rule';
 // Rules — time
 export { consecutiveBlocksRule } from './rules/time/consecutive-blocks.rule';
 export { blockDurationSanityRule } from './rules/time/block-duration-sanity.rule';
+export { minorScheduleBlockRule } from './rules/time/minor-schedule-block.rule';
+export { dayPairingRule } from './rules/time/day-pairing.rule';
+export { lunchBreakRule } from './rules/time/lunch-break.rule';
+export { daytimePriorityRule } from './rules/time/daytime-priority.rule';
 
 // Rules — faculty
 export { facultyQualificationRule } from './rules/faculty/faculty-qualification.rule';
 export { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
 export { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
 
-// Rules — lab (Phase B1)
+// Rules — lab
 export { noBackToBackLabsRule } from './rules/lab/no-back-to-back-labs.rule';
 export { unsplittable1UnitLabRule } from './rules/lab/unsplittable-1unit-lab.rule';
 export { splittable2UnitLabRule } from './rules/lab/splittable-2unit-lab.rule';
@@ -71,11 +75,16 @@ import { facultyQualificationRule } from './rules/faculty/faculty-qualification.
 import { noBackToBackLabsRule } from './rules/lab/no-back-to-back-labs.rule';
 import { unsplittable1UnitLabRule } from './rules/lab/unsplittable-1unit-lab.rule';
 import { splittable2UnitLabRule } from './rules/lab/splittable-2unit-lab.rule';
-import type { ConstraintRule } from './types/rule.interface';
 import { blockDurationSanityRule } from './rules/time/block-duration-sanity.rule';
 import { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
 import { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
 import { loadTypeMatchRule } from './rules/subject/load-type-match.rule';
+import { dayPairingRule } from './rules/time/day-pairing.rule';
+import { minorScheduleBlockRule } from './rules/time/minor-schedule-block.rule';
+import { lunchBreakRule } from './rules/time/lunch-break.rule';
+import { daytimePriorityRule } from './rules/time/daytime-priority.rule';
+import type { ConstraintRule } from './types/rule.interface';
+
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
@@ -89,7 +98,11 @@ export const allRules: ConstraintRule[] = [
   unsplittable1UnitLabRule,
   splittable2UnitLabRule,
   blockDurationSanityRule,
-  workloadOverloadRule,       
-  visitingLecturerCapRule, 
+  workloadOverloadRule,
+  visitingLecturerCapRule,
   loadTypeMatchRule,
+  minorScheduleBlockRule,
+  dayPairingRule,
+  lunchBreakRule,
+  daytimePriorityRule,
 ];

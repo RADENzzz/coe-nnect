@@ -3,10 +3,6 @@ import type { RuleContext } from '../../types/rule-context.type';
 import type { RuleResult } from '../../types/rule-result.type';
 import { toMinutes } from '../../utils/time.util';
 
-// TEMP DEBUG — remove after diagnosing H-11
-declare const console: {
-  log: (...args: unknown[]) => void;
-};
 
 /**
  * H-11: Every plot must be a "legitimate" duration for its load type.
@@ -33,17 +29,6 @@ export const blockDurationSanityRule: ConstraintRule = {
 
   validate(ctx: RuleContext): RuleResult {
     const { subject, timeSlot, config, loadType } = ctx;
-
-    // TEMP DEBUG — remove after diagnosing H-11
-    console.log('[H-11] invoked', {
-      loadType,
-      lectureUnits: subject.lectureUnits,
-      labUnits: subject.labUnits,
-      lectureBlockMinutes: config.lectureBlockMinutes,
-      start: timeSlot.startTime,
-      end: timeSlot.endTime,
-      duration: toMinutes(timeSlot.endTime) - toMinutes(timeSlot.startTime),
-    });
 
     const start = toMinutes(timeSlot.startTime);
     const end = toMinutes(timeSlot.endTime);
