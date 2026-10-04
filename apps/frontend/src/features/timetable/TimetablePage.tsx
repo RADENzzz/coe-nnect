@@ -19,6 +19,7 @@ import EmptyState from '../../components/feedback/EmptyState';
 import Icon from '../../components/ui/Icon';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
+import { validatePlot, type ValidateResult } from '../../api/schedule.api';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -153,39 +154,81 @@ export default function TimetablePage() {
   });
 
   const handleMove = useCallback(
-    (entryId: string, newDay: string, newStartTime: string) => {
-      const existing = entries.find((e) => e.id === entryId);
-      if (!existing) return;
+  async (entryId: string, newDay: string, newStartTime: string) => {
+    const existing = entries.find((e) => e.id === entryId);
+    if (!existing || !activeTerm) return;
 
-      const startMin = timeToMinutes(newStartTime);
-      const duration =
-        timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
-      const newEnd = minutesToTime(startMin + duration);
+    const startMin = timeToMinutes(newStartTime);
+    const duration =
+      timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
+    const newEnd = minutesToTime(startMin + duration);
+    const newDayOfWeek = DAY_MAP_REVERSE[newDay as Day] ?? 'Monday';
 
-      queryClient.setQueryData<RawSchedule[]>(
-        ['schedules', activeTerm?.termId],
-        (old) => {
-          if (!old) return old;
-          return old.map((raw) => {
-            if (raw.scheduleId !== entryId) return raw;
-            return {
-              ...raw,
-              dayOfWeek: DAY_MAP_REVERSE[newDay as Day] ?? raw.dayOfWeek,
-              startTime: `${newStartTime}:00`,
-              endTime: `${newEnd}:00`,
-            };
-          });
-        },
-      );
-
-      moveMutation.mutate({
-        id: entryId,
-        dayOfWeek: DAY_MAP_REVERSE[newDay as Day] ?? 'Monday',
+    // 1. Ask the engine first
+    let validation: ValidateResult;
+    try {
+      validation = await validatePlot({
+        termId: activeTerm.termId,
+        subjectId: existing.subjectId,
+        facultyId: existing.facultyId || undefined,
+        roomId: existing.roomId || undefined,
+        section: existing.sectionCode || undefined,
+        dayOfWeek: newDayOfWeek,
         startTime: newStartTime,
         endTime: newEnd,
+        loadType: existing.loadType,
+        excludeId: entryId,
       });
-    },
-    [entries, moveMutation, queryClient, activeTerm?.termId],
+    } catch (err) {
+      console.error('[Move] validate failed:', err);
+      alert('Failed to validate the move.');
+      return;
+    }
+
+    // 2. Hard conflict → refuse, don't touch the grid or the server
+    if (validation.hardConflicts.length > 0) {
+      const lines = validation.hardConflicts
+        .map((c) => `• ${c.ruleId}: ${c.reason}`)
+        .join('\n');
+      alert(`Move rejected:\n\n${lines}`);
+      return;
+    }
+
+    // 3. Soft warnings → confirm, then proceed if the user says yes
+    if (validation.softWarnings.length > 0) {
+      const lines = validation.softWarnings
+        .map((w) => `• ${w.ruleId}: ${w.reason}`)
+        .join('\n');
+      if (!window.confirm(`Move has warnings:\n\n${lines}\n\nProceed?`)) {
+        return;
+      }
+    }
+
+    // 4. Optimistic update + PATCH
+    queryClient.setQueryData<RawSchedule[]>(
+      ['schedules', activeTerm.termId],
+      (old) => {
+        if (!old) return old;
+        return old.map((raw) => {
+          if (raw.scheduleId !== entryId) return raw;
+          return {
+            ...raw,
+            dayOfWeek: newDayOfWeek,
+            startTime: `${newStartTime}:00`,
+            endTime: `${newEnd}:00`,
+          };
+        });
+      },
+    );
+
+    moveMutation.mutate({
+      id: entryId,
+      dayOfWeek: newDayOfWeek,
+      startTime: newStartTime,
+      endTime: newEnd,
+    });
+  },
+  [entries, moveMutation, queryClient, activeTerm?.termId],
   );
 
   const handleClick = useCallback((entry: ScheduleEntry) => {
@@ -276,10 +319,12 @@ export default function TimetablePage() {
           onClose={() => setPlotOpen(false)}
           termId={activeTerm.termId}
           subjects={subjects.map((s) => ({
-            subjectId: s.subjectId,
-            subjectCode: s.subjectCode,
-            title: s.title,
-          }))}
+          subjectId: s.subjectId,
+          subjectCode: s.subjectCode,
+          title: s.title,
+          lectureUnits: s.lectureUnits,
+          labUnits: s.labUnits,
+        }))}
           faculty={faculty.map((f) => ({
             facultyId: f.facultyId,
             firstName: f.firstName,

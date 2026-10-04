@@ -29,6 +29,8 @@ interface SubjectOption {
   subjectId: string;
   subjectCode: string;
   title: string;
+  lectureUnits: number;
+  labUnits: number;
 }
 
 interface FacultyOption {
@@ -62,6 +64,7 @@ export default function PlotSubjectModal({
   rooms,
 }: Props) {
   const queryClient = useQueryClient();
+
   const { data: sections = [] } = useQuery({
     queryKey: ['sections'],
     queryFn: fetchSections,
@@ -82,6 +85,11 @@ export default function PlotSubjectModal({
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [touched, setTouched] = useState(false);
 
+  const selectedSubject = subjects.find((s) => s.subjectId === form.subjectId);
+  const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
+  const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
+
+  // Reset form when modal closes
   useEffect(() => {
     if (!open) {
       setForm({
@@ -99,6 +107,18 @@ export default function PlotSubjectModal({
     }
   }, [open]);
 
+  // Auto-correct load type when the subject changes
+  useEffect(() => {
+    if (!selectedSubject) return;
+    if (form.loadType === 'laboratory' && !allowsLaboratory) {
+      setForm((prev) => ({ ...prev, loadType: 'lecture' }));
+    } else if (form.loadType === 'lecture' && !allowsLecture) {
+      setForm((prev) => ({ ...prev, loadType: 'laboratory' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject?.subjectId, allowsLaboratory, allowsLecture]);
+
+  // Debounced live validation
   useEffect(() => {
     if (!open || !form.subjectId || !form.roomId || !form.dayOfWeek) return;
 
@@ -223,18 +243,6 @@ export default function PlotSubjectModal({
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Section
               </label>
-              <input
-                type="text"
-                name="section"
-                value={form.section}
-                onChange={handleChange}
-                placeholder="e.g. 1A"
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              />
-            </div>            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Section
-              </label>
               <select
                 name="section"
                 value={form.section}
@@ -265,9 +273,27 @@ export default function PlotSubjectModal({
                 onChange={handleChange}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
-                <option value="lecture">Lecture</option>
-                <option value="laboratory">Laboratory</option>
+                <option value="lecture" disabled={!allowsLecture}>
+                  Lecture {!allowsLecture ? '(no lecture component)' : ''}
+                </option>
+                <option value="laboratory" disabled={!allowsLaboratory}>
+                  Laboratory {!allowsLaboratory ? '(no lab component)' : ''}
+                </option>
               </select>
+              {selectedSubject && (
+                <p className="text-[10px] text-on-surface-variant mt-1 leading-tight">
+                  {selectedSubject.lectureUnits > 0 &&
+                    `${selectedSubject.lectureUnits}L`}
+                  {selectedSubject.lectureUnits > 0 &&
+                    selectedSubject.labUnits > 0 &&
+                    ' + '}
+                  {selectedSubject.labUnits > 0 &&
+                    `${selectedSubject.labUnits}Lab`}
+                  {selectedSubject.lectureUnits === 0 &&
+                    selectedSubject.labUnits === 0 &&
+                    'This subject has no component units.'}
+                </p>
+              )}
             </div>
           </div>
 

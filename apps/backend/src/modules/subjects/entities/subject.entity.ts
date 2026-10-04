@@ -23,6 +23,15 @@ export class Subject {
   @Column({ name: 'dept_id', type: 'bigint', nullable: true })
   deptId: string | null;
 
-  @Column({ name: 'is_active', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+    @Column({
+    name: 'required_room_type',
+    type: 'enum',
+    enum: ['lecture_room', 'laboratory', 'computer_lab', 'drafting_room', 'other'],
+    enumName: 'room_type',
+    nullable: true,
+  })
+  requiredRoomType: string | null;
 }

@@ -21,7 +21,7 @@ import {
 
 interface Props {
   entries: ScheduleEntry[];
-  onEntryMove?: (entryId: string, newDay: string, newStartTime: string) => void;
+  onEntryMove?: (entryId: string, newDay: string, newStartTime: string) => void | Promise<void>;
   onEntryClick?: (entry: ScheduleEntry) => void;
 }
 
@@ -67,31 +67,34 @@ export default function TimetableGrid({
 
   // ── Compute valid drop cells for a dragged entry ──
   const computeValidCells = useCallback(
-    (entry: ScheduleEntry): Set<string> => {
-      const valid = new Set<string>();
-      const duration = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
-      const operatingEnd = timeToMinutes('19:00');
+  (entry: ScheduleEntry): Set<string> => {
+    const valid = new Set<string>();
+    const duration = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
+    const operatingEnd = timeToMinutes('19:00');
 
-      for (const cell of allCells) {
-        const cellStart = timeToMinutes(cell.startTime);
-        const cellEnd = cellStart + duration;
+    for (const cell of allCells) {
+      const cellStart = timeToMinutes(cell.startTime);
+      const cellEnd = cellStart + duration;
 
-        // Must fit within operating hours
-        if (cellEnd > operatingEnd) continue;
+      // Must fit within operating hours
+      if (cellEnd > operatingEnd) continue;
 
-        // Must not overlap with any other entry on the same day
-        const endTimeStr = minutesToTime(cellEnd);
-        const overlaps = entries.some((e) => {
-          if (e.id === entry.id) return false;
-          if (e.day !== cell.day) return false;
-          return timesOverlap(cell.startTime, endTimeStr, e.startTime, e.endTime);
-        });
+      // Only block exact same-position collisions:
+      // another block in the same day + same start time + same room.
+      const sameCellBlock = entries.some(
+        (e) =>
+          e.id !== entry.id &&
+          e.day === cell.day &&
+          e.startTime === cell.startTime &&
+          e.roomId === entry.roomId,
+      );
+      if (sameCellBlock) continue;
 
-        if (!overlaps) valid.add(cell.cellId);
-      }
-      return valid;
-    },
-    [allCells, entries],
+      valid.add(cell.cellId);
+    }
+    return valid;
+  },
+  [allCells, entries],
   );
 
   // ── Drag handlers ──

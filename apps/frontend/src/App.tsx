@@ -14,6 +14,7 @@ import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import SectionsPage from './features/sections/SectionsPage';
 import ApprovalsPage from './features/approvals/ApprovalsPage';
+import SubjectsPage from './features/subjects/SubjectsPage';
 
 function App() {
   return (
@@ -71,6 +72,7 @@ function App() {
           <Route path="timetable" element={<TimetablePage />} />
           <Route path="sections" element={<SectionsPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
+          <Route path="subjects" element={<SubjectsPage />} />
         </Route>
       </Route>
 
