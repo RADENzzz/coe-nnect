@@ -1,13 +1,10 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { DragDropProvider } from '@dnd-kit/react';
 import type { ScheduleEntry, DropCellData, Day } from '../types';
 import {
   DAYS,
   generateTimeSlots,
-  timesOverlap,
   timeToMinutes,
-  minutesToTime,
-  formatTimeShort,
   SLOT_MINUTES,
 } from '../utils/time.util';
 import {
@@ -15,13 +12,17 @@ import {
   DAY_WIDTH_PX,
   TIME_AXIS_WIDTH_PX,
   getGridHeightPx,
-  minutesToY,
-  durationToHeight,
 } from '../utils/grid-layout.util';
+import { ClassBlock } from './ClassBlock';
+import { DropCell } from './DropCell';
 
 interface Props {
   entries: ScheduleEntry[];
-  onEntryMove?: (entryId: string, newDay: string, newStartTime: string) => void | Promise<void>;
+  onEntryMove?: (
+    entryId: string,
+    newDay: string,
+    newStartTime: string,
+  ) => void | Promise<void>;
   onEntryClick?: (entry: ScheduleEntry) => void;
 }
 
@@ -46,7 +47,7 @@ export default function TimetableGrid({
   const gridHeight = getGridHeightPx();
   const gridWidth = DAYS.length * DAY_WIDTH_PX;
 
-  // ── Compute all drop cells (for the background grid) ──
+  // ── Compute all drop cells (background grid) ──
   const allCells = useMemo<DropCellData[]>(() => {
     const slots = generateTimeSlots();
     const cells: DropCellData[] = [];
@@ -67,40 +68,42 @@ export default function TimetableGrid({
 
   // ── Compute valid drop cells for a dragged entry ──
   const computeValidCells = useCallback(
-  (entry: ScheduleEntry): Set<string> => {
-    const valid = new Set<string>();
-    const duration = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
-    const operatingEnd = timeToMinutes('19:00');
+    (entry: ScheduleEntry): Set<string> => {
+      const valid = new Set<string>();
+      const duration =
+        timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
+      const operatingEnd = timeToMinutes('19:00');
 
-    for (const cell of allCells) {
-      const cellStart = timeToMinutes(cell.startTime);
-      const cellEnd = cellStart + duration;
+      for (const cell of allCells) {
+        const cellStart = timeToMinutes(cell.startTime);
+        const cellEnd = cellStart + duration;
 
-      // Must fit within operating hours
-      if (cellEnd > operatingEnd) continue;
+        // Must fit within operating hours
+        if (cellEnd > operatingEnd) continue;
 
-      // Only block exact same-position collisions:
-      // another block in the same day + same start time + same room.
-      const sameCellBlock = entries.some(
-        (e) =>
-          e.id !== entry.id &&
-          e.day === cell.day &&
-          e.startTime === cell.startTime &&
-          e.roomId === entry.roomId,
-      );
-      if (sameCellBlock) continue;
+        // Only block exact same-position collisions:
+        // another block in the same day + same start time + same room.
+        const sameCellBlock = entries.some(
+          (e) =>
+            e.id !== entry.id &&
+            e.day === cell.day &&
+            e.startTime === cell.startTime &&
+            e.roomId === entry.roomId,
+        );
+        if (sameCellBlock) continue;
 
-      valid.add(cell.cellId);
-    }
-    return valid;
-  },
-  [allCells, entries],
+        valid.add(cell.cellId);
+      }
+      return valid;
+    },
+    [allCells, entries],
   );
 
-  // ── Drag handlers ──
   const handleDragStart = useCallback(
     (event: any) => {
-      const entry = event.operation?.source?.data?.entry as ScheduleEntry | undefined;
+      const entry = event.operation?.source?.data?.entry as
+        | ScheduleEntry
+        | undefined;
       if (!entry) return;
       setDraggingId(entry.id);
       setValidCells(computeValidCells(entry));
@@ -137,12 +140,8 @@ export default function TimetableGrid({
   );
 
   return (
-    <DragDropProvider
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
+    <DragDropProvider onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden">
-        {/* ──────── Scrollable grid wrapper ──────── */}
         <div className="overflow-auto max-h-[calc(100vh-220px)]">
           <div
             className="relative"
@@ -151,7 +150,7 @@ export default function TimetableGrid({
               minWidth: '100%',
             }}
           >
-            {/* ──────── Sticky day header row ──────── */}
+            {/* Sticky day header row */}
             <div
               className="flex sticky top-0 z-30 bg-surface-container-low"
               style={{ paddingLeft: TIME_AXIS_WIDTH_PX }}
@@ -167,7 +166,7 @@ export default function TimetableGrid({
               ))}
             </div>
 
-            {/* ──────── Main grid body ──────── */}
+            {/* Main grid body */}
             <div className="flex" style={{ height: gridHeight }}>
               {/* Sticky time axis */}
               <div
@@ -185,7 +184,7 @@ export default function TimetableGrid({
                     }}
                     className="flex items-start justify-end pr-2 text-[11px] text-on-surface-variant"
                   >
-                    {i % 2 === 0 ? formatTimeShort(time) : ''}
+                    {i % 2 === 0 ? time : ''}
                   </div>
                 ))}
               </div>
@@ -195,7 +194,7 @@ export default function TimetableGrid({
                 className="relative"
                 style={{ width: gridWidth, height: gridHeight }}
               >
-                {/* ── Background drop cells ── */}
+                {/* Background drop cells */}
                 {allCells.map((cell, idx) => {
                   const dayIndex = DAYS.indexOf(cell.day);
                   const slotIndex = idx % slotsPerDay;
@@ -213,31 +212,20 @@ export default function TimetableGrid({
                       width={DAY_WIDTH_PX}
                       height={CELL_HEIGHT_PX}
                       isValidTarget={isValid}
-                      isDragging={isDragging}
-                      isEvenSlot={slotIndex % 2 === 0}
                     />
                   );
                 })}
 
-                {/* ── Class blocks ── */}
+                {/* Class blocks */}
                 {entries.map((entry) => {
                   const dayIndex = DAYS.indexOf(entry.day);
                   if (dayIndex === -1) return null;
-
-                  const top = minutesToY(timeToMinutes(entry.startTime));
-                  const height = durationToHeight(
-                    timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime),
-                  );
-                  const left = dayIndex * DAY_WIDTH_PX;
 
                   return (
                     <ClassBlock
                       key={entry.id}
                       entry={entry}
-                      top={top}
-                      left={left}
-                      width={DAY_WIDTH_PX}
-                      height={height}
+                      dayIndex={dayIndex}
                       onClick={onEntryClick}
                       isDragging={draggingId === entry.id}
                     />
@@ -251,130 +239,3 @@ export default function TimetableGrid({
     </DragDropProvider>
   );
 }
-
-/* ──────────────────────────────────────────────
-   DropCell — background target for drag-drop
-   ────────────────────────────────────────────── */
-import { memo } from 'react';
-import { useDroppable } from '@dnd-kit/react';
-import clsx from 'clsx';
-
-interface DropCellProps {
-  cell: DropCellData;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  isValidTarget: boolean;
-  isDragging: boolean;
-  isEvenSlot: boolean;
-}
-
-const DropCell = memo(function DropCell({
-  cell,
-  x,
-  y,
-  width,
-  height,
-  isValidTarget,
-  isDragging,
-  isEvenSlot,
-}: DropCellProps) {
-  const { ref, isDropTarget } = useDroppable({
-    id: cell.cellId,
-    data: cell,
-  });
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        position: 'absolute',
-        left: x,
-        top: y,
-        width,
-        height,
-      }}
-      className={clsx(
-        'border-b border-r border-surface-variant/40 transition-colors duration-75',
-        isEvenSlot && 'bg-surface-container/20',
-        !isDragging && 'hover:bg-surface-container-high/40',
-        isDragging && isValidTarget && 'bg-green-100/60',
-        isDragging && !isValidTarget && 'bg-red-50/40',
-        isDropTarget && isValidTarget && 'bg-green-300/70 ring-2 ring-green-500 ring-inset',
-        isDropTarget && !isValidTarget && 'bg-red-300/60 ring-2 ring-red-500 ring-inset',
-      )}
-    />
-  );
-});
-
-/* ──────────────────────────────────────────────
-   ClassBlock — draggable entry
-   ────────────────────────────────────────────── */
-import { useDraggable } from '@dnd-kit/react';
-import { formatTime } from '../utils/time.util';
-
-interface ClassBlockProps {
-  entry: ScheduleEntry;
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-  onClick?: (entry: ScheduleEntry) => void;
-  isDragging: boolean;
-}
-
-const ClassBlock = memo(function ClassBlock({
-  entry,
-  top,
-  left,
-  width,
-  height,
-  onClick,
-  isDragging,
-}: ClassBlockProps) {
-  const { ref } = useDraggable({
-    id: entry.id,
-    data: { entry },
-  });
-
-  const isLab = entry.loadType === 'laboratory';
-
-  return (
-    <div
-      ref={ref}
-      onClick={() => onClick?.(entry)}
-      style={{
-        position: 'absolute',
-        top: top + 2,
-        left: left + 2,
-        width: width - 4,
-        height: height - 4,
-        backgroundColor: isLab ? '#800000' : '#570000',
-        contain: 'layout style paint',
-      }}
-      className={clsx(
-        'rounded-lg px-2 py-1.5 cursor-grab active:cursor-grabbing select-none',
-        'text-white text-xs shadow-sm hover:shadow-md transition-shadow',
-        'overflow-hidden flex flex-col gap-0.5',
-        isLab && 'ring-1 ring-inset ring-white/30',
-        isLab &&
-          '[background-image:repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(255,255,255,0.08)_8px,rgba(255,255,255,0.08)_16px)]',
-        isDragging && 'opacity-40',
-      )}
-    >
-      <div className="font-bold truncate leading-tight">{entry.subjectCode}</div>
-      <div className="truncate opacity-90 leading-tight text-[10px]">
-        {entry.roomNumber && `Room ${entry.roomNumber}`}
-      </div>
-      <div className="truncate opacity-75 leading-tight text-[10px]">
-        {formatTime(entry.startTime)} – {formatTime(entry.endTime)}
-      </div>
-      {height > 100 && (
-        <div className="truncate opacity-75 leading-tight text-[10px] mt-auto">
-          {entry.facultyName}
-        </div>
-      )}
-    </div>
-  );
-});
