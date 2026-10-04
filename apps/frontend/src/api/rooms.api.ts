@@ -1,15 +1,58 @@
 import { api } from './client';
 
+export type RoomType =
+  | 'lecture_room'
+  | 'laboratory'
+  | 'computer_lab'
+  | 'drafting_room'
+  | 'other';
+
 export interface RoomRecord {
   roomId: string;
   roomNumber: string;
   building: string;
-  roomType: string;
+  roomType: RoomType;
   capacity: number | null;
   deptId: string | null;
+  isActive: boolean;
 }
 
-export async function fetchRooms(): Promise<RoomRecord[]> {
-  const { data } = await api.get('/v1/rooms');
+export interface CreateRoomInput {
+  roomNumber: string;
+  building: string;
+  roomType: RoomType;
+  capacity?: number;
+  deptId?: string;
+}
+
+export async function fetchRooms(
+  includeInactive: boolean = false,
+): Promise<RoomRecord[]> {
+  const params = includeInactive === true ? { includeInactive: 'true' } : {};
+  const { data } = await api.get('/v1/rooms', { params });
   return data.data;
+}
+
+export async function createRoom(
+  input: CreateRoomInput,
+): Promise<RoomRecord> {
+  const { data } = await api.post('/v1/rooms', input);
+  return data.data;
+}
+
+export async function updateRoom(
+  id: string,
+  input: Partial<CreateRoomInput>,
+): Promise<RoomRecord> {
+  const { data } = await api.patch(`/v1/rooms/${id}`, input);
+  return data.data;
+}
+
+export async function toggleRoomActive(id: string): Promise<RoomRecord> {
+  const { data } = await api.patch(`/v1/rooms/${id}/toggle-active`);
+  return data.data;
+}
+
+export async function deleteRoom(id: string): Promise<void> {
+  await api.delete(`/v1/rooms/${id}`);
 }
