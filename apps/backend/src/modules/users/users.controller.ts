@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -35,6 +36,12 @@ export class UsersController {
   @Post()
   async create(@Body() dto: CreateUserDto) {
     const data = await this.service.create(dto);
+    return { data };
+  }
+
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+    const data = await this.service.update(id, dto);
     return { data };
   }
 
