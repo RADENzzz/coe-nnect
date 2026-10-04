@@ -37,6 +37,10 @@ export { toMinutes, minutesToTime, timesOverlap } from './utils/time.util';
 // Rules — room
 export { roomTypeMatchRule } from './rules/room/room-type-match.rule';
 export { roomNoLabRule } from './rules/room/room-no-lab.rule';
+export { labPriorityRule } from './rules/room/lab-priority.rule';
+export { roomOwnershipRule } from './rules/room/room-ownership.rule';
+export { labHostsLectureRule } from './rules/room/lab-hosts-lecture.rule';
+export { servicingPriorityRule } from './rules/room/servicing-priority.rule';
 
 // Rules — overlap
 export { facultyOverlapRule } from './rules/overlap/faculty-overlap.rule';
@@ -84,11 +88,19 @@ import { minorScheduleBlockRule } from './rules/time/minor-schedule-block.rule';
 import { lunchBreakRule } from './rules/time/lunch-break.rule';
 import { daytimePriorityRule } from './rules/time/daytime-priority.rule';
 import type { ConstraintRule } from './types/rule.interface';
+import { labPriorityRule } from './rules/room/lab-priority.rule';
+import { roomOwnershipRule } from './rules/room/room-ownership.rule';
+import { labHostsLectureRule } from './rules/room/lab-hosts-lecture.rule';
+import { servicingPriorityRule } from './rules/room/servicing-priority.rule';
 
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
   roomNoLabRule,
+  labPriorityRule,            
+  roomOwnershipRule,          
+  labHostsLectureRule,        
+  servicingPriorityRule,
   facultyOverlapRule,
   roomOverlapRule,
   sectionOverlapRule,
