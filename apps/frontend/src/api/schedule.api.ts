@@ -118,9 +118,7 @@ export async function plotSubject(
   return data.data;
 }
 
-export async function validatePlot(
-  payload: ValidatePlotPayload,
-): Promise<ValidateResult> {
+export async function validatePlot(payload: ValidatePlotPayload): Promise<ValidateResult> {
   const { data } = await api.post('/v1/schedules/validate', payload);
   return data.data;
 }
