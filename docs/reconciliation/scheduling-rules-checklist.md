@@ -1,7 +1,7 @@
 # Scheduling Rules Checklist — CoE-NNECT
 
-**Status:** 24 of 25 PM flags implemented
-**Last updated:** [today's date]
+**Status:** 25 of 25 PM flags implemented
+**Last updated:** OCT 4, 2026
 **Engine version:** 25 rules (`@coe-nnect/constraint-rules` v0.1.0)
 
 
