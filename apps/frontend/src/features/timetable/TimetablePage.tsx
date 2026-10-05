@@ -25,6 +25,7 @@ import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 import { colorForSubject } from './utils/color.util';
 import StackPicker from './components/StackPicker';
+import ExportToolbar from './export/ExportToolbar';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -50,7 +51,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
-
+  
   return {
     id: raw.scheduleId,
     subjectId: raw.subjectId,
@@ -369,6 +370,67 @@ export default function TimetablePage() {
       ? 'Section'
       : '';
 
+    // ── Export scope metadata ──
+  const exportScope = useMemo(() => {
+    const termSlug = activeTerm
+      ? `${activeTerm.termName}-AY${activeTerm.schoolYear}`
+          .replace(/\s+/g, '-')
+          .replace(/[^a-zA-Z0-9-]+/g, '')
+      : 'term';
+
+    const dateSlug = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+    if (viewMode === 'master' || !viewTargetId) {
+      return {
+        scopeLabel: 'Master View',
+        filename: `CoE-NNECT_master_${termSlug}_${dateSlug}`,
+      };
+    }
+
+    if (viewMode === 'department') {
+      const d = departments.find(
+        (x) => String(x.deptId) === String(viewTargetId),
+      );
+      const label = d ? `${d.deptCode} ${d.deptName}` : 'Department';
+      return {
+        scopeLabel: label,
+        filename: `CoE-NNECT_dept-${d?.deptCode ?? viewTargetId}_${termSlug}_${dateSlug}`,
+      };
+    }
+
+    if (viewMode === 'room') {
+      const r = rooms.find((x) => String(x.roomId) === String(viewTargetId));
+      const label = r ? `Room ${r.roomNumber} (${r.building})` : 'Room';
+      return {
+        scopeLabel: label,
+        filename: `CoE-NNECT_room-${r?.roomNumber ?? viewTargetId}_${termSlug}_${dateSlug}`,
+      };
+    }
+
+    if (viewMode === 'faculty') {
+      const f = faculty.find(
+        (x) => String(x.facultyId) === String(viewTargetId),
+      );
+      const label = f ? `${f.lastName}, ${f.firstName}` : 'Faculty';
+      return {
+        scopeLabel: label,
+        filename: `CoE-NNECT_faculty-${f?.lastName ?? viewTargetId}_${termSlug}_${dateSlug}`,
+      };
+    }
+
+    if (viewMode === 'section') {
+      const label = viewTargetId || 'Section';
+      return {
+        scopeLabel: label,
+        filename: `CoE-NNECT_section-${label}_${termSlug}_${dateSlug}`,
+      };
+    }
+
+    return {
+      scopeLabel: 'Master View',
+      filename: `CoE-NNECT_master_${termSlug}_${dateSlug}`,
+    };
+  }, [viewMode, viewTargetId, activeTerm, departments, rooms, faculty]);
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto">
       {/* Header */}
@@ -506,11 +568,34 @@ export default function TimetablePage() {
         />
       )}
       {!isLoading && !error && activeTerm && entries.length > 0 && (
-        <TimetableGrid
-          entries={entries}
-          onEntryMove={handleMove}
-          onEntryClick={handleClick}
-        />
+        <>
+          {/* ── Export toolbar ── */}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl border border-surface-variant bg-surface-container-lowest">
+            <div className="text-xs text-on-surface-variant">
+              Exporting:{' '}
+              <strong className="text-on-surface">
+                {exportScope.scopeLabel}
+              </strong>{' '}
+              · {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+            </div>
+            <ExportToolbar
+              entries={entries}
+              scopeLabel={exportScope.scopeLabel}
+              termLabel={
+                activeTerm
+                  ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+                  : 'Term'
+              }
+              suggestedFilename={exportScope.filename}
+            />
+          </div>
+
+          <TimetableGrid
+            entries={entries}
+            onEntryMove={handleMove}
+            onEntryClick={handleClick}
+          />
+        </>
       )}
 
       {/* Plot Subject Modal */}
