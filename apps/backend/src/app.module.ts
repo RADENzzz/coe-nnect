@@ -11,12 +11,12 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { FacultyModule } from './modules/faculty/faculty.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
+import { ProspectusModule } from './modules/prospectus/prospectus.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // Don't try to load .env on Vercel — use process.env directly
       ignoreEnvFile: process.env.VERCEL === '1',
     }),
     DatabaseModule,
@@ -30,6 +30,7 @@ import { RoomsModule } from './modules/rooms/rooms.module';
     FacultyModule,
     SubjectsModule,
     RoomsModule,
+    ProspectusModule,
   ],
 })
 export class AppModule {}

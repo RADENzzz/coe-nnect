@@ -17,6 +17,7 @@ import ApprovalsPage from './features/approvals/ApprovalsPage';
 import SubjectsPage from './features/subjects/SubjectsPage';
 import FacultyPage from './features/faculty/FacultyPage';
 import RoomsPage from './features/rooms/RoomsPage';
+import ProspectusPage from './features/prospectus/ProspectusPage';
 
 function App() {
   return (
@@ -55,7 +56,6 @@ function App() {
           <Route path="dashboard" element={<DeanDashboardPage />} />
           <Route path="departments" element={<DeanDepartmentsPage />} />
           <Route path="approvals" element={<DeanApprovalsPage />} />
-          
         </Route>
       </Route>
 
@@ -75,6 +75,7 @@ function App() {
           <Route path="sections" element={<SectionsPage />} />
           <Route path="approvals" element={<ApprovalsPage />} />
           <Route path="subjects" element={<SubjectsPage />} />
+          <Route path="prospectus" element={<ProspectusPage />} />
           <Route path="faculty" element={<FacultyPage />} />
           <Route path="rooms" element={<RoomsPage />} />
         </Route>
