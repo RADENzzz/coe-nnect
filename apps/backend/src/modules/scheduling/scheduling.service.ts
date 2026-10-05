@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Schedule } from './entities/schedule.entity';
 import { Term } from '../terms/entities/term.entity';
+import { Section } from '../sections/entities/section.entity';
 import { PlotSubjectDto } from './dto/plot-subject.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ValidatePlotDto } from './dto/validate-plot.dto';
@@ -25,10 +26,11 @@ type DayOfWeek =
 @Injectable()
 export class SchedulingService {
   constructor(
-    @InjectRepository(Schedule) private scheduleRepo: Repository<Schedule>,
-    @InjectRepository(Term) private termRepo: Repository<Term>,
-    private readonly ruleContextBuilder: RuleContextBuilder,
-    private readonly constraints: ConstraintsService,
+  @InjectRepository(Schedule) private scheduleRepo: Repository<Schedule>,
+  @InjectRepository(Term) private termRepo: Repository<Term>,
+  @InjectRepository(Section) private sectionRepo: Repository<Section>,
+  private readonly ruleContextBuilder: RuleContextBuilder,
+  private readonly constraints: ConstraintsService,
   ) {}
 
   // ────────────────────────────────────────────
@@ -139,25 +141,30 @@ async validate(dto: ValidatePlotDto): Promise<{
   // Mutations
   // ────────────────────────────────────────────
 
-    async plot(dto: PlotSubjectDto): Promise<Schedule> {
+  async plot(dto: PlotSubjectDto): Promise<Schedule> {
     if (!dto.facultyId) {
-    throw new BadRequestException('facultyId is required to plot a subject.');
-  }
-    const entry = this.scheduleRepo.create({
-        termId: dto.termId,
-        subjectId: dto.subjectId,
-        facultyId: dto.facultyId ?? null,
-        roomId: dto.roomId ?? null,
-        timeslotId: null,
-        section: dto.section ?? null,
-        loadType: dto.loadType ?? null,
-        dayOfWeek: dto.dayOfWeek as any,
-        startTime: dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
-        endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
-        status: 'draft',
-    });
-    return this.scheduleRepo.save(entry);
+      throw new BadRequestException('facultyId is required to plot a subject.');
     }
+
+  const sectionId = await this.resolveSectionId(dto.section);
+
+  const entry = this.scheduleRepo.create({
+    termId: dto.termId,
+    subjectId: dto.subjectId,
+    facultyId: dto.facultyId ?? null,
+    roomId: dto.roomId ?? null,
+    timeslotId: null,
+    section: dto.section ?? null,
+    sectionId,                              // ← NEW
+    loadType: dto.loadType ?? null,
+    dayOfWeek: dto.dayOfWeek as any,
+    startTime:
+      dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
+    endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
+    status: 'draft',
+  });
+  return this.scheduleRepo.save(entry);
+}
 
   /**
    * Update a schedule entry — used for drag-to-move, room changes, etc.
@@ -202,6 +209,10 @@ async validate(dto: ValidatePlotDto): Promise<{
     if (dto.facultyId !== undefined) {
       found.facultyId = dto.facultyId;
     }
+    if (dto.section !== undefined) {
+      found.section = dto.section ?? null;
+      found.sectionId = await this.resolveSectionId(dto.section);
+    }
 
     return this.scheduleRepo.save(found);
   }
@@ -234,5 +245,20 @@ async validate(dto: ValidatePlotDto): Promise<{
   private timeToMinutes(t: string): number {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + m;
+  }
+  /**
+   * Resolve a section_code (e.g. "BSCPE-4A") to its section_id.
+   * Returns null for empty/unknown codes so legacy rows and minor-subject
+   * plots don't break — H-3 will simply skip them, same as today.
+   */
+  private async resolveSectionId(
+    sectionCode?: string | null,
+  ): Promise<string | null> {
+    if (!sectionCode) return null;
+    const section = await this.sectionRepo.findOne({
+      where: { sectionCode },
+      select: ['sectionId'],
+    });
+    return section?.sectionId ?? null;
   }
 }

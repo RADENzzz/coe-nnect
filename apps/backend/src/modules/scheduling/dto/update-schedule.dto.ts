@@ -1,8 +1,12 @@
-import { IsOptional, IsString, IsIn, Matches } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsIn,
+  Matches,
+} from 'class-validator';
 
 export class UpdateScheduleDto {
   @IsOptional()
-  @IsString()
   @IsIn([
     'Monday',
     'Tuesday',
@@ -33,4 +37,8 @@ export class UpdateScheduleDto {
   @IsOptional()
   @IsString()
   facultyId?: string;
+
+  @IsOptional()
+  @IsString()
+  section?: string;   // ← THE MISSING LINE
 }

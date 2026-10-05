@@ -10,6 +10,7 @@ import { Faculty } from '../../faculty/entities/faculty.entity';
 import { Room } from '../../rooms/entities/room.entity';
 import { Term } from '../../terms/entities/term.entity';
 import { TimeSlot } from './time-slot.entity';
+import { Section } from '../../sections/entities/section.entity';
 
 export type ScheduleStatus = 'draft' | 'review' | 'finalized' | 'published';
 export type LoadType = 'lecture' | 'laboratory' | 'other';
@@ -44,6 +45,9 @@ export class Schedule {
 
   @Column({ nullable: true })
   section: string | null;
+
+  @Column({ name: 'section_id', type: 'bigint', nullable: true })
+  sectionId: string | null;
 
   @Column({
     name: 'load_type',
@@ -84,9 +88,15 @@ export class Schedule {
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
   updatedAt: Date;
 
+
+
   @ManyToOne(() => Subject) @JoinColumn({ name: 'subject_id' }) subject: Subject;
   @ManyToOne(() => Faculty) @JoinColumn({ name: 'faculty_id' }) faculty: Faculty;
   @ManyToOne(() => Room) @JoinColumn({ name: 'room_id' }) room: Room;
   @ManyToOne(() => TimeSlot) @JoinColumn({ name: 'timeslot_id' }) timeSlot: TimeSlot;
   @ManyToOne(() => Term) @JoinColumn({ name: 'term_id' }) term: Term;
+  @ManyToOne(() => Section, { nullable: true })
+  @JoinColumn({ name: 'section_id' })
+  sectionRef: Section | null;
+
 }
