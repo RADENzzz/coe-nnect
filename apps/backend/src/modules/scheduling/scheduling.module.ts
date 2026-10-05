@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { RuleContextBuilder } from './services/rule-context.builder';
+import { Section } from '../sections/entities/section.entity';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { RuleContextBuilder } from './services/rule-context.builder';
       Faculty,
       Room,
       User,
+      Section,
     ]),
   ],
   controllers: [SchedulingController],

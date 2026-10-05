@@ -23,6 +23,7 @@ import Icon from '../../components/ui/Icon';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 import { colorForSubject } from './utils/color.util';
+import StackPicker from './components/StackPicker';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -82,6 +83,7 @@ export default function TimetablePage() {
   const queryClient = useQueryClient();
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
+  const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('master');
   const [viewTargetId, setViewTargetId] = useState('');
 
@@ -253,23 +255,29 @@ export default function TimetablePage() {
     },
     [allEntries, moveMutation, queryClient, activeTerm?.termId],
   );
-  const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
+  
   const handleClick = useCallback(
-  (entry: ScheduleEntry) => {
-    const sameSlot = allEntries.filter(
-      (e) => e.day === entry.day && e.startTime === entry.startTime,
-    );
-    if (sameSlot.length > 1) {
-      setStackOpen(sameSlot);
-    } else {
-      setSelectedEntry(entry);
-    }
-  },
-  [allEntries],
-);
+    (entry: ScheduleEntry) => {
+      const sameSlot = allEntries.filter(
+        (e) => e.day === entry.day && e.startTime === entry.startTime,
+      );
+      if (sameSlot.length > 1) {
+        setStackOpen(sameSlot);
+      } else {
+        setSelectedEntry(entry);
+      }
+    },
+    [allEntries],
+  );
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
-    console.log('TODO: open edit form for', entry);
+  // TODO: open edit form
+  console.log('TODO: open edit form for', entry);
+  }, []);
+
+  const handlePickFromStack = useCallback((entry: ScheduleEntry) => {
+    setStackOpen(null);
+    setSelectedEntry(entry);
   }, []);
 
   const isLoading = termLoading || schedulesLoading;
@@ -489,6 +497,11 @@ export default function TimetablePage() {
           termId={activeTerm.termId}
         />
       )}
+      <StackPicker
+  entries={stackOpen}
+  onClose={() => setStackOpen(null)}
+  onPick={handlePickFromStack}
+/>
     </div>
   );
 }
