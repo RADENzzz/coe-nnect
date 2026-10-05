@@ -20,6 +20,7 @@ export default function SectionsPage() {
   const [form, setForm] = useState({
     sectionCode: '',
     yearLevel: '',
+    studentCount: '',
   });
 
   const { data: sections = [], isLoading } = useQuery({
@@ -32,7 +33,7 @@ export default function SectionsPage() {
     mutationFn: createSection,
     onSuccess: (section) => {
       setSuccess(`Section "${section.sectionCode}" created.`);
-      setForm({ sectionCode: '', yearLevel: '' });
+      setForm({ sectionCode: '', yearLevel: '', studentCount: '' });
       setShowForm(false);
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
@@ -73,6 +74,7 @@ export default function SectionsPage() {
     createMutation.mutate({
       sectionCode: form.sectionCode.trim(),
       yearLevel: form.yearLevel ? Number(form.yearLevel) : undefined,
+      studentCount: form.studentCount ? Number(form.studentCount) : undefined,
     });
   };
 
@@ -109,6 +111,7 @@ export default function SectionsPage() {
           New Section
         </button>
       </div>
+      
 
       {error && (
         <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
@@ -128,7 +131,7 @@ export default function SectionsPage() {
             Create Section
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
                   Section Code *
@@ -160,6 +163,23 @@ export default function SectionsPage() {
                   <option value="4">4</option>
                   <option value="5">5</option>
                 </select>
+              </div>
+                            <div>
+                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Students (advisory)
+                </label>
+                <input
+                  type="number"
+                  name="studentCount"
+                  min="0"
+                  value={form.studentCount}
+                  onChange={handleChange}
+                  placeholder="e.g. 40"
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
+                />
+                <p className="text-[10px] text-on-surface-variant mt-1">
+                  Rough count only — used by S-8 as a soft signal. Not enforced.
+                </p>
               </div>
             </div>
             <div className="flex gap-3 justify-end">

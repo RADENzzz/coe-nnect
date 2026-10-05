@@ -182,11 +182,11 @@ const PROSPECTUS = [
 // NOTE: student_count removed per PM note (Oct 2026) — a section's
 // student count does not reliably indicate which subjects its students take.
 const SECTIONS = [
-  { section_code: 'CpE-1A', year_level: 1 },
-  { section_code: 'CpE-1B', year_level: 1 },
-  { section_code: 'CpE-2A', year_level: 2 },
-  { section_code: 'CpE-3A', year_level: 3 },
-  { section_code: 'EE-1A', year_level: 1 },
+  { section_code: 'CpE-1A', year_level: 1, student_count: 42 },
+  { section_code: 'CpE-1B', year_level: 1, student_count: 40 },
+  { section_code: 'CpE-2A', year_level: 2, student_count: 38 },
+  { section_code: 'CpE-3A', year_level: 3, student_count: 35 },
+  { section_code: 'EE-1A', year_level: 1, student_count: 30 },
 ];
 
 const FACULTY = [

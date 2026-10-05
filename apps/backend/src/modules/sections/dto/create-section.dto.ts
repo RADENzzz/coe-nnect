@@ -22,9 +22,13 @@ export class CreateSectionDto {
   @Max(6)
   yearLevel?: number;
 
-  // NOTE: `studentCount` intentionally removed.
-  // The PM flagged that defining the number of students per section
-  // does not guarantee they all take the same subjects. The DB column
-  // is kept for backward compatibility but is no longer settable
-  // through the API.
+  /**
+   * Advisory only. Used by rule S-8 (Cohort Overflow) as a soft signal —
+   * it does NOT enforce any enrollment decision. Section enrollment in
+   * practice is not homogeneous, so this figure is a rough indicator.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  studentCount?: number;
 }

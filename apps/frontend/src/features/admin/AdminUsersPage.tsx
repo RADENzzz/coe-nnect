@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchUsers,
@@ -12,6 +12,7 @@ import {
 import { useAuthStore } from '../../store/auth.store';
 import { fetchDepartments } from '../../api/departments.api';
 import { login } from '../../api/auth.api';
+import Icon from '@/components/ui/Icon';
 
 type Mode = 'create' | 'edit';
 
@@ -23,7 +24,8 @@ export default function AdminUsersPage() {
   const [editing, setEditing] = useState<UserRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -248,6 +250,20 @@ export default function AdminUsersPage() {
     return d ? `[${d.deptCode}] ${d.deptName}` : `Dept #${id}`;
   };
 
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return users.filter((u) => {
+      if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+      if (!q) return true;
+      return (
+        u.username.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.employeeId ?? '').toLowerCase().includes(q) ||
+        (u.wmsuId ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [users, searchQuery, roleFilter]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -464,6 +480,62 @@ export default function AdminUsersPage() {
       )}
 
       {/* Table */}
+            {/* Search & filter */}
+      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+            Search
+          </label>
+          <div className="relative">
+            <Icon
+              name="search"
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Name, email, employee ID, or WMSU ID…"
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+        <div className="min-w-[160px]">
+          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+            Role
+          </label>
+          <select
+            value={roleFilter}
+            onChange={(e) =>
+              setRoleFilter(e.target.value as 'all' | UserRole)
+            }
+            className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          >
+            <option value="all">All roles</option>
+            <option value="administrator">Administrator</option>
+            <option value="college_dean">College Dean</option>
+            <option value="department_head">Department Head</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </div>
+        {(searchQuery || roleFilter !== 'all') && (
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setRoleFilter('all');
+            }}
+            className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
+          >
+            Clear
+          </button>
+        )}
+        <div className="ml-auto text-xs text-on-surface-variant">
+          Showing{' '}
+          <strong className="text-on-surface">{filteredUsers.length}</strong> of{' '}
+          {users.length}
+        </div>
+      </div>
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -485,14 +557,16 @@ export default function AdminUsersPage() {
                   </div>
                 </td>
               </tr>
-            ) : users.length === 0 ? (
+            ) : filteredUsers.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-on-surface-variant">
-                  No users yet.
+                  {users.length === 0
+                    ? 'No users yet.'
+                    : 'No users match your filters.'}
                 </td>
               </tr>
             ) : (
-              users.map((u) => (
+              filteredUsers.map((u) => (
                 <tr key={u.userId} className="border-b border-white/5 hover:bg-surface-container-low">
                   <td className="px-5 py-3.5">
                     <p className="text-on-surface font-medium">{u.username}</p>

@@ -5,7 +5,7 @@ export interface Section {
   sectionCode: string;
   programId: string | null;
   yearLevel: number | null;
-  /** @deprecated Retained for backward compat only; not used by the scheduler. */
+  /** Advisory — used by S-8 as a soft signal. Not authoritative enrollment. */
   studentCount: number | null;
   isActive: boolean;
 }
@@ -14,7 +14,8 @@ export interface CreateSectionInput {
   sectionCode: string;
   programId?: string;
   yearLevel?: number;
-  // studentCount intentionally removed — see PM note (Oct 2026)
+  /** Advisory — used by S-8 as a soft signal. Not authoritative enrollment. */
+  studentCount?: number;
 }
 
 export async function fetchSections(): Promise<Section[]> {

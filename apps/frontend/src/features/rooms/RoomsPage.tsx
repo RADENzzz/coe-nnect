@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -39,6 +39,8 @@ export default function RoomsPage() {
     capacity: '',
     deptId: '',
   });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all');
 
   const { data: rooms = [], isLoading } = useQuery({
     queryKey: ['rooms', { includeInactive: true }],
@@ -52,6 +54,18 @@ export default function RoomsPage() {
     enabled: !!user,
   });
 
+  const filteredRooms = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rooms.filter((r) => {
+      if (typeFilter !== 'all' && r.roomType !== typeFilter) return false;
+      if (!q) return true;
+      return (
+        r.roomNumber.toLowerCase().includes(q) ||
+        r.building.toLowerCase().includes(q)
+      );
+    });
+  }, [rooms, searchQuery, typeFilter]);
+  
   const createMutation = useMutation({
     mutationFn: createRoom,
     onSuccess: (r) => {
@@ -349,6 +363,64 @@ export default function RoomsPage() {
         </div>
       )}
 
+      {/* Search & filter */}
+      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+            Search
+          </label>
+          <div className="relative">
+            <Icon
+              name="search"
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Room number or building…"
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+        <div className="min-w-[180px]">
+          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+            Room Type
+          </label>
+          <select
+            value={typeFilter}
+            onChange={(e) =>
+              setTypeFilter(e.target.value as 'all' | RoomType)
+            }
+            className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          >
+            <option value="all">All types</option>
+            {ROOM_TYPES.map((rt) => (
+              <option key={rt.value} value={rt.value}>
+                {rt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {(searchQuery || typeFilter !== 'all') && (
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setTypeFilter('all');
+            }}
+            className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
+          >
+            Clear
+          </button>
+        )}
+        <div className="ml-auto text-xs text-on-surface-variant">
+          Showing{' '}
+          <strong className="text-on-surface">{filteredRooms.length}</strong> of{' '}
+          {rooms.length}
+        </div>
+      </div>
+
       {/* Table */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
         <table className="w-full text-sm">
@@ -373,14 +445,16 @@ export default function RoomsPage() {
                   </div>
                 </td>
               </tr>
-            ) : rooms.length === 0 ? (
+            ) : filteredRooms.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-5 py-12 text-center text-on-surface-variant">
-                  No rooms yet.
+                  {rooms.length === 0
+                    ? 'No rooms yet.'
+                    : 'No rooms match your filters.'}
                 </td>
               </tr>
             ) : (
-              rooms.map((r) => (
+              filteredRooms.map((r) => (
                 <tr key={r.roomId} className="border-b border-white/5 hover:bg-surface-container-low">
                   <td className="px-5 py-3.5 font-bold font-mono text-primary">
                     {r.roomNumber}

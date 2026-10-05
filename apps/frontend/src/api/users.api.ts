@@ -6,6 +6,8 @@ export interface UserRecord {
   userId: string;
   username: string;
   email: string;
+  employeeId: string | null;
+  wmsuId: string | null;
   role: UserRole;
   deptId: string | null;
   facultyId: string | null;
