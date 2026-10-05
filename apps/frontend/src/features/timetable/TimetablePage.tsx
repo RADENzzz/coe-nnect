@@ -587,6 +587,14 @@ export default function TimetablePage() {
                   : 'Term'
               }
               suggestedFilename={exportScope.filename}
+              gridAvailable={
+                viewMode === 'room' || viewMode === 'master'
+              }
+              gridScopeLabel={
+                viewMode === 'room'
+                  ? exportScope.scopeLabel
+                  : 'Master Schedule'
+              }
             />
           </div>
 
