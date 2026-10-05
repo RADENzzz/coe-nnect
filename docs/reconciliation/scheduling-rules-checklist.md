@@ -102,8 +102,6 @@ backend's `ConstraintsService` at `apps/backend/src/modules/constraints/`.
 
 ---
 
-## Known gaps
-
 ## Rule count by category
 
 | Category | Count | Rules |
@@ -119,11 +117,6 @@ backend's `ConstraintsService` at `apps/backend/src/modules/constraints/`.
 
 Rules are shared across categories when they span concerns (H-2 is both
 Room and Overlap; H-6 is both Time and Lab; F-3 is both Faculty and Workload).
-
----
-
-## Changelog
-
 ---
 
 ## How to run
