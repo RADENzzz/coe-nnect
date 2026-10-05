@@ -14,6 +14,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
 import QualificationsModal from './components/QualificationsModal';
+import { fetchDesignations } from '@/api/system-config.api';
 
 const CLASSIFICATIONS: { value: FacultyClass; label: string }[] = [
   { value: 'regular', label: 'Regular' },
@@ -40,6 +41,7 @@ export default function FacultyPage() {
     wmsuId: '',
     employeeId: '',
     deptId: '',
+    designationId: '',
     classification: 'regular' as FacultyClass,
     requiredHours: '',
   });
@@ -58,6 +60,13 @@ export default function FacultyPage() {
     queryKey: ['departments'],
     queryFn: fetchDepartments,
     enabled: !!user,
+  });
+
+    const { data: designations = [] } = useQuery({
+    queryKey: ['designations'],
+    queryFn: fetchDesignations,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
 
     const filteredFaculty = useMemo(() => {
@@ -137,6 +146,7 @@ export default function FacultyPage() {
       wmsuId: '',
       employeeId: '',
       deptId: '',
+      designationId: '',
       classification: 'regular',
       requiredHours: '',
     });
@@ -154,6 +164,7 @@ export default function FacultyPage() {
       wmsuId: '',
       employeeId: '',
       deptId: '',
+      designationId: '',
       classification: 'regular',
       requiredHours: '',
     });
@@ -172,6 +183,7 @@ export default function FacultyPage() {
       wmsuId: f.wmsuId ?? '',
       employeeId: f.employeeId ?? '',
       deptId: f.deptId ?? '',
+      designationId: f.designationId ?? '',
       classification: f.classification,
       requiredHours: f.requiredHours != null ? String(f.requiredHours) : '',
     });
@@ -198,6 +210,7 @@ export default function FacultyPage() {
       wmsuId: form.wmsuId.trim() || undefined,
       employeeId: form.employeeId.trim() || undefined,
       deptId: form.deptId || undefined,
+      designationId: form.designationId || undefined,
       classification: form.classification,
       requiredHours: form.requiredHours
         ? Number(form.requiredHours)
@@ -372,6 +385,27 @@ export default function FacultyPage() {
                       ))}
                   </select>
                 </div>
+                                <div>
+                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Designation
+                  </label>
+                  <select
+                    name="designationId"
+                    value={form.designationId}
+                    onChange={handleChange}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">— none (standard load) —</option>
+                    {designations.map((d) => (
+                      <option key={d.designationId} value={d.designationId}>
+                        {d.designationName} ({Number(d.releaseHours)}h release)
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    Assigning a designation reduces the required weekly load.
+                  </p>
+                </div>
                 <div>
                   <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
                     Classification *
@@ -502,6 +536,7 @@ export default function FacultyPage() {
               <th className="text-left px-5 py-3">Email</th>
               <th className="text-left px-5 py-3">Dept</th>
               <th className="text-left px-5 py-3">Classification</th>
+              <th className="text-left px-5 py-3">Designation</th>
               <th className="text-left px-5 py-3">Hours</th>
               <th className="text-left px-5 py-3">Status</th>
               <th className="text-right px-5 py-3">Actions</th>
@@ -510,7 +545,7 @@ export default function FacultyPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-on-surface-variant">
+                <td colSpan={8} className="px-5 py-8 text-center text-on-surface-variant">
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     Loading...
@@ -519,7 +554,7 @@ export default function FacultyPage() {
               </tr>
             ) : faculty.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-on-surface-variant">
+                <td colSpan={8} className="px-5 py-12 text-center text-on-surface-variant">
                   {faculty.length === 0
                     ? 'No faculty yet.'
                     : 'No faculty match your filters.'}
@@ -537,12 +572,18 @@ export default function FacultyPage() {
                   <td className="px-5 py-3.5 text-on-surface-variant text-xs">
                     {deptName(f.deptId)}
                   </td>
+                  
                   <td className="px-5 py-3.5">
                     <span
                       className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${classBadge(f.classification)}`}
                     >
                       {f.classification.replace('_', ' ')}
                     </span>
+                  </td>
+                                    <td className="px-5 py-3.5 text-on-surface-variant text-xs">
+                    {designations.find(
+                      (d) => String(d.designationId) === String(f.designationId),
+                    )?.designationName ?? '—'}
                   </td>
                   <td className="px-5 py-3.5 text-on-surface-variant font-mono text-xs">
                     {f.requiredHours != null ? `${f.requiredHours}h` : '18h (default)'}
