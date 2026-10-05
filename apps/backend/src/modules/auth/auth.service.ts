@@ -22,28 +22,37 @@ export class AuthService {
 
     const profile = await this.userRepo.findOne({
       where: { userId: data.user.id },
+      relations: ['department', 'faculty'],
     });
 
     if (!profile) throw new UnauthorizedException('User profile not found');
-    if (!profile.isActive) throw new UnauthorizedException('Account is deactivated');
+    if (!profile.isActive)
+      throw new UnauthorizedException('Account is deactivated');
 
     return {
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
-      user: {
-        id: profile.userId,
-        username: profile.username,
-        email: profile.email,
-        role: profile.role,
-        deptId: profile.deptId,
-        facultyId: profile.facultyId,
-      },
+      user: this.serializeProfile(profile),
     };
   }
 
   async getProfile(userId: string) {
-    const profile = await this.userRepo.findOne({ where: { userId } });
+    const profile = await this.userRepo.findOne({
+      where: { userId },
+      relations: ['department', 'faculty'],
+    });
     if (!profile) throw new UnauthorizedException('Profile not found');
+    return this.serializeProfile(profile);
+  }
+
+  /**
+   * Shapes the User entity into the response the frontend expects.
+   * `firstName` falls back to the username when no faculty record is linked,
+   * so the UI can always show "Welcome back, {firstName}" without special-casing.
+   */
+  private serializeProfile(profile: User) {
+    const firstName =
+      profile.faculty?.firstName ?? profile.username ?? 'User';
 
     return {
       id: profile.userId,
@@ -51,7 +60,10 @@ export class AuthService {
       email: profile.email,
       role: profile.role,
       deptId: profile.deptId,
+      deptCode: profile.department?.deptCode ?? null,
+      deptName: profile.department?.deptName ?? null,
       facultyId: profile.facultyId,
+      firstName,
     };
   }
 }

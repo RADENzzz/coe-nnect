@@ -1,4 +1,6 @@
-import { Entity, PrimaryColumn, Column } from 'typeorm';
+import { Entity, PrimaryColumn, Column, JoinColumn, ManyToOne } from 'typeorm';
+import { Faculty } from '../../faculty/entities/faculty.entity';
+import { Department } from '../../departments/entities/department.entity';
 
 export type UserRole = 'administrator' | 'college_dean' | 'department_head' | 'viewer';
 
@@ -36,4 +38,13 @@ export class User {
 
   @Column({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+    // ── Relations (used by AuthService to resolve dept + first name) ──
+  @ManyToOne(() => Department, { nullable: true })
+  @JoinColumn({ name: 'dept_id' })
+  department: Department | null;
+
+  @ManyToOne(() => Faculty, { nullable: true })
+  @JoinColumn({ name: 'faculty_id' })
+  faculty: Faculty | null;
 }

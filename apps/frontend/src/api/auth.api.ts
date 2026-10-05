@@ -11,7 +11,10 @@ export interface AuthUser {
   email: string;
   role: 'administrator' | 'college_dean' | 'department_head' | 'viewer';
   deptId: string | null;
+  deptCode: string | null;
+  deptName: string | null;
   facultyId: string | null;
+  firstName: string;
 }
 
 export interface LoginResponse {

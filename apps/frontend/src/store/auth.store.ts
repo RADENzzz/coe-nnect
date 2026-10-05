@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { User } from '@supabase/supabase-js';
 
-export type UserRole = 'administrator' | 'college_dean' | 'department_head' | 'viewer';
+export type UserRole =
+  | 'administrator'
+  | 'college_dean'
+  | 'department_head'
+  | 'viewer';
 
 export interface UserProfile {
   user_id: string;
@@ -9,7 +13,10 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   dept_id: number | null;
+  dept_code: string | null;
+  dept_name: string | null;
   faculty_id: number | null;
+  first_name: string;
 }
 
 interface AuthState {

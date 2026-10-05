@@ -3,10 +3,11 @@ import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
 import { mainNavItems, footerNavItems } from './Sidebar';
+import { useDepartmentLabel } from '../../hooks/use-department-label';
 
 export default function MobileDrawer() {
   const { isMobileDrawerOpen, closeMobileDrawer } = useUiStore();
-
+  const { deptName } = useDepartmentLabel();
   // Close on Escape
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -43,9 +44,11 @@ export default function MobileDrawer() {
             </div>
             <div>
               <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
-                Computer Engineering
+                CoE-NNECT
               </p>
-              <p className="text-[11px] text-slate-500">Department Admin</p>
+              <p className="text-[11px] text-slate-500 truncate max-w-[180px]">
+                {deptName}
+              </p>
             </div>
           </div>
           <button
