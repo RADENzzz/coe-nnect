@@ -22,6 +22,13 @@ export class Section {
   @Column({ name: 'year_level', type: 'smallint', nullable: true })
   yearLevel: number | null;
 
+  /**
+   * @deprecated
+   * Retained for backward compatibility with existing rows only.
+   * Not used by the scheduler and no longer settable via the API —
+   * a section's student count does not reliably indicate which
+   * subjects its students take. See PM note, Oct 2026.
+   */
   @Column({ name: 'student_count', type: 'int', nullable: true })
   studentCount: number | null;
 

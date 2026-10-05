@@ -22,8 +22,9 @@ export class CreateSectionDto {
   @Max(6)
   yearLevel?: number;
 
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  studentCount?: number;
+  // NOTE: `studentCount` intentionally removed.
+  // The PM flagged that defining the number of students per section
+  // does not guarantee they all take the same subjects. The DB column
+  // is kept for backward compatibility but is no longer settable
+  // through the API.
 }

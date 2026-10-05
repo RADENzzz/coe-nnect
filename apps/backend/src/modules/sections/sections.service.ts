@@ -37,7 +37,8 @@ export class SectionsService {
       sectionCode: dto.sectionCode,
       programId: dto.programId ?? null,
       yearLevel: dto.yearLevel ?? null,
-      studentCount: dto.studentCount ?? null,
+      // studentCount is intentionally not set — see PM note (Oct 2026).
+      // The DB column is nullable; new rows will have NULL.
     });
     return this.repo.save(entity);
   }
@@ -47,7 +48,7 @@ export class SectionsService {
     if (dto.sectionCode !== undefined) found.sectionCode = dto.sectionCode;
     if (dto.programId !== undefined) found.programId = dto.programId;
     if (dto.yearLevel !== undefined) found.yearLevel = dto.yearLevel;
-    if (dto.studentCount !== undefined) found.studentCount = dto.studentCount;
+    // studentCount is intentionally not touched — see PM note (Oct 2026).
     return this.repo.save(found);
   }
 
