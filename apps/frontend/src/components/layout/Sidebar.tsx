@@ -1,6 +1,9 @@
 import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { ROUTES } from '../../router';
+import { useDepartmentLabel } from '../../hooks/use-department-label';
+
+
 
 export const mainNavItems = [
   { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: 'dashboard' },
@@ -20,6 +23,7 @@ export const footerNavItems = [
 ];
 
 export default function Sidebar() {
+  const { deptName } = useDepartmentLabel();
   return (
     <nav className="hidden md:flex flex-col h-screen w-64 bg-white border-r border-slate-200 fixed left-0 top-0 z-50">
       {/* Brand */}
@@ -30,9 +34,11 @@ export default function Sidebar() {
           </div>
           <div>
             <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
-              Computer Engineering
+              CoE-NNECT
             </p>
-            <p className="text-xs text-slate-500">Department Head</p>
+            <p className="text-xs text-slate-500 truncate max-w-[160px]">
+              {deptName}
+            </p>
           </div>
         </div>
       </div>

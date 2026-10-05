@@ -295,24 +295,28 @@ const USERS = [
     username: 'admin',
     role: 'administrator',
     dept_code: null,
+    wmsu_id: null,
   },
   {
     email: 'head.cpe@wmsu.edu.ph',
     username: 'head.cpe',
     role: 'department_head',
     dept_code: 'BSCPE',
+    wmsu_id: 'WMSU-001', // Juan Dela Cruz
   },
   {
     email: 'head.ee@wmsu.edu.ph',
     username: 'head.ee',
     role: 'department_head',
     dept_code: 'EE',
+    wmsu_id: 'WMSU-004', // Ana Ramos
   },
   {
     email: 'head.me@wmsu.edu.ph',
     username: 'head.me',
     role: 'department_head',
     dept_code: 'ME',
+    wmsu_id: 'WMSU-006', // Carlo Mendez
   },
 ];
 
@@ -538,8 +542,27 @@ async function main() {
   // STEP 7: Users
   // ─────────────────────────────────────
   console.log('[7/9] Creating users…');
+    const { data: facultyRowsForUsers } = await supabase
+    .from('faculty')
+    .select('faculty_id, wmsu_id, first_name');
+  const facultyIdByWmsuForUsers: Record<string, { id: string; firstName: string }> = {};
+  for (const row of facultyRowsForUsers ?? []) {
+    if (row.wmsu_id) {
+      facultyIdByWmsuForUsers[row.wmsu_id] = {
+        id: String(row.faculty_id),
+        firstName: row.first_name,
+      };
+    }
+  }
   for (const u of USERS) {
     const deptId = u.dept_code ? deptIds[u.dept_code] : null;
+    const deptMeta = u.dept_code
+      ? DEPARTMENTS.find((d) => d.dept_code === u.dept_code)
+      : null;
+    const facultyLink = u.wmsu_id ? facultyIdByWmsuForUsers[u.wmsu_id] : null;
+    const facultyId = facultyLink?.id ?? null;
+    const firstName = facultyLink?.firstName ?? u.username;
+
     const existing = await findAuthUserByEmail(u.email);
 
     if (existing) {
@@ -549,12 +572,20 @@ async function main() {
           role: u.role,
           username: u.username,
           dept_id: deptId,
-          faculty_id: null,
+          dept_code: u.dept_code ?? null,
+          dept_name: deptMeta?.dept_name ?? null,
+          faculty_id: facultyId,
+          first_name: firstName,
         },
       });
       await supabase
         .from('users')
-        .update({ role: u.role, dept_id: deptId, username: u.username })
+        .update({
+          role: u.role,
+          dept_id: deptId,
+          faculty_id: facultyId,
+          username: u.username,
+        })
         .eq('user_id', existing.id);
       continue;
     }
@@ -567,7 +598,10 @@ async function main() {
         role: u.role,
         username: u.username,
         dept_id: deptId,
-        faculty_id: null,
+        dept_code: u.dept_code ?? null,
+        dept_name: deptMeta?.dept_name ?? null,
+        faculty_id: facultyId,
+        first_name: firstName,
       },
     });
     if (error) {
@@ -579,7 +613,12 @@ async function main() {
 
     await supabase
       .from('users')
-      .update({ role: u.role, dept_id: deptId, username: u.username })
+      .update({
+        role: u.role,
+        dept_id: deptId,
+        faculty_id: facultyId,
+        username: u.username,
+      })
       .eq('user_id', data.user.id);
 
     console.log(`  Created ${u.email}`);

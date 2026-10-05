@@ -7,6 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from './entities/user.entity';
+import { Department } from '../departments/entities/department.entity';
+import { Faculty } from '../faculty/entities/faculty.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -15,6 +17,8 @@ export class UsersService {
   constructor(
     private supabase: SupabaseService,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Department) private deptRepo: Repository<Department>,
+    @InjectRepository(Faculty) private facultyRepo: Repository<Faculty>,
   ) {}
 
   async findAll(): Promise<User[]> {
@@ -27,9 +31,44 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Builds the app_metadata object for Supabase Auth.
+   * The frontend's AuthProvider reads these fields as a fallback when the
+   * full DB profile can't be fetched yet (RLS or timing), so we include
+   * dept_code / dept_name / first_name here.
+   */
+  private async buildAppMetadata(opts: {
+    role: string;
+    username: string;
+    deptId: string | null;
+    facultyId: string | null;
+  }) {
+    const dept = opts.deptId
+      ? await this.deptRepo.findOne({ where: { deptId: opts.deptId } })
+      : null;
+
+    const faculty = opts.facultyId
+      ? await this.facultyRepo.findOne({
+          where: { facultyId: opts.facultyId },
+        })
+      : null;
+
+    return {
+      role: opts.role,
+      username: opts.username,
+      dept_id: opts.deptId ?? null,
+      dept_code: dept?.deptCode ?? null,
+      dept_name: dept?.deptName ?? null,
+      faculty_id: opts.facultyId ?? null,
+      first_name: faculty?.firstName ?? opts.username,
+    };
+  }
+
   async create(dto: CreateUserDto): Promise<User> {
     // 1. Check for existing email in our public.users
-    const existing = await this.userRepo.findOne({ where: { email: dto.email } });
+    const existing = await this.userRepo.findOne({
+      where: { email: dto.email },
+    });
     if (existing) throw new ConflictException('Email already registered');
 
     // 2. Enforce single-Dean rule
@@ -50,23 +89,28 @@ export class UsersService {
       );
     }
 
-    // 3. Create the Supabase Auth user
-    const { data, error } = await this.supabase.getAdminClient().auth.admin.createUser({
-      email: dto.email,
-      password: dto.password,
-      email_confirm: true,
-      app_metadata: {
-        role: dto.role,
-        username: dto.username,
-        dept_id: dto.deptId ?? null,
-        faculty_id: dto.facultyId ?? null,
-      },
+    // 3. Build app_metadata with the extra display fields
+    const appMetadata = await this.buildAppMetadata({
+      role: dto.role,
+      username: dto.username,
+      deptId: dto.deptId ?? null,
+      facultyId: dto.facultyId ?? null,
     });
+
+    // 4. Create the Supabase Auth user
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .auth.admin.createUser({
+        email: dto.email,
+        password: dto.password,
+        email_confirm: true,
+        app_metadata: appMetadata,
+      });
 
     if (error) throw new ConflictException(error.message);
     if (!data.user) throw new Error('Supabase did not return a user');
 
-    // 4. The DB trigger `handle_new_auth_user` will insert into public.users.
+    // 5. The DB trigger `handle_new_auth_user` will insert into public.users.
     //    Fetch the row to return it.
     const profile = await this.userRepo.findOne({
       where: { userId: data.user.id },
@@ -106,7 +150,7 @@ export class UsersService {
     if (error) throw new Error(`Failed to delete auth user: ${error.message}`);
   }
 
-    async update(userId: string, dto: UpdateUserDto): Promise<User> {
+  async update(userId: string, dto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(userId);
 
     // Single-dean rule: if promoting to college_dean, ensure no other active dean.
@@ -145,15 +189,17 @@ export class UsersService {
     const saved = await this.userRepo.save(user);
 
     // Sync app_metadata so the next login carries the correct role/dept
+    const appMetadata = await this.buildAppMetadata({
+      role: saved.role,
+      username: saved.username,
+      deptId: saved.deptId ?? null,
+      facultyId: saved.facultyId ?? null,
+    });
+
     const { error } = await this.supabase
       .getAdminClient()
       .auth.admin.updateUserById(userId, {
-        app_metadata: {
-          role: saved.role,
-          username: saved.username,
-          dept_id: saved.deptId ?? null,
-          faculty_id: saved.facultyId ?? null,
-        },
+        app_metadata: appMetadata,
       });
 
     if (error) {

@@ -1,5 +1,5 @@
 import Icon from '../../components/ui/Icon';
-
+import { useDepartmentLabel } from '../../hooks/use-department-label';
 // ─────────────────────────────────────────────
 // Quick Action Button
 // ─────────────────────────────────────────────
@@ -108,15 +108,16 @@ function ActivityItem({
 // Dashboard Page
 // ─────────────────────────────────────────────
 export default function DashboardPage() {
+  const { firstName, deptName } = useDepartmentLabel();
   return (
     <>
       {/* Welcome Header */}
       <div className="mb-6 mt-1 md:mt-0 border-b border-slate-200 pb-5">
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-          Welcome back, test123
+          Welcome back, {firstName}
         </h1>
         <p className="text-sm text-slate-500">
-          Here is the current status of the Computer Engineering department schedule.
+          Here is the current status of the {deptName} department schedule.
         </p>
       </div>
 
