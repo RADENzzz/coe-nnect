@@ -266,6 +266,13 @@ const SETTINGS = [
   { setting_key: 'daytime_priority_end_hour', value: '17:30' },
 ];
 
+// Designations — FR 7.1.4
+// Release hours are granted in multiples of 3 per Sir Jhil's rules doc.
+const DESIGNATIONS = [
+  { designation_name: 'Department Head', release_hours: 3 },
+  { designation_name: 'TWG Member', release_hours: 6 },
+];
+
 const USERS = [
   {
     email: 'admin@wmsu.edu.ph',
@@ -580,6 +587,30 @@ async function main() {
     }
   }
   console.log('  → settings ready');
+
+    // ─────────────────────────────────────
+  // STEP 8b: Designations (FR 7.1.4)
+  // ─────────────────────────────────────
+  console.log('[8b/9] Upserting designations…');
+  for (const d of DESIGNATIONS) {
+    const { data: existing } = await supabase
+      .from('designation')
+      .select('designation_id')
+      .eq('designation_name', d.designation_name)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    const { error } = await supabase.from('designation').insert({
+      designation_name: d.designation_name,
+      release_hours: d.release_hours,
+    });
+    if (error) {
+      console.error(`Designation ${d.designation_name}:`, error.message);
+      process.exit(1);
+    }
+  }
+  console.log('  → designations ready');
 
   // ─────────────────────────────────────
   // STEP 9: Demo subject restriction
