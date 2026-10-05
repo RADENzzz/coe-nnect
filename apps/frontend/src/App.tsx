@@ -19,6 +19,7 @@ import FacultyPage from './features/faculty/FacultyPage';
 import RoomsPage from './features/rooms/RoomsPage';
 import ProspectusPage from './features/prospectus/ProspectusPage';
 import SystemConfigPage from './features/system-config/SystemConfigPage';
+import AuditTrailPage from './features/audit-trail/AuditTrailPage';
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
           <Route path="departments" element={<AdminDepartmentsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="system-settings" element={<SystemConfigPage />} />
+          <Route path="audit-trail" element={<AuditTrailPage />} />
         </Route>
       </Route>
 

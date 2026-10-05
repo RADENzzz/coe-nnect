@@ -18,6 +18,7 @@ import { ValidatePlotDto } from './dto/validate-plot.dto';
 import { UpdateRemarksDto } from './dto/update-remarks.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/schedules')
@@ -30,6 +31,7 @@ export class SchedulingController {
     return { data };
   }
 
+
   @Get()
   async findAll(@Query('termId') termId?: string) {
     const data = termId
@@ -38,12 +40,14 @@ export class SchedulingController {
     return { data };
   }
 
+  @Auditable({ action: 'schedule.create', source: 'Scheduling' })
   @Post('plot')
   async plot(@Body() dto: PlotSubjectDto) {
     const data = await this.service.plot(dto);
     return { data };
   }
 
+  @Auditable({ action: 'schedule.update', source: 'Scheduling' })
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateScheduleDto) {
     const data = await this.service.update(id, dto);
@@ -52,6 +56,7 @@ export class SchedulingController {
 
   // Only administrator and department_head may change an entry's status.
   // This is the *only* mutation allowed on a finalized/published entry.
+  @Auditable({ action: 'schedule.status_change', source: 'Scheduling' })
   @Roles('administrator', 'department_head')
   @Patch(':id/status')
   async updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
@@ -59,6 +64,7 @@ export class SchedulingController {
     return { data };
   }
 
+  @Auditable({ action: 'schedule.delete', source: 'Scheduling' })
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.service.remove(id);
@@ -78,4 +84,6 @@ export class SchedulingController {
     const data = await this.service.updateRemarks(id, dto.remarks ?? null);
     return { data };
   }
+
+
 }

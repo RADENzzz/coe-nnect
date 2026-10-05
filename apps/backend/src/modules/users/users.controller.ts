@@ -14,6 +14,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('administrator')
@@ -33,6 +34,7 @@ export class UsersController {
     return { data };
   }
 
+  @Auditable({ action: 'user.create', source: 'Users' })
   @Post()
   async create(@Body() dto: CreateUserDto) {
     const data = await this.service.create(dto);
@@ -51,6 +53,7 @@ export class UsersController {
     return { data };
   }
 
+  @Auditable({ action: 'user.delete', source: 'Users' })
   @Delete(':id')
   async remove(@Param('id') id: string) {
     await this.service.remove(id);

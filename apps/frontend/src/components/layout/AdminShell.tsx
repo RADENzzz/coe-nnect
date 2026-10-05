@@ -13,6 +13,11 @@ const navItems = [
     icon: 'settings',
     path: '/admin/system-settings',
   },
+  {
+    label: 'Audit Trail',
+    icon: 'history',
+    path: '/admin/audit-trail',
+  },
 ];
 
 export default function AdminShell() {

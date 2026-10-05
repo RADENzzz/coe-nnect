@@ -10,6 +10,7 @@ import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/system-config')
@@ -23,6 +24,7 @@ export class SystemConfigController {
   }
 
   // Only administrators can write
+  @Auditable({ action: 'system_config.update', source: 'SystemConfig' })
   @Roles('administrator')
   @Patch()
   async updateSettings(@Body() dto: UpdateSettingsDto) {
