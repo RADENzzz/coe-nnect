@@ -18,7 +18,12 @@ export interface RawSchedule {
   startTime: string | null;
   endTime: string | null;
   remarks: string | null;
-  subject?: { subjectId: string; subjectCode: string; title: string };
+    subject?: {
+    subjectId: string;
+    subjectCode: string;
+    title: string;
+    deptId: string;
+  };
   faculty?: { facultyId: string; firstName: string; lastName: string };
   room?: { roomId: string; roomNumber: string; building: string };
   timeSlot?: {
