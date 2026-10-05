@@ -237,29 +237,32 @@ export default function TimetableGrid({
                   );
                 })}
 
-                {/* Class blocks */}
-                {entries.map((entry) => {
-                  const dayIndex = DAYS.indexOf(entry.day);
-                  if (dayIndex === -1) return null;
+              {/* Class blocks */}
+              {entries.map((entry) => {
+                const dayIndex = DAYS.indexOf(entry.day);
+                if (dayIndex === -1) return null;
 
-                  const info = laneInfo.get(entry.id);
-                  const laneCount = info?.laneCount ?? 1;
-                  const lane = info?.lane ?? 0;
-                  const overlapCount = overlapCounts.get(entry.id) ?? 1;
+                const info = laneInfo.get(entry.id);
+                const laneCount = info?.laneCount ?? 1;
+                const lane = info?.lane ?? 0;
+                const overlapCount = overlapCounts.get(entry.id) ?? 1;
 
-                  return (
-                    <ClassBlock
-                      key={entry.id}
-                      entry={entry}
-                      dayIndex={dayIndex}
-                      lane={lane}
-                      laneCount={laneCount}
-                      overlapCount={overlapCount}
-                      onClick={onEntryClick}
-                      isDragging={draggingId === entry.id}
-                    />
-                  );
-                })}
+                return (
+                  <ClassBlock
+                    key={entry.id}
+                    entry={entry}
+                    dayIndex={dayIndex}
+                    lane={lane}
+                    laneCount={laneCount}
+                    overlapCount={overlapCount}
+                    onClick={onEntryClick}
+                    isDragging={draggingId === entry.id}
+                    disabled={
+                      entry.status === 'finalized' || entry.status === 'published'
+                    }
+                  />
+                );
+              })}
               </div>
             </div>
           </div>

@@ -8,6 +8,7 @@ import {
   DAY_WIDTH_PX,
   CELL_HEIGHT_PX,
 } from '../utils/grid-layout.util';
+import Icon from '../../../components/ui/Icon';
 
 interface Props {
   entry: ScheduleEntry;
@@ -17,6 +18,7 @@ interface Props {
   overlapCount?: number;
   onClick?: (entry: ScheduleEntry) => void;
   isDragging?: boolean;
+  disabled?: boolean;
 }
 
 function ClassBlockBase({
@@ -27,10 +29,12 @@ function ClassBlockBase({
   overlapCount = 1,
   onClick,
   isDragging,
+  disabled = false,
 }: Props) {
   const { ref, isDragging: isDraggingInternal } = useDraggable({
     id: entry.id,
     data: { entry },
+    disabled,
   });
 
   const top = minutesToY(timeToMinutes(entry.startTime));
@@ -46,6 +50,8 @@ function ClassBlockBase({
 
   const dragging = isDragging || isDraggingInternal;
   const isLab = entry.loadType === 'laboratory';
+  const locked =
+    entry.status === 'finalized' || entry.status === 'published';
 
   // Show the compact view when the block is only ~1 slot tall
   const isCompact = durationMinutes <= 30;
@@ -71,8 +77,10 @@ function ClassBlockBase({
       style={style}
       onClick={() => onClick?.(entry)}
       className={clsx(
-        'rounded-md px-1.5 py-1 text-white text-[10px] leading-tight cursor-grab select-none',
+        'rounded-md px-1.5 py-1 text-white text-[10px] leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
+        // Cursor: grab when draggable, pointer when locked (still clickable)
+        locked ? 'cursor-pointer' : 'cursor-grab',
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
         entry.hasConflict && 'ring-2 ring-red-500 animate-pulse',
@@ -80,6 +88,16 @@ function ClassBlockBase({
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
+      {/* Lock badge for finalized/published entries */}
+      {locked && (
+        <span
+          className="absolute top-0.5 left-1 bg-black/70 text-white rounded px-1 py-px leading-none pointer-events-none flex items-center"
+          title="Finalized — locked"
+        >
+          <Icon name="lock" size={9} />
+        </span>
+      )}
+
       {/* Overlap badge — shows when other entries share this exact slot */}
       {overlapCount > 1 && (
         <span className="absolute top-0.5 right-1 bg-black/70 text-white text-[9px] font-bold rounded px-1 py-px leading-none pointer-events-none">
@@ -88,7 +106,7 @@ function ClassBlockBase({
       )}
 
       {/* Line 1: subject code + section */}
-      <div className="font-bold truncate pr-4">
+      <div className={clsx('font-bold truncate', locked ? 'pl-4' : 'pr-4')}>
         {entry.subjectCode}
         {entry.sectionCode && !isCompact && !isNarrow && (
           <span className="font-normal opacity-90 ml-1">
