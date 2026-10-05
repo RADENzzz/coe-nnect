@@ -451,9 +451,10 @@ CoE-NNECT/
 * [x] Department-aware shell (sidebar + dashboard per department)
 * [x] PDF / Excel export
 * [x] Print timetable
+* [x] Audit trail UI
 
 ### In Progress / Planned
-* [ ] Audit trail UI
+
 * [ ] Notification infrastructure
 * [ ] Minor subject schedule import
 * [ ] Faculty time preference UI

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -13,6 +14,8 @@ import { SubjectsModule } from './modules/subjects/subjects.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
 import { ProspectusModule } from './modules/prospectus/prospectus.module';
 import { SystemConfigModule } from './modules/system-config/system-config.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
   imports: [
@@ -33,6 +36,13 @@ import { SystemConfigModule } from './modules/system-config/system-config.module
     RoomsModule,
     ProspectusModule,
     SystemConfigModule,
+    AuditModule,
+  ],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
   ],
 })
 export class AppModule {}
