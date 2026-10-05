@@ -449,10 +449,10 @@ CoE-NNECT/
 * [x] Timetable views (Master · By Room · By Faculty · By Section)
 * [x] Stack picker for overlapping entries
 * [x] Department-aware shell (sidebar + dashboard per department)
+* [x] PDF / Excel export
+* [x] Print timetable
 
 ### In Progress / Planned
-* [ ] PDF / Excel export
-* [ ] Print timetable
 * [ ] Audit trail UI
 * [ ] Notification infrastructure
 * [ ] Minor subject schedule import
