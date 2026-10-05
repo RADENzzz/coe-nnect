@@ -36,6 +36,12 @@ const DEMO_PASSWORD = 'Demo!2345';
 // ─────────────────────────────────────────────
 // Data to seed
 // ─────────────────────────────────────────────
+//
+// Seed order mirrors the SRS academic-structure flow:
+//   Departments → Subjects → Programs → Prospectus → Sections
+//   → Faculty → Users → Settings → Restrictions
+//
+
 const DEPARTMENTS = [
   {
     dept_code: 'BSCPE',
@@ -52,6 +58,135 @@ const DEPARTMENTS = [
     dept_name: 'Mechanical Engineering',
     description: 'Department of Mechanical Engineering',
   },
+];
+
+const SUBJECTS = [
+  // CpE — pure lecture
+  {
+    subject_code: 'CPE 101',
+    title: 'Programming Logic & Design',
+    total_units: 3,
+    lecture_units: 3,
+    lab_units: 0,
+    required_room_type: null,
+    dept_code: 'BSCPE',
+  },
+  {
+    subject_code: 'CPE 102',
+    title: 'Computer Programming 2',
+    total_units: 4,
+    lecture_units: 3,
+    lab_units: 1,
+    required_room_type: null,
+    dept_code: 'BSCPE',
+  },
+  {
+    subject_code: 'CPE 103',
+    title: 'Digital Logic Laboratory',
+    total_units: 1,
+    lecture_units: 0,
+    lab_units: 1,
+    required_room_type: 'laboratory',
+    dept_code: 'BSCPE',
+  },
+  {
+    subject_code: 'CPE 104',
+    title: 'Data Structures & Algorithms',
+    total_units: 2,
+    lecture_units: 0,
+    lab_units: 2,
+    required_room_type: 'computer_lab',
+    dept_code: 'BSCPE',
+  },
+  // EE
+  {
+    subject_code: 'EE 101',
+    title: 'Circuit Analysis I',
+    total_units: 3,
+    lecture_units: 3,
+    lab_units: 0,
+    required_room_type: null,
+    dept_code: 'EE',
+  },
+  {
+    subject_code: 'EE 102',
+    title: 'Electronics I',
+    total_units: 4,
+    lecture_units: 3,
+    lab_units: 1,
+    required_room_type: null,
+    dept_code: 'EE',
+  },
+  // ME
+  {
+    subject_code: 'ME 101',
+    title: 'Engineering Mechanics',
+    total_units: 3,
+    lecture_units: 3,
+    lab_units: 0,
+    required_room_type: null,
+    dept_code: 'ME',
+  },
+  // General Ed — cross-dept usage
+  {
+    subject_code: 'MATH 101',
+    title: 'Engineering Calculus I',
+    total_units: 3,
+    lecture_units: 3,
+    lab_units: 0,
+    required_room_type: null,
+    dept_code: 'BSCPE',
+  },
+  {
+    subject_code: 'PHYS 101',
+    title: 'Physics for Engineers',
+    total_units: 4,
+    lecture_units: 3,
+    lab_units: 1,
+    required_room_type: null,
+    dept_code: 'BSCPE',
+  },
+];
+
+const PROGRAMS = [
+  {
+    program_code: 'BSCPE',
+    program_name: 'BS Computer Engineering',
+    dept_code: 'BSCPE',
+  },
+  {
+    program_code: 'BSEE',
+    program_name: 'BS Electrical Engineering',
+    dept_code: 'EE',
+  },
+  {
+    program_code: 'BSCE',
+    program_name: 'BS Civil Engineering',
+    dept_code: 'CE',
+  },
+];
+
+// Prospectus entries: [program_code, subject_code, year_level, semester]
+// Semester is one of: '1st' | '2nd' | 'summer'
+const PROSPECTUS = [
+  { program_code: 'BSCPE', subject_code: 'CPE 101', year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'MATH 101', year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 102', year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'PHYS 101', year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 103', year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 104', year_level: 2, semester: '2nd' },
+  { program_code: 'BSEE', subject_code: 'EE 101', year_level: 1, semester: '1st' },
+  { program_code: 'BSEE', subject_code: 'EE 102', year_level: 1, semester: '2nd' },
+];
+
+// NOTE: student_count removed per PM note (Oct 2026) — a section's
+// student count does not reliably indicate which subjects its students take.
+const SECTIONS = [
+  { section_code: 'CpE-1A', year_level: 1 },
+  { section_code: 'CpE-1B', year_level: 1 },
+  { section_code: 'CpE-2A', year_level: 2 },
+  { section_code: 'CpE-3A', year_level: 3 },
+  { section_code: 'EE-1A', year_level: 1 },
 ];
 
 const FACULTY = [
@@ -114,143 +249,6 @@ const FACULTY = [
   },
 ];
 
-const SUBJECTS = [
-  // CpE — pure lecture
-  {
-    subject_code: 'CPE 101',
-    title: 'Programming Logic & Design',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-  // CpE — combined lecture + lab
-  {
-    subject_code: 'CPE 102',
-    title: 'Computer Programming 2',
-    total_units: 4,
-    lecture_units: 3,
-    lab_units: 1,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-  // CpE — pure lab
-  {
-    subject_code: 'CPE 103',
-    title: 'Digital Logic Laboratory',
-    total_units: 1,
-    lecture_units: 0,
-    lab_units: 1,
-    required_room_type: 'laboratory',
-    dept_code: 'BSCPE',
-  },
-  // CpE — 2-unit lab
-  {
-    subject_code: 'CPE 104',
-    title: 'Data Structures & Algorithms',
-    total_units: 2,
-    lecture_units: 0,
-    lab_units: 2,
-    required_room_type: 'computer_lab',
-    dept_code: 'BSCPE',
-  },
-  // EE — pure lecture
-  {
-    subject_code: 'EE 101',
-    title: 'Circuit Analysis I',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'EE',
-  },
-  // EE — combined
-  {
-    subject_code: 'EE 102',
-    title: 'Electronics I',
-    total_units: 4,
-    lecture_units: 3,
-    lab_units: 1,
-    required_room_type: null,
-    dept_code: 'EE',
-  },
-  // ME — pure lecture
-  {
-    subject_code: 'ME 101',
-    title: 'Engineering Mechanics',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'ME',
-  },
-  // General Ed — cross-dept usage
-  {
-    subject_code: 'MATH 101',
-    title: 'Engineering Calculus I',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-  {
-    subject_code: 'PHYS 101',
-    title: 'Physics for Engineers',
-    total_units: 4,
-    lecture_units: 3,
-    lab_units: 1,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-];
-
-const SECTIONS = [
-  { section_code: 'CpE-1A', year_level: 1, student_count: 42 },
-  { section_code: 'CpE-1B', year_level: 1, student_count: 40 },
-  { section_code: 'CpE-2A', year_level: 2, student_count: 38 },
-  { section_code: 'CpE-3A', year_level: 3, student_count: 35 },
-  { section_code: 'EE-1A', year_level: 1, student_count: 30 },
-];
-
-const PROGRAMS = [
-  {
-    program_code: 'BSCPE',
-    program_name: 'BS Computer Engineering',
-    dept_code: 'BSCPE',
-  },
-  {
-    program_code: 'BSEE',
-    program_name: 'BS Electrical Engineering',
-    dept_code: 'EE',
-  },
-  {
-    program_code: 'BSCE',
-    program_name: 'BS Civil Engineering',
-    dept_code: 'CE',
-  },
-];
-
-// Prospectus entries: [program_code, subject_code, year_level, semester]
-// Semester is one of: '1st' | '2nd' | 'summer'
-const PROSPECTUS = [
-  // BSCPE — Year 1, 1st semester
-  { program_code: 'BSCPE', subject_code: 'CPE 101', year_level: 1, semester: '1st' },
-  { program_code: 'BSCPE', subject_code: 'MATH 101', year_level: 1, semester: '1st' },
-  // BSCPE — Year 1, 2nd semester
-  { program_code: 'BSCPE', subject_code: 'CPE 102', year_level: 1, semester: '2nd' },
-  { program_code: 'BSCPE', subject_code: 'PHYS 101', year_level: 1, semester: '2nd' },
-  // BSCPE — Year 2, 1st semester
-  { program_code: 'BSCPE', subject_code: 'CPE 103', year_level: 2, semester: '1st' },
-  // BSCPE — Year 2, 2nd semester
-  { program_code: 'BSCPE', subject_code: 'CPE 104', year_level: 2, semester: '2nd' },
-  // BSEE — Year 1, 1st semester
-  { program_code: 'BSEE', subject_code: 'EE 101', year_level: 1, semester: '1st' },
-  // BSEE — Year 1, 2nd semester
-  { program_code: 'BSEE', subject_code: 'EE 102', year_level: 1, semester: '2nd' },
-];
-
 const SETTINGS = [
   { setting_key: 'operating_hours_start', value: '07:00' },
   { setting_key: 'operating_hours_end', value: '19:00' },
@@ -299,7 +297,6 @@ const USERS = [
 // Helpers
 // ─────────────────────────────────────────────
 async function upsertByCode(table: string, codeCol: string, rows: any[]) {
-  // Not using Supabase upsert because we need to look up existing IDs.
   const out: Record<string, string> = {};
   for (const row of rows) {
     const { data: existing } = await supabase
@@ -330,40 +327,19 @@ async function upsertByCode(table: string, codeCol: string, rows: any[]) {
 // ─────────────────────────────────────────────
 async function main() {
   console.log('\n=== CoE-NNECT: Demo Seed ===\n');
+  console.log('Flow: Departments → Subjects → Programs → Prospectus → Sections → Faculty → Users → Settings → Restrictions\n');
 
-  // 1. Departments
-  console.log('Upserting departments…');
+  // ─────────────────────────────────────
+  // STEP 1: Departments (FR 2.1.1)
+  // ─────────────────────────────────────
+  console.log('[1/9] Upserting departments…');
   const deptIds = await upsertByCode('department', 'dept_code', DEPARTMENTS);
   console.log('  →', deptIds);
 
-  // 2. Faculty
-  console.log('Upserting faculty…');
-  for (const f of FACULTY) {
-    const deptId = deptIds[f.dept_code];
-    const { data: existing } = await supabase
-      .from('faculty')
-      .select('faculty_id')
-      .eq('wmsu_id', f.wmsu_id)
-      .maybeSingle();
-    if (existing) continue;
-
-    const { error } = await supabase.from('faculty').insert({
-      wmsu_id: f.wmsu_id,
-      first_name: f.first_name,
-      last_name: f.last_name,
-      email: f.email,
-      dept_id: deptId,
-      classification: f.classification,
-      required_hours: f.required_hours,
-    });
-    if (error) {
-      console.error(`Faculty ${f.first_name} ${f.last_name}:`, error.message);
-      process.exit(1);
-    }
-  }
-
-  // 3. Subjects
-  console.log('Upserting subjects…');
+  // ─────────────────────────────────────
+  // STEP 2: Subjects (FR 2.1.2)
+  // ─────────────────────────────────────
+  console.log('[2/9] Upserting subjects…');
   for (const s of SUBJECTS) {
     const deptId = deptIds[s.dept_code];
     const { data: existing } = await supabase
@@ -387,29 +363,12 @@ async function main() {
       process.exit(1);
     }
   }
+  console.log('  → subjects ready');
 
-  // 4. Sections
-  console.log('Upserting sections…');
-  for (const s of SECTIONS) {
-    const { data: existing } = await supabase
-      .from('section')
-      .select('section_id')
-      .eq('section_code', s.section_code)
-      .maybeSingle();
-    if (existing) continue;
-
-    const { error } = await supabase.from('section').insert({
-      section_code: s.section_code,
-      year_level: s.year_level,
-      student_count: s.student_count,
-    });
-    if (error) {
-      console.error(`Section ${s.section_code}:`, error.message);
-      process.exit(1);
-    }
-  }
-  // 4b. Programs
-  console.log('Upserting programs…');
+  // ─────────────────────────────────────
+  // STEP 3: Programs (prerequisite for prospectus + sections)
+  // ─────────────────────────────────────
+  console.log('[3/9] Upserting programs…');
   const programIds: Record<string, string> = {};
   for (const p of PROGRAMS) {
     const deptId = deptIds[p.dept_code];
@@ -446,9 +405,10 @@ async function main() {
   }
   console.log('  →', programIds);
 
-  // 4c. Prospectus
-  console.log('Upserting prospectus entries…');
-  // Build a subject_code → subject_id lookup once
+  // ─────────────────────────────────────
+  // STEP 4: Prospectus (FR 2.1.3)
+  // ─────────────────────────────────────
+  console.log('[4/9] Upserting prospectus entries…');
   const { data: subjectRows } = await supabase
     .from('subject')
     .select('subject_id, subject_code');
@@ -498,29 +458,65 @@ async function main() {
   }
   console.log(`  → ${prospectusInserted} new prospectus entries`);
 
-  // 5. Scheduling settings
-  console.log('Upserting scheduling settings…');
-  for (const s of SETTINGS) {
-    const { error } = await supabase.from('scheduling_setting').upsert(
-      {
-        setting_key: s.setting_key,
-        value: s.value,
-      },
-      { onConflict: 'setting_key' },
-    );
+  // ─────────────────────────────────────
+  // STEP 5: Sections
+  // ─────────────────────────────────────
+  console.log('[5/9] Upserting sections…');
+  for (const s of SECTIONS) {
+    const { data: existing } = await supabase
+      .from('section')
+      .select('section_id')
+      .eq('section_code', s.section_code)
+      .maybeSingle();
+    if (existing) continue;
+
+    const { error } = await supabase.from('section').insert({
+      section_code: s.section_code,
+      year_level: s.year_level,
+      // student_count intentionally omitted — see PM note (Oct 2026).
+    });
     if (error) {
-      console.error(`Setting ${s.setting_key}:`, error.message);
+      console.error(`Section ${s.section_code}:`, error.message);
       process.exit(1);
     }
   }
+  console.log('  → sections ready');
 
-  // 6. Users — via admin API so app_metadata lands correctly
-  console.log('Creating users…');
+  // ─────────────────────────────────────
+  // STEP 6: Faculty
+  // ─────────────────────────────────────
+  console.log('[6/9] Upserting faculty…');
+  for (const f of FACULTY) {
+    const deptId = deptIds[f.dept_code];
+    const { data: existing } = await supabase
+      .from('faculty')
+      .select('faculty_id')
+      .eq('wmsu_id', f.wmsu_id)
+      .maybeSingle();
+    if (existing) continue;
+
+    const { error } = await supabase.from('faculty').insert({
+      wmsu_id: f.wmsu_id,
+      first_name: f.first_name,
+      last_name: f.last_name,
+      email: f.email,
+      dept_id: deptId,
+      classification: f.classification,
+      required_hours: f.required_hours,
+    });
+    if (error) {
+      console.error(`Faculty ${f.first_name} ${f.last_name}:`, error.message);
+      process.exit(1);
+    }
+  }
+  console.log('  → faculty ready');
+
+  // ─────────────────────────────────────
+  // STEP 7: Users
+  // ─────────────────────────────────────
+  console.log('[7/9] Creating users…');
   for (const u of USERS) {
     const deptId = u.dept_code ? deptIds[u.dept_code] : null;
-
-    // Check if user already exists in auth
-    const { data: list } = await supabase.auth.admin.listUsers();
     const existing = await findAuthUserByEmail(u.email);
 
     if (existing) {
@@ -556,10 +552,8 @@ async function main() {
       process.exit(1);
     }
 
-    // Wait a beat for the trigger to fire
     await new Promise((r) => setTimeout(r, 300));
 
-    // Ensure the trigger populated public.users with the right values
     await supabase
       .from('users')
       .update({ role: u.role, dept_id: deptId, username: u.username })
@@ -568,9 +562,29 @@ async function main() {
     console.log(`  Created ${u.email}`);
   }
 
-  // 7. Add a cross-dept subject restriction as a demo
-  console.log('Adding demo subject restriction…');
-  const mathId = Object.values(deptIds).length ? null : null; // placeholder
+  // ─────────────────────────────────────
+  // STEP 8: Scheduling settings
+  // ─────────────────────────────────────
+  console.log('[8/9] Upserting scheduling settings…');
+  for (const s of SETTINGS) {
+    const { error } = await supabase.from('scheduling_setting').upsert(
+      {
+        setting_key: s.setting_key,
+        value: s.value,
+      },
+      { onConflict: 'setting_key' },
+    );
+    if (error) {
+      console.error(`Setting ${s.setting_key}:`, error.message);
+      process.exit(1);
+    }
+  }
+  console.log('  → settings ready');
+
+  // ─────────────────────────────────────
+  // STEP 9: Demo subject restriction
+  // ─────────────────────────────────────
+  console.log('[9/9] Adding demo subject restriction…');
   const { data: mathSubj } = await supabase
     .from('subject')
     .select('subject_id')
@@ -600,7 +614,11 @@ async function main() {
       });
     }
   }
+  console.log('  → restriction ready');
 
+  // ─────────────────────────────────────
+  // Summary
+  // ─────────────────────────────────────
   console.log('\n=== Seed complete ===\n');
   console.log('Demo credentials:');
   console.log(`  Password (all users): ${DEMO_PASSWORD}`);
