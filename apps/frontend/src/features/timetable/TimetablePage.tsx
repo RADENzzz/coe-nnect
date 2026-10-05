@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import TimetableGrid from './components/TimetableGrid';
 import type { ScheduleEntry, Day, LoadType } from './types';
@@ -14,6 +14,7 @@ import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchRooms } from '../../api/rooms.api';
 import { fetchSections } from '../../api/sections.api';
+import { fetchDepartments } from '../../api/departments.api';
 import { useAuthStore } from '../../store/auth.store';
 import { timeToMinutes, minutesToTime } from './utils/time.util';
 import LoadingState from '../../components/feedback/LoadingState';
@@ -70,22 +71,42 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     status: raw.status,
     remarks: raw.remarks,
     loadType: (raw.loadType ?? 'lecture') as LoadType,
-    deptId: '',
+    deptId: raw.subject?.deptId ?? '',
     deptColor: '#800000',
     color: colorForSubject(raw.subjectId),
   };
 }
 
-type ViewMode = 'master' | 'room' | 'faculty' | 'section';
+type ViewMode = 'master' | 'department' | 'room' | 'faculty' | 'section';
 
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
+
+  // ── View mode ──
+  // Default: Master for everyone, but DHs default to their own department.
+  const isDepartmentHead = profile?.role === 'department_head';
+  const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
+
   const [viewMode, setViewMode] = useState<ViewMode>('master');
   const [viewTargetId, setViewTargetId] = useState('');
+
+  // Once the profile loads, if this is a DH with a dept, jump to their dept view.
+  // Runs once — subsequent manual changes aren't overridden.
+  const [defaultedToDept, setDefaultedToDept] = useState(false);
+  useEffect(() => {
+    if (defaultedToDept) return;
+    if (!profile) return;
+    if (isDepartmentHead && myDeptId) {
+      setViewMode('department');
+      setViewTargetId(myDeptId);
+    }
+    setDefaultedToDept(true);
+  }, [profile, isDepartmentHead, myDeptId, defaultedToDept]);
 
   // ── Fetch active term ──
   const {
@@ -133,7 +154,14 @@ export default function TimetablePage() {
 
   const { data: sections = [] } = useQuery({
     queryKey: ['sections'],
-    queryFn: () => fetchSections(),
+    queryFn: fetchSections,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: fetchDepartments,
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
@@ -147,6 +175,7 @@ export default function TimetablePage() {
   const entries = useMemo(() => {
     if (viewMode === 'master' || !viewTargetId) return allEntries;
     return allEntries.filter((e) => {
+      if (viewMode === 'department') return e.deptId === viewTargetId;
       if (viewMode === 'room') return e.roomId === viewTargetId;
       if (viewMode === 'faculty') return e.facultyId === viewTargetId;
       if (viewMode === 'section') return e.sectionCode === viewTargetId;
@@ -255,10 +284,10 @@ export default function TimetablePage() {
     },
     [allEntries, moveMutation, queryClient, activeTerm?.termId],
   );
-  
+
   const handleClick = useCallback(
     (entry: ScheduleEntry) => {
-      const sameSlot = allEntries.filter(
+      const sameSlot = entries.filter(
         (e) => e.day === entry.day && e.startTime === entry.startTime,
       );
       if (sameSlot.length > 1) {
@@ -267,12 +296,12 @@ export default function TimetablePage() {
         setSelectedEntry(entry);
       }
     },
-    [allEntries],
+    [entries],
   );
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
-  // TODO: open edit form
-  console.log('TODO: open edit form for', entry);
+    // TODO: open edit form
+    console.log('TODO: open edit form for', entry);
   }, []);
 
   const handlePickFromStack = useCallback((entry: ScheduleEntry) => {
@@ -285,6 +314,14 @@ export default function TimetablePage() {
 
   // ── View target options depend on mode ──
   const viewOptions = useMemo(() => {
+    if (viewMode === 'department') {
+      return departments
+        .filter((d) => d.isActive)
+        .map((d) => ({
+          value: String(d.deptId),
+          label: `[${d.deptCode}] ${d.deptName}`,
+        }));
+    }
     if (viewMode === 'room') {
       return rooms
         .filter((r) => r.isActive)
@@ -310,14 +347,27 @@ export default function TimetablePage() {
         }));
     }
     return [];
-  }, [viewMode, rooms, faculty, sections]);
+  }, [viewMode, departments, rooms, faculty, sections]);
 
   const viewModeLabel: Record<ViewMode, string> = {
     master: 'Master View',
+    department: 'By Department',
     room: 'By Room',
     faculty: 'By Faculty',
     section: 'By Section',
   };
+
+  // Label for the target selector dropdown
+  const targetLabel =
+    viewMode === 'department'
+      ? 'Department'
+      : viewMode === 'room'
+      ? 'Room'
+      : viewMode === 'faculty'
+      ? 'Faculty'
+      : viewMode === 'section'
+      ? 'Section'
+      : '';
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto">
@@ -375,11 +425,17 @@ export default function TimetablePage() {
               value={viewMode}
               onChange={(e) => {
                 setViewMode(e.target.value as ViewMode);
-                setViewTargetId('');
+                // Auto-select the DH's own dept when switching to By Department
+                if (e.target.value === 'department' && myDeptId) {
+                  setViewTargetId(myDeptId);
+                } else {
+                  setViewTargetId('');
+                }
               }}
-              className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[150px]"
+              className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[180px]"
             >
               <option value="master">Master View</option>
+              <option value="department">By Department</option>
               <option value="room">By Room</option>
               <option value="faculty">By Faculty</option>
               <option value="section">By Section</option>
@@ -389,11 +445,7 @@ export default function TimetablePage() {
           {viewMode !== 'master' && (
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                {viewMode === 'room'
-                  ? 'Room'
-                  : viewMode === 'faculty'
-                  ? 'Faculty'
-                  : 'Section'}
+                {targetLabel}
               </label>
               <select
                 value={viewTargetId}
@@ -448,7 +500,7 @@ export default function TimetablePage() {
           }
           description={
             viewMode !== 'master' && viewTargetId
-              ? 'Try selecting a different room, faculty, or section.'
+              ? 'Try selecting a different department, room, faculty, or section.'
               : 'Click "Plot Subject" to add your first class.'
           }
         />
@@ -497,11 +549,13 @@ export default function TimetablePage() {
           termId={activeTerm.termId}
         />
       )}
+
+      {/* Stack Picker */}
       <StackPicker
-  entries={stackOpen}
-  onClose={() => setStackOpen(null)}
-  onPick={handlePickFromStack}
-/>
+        entries={stackOpen}
+        onClose={() => setStackOpen(null)}
+        onPick={handlePickFromStack}
+      />
     </div>
   );
 }
