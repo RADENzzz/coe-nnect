@@ -42,3 +42,48 @@ export async function toggleSectionActive(id: string): Promise<Section> {
 export async function deleteSection(id: string): Promise<void> {
   await api.delete(`/v1/sections/${id}`);
 }
+
+export interface SubjectRestriction {
+  restrictionId: string;
+  subjectId1: string;
+  subjectId2: string;
+  termId: string | null;
+  warningMessage: string | null;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface CreateSubjectRestrictionInput {
+  subjectId1: string;
+  subjectId2: string;
+  termId?: string;
+  warningMessage?: string;
+}
+
+export async function fetchSubjectRestrictions(
+  termId?: string,
+): Promise<SubjectRestriction[]> {
+  const params = termId ? { termId } : {};
+  const { data } = await api.get('/v1/subjects/restrictions', { params });
+  return data.data;
+}
+
+export async function createSubjectRestriction(
+  input: CreateSubjectRestrictionInput,
+): Promise<SubjectRestriction> {
+  const { data } = await api.post('/v1/subjects/restrictions', input);
+  return data.data;
+}
+
+export async function updateSubjectRestriction(
+  id: string,
+  input: { warningMessage?: string; isActive?: boolean },
+): Promise<SubjectRestriction> {
+  const { data } = await api.patch(`/v1/subjects/restrictions/${id}`, input);
+  return data.data;
+}
+
+export async function deleteSubjectRestriction(id: string): Promise<void> {
+  await api.delete(`/v1/subjects/restrictions/${id}`);
+}

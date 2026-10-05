@@ -9,6 +9,7 @@ export const mainNavItems = [
   { label: 'Conflict Resolver', path: ROUTES.APPROVALS, icon: 'report_problem' },
   { label: 'Rooms', path: ROUTES.ROOMS, icon: 'meeting_room' },
   { label: 'Subjects', path: ROUTES.SUBJECTS, icon: 'menu_book' },
+  { label: 'Prospectus', path: ROUTES.PROSPECTUS, icon: 'library_books' },
   { label: 'Sections', path: ROUTES.SECTIONS, icon: 'view_module' },
   { label: 'Reports', path: ROUTES.REPORTS, icon: 'bar_chart' },
 ];

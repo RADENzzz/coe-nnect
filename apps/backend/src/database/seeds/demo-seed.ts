@@ -214,6 +214,43 @@ const SECTIONS = [
   { section_code: 'EE-1A', year_level: 1, student_count: 30 },
 ];
 
+const PROGRAMS = [
+  {
+    program_code: 'BSCPE',
+    program_name: 'BS Computer Engineering',
+    dept_code: 'BSCPE',
+  },
+  {
+    program_code: 'BSEE',
+    program_name: 'BS Electrical Engineering',
+    dept_code: 'EE',
+  },
+  {
+    program_code: 'BSCE',
+    program_name: 'BS Civil Engineering',
+    dept_code: 'CE',
+  },
+];
+
+// Prospectus entries: [program_code, subject_code, year_level, semester]
+// Semester is one of: '1st' | '2nd' | 'summer'
+const PROSPECTUS = [
+  // BSCPE — Year 1, 1st semester
+  { program_code: 'BSCPE', subject_code: 'CPE 101', year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'MATH 101', year_level: 1, semester: '1st' },
+  // BSCPE — Year 1, 2nd semester
+  { program_code: 'BSCPE', subject_code: 'CPE 102', year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'PHYS 101', year_level: 1, semester: '2nd' },
+  // BSCPE — Year 2, 1st semester
+  { program_code: 'BSCPE', subject_code: 'CPE 103', year_level: 2, semester: '1st' },
+  // BSCPE — Year 2, 2nd semester
+  { program_code: 'BSCPE', subject_code: 'CPE 104', year_level: 2, semester: '2nd' },
+  // BSEE — Year 1, 1st semester
+  { program_code: 'BSEE', subject_code: 'EE 101', year_level: 1, semester: '1st' },
+  // BSEE — Year 1, 2nd semester
+  { program_code: 'BSEE', subject_code: 'EE 102', year_level: 1, semester: '2nd' },
+];
+
 const SETTINGS = [
   { setting_key: 'operating_hours_start', value: '07:00' },
   { setting_key: 'operating_hours_end', value: '19:00' },
@@ -371,6 +408,95 @@ async function main() {
       process.exit(1);
     }
   }
+  // 4b. Programs
+  console.log('Upserting programs…');
+  const programIds: Record<string, string> = {};
+  for (const p of PROGRAMS) {
+    const deptId = deptIds[p.dept_code];
+    if (!deptId) {
+      console.warn(`  Skipping program ${p.program_code}: dept ${p.dept_code} not found`);
+      continue;
+    }
+    const { data: existing } = await supabase
+      .from('program')
+      .select('program_id')
+      .eq('program_code', p.program_code)
+      .maybeSingle();
+
+    if (existing) {
+      programIds[p.program_code] = String(existing.program_id);
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from('program')
+      .insert({
+        program_code: p.program_code,
+        program_name: p.program_name,
+        dept_id: deptId,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error(`Program ${p.program_code}:`, error?.message);
+      process.exit(1);
+    }
+    programIds[p.program_code] = String(data.program_id);
+  }
+  console.log('  →', programIds);
+
+  // 4c. Prospectus
+  console.log('Upserting prospectus entries…');
+  // Build a subject_code → subject_id lookup once
+  const { data: subjectRows } = await supabase
+    .from('subject')
+    .select('subject_id, subject_code');
+  const subjectIdByCode: Record<string, string> = {};
+  for (const row of subjectRows ?? []) {
+    subjectIdByCode[row.subject_code] = String(row.subject_id);
+  }
+
+  let prospectusInserted = 0;
+  for (const entry of PROSPECTUS) {
+    const programId = programIds[entry.program_code];
+    const subjectId = subjectIdByCode[entry.subject_code];
+    if (!programId || !subjectId) {
+      console.warn(
+        `  Skipping prospectus ${entry.program_code}/${entry.subject_code}: missing FK`,
+      );
+      continue;
+    }
+
+    const { data: existing } = await supabase
+      .from('prospectus')
+      .select('prospectus_id')
+      .eq('program_id', programId)
+      .eq('subject_id', subjectId)
+      .eq('year_level', entry.year_level)
+      .eq('semester', entry.semester)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    const { error } = await supabase.from('prospectus').insert({
+      program_id: programId,
+      subject_id: subjectId,
+      year_level: entry.year_level,
+      semester: entry.semester,
+      is_active: true,
+    });
+
+    if (error) {
+      console.error(
+        `Prospectus ${entry.program_code}/${entry.subject_code}:`,
+        error.message,
+      );
+      process.exit(1);
+    }
+    prospectusInserted++;
+  }
+  console.log(`  → ${prospectusInserted} new prospectus entries`);
 
   // 5. Scheduling settings
   console.log('Upserting scheduling settings…');

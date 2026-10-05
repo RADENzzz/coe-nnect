@@ -12,6 +12,7 @@ import {
 } from '../../api/subjects.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
+import RestrictionsPanel from './components/RestrictionsPanel';
 
 const ROOM_TYPES = [
   { value: '', label: '— any —' },
@@ -27,7 +28,7 @@ type Mode = 'create' | 'edit';
 export default function SubjectsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-
+  const [restrictionsOpen, setRestrictionsOpen] = useState(false);
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<SubjectRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +68,13 @@ export default function SubjectsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: Partial<CreateSubjectInput> }) =>
-      updateSubject(id, input),
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: Partial<CreateSubjectInput>;
+    }) => updateSubject(id, input),
     onSuccess: (s) => {
       setSuccess(`Subject "${s.subjectCode}" updated.`);
       closeForm();
@@ -204,13 +210,22 @@ export default function SubjectsPage() {
             {subjects.length} subject(s) registered
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-        >
-          <Icon name="add" size={18} />
-          New Subject
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setRestrictionsOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant text-on-surface-variant text-sm font-semibold hover:bg-surface-container-low transition"
+          >
+            <Icon name="rule" size={18} />
+            Manage Restrictions
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+          >
+            <Icon name="add" size={18} />
+            New Subject
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -322,7 +337,8 @@ export default function SubjectsPage() {
                   <p className="text-xs text-on-surface-variant">
                     Total units:{' '}
                     <strong className="text-on-surface">
-                      {Number(form.lectureUnits || 0) + Number(form.labUnits || 0)}
+                      {Number(form.lectureUnits || 0) +
+                        Number(form.labUnits || 0)}
                     </strong>
                   </p>
                 </div>
@@ -359,7 +375,9 @@ export default function SubjectsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
+                  disabled={
+                    createMutation.isPending || updateMutation.isPending
+                  }
                   className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
                 >
                   {createMutation.isPending || updateMutation.isPending
@@ -391,7 +409,10 @@ export default function SubjectsPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-on-surface-variant">
+                <td
+                  colSpan={7}
+                  className="px-5 py-8 text-center text-on-surface-variant"
+                >
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                     Loading...
@@ -400,13 +421,19 @@ export default function SubjectsPage() {
               </tr>
             ) : subjects.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-on-surface-variant">
+                <td
+                  colSpan={7}
+                  className="px-5 py-12 text-center text-on-surface-variant"
+                >
                   No subjects yet.
                 </td>
               </tr>
             ) : (
               subjects.map((s) => (
-                <tr key={s.subjectId} className="border-b border-white/5 hover:bg-surface-container-low">
+                <tr
+                  key={s.subjectId}
+                  className="border-b border-white/5 hover:bg-surface-container-low"
+                >
                   <td className="px-5 py-3.5 font-bold font-mono text-primary">
                     {s.subjectCode}
                   </td>
@@ -466,6 +493,13 @@ export default function SubjectsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Restrictions Panel (S-11) */}
+      <RestrictionsPanel
+        open={restrictionsOpen}
+        onClose={() => setRestrictionsOpen(false)}
+        subjects={subjects}
+      />
     </div>
   );
 }
