@@ -18,20 +18,16 @@ import SubjectsPage from './features/subjects/SubjectsPage';
 import FacultyPage from './features/faculty/FacultyPage';
 import RoomsPage from './features/rooms/RoomsPage';
 import ProspectusPage from './features/prospectus/ProspectusPage';
+import SystemConfigPage from './features/system-config/SystemConfigPage';
 
 function App() {
   return (
     <Routes>
-      {/* Public */}
       <Route path="/login" element={<LoginPage />} />
 
-      {/* Admin-only portal */}
       <Route
         element={
-          <ProtectedRoute
-            allowedRoles={['administrator']}
-            redirectTo="/login"
-          />
+          <ProtectedRoute allowedRoles={['administrator']} redirectTo="/login" />
         }
       >
         <Route path="/admin" element={<AdminShell />}>
@@ -39,16 +35,13 @@ function App() {
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="departments" element={<AdminDepartmentsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="system-settings" element={<SystemConfigPage />} />
         </Route>
       </Route>
 
-      {/* Dean portal */}
       <Route
         element={
-          <ProtectedRoute
-            allowedRoles={['college_dean']}
-            redirectTo="/login"
-          />
+          <ProtectedRoute allowedRoles={['college_dean']} redirectTo="/login" />
         }
       >
         <Route path="/dean" element={<DeanShell />}>
@@ -59,13 +52,9 @@ function App() {
         </Route>
       </Route>
 
-      {/* Department heads */}
       <Route
         element={
-          <ProtectedRoute
-            allowedRoles={['department_head']}
-            redirectTo="/login"
-          />
+          <ProtectedRoute allowedRoles={['department_head']} redirectTo="/login" />
         }
       >
         <Route path="/" element={<AppShell />}>
@@ -81,7 +70,6 @@ function App() {
         </Route>
       </Route>
 
-      {/* Fallback */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

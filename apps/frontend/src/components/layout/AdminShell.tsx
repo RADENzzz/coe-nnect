@@ -8,6 +8,11 @@ const navItems = [
   { label: 'Dashboard', icon: 'dashboard', path: '/admin/dashboard' },
   { label: 'Departments', icon: 'domain', path: '/admin/departments' },
   { label: 'Users', icon: 'manage_accounts', path: '/admin/users' },
+  {
+    label: 'System Settings',
+    icon: 'settings',
+    path: '/admin/system-settings',
+  },
 ];
 
 export default function AdminShell() {

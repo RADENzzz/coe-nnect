@@ -12,6 +12,7 @@ import { FacultyModule } from './modules/faculty/faculty.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
 import { ProspectusModule } from './modules/prospectus/prospectus.module';
+import { SystemConfigModule } from './modules/system-config/system-config.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ProspectusModule } from './modules/prospectus/prospectus.module';
     SubjectsModule,
     RoomsModule,
     ProspectusModule,
+    SystemConfigModule,
   ],
 })
 export class AppModule {}
