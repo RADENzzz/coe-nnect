@@ -32,6 +32,9 @@ const STATUS_STYLES: Record<string, string> = {
   published: 'bg-green-100 text-green-800',
 };
 
+const isLocked = (status?: string) =>
+  status === 'finalized' || status === 'published';
+
 export default function ScheduleDetailDrawer({
   entry,
   onClose,
@@ -114,7 +117,26 @@ export default function ScheduleDetailDrawer({
     statusMutation.mutate(newStatus as any);
   };
 
+  // Finalize: set status to 'finalized'. If already finalized/published, unfinalize → 'draft'
+  const handleToggleLock = () => {
+    if (!entry) return;
+    const currentlyLocked = isLocked(entry.status);
+    if (currentlyLocked) {
+      if (
+        window.confirm(
+          'Unfinalize this entry? It will be editable again and set back to Draft.',
+        )
+      ) {
+        statusMutation.mutate('draft');
+      }
+    } else {
+      statusMutation.mutate('finalized');
+    }
+  };
+
   if (!entry) return null;
+
+  const locked = isLocked(entry.status);
 
   return (
     <div className="fixed inset-0 z-50">
@@ -131,7 +153,7 @@ export default function ScheduleDetailDrawer({
           <div>
             <h2 className="text-lg font-bold text-primary">Class Details</h2>
             <p className="text-xs text-on-surface-variant">
-              View, edit, or delete this entry
+              {locked ? 'Locked entry — read-only' : 'View, edit, or delete this entry'}
             </p>
           </div>
           <button
@@ -143,6 +165,17 @@ export default function ScheduleDetailDrawer({
           </button>
         </header>
 
+        {/* Lock banner */}
+        {locked && (
+          <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-xs text-blue-900">
+            <Icon name="lock" size={16} className="shrink-0" />
+            <span>
+              This entry is locked. Click <strong>Unfinalize</strong> to make
+              edits.
+            </span>
+          </div>
+        )}
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Subject title */}
@@ -151,13 +184,16 @@ export default function ScheduleDetailDrawer({
               <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                 {entry.subjectCode}
               </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase bg-surface-container-high text-on-surface-variant">
+                {entry.loadType}
+              </span>
               <span
                 className={clsx(
                   'text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase',
-                  STATUS_STYLES[statusMutation.isPending ? 'draft' : 'draft'],
+                  STATUS_STYLES[entry.status ?? 'draft'],
                 )}
               >
-                {entry.loadType}
+                {STATUS_LABELS[entry.status ?? 'draft']}
               </span>
             </div>
             <h3 className="text-base font-semibold text-on-surface">
@@ -165,8 +201,51 @@ export default function ScheduleDetailDrawer({
             </h3>
           </div>
 
+          {/* Status + lock control */}
+          <div className="pt-3 border-t border-surface-variant">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
+              Status
+            </label>
+            <div className="flex items-center gap-2">
+              <select
+                value={entry.status ?? 'draft'}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                disabled={statusMutation.isPending || locked}
+                className="flex-1 bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleToggleLock}
+                disabled={statusMutation.isPending}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition whitespace-nowrap',
+                  locked
+                    ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                    : 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100',
+                )}
+              >
+                <Icon name={locked ? 'lock_open' : 'lock'} size={16} />
+                {statusMutation.isPending
+                  ? '…'
+                  : locked
+                  ? 'Unfinalize'
+                  : 'Finalize'}
+              </button>
+            </div>
+            {statusMutation.isPending && (
+              <p className="text-xs text-primary mt-1 animate-pulse">
+                Updating status…
+              </p>
+            )}
+          </div>
+
           {/* Info grid */}
-          <div className="space-y-3 text-sm">
+          <div className="space-y-3 text-sm pt-3 border-t border-surface-variant">
             <DetailRow
               icon="groups"
               label="Section"
@@ -194,34 +273,10 @@ export default function ScheduleDetailDrawer({
             />
           </div>
 
-          {/* Status selector */}
-          <div className="pt-3 border-t border-surface-variant">
-            <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
-              Status
-            </label>
-            <select
-              value={entry.status ?? 'draft'}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              disabled={statusMutation.isPending}
-              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
-            {statusMutation.isPending && (
-              <p className="text-xs text-primary mt-1 animate-pulse">
-                Updating status…
-              </p>
-            )}
-          </div>
-
           {/* Remarks */}
           <div className="pt-3 border-t border-surface-variant">
             <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
-              Remarks
+              Remarks {locked && <span className="text-blue-700">(read-only)</span>}
             </label>
             <textarea
               value={remarks}
@@ -229,7 +284,8 @@ export default function ScheduleDetailDrawer({
               placeholder="e.g. Room under maintenance; reschedule pending"
               rows={3}
               maxLength={1000}
-              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none"
+              disabled={locked}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none disabled:opacity-60 disabled:cursor-not-allowed"
             />
             <div className="flex items-center justify-between mt-2">
               <span className="text-xs text-on-surface-variant">
@@ -244,6 +300,7 @@ export default function ScheduleDetailDrawer({
                 <button
                   onClick={() => remarksMutation.mutate(remarks)}
                   disabled={
+                    locked ||
                     remarksMutation.isPending ||
                     remarks === (entry.remarks ?? '')
                   }
@@ -260,15 +317,18 @@ export default function ScheduleDetailDrawer({
         <footer className="border-t border-surface-variant p-4 flex items-center gap-3 bg-surface-container-low">
           <button
             onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition disabled:opacity-50"
+            disabled={deleteMutation.isPending || locked}
+            title={locked ? 'Unfinalize first to delete' : 'Delete entry'}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-50"
           >
             <Icon name="delete" size={16} />
             {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
           </button>
           <button
             onClick={() => onEdit?.(entry)}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:bg-tertiary transition"
+            disabled={locked}
+            title={locked ? 'Unfinalize first to edit' : 'Edit entry'}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:bg-tertiary transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
           >
             <Icon name="edit" size={16} />
             Edit Entry

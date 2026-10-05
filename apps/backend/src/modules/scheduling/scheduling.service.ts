@@ -169,11 +169,22 @@ async validate(dto: ValidatePlotDto): Promise<{
   /**
    * Update a schedule entry — used for drag-to-move, room changes, etc.
    */
+  /**
+   * Update a schedule entry — used for drag-to-move, room changes, etc.
+   * LOCKED entries (finalized/published) cannot be edited — unfinalize first.
+   */
   async update(id: string, dto: UpdateScheduleDto): Promise<Schedule> {
     const found = await this.scheduleRepo.findOne({
       where: { scheduleId: id },
     });
     if (!found) throw new NotFoundException('Schedule entry not found');
+
+    // ── Lock check (FR 5.1.5 / 5.1.6) ──
+    if (found.status === 'finalized' || found.status === 'published') {
+      throw new BadRequestException(
+        'This schedule entry is locked. Unfinalize it before making changes.',
+      );
+    }
 
     // Normalize "08:30" → "08:30:00"
     const normalizeTime = (t?: string) => {
@@ -229,11 +240,23 @@ async validate(dto: ValidatePlotDto): Promise<{
     return this.scheduleRepo.save(found);
   }
 
+  /**
+   * Delete a schedule entry.
+   * LOCKED entries (finalized/published) cannot be deleted — unfinalize first.
+   */
   async remove(id: string): Promise<{ success: boolean }> {
     const found = await this.scheduleRepo.findOne({
       where: { scheduleId: id },
     });
     if (!found) throw new NotFoundException('Schedule entry not found');
+
+    // ── Lock check (FR 5.1.5 / 5.1.6) ──
+    if (found.status === 'finalized' || found.status === 'published') {
+      throw new BadRequestException(
+        'This schedule entry is locked. Unfinalize it before deleting.',
+      );
+    }
+
     await this.scheduleRepo.delete(id);
     return { success: true };
   }

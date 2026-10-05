@@ -6,11 +6,12 @@ import { Term } from '../terms/entities/term.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { Room } from '../rooms/entities/room.entity';
-import { User } from '../users/entities/user.entity';  
+import { User } from '../users/entities/user.entity';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { RuleContextBuilder } from './services/rule-context.builder';
 import { Section } from '../sections/entities/section.entity';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { Section } from '../sections/entities/section.entity';
     ]),
   ],
   controllers: [SchedulingController],
-  providers: [SchedulingService, RuleContextBuilder],
+  providers: [SchedulingService, RuleContextBuilder, RolesGuard],
   exports: [SchedulingService],
 })
 export class SchedulingModule {}
