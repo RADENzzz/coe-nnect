@@ -27,7 +27,7 @@
 | Name | Role |
 | :--- | :--- |
 | **Jazmine Elaiza L. Luis** | Project Manager |
-| **Alrhaden A. Javier** | Lead Developer · System Architect & Engineer |
+| **Alrhaden A. Javier** | Lead Developer · System Architect |
 | **Giel V. Andales** | Senior Developer |
 | **Edzel Don V. Tio** | Junior Developer |
 | **Roland C. Velez** | Lead Tester · Asst. Trainer · Jr. Archivist |
