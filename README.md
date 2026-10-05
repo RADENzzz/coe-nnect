@@ -26,9 +26,15 @@
 
 | Name | Role |
 | :--- | :--- |
+| **Jazmine Elaiza L. Luis** | Project Manager |
 | **Alrhaden A. Javier** | Lead Developer · System Architect & Engineer |
 | **Giel V. Andales** | Senior Developer |
 | **Edzel Don V. Tio** | Junior Developer |
+| **Roland C. Velez** | Lead Tester · Asst. Trainer · Jr. Archivist |
+| **Andre Aga B. Dacumos** | Lead Trainer · Sr. Tester |
+| **Aizzah Arabelle B. Javelosa** | Lead Archivist · Asst. System Analyst |
+| **Euwan Tyrone B. Prias** | Lead System Analyst · Sr. Archivist |
+
 
 * Developed as part of CPE SD 3 — Management Information System for the College of Engineering, Western Mindanao State University.
 * **Project Client:** Engr. Gajil J. Santos (College of Engineering).
