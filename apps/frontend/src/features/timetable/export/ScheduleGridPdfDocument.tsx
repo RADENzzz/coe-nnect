@@ -10,14 +10,18 @@ import type { ScheduleEntry } from '../types';
 import { timeToMinutes } from '../utils/time.util';
 
 // ─────────────────────────────────────────────
-// Layout constants
+// Layout constants — tuned for A4 landscape readability
 // ─────────────────────────────────────────────
+//
+// A4 landscape usable width with 22pt padding: ~798pt
+//   TIME_AXIS (58) + 6 days × 120 = 778 → fits with margin
+// Grid height: 24 slots × 16pt = 384pt → fits well under page height
+//
 
-// A4 landscape usable width is ~790pt (842 − 2×26 padding)
-const TIME_AXIS_WIDTH = 52;
-const DAY_COLUMN_WIDTH = 112;
-const HEADER_HEIGHT = 22;
-const SLOT_HEIGHT = 13; // 30-minute slot
+const TIME_AXIS_WIDTH = 58;
+const DAY_COLUMN_WIDTH = 120;
+const HEADER_HEIGHT = 28;
+const SLOT_HEIGHT = 16; // 30-minute slot
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
 const DAY_LABELS: Record<string, string> = {
@@ -39,79 +43,90 @@ const GRID_HEIGHT = TOTAL_SLOTS * SLOT_HEIGHT;
 const COLORS = {
   primary: '#5c1219',
   border: '#d4d4d4',
-  borderDark: '#a0a0a0',
+  borderDark: '#9a9a9a',
   text: '#1a1a1a',
-  muted: '#6b6b6b',
-  surface: '#f5f5f5',
+  muted: '#5c5c5c',
+  surface: '#f0f0f0',
   gridBg: '#fafafa',
   blockText: '#ffffff',
 };
 
 const styles = StyleSheet.create({
   page: {
-    padding: 26,
-    fontSize: 9,
+    padding: 22,
+    fontSize: 10,
     fontFamily: 'Helvetica',
     color: COLORS.text,
   },
 
+  // ── Page header ──
   header: {
     marginBottom: 10,
-    paddingBottom: 6,
+    paddingBottom: 8,
     borderBottom: `2 solid ${COLORS.primary}`,
   },
   headerTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Helvetica-Bold',
     color: COLORS.primary,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   headerSubtitle: {
-    fontSize: 8,
+    fontSize: 10,
+    color: COLORS.text,
+    marginBottom: 1,
+  },
+  headerMeta: {
+    fontSize: 9,
     color: COLORS.muted,
+    marginTop: 2,
   },
 
   // ── Grid ──
   gridWrapper: {
     position: 'relative',
-    border: `0.5 solid ${COLORS.borderDark}`,
+    border: `0.7 solid ${COLORS.borderDark}`,
   },
+
+  // ── Day header row ──
   headerRow: {
     flexDirection: 'row',
     height: HEADER_HEIGHT,
     backgroundColor: COLORS.surface,
-    borderBottom: `0.5 solid ${COLORS.borderDark}`,
+    borderBottom: `0.7 solid ${COLORS.borderDark}`,
   },
   headerTimeCell: {
     width: TIME_AXIS_WIDTH,
-    borderRight: `0.5 solid ${COLORS.borderDark}`,
+    borderRight: `0.7 solid ${COLORS.borderDark}`,
   },
   headerDayCell: {
     width: DAY_COLUMN_WIDTH,
-    borderRight: `0.5 solid ${COLORS.borderDark}`,
+    borderRight: `0.7 solid ${COLORS.borderDark}`,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerDayText: {
-    fontSize: 8,
+    fontSize: 10,
     fontFamily: 'Helvetica-Bold',
     color: COLORS.text,
   },
 
+  // ── Body ──
   body: {
     flexDirection: 'row',
     height: GRID_HEIGHT,
   },
   timeColumn: {
     width: TIME_AXIS_WIDTH,
-    borderRight: `0.5 solid ${COLORS.borderDark}`,
+    borderRight: `0.7 solid ${COLORS.borderDark}`,
     position: 'relative',
   },
   timeLabel: {
     position: 'absolute',
-    right: 4,
-    fontSize: 6,
+    right: 5,
+    fontSize: 8,
     color: COLORS.muted,
+    fontFamily: 'Helvetica',
   },
   daysArea: {
     flexDirection: 'row',
@@ -126,83 +141,85 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    borderTop: `0.3 solid ${COLORS.border}`,
+    borderTop: `0.4 solid ${COLORS.border}`,
   },
   hourLine: {
     position: 'absolute',
     left: 0,
     right: 0,
-    borderTop: `0.5 solid ${COLORS.borderDark}`,
+    borderTop: `0.7 solid ${COLORS.borderDark}`,
   },
 
   // ── Class block ──
   block: {
     position: 'absolute',
     borderRadius: 2,
-    padding: '1 2',
+    padding: '2 3',
     overflow: 'hidden',
   },
   blockCode: {
-    fontSize: 6.5,
+    fontSize: 8.5,
     fontFamily: 'Helvetica-Bold',
     color: COLORS.blockText,
+    marginBottom: 0.5,
   },
   blockSection: {
-    fontSize: 5.5,
+    fontSize: 7.5,
     color: COLORS.blockText,
+    marginBottom: 0.5,
   },
   blockFaculty: {
-    fontSize: 5,
+    fontSize: 6.8,
     color: COLORS.blockText,
   },
 
   // ── Legend ──
   legend: {
-    marginTop: 8,
+    marginTop: 10,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 4,
   },
   legendSwatch: {
-    width: 8,
-    height: 8,
-    borderRadius: 1,
+    width: 9,
+    height: 9,
+    borderRadius: 1.5,
   },
   legendText: {
-    fontSize: 6.5,
-    color: COLORS.muted,
+    fontSize: 8.5,
+    color: COLORS.text,
   },
 
   // ── Signatures ──
   signatures: {
-    marginTop: 12,
-    paddingTop: 10,
+    marginTop: 14,
+    paddingTop: 12,
     borderTop: `1 solid ${COLORS.border}`,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   signatureBlock: { width: '45%' },
   signatureLabel: {
-    fontSize: 7,
+    fontSize: 9,
     color: COLORS.muted,
-    marginBottom: 18,
+    marginBottom: 22,
   },
   signatureLine: {
-    borderTop: `0.5 solid ${COLORS.text}`,
-    paddingTop: 2,
+    borderTop: `0.7 solid ${COLORS.text}`,
+    paddingTop: 3,
   },
   signatureName: {
-    fontSize: 7,
+    fontSize: 9,
     fontFamily: 'Helvetica-Bold',
     color: COLORS.text,
   },
   signatureRole: {
-    fontSize: 6.5,
+    fontSize: 8,
     color: COLORS.muted,
   },
 
@@ -210,14 +227,14 @@ const styles = StyleSheet.create({
   pageFooter: {
     position: 'absolute',
     bottom: 12,
-    left: 26,
-    right: 26,
-    fontSize: 6.5,
+    left: 22,
+    right: 22,
+    fontSize: 8,
     color: COLORS.muted,
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTop: `0.5 solid ${COLORS.border}`,
-    paddingTop: 4,
+    paddingTop: 5,
   },
 });
 
@@ -300,9 +317,15 @@ function minutesToY(minutes: number): number {
 }
 
 function facultyShort(name: string): string {
+  // "Juan Dela Cruz" → "J. Dela Cruz"
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return name;
   return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+}
+
+function subjectCodeShort(code: string): string {
+  // "CPE 101" fits; longer codes are kept as-is and truncated by the block overflow
+  return code;
 }
 
 // ─────────────────────────────────────────────
@@ -348,7 +371,7 @@ export default function ScheduleGridPdfDocument({
     ).values(),
   ).sort((a, b) => a.code.localeCompare(b.code));
 
-  // Unique time slots (labels every hour)
+  // Hour labels every hour on the hour
   const timeLabels: { y: number; label: string }[] = [];
   for (let m = OPERATING_START; m <= OPERATING_END; m += 60) {
     const h = Math.floor(m / 60);
@@ -368,14 +391,14 @@ export default function ScheduleGridPdfDocument({
       creator="CoE-NNECT"
     >
       <Page size="A4" orientation="landscape" style={styles.page}>
-        {/* ── Header ── */}
+        {/* ── Page header ── */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{title}</Text>
           <Text style={styles.headerSubtitle}>{subtitle}</Text>
           <Text style={styles.headerSubtitle}>
             Western Mindanao State University — College of Engineering
           </Text>
-          <Text style={styles.headerSubtitle}>Term: {termLabel}</Text>
+          <Text style={styles.headerMeta}>Term: {termLabel}</Text>
         </View>
 
         {/* ── Grid ── */}
@@ -397,7 +420,7 @@ export default function ScheduleGridPdfDocument({
               {timeLabels.map((tl, i) => (
                 <Text
                   key={i}
-                  style={[styles.timeLabel, { top: tl.y - 5 }]}
+                  style={[styles.timeLabel, { top: tl.y - 6 }]}
                 >
                   {tl.label}
                 </Text>
@@ -412,7 +435,8 @@ export default function ScheduleGridPdfDocument({
                   <View key={day} style={styles.dayColumn}>
                     {/* Horizontal slot lines */}
                     {Array.from({ length: TOTAL_SLOTS + 1 }).map((_, i) => {
-                      const isHour = (OPERATING_START + i * SLOT_MINUTES) % 60 === 0;
+                      const isHour =
+                        (OPERATING_START + i * SLOT_MINUTES) % 60 === 0;
                       return (
                         <View
                           key={i}
@@ -437,6 +461,9 @@ export default function ScheduleGridPdfDocument({
                         timeToMinutes(entry.startTime);
                       const height = (duration / SLOT_MINUTES) * SLOT_HEIGHT;
 
+                      // Show faculty line only when the block has enough vertical room
+                      const showFaculty = height > 26;
+
                       return (
                         <View
                           key={entry.id}
@@ -452,16 +479,18 @@ export default function ScheduleGridPdfDocument({
                           ]}
                         >
                           <Text style={styles.blockCode}>
-                            {entry.subjectCode}
+                            {subjectCodeShort(entry.subjectCode)}
                           </Text>
-                          <Text style={styles.blockSection}>
-                            {entry.sectionCode || '—'}
-                          </Text>
-                          {height > 22 && (
+                          {entry.sectionCode ? (
+                            <Text style={styles.blockSection}>
+                              {entry.sectionCode}
+                            </Text>
+                          ) : null}
+                          {showFaculty ? (
                             <Text style={styles.blockFaculty}>
                               {facultyShort(entry.facultyName)}
                             </Text>
-                          )}
+                          ) : null}
                         </View>
                       );
                     })}
@@ -506,7 +535,7 @@ export default function ScheduleGridPdfDocument({
           </View>
         </View>
 
-        {/* ── Footer ── */}
+        {/* ── Page footer ── */}
         <View style={styles.pageFooter} fixed>
           <Text>
             Generated {generatedAt} by {generatedBy}
