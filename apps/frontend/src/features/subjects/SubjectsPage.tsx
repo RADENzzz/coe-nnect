@@ -13,6 +13,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
 import RestrictionsPanel from './components/RestrictionsPanel';
+import { Link } from 'react-router-dom';
 
 const ROOM_TYPES = [
   { value: '', label: '— any —' },
@@ -227,7 +228,30 @@ export default function SubjectsPage() {
           </button>
         </div>
       </div>
-
+      {/* Flow hint — SRS Academic Structure Management order */}
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
+        <Icon
+          name="info"
+          size={18}
+          className="text-blue-700 shrink-0 mt-0.5"
+        />
+        <div className="flex-1">
+          <p className="text-blue-900 font-medium">
+            Subjects are step 2 of 3 in the Academic Structure flow.
+          </p>
+          <p className="text-blue-800 text-xs mt-0.5">
+            Add your department's subjects here first, then map them to programs in
+            the Prospectus.
+          </p>
+        </div>
+        <Link
+          to="/prospectus"
+          className="text-xs font-semibold text-blue-700 hover:text-blue-900 whitespace-nowrap flex items-center gap-1"
+        >
+          Go to Prospectus
+          <Icon name="arrow_forward" size={14} />
+        </Link>
+      </div>
       {error && (
         <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
           {error}
