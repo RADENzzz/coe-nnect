@@ -13,6 +13,7 @@ import {
 } from '../../api/faculty.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
+import QualificationsModal from './components/QualificationsModal';
 
 const CLASSIFICATIONS: { value: FacultyClass; label: string }[] = [
   { value: 'regular', label: 'Regular' },
@@ -42,6 +43,8 @@ export default function FacultyPage() {
     classification: 'regular' as FacultyClass,
     requiredHours: '',
   });
+  const [qualOpen, setQualOpen] = useState(false);
+  const [qualFaculty, setQualFaculty] = useState<FacultyRecord | null>(null);
 
   const { data: faculty = [], isLoading } = useQuery({
     queryKey: ['faculty', { includeInactive: true }],
@@ -484,6 +487,15 @@ export default function FacultyPage() {
                       Edit
                     </button>
                     <button
+                      onClick={() => {
+                        setQualFaculty(f);
+                        setQualOpen(true);
+                      }}
+                      className="text-xs px-3 py-1 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-100 transition"
+                    >
+                      Qualifications
+                    </button>
+                    <button
                       onClick={() => toggleMutation.mutate(f.facultyId)}
                       disabled={toggleMutation.isPending}
                       className={`text-xs px-3 py-1 rounded-lg border transition ${
@@ -508,6 +520,14 @@ export default function FacultyPage() {
           </tbody>
         </table>
       </div>
+      <QualificationsModal
+        open={qualOpen}
+        onClose={() => {
+          setQualOpen(false);
+          setQualFaculty(null);
+        }}
+        faculty={qualFaculty}
+      />
     </div>
   );
 }

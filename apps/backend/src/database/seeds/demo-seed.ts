@@ -249,6 +249,22 @@ const FACULTY = [
   },
 ];
 
+// Faculty qualifications — FR 3.1.8
+// Once a faculty member has at least one qualification, rule F-5 restricts
+// them to only these subjects. Faculty with no qualifications on file are
+// considered "unrestricted" (rule F-5 passes for anything).
+const QUALIFICATIONS = [
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 101' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 102' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 103' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 104' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE 101' },
+  { wmsu_id: 'WMSU-003', subject_code: 'MATH 101' },
+  { wmsu_id: 'WMSU-004', subject_code: 'EE 101' },
+  { wmsu_id: 'WMSU-004', subject_code: 'EE 102' },
+  { wmsu_id: 'WMSU-005', subject_code: 'EE 101' },
+];
+
 const SETTINGS = [
   { setting_key: 'operating_hours_start', value: '07:00' },
   { setting_key: 'operating_hours_end', value: '19:00' },
@@ -568,6 +584,55 @@ async function main() {
 
     console.log(`  Created ${u.email}`);
   }
+
+    // ─────────────────────────────────────
+  // STEP 7b: Faculty Qualifications (FR 3.1.8)
+  // ─────────────────────────────────────
+  console.log('[7b/9] Upserting faculty qualifications…');
+  // Build lookups once
+  const { data: facultyRows } = await supabase
+    .from('faculty')
+    .select('faculty_id, wmsu_id');
+  const facultyIdByWmsu: Record<string, string> = {};
+  for (const row of facultyRows ?? []) {
+    if (row.wmsu_id) facultyIdByWmsu[row.wmsu_id] = String(row.faculty_id);
+  }
+
+  let qualsInserted = 0;
+  for (const q of QUALIFICATIONS) {
+    const facultyId = facultyIdByWmsu[q.wmsu_id];
+    const subjectId = subjectIdByCode[q.subject_code];
+    if (!facultyId || !subjectId) {
+      console.warn(
+        `  Skipping qualification ${q.wmsu_id}/${q.subject_code}: missing FK`,
+      );
+      continue;
+    }
+
+    const { data: existing } = await supabase
+      .from('faculty_qualification')
+      .select('qual_id')
+      .eq('faculty_id', facultyId)
+      .eq('subject_id', subjectId)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    const { error } = await supabase.from('faculty_qualification').insert({
+      faculty_id: facultyId,
+      subject_id: subjectId,
+      source_system: null,
+    });
+    if (error) {
+      console.error(
+        `Qualification ${q.wmsu_id}/${q.subject_code}:`,
+        error.message,
+      );
+      process.exit(1);
+    }
+    qualsInserted++;
+  }
+  console.log(`  → ${qualsInserted} new qualifications`);
 
   // ─────────────────────────────────────
   // STEP 8: Scheduling settings
