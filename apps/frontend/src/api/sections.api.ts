@@ -5,6 +5,7 @@ export interface Section {
   sectionCode: string;
   programId: string | null;
   yearLevel: number | null;
+  /** @deprecated Retained for backward compat only; not used by the scheduler. */
   studentCount: number | null;
   isActive: boolean;
 }
@@ -13,7 +14,7 @@ export interface CreateSectionInput {
   sectionCode: string;
   programId?: string;
   yearLevel?: number;
-  studentCount?: number;
+  // studentCount intentionally removed — see PM note (Oct 2026)
 }
 
 export async function fetchSections(): Promise<Section[]> {
@@ -42,6 +43,11 @@ export async function toggleSectionActive(id: string): Promise<Section> {
 export async function deleteSection(id: string): Promise<void> {
   await api.delete(`/v1/sections/${id}`);
 }
+
+// ────────────────────────────────────────────
+// S-11 Subject Restrictions
+// (lives here for historical reasons; consider moving to subjects.api.ts later)
+// ────────────────────────────────────────────
 
 export interface SubjectRestriction {
   restrictionId: string;

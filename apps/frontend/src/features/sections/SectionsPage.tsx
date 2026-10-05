@@ -20,7 +20,6 @@ export default function SectionsPage() {
   const [form, setForm] = useState({
     sectionCode: '',
     yearLevel: '',
-    studentCount: '',
   });
 
   const { data: sections = [], isLoading } = useQuery({
@@ -33,7 +32,7 @@ export default function SectionsPage() {
     mutationFn: createSection,
     onSuccess: (section) => {
       setSuccess(`Section "${section.sectionCode}" created.`);
-      setForm({ sectionCode: '', yearLevel: '', studentCount: '' });
+      setForm({ sectionCode: '', yearLevel: '' });
       setShowForm(false);
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
@@ -74,7 +73,6 @@ export default function SectionsPage() {
     createMutation.mutate({
       sectionCode: form.sectionCode.trim(),
       yearLevel: form.yearLevel ? Number(form.yearLevel) : undefined,
-      studentCount: form.studentCount ? Number(form.studentCount) : undefined,
     });
   };
 
@@ -130,7 +128,7 @@ export default function SectionsPage() {
             Create Section
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
                   Section Code *
@@ -163,20 +161,6 @@ export default function SectionsPage() {
                   <option value="5">5</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Student Count
-                </label>
-                <input
-                  type="number"
-                  name="studentCount"
-                  min="0"
-                  value={form.studentCount}
-                  onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                  placeholder="e.g. 40"
-                />
-              </div>
             </div>
             <div className="flex gap-3 justify-end">
               <button
@@ -203,10 +187,8 @@ export default function SectionsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-              <th className="text-left px-5 py-3">ID</th>
               <th className="text-left px-5 py-3">Section Code</th>
               <th className="text-left px-5 py-3">Year Level</th>
-              <th className="text-left px-5 py-3">Students</th>
               <th className="text-left px-5 py-3">Status</th>
               <th className="text-right px-5 py-3">Actions</th>
             </tr>
@@ -215,7 +197,7 @@ export default function SectionsPage() {
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={4}
                   className="px-5 py-8 text-center text-on-surface-variant"
                 >
                   <div className="flex items-center justify-center gap-2">
@@ -227,7 +209,7 @@ export default function SectionsPage() {
             ) : sections.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={4}
                   className="px-5 py-12 text-center text-on-surface-variant"
                 >
                   No sections yet.
@@ -239,17 +221,11 @@ export default function SectionsPage() {
                   key={s.sectionId}
                   className="border-b border-white/5 hover:bg-surface-container-low"
                 >
-                  <td className="px-5 py-3.5 text-on-surface-variant font-mono">
-                    {s.sectionId}
-                  </td>
                   <td className="px-5 py-3.5 font-bold font-mono text-primary">
                     {s.sectionCode}
                   </td>
                   <td className="px-5 py-3.5 text-on-surface-variant">
                     {s.yearLevel ?? '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface">
-                    {s.studentCount ?? '—'}
                   </td>
                   <td className="px-5 py-3.5">
                     <span
