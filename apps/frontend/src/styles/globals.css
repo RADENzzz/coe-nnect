@@ -247,6 +247,7 @@
   .no-shadows {
     box-shadow: none !important;
   }
+
 }
 
 /* ============================================
@@ -256,6 +257,11 @@
   @keyframes fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  @keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
   }
 
   @keyframes fade-up {

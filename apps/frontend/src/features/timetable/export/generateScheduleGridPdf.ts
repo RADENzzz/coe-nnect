@@ -4,6 +4,14 @@ import ScheduleGridPdfDocument, {
   ScheduleGridPdfProps,
 } from './ScheduleGridPdfDocument';
 
+function safeName(name: string): string {
+  const safe = name
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return safe.endsWith('.pdf') ? safe : `${safe}.pdf`;
+}
+
 export async function generateScheduleGridPdfBlob(
   props: ScheduleGridPdfProps,
 ): Promise<Blob> {
@@ -11,15 +19,20 @@ export async function generateScheduleGridPdfBlob(
   return pdf(doc).toBlob();
 }
 
+export async function generateScheduleGridPdfFile(
+  props: ScheduleGridPdfProps,
+  filename: string,
+): Promise<File> {
+  const blob = await generateScheduleGridPdfBlob(props);
+  return new File([blob], safeName(filename), { type: 'application/pdf' });
+}
+
 export function downloadBlobAsPdf(blob: Blob, filename: string): void {
-  const safeName = filename
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+  const safe = safeName(filename);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`;
+  a.download = safe;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

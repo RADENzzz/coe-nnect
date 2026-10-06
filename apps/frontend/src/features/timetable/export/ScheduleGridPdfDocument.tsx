@@ -10,18 +10,24 @@ import type { ScheduleEntry } from '../types';
 import { timeToMinutes } from '../utils/time.util';
 
 // ─────────────────────────────────────────────
-// Layout constants — tuned for A4 landscape readability
+// Layout constants (base units — scaled dynamically at render time)
 // ─────────────────────────────────────────────
-//
-// A4 landscape usable width with 22pt padding: ~798pt
-//   TIME_AXIS (58) + 6 days × 120 = 778 → fits with margin
-// Grid height: 24 slots × 16pt = 384pt → fits well under page height
-//
 
-const TIME_AXIS_WIDTH = 58;
-const DAY_COLUMN_WIDTH = 120;
-const HEADER_HEIGHT = 28;
-const SLOT_HEIGHT = 16; // 30-minute slot
+const BASE_TIME_AXIS_WIDTH = 62;
+const BASE_DAY_COLUMN_WIDTH = 122;
+const BASE_HEADER_HEIGHT = 30;
+const BASE_SLOT_HEIGHT = 18; // 30-min slot
+const GRID_BORDER = 0.8;
+
+// A4 landscape page (pt) minus page padding (22pt × 2 = 44)
+const PAGE_WIDTH_PT = 841.89;
+const PAGE_HEIGHT_PT = 595.28;
+const PAGE_PADDING = 22;
+const USABLE_WIDTH_PT = PAGE_WIDTH_PT - PAGE_PADDING * 2;
+const USABLE_HEIGHT_PT = PAGE_HEIGHT_PT - PAGE_PADDING * 2;
+
+// Fixed vertical cost outside the grid: header, legend, signatures, gaps, footer
+const NON_GRID_VERTICAL_PT = 210;
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
 const DAY_LABELS: Record<string, string> = {
@@ -33,12 +39,10 @@ const DAY_LABELS: Record<string, string> = {
   SAT: 'Saturday',
 };
 
-const OPERATING_START = 7 * 60; // 07:00
-const OPERATING_END = 19 * 60; // 19:00
+const OPERATING_START = 7 * 60;
+const OPERATING_END = 19 * 60;
 const SLOT_MINUTES = 30;
-
 const TOTAL_SLOTS = (OPERATING_END - OPERATING_START) / SLOT_MINUTES;
-const GRID_HEIGHT = TOTAL_SLOTS * SLOT_HEIGHT;
 
 const COLORS = {
   primary: '#5c1219',
@@ -47,199 +51,52 @@ const COLORS = {
   text: '#1a1a1a',
   muted: '#5c5c5c',
   surface: '#f0f0f0',
-  gridBg: '#fafafa',
   blockText: '#ffffff',
 };
 
-const styles = StyleSheet.create({
-  page: {
-    padding: 22,
-    fontSize: 10,
-    fontFamily: 'Helvetica',
-    color: COLORS.text,
-  },
+/**
+ * Compute the scale factor so the grid + header + footer fit exactly on
+ * one A4 landscape page. The grid is the only flexible block.
+ */
+/**
+ * Compute the layout for the grid.
+ *
+ * Strategy:
+ *   1. Always fill the full usable page width — the day columns stretch
+ *      (or shrink) so that TIME_AXIS + DAYS × DAY_COLUMN === USABLE_WIDTH_PT.
+ *   2. If the resulting height would overflow the page, scale everything
+ *      down uniformly so it fits. This keeps the aspect ratio correct.
+ */
+function computeGridLayout(dayCount: number): {
+  timeAxisWidth: number;
+  dayColumnWidth: number;
+  headerHeight: number;
+  slotHeight: number;
+  scale: number;
+} {
+  // Step 1: fit to width. Day columns absorb whatever is left after
+  // reserving space for the time axis.
+  const dayColumnWidth = (USABLE_WIDTH_PT - BASE_TIME_AXIS_WIDTH) / dayCount;
+  const timeAxisWidth = BASE_TIME_AXIS_WIDTH;
 
-  // ── Page header ──
-  header: {
-    marginBottom: 10,
-    paddingBottom: 8,
-    borderBottom: `2 solid ${COLORS.primary}`,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontFamily: 'Helvetica-Bold',
-    color: COLORS.primary,
-    marginBottom: 3,
-  },
-  headerSubtitle: {
-    fontSize: 10,
-    color: COLORS.text,
-    marginBottom: 1,
-  },
-  headerMeta: {
-    fontSize: 9,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
+  // Step 2: check vertical fit at the natural slot height.
+  const naturalHeight = BASE_HEADER_HEIGHT + TOTAL_SLOTS * BASE_SLOT_HEIGHT;
+  const availableHeight = USABLE_HEIGHT_PT - NON_GRID_VERTICAL_PT;
+  const scaleH = Math.min(1, availableHeight / naturalHeight);
 
-  // ── Grid ──
-  gridWrapper: {
-    position: 'relative',
-    border: `0.7 solid ${COLORS.borderDark}`,
-  },
-
-  // ── Day header row ──
-  headerRow: {
-    flexDirection: 'row',
-    height: HEADER_HEIGHT,
-    backgroundColor: COLORS.surface,
-    borderBottom: `0.7 solid ${COLORS.borderDark}`,
-  },
-  headerTimeCell: {
-    width: TIME_AXIS_WIDTH,
-    borderRight: `0.7 solid ${COLORS.borderDark}`,
-  },
-  headerDayCell: {
-    width: DAY_COLUMN_WIDTH,
-    borderRight: `0.7 solid ${COLORS.borderDark}`,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerDayText: {
-    fontSize: 10,
-    fontFamily: 'Helvetica-Bold',
-    color: COLORS.text,
-  },
-
-  // ── Body ──
-  body: {
-    flexDirection: 'row',
-    height: GRID_HEIGHT,
-  },
-  timeColumn: {
-    width: TIME_AXIS_WIDTH,
-    borderRight: `0.7 solid ${COLORS.borderDark}`,
-    position: 'relative',
-  },
-  timeLabel: {
-    position: 'absolute',
-    right: 5,
-    fontSize: 8,
-    color: COLORS.muted,
-    fontFamily: 'Helvetica',
-  },
-  daysArea: {
-    flexDirection: 'row',
-    position: 'relative',
-  },
-  dayColumn: {
-    width: DAY_COLUMN_WIDTH,
-    borderRight: `0.5 solid ${COLORS.border}`,
-    position: 'relative',
-  },
-  slotLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    borderTop: `0.4 solid ${COLORS.border}`,
-  },
-  hourLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    borderTop: `0.7 solid ${COLORS.borderDark}`,
-  },
-
-  // ── Class block ──
-  block: {
-    position: 'absolute',
-    borderRadius: 2,
-    padding: '2 3',
-    overflow: 'hidden',
-  },
-  blockCode: {
-    fontSize: 8.5,
-    fontFamily: 'Helvetica-Bold',
-    color: COLORS.blockText,
-    marginBottom: 0.5,
-  },
-  blockSection: {
-    fontSize: 7.5,
-    color: COLORS.blockText,
-    marginBottom: 0.5,
-  },
-  blockFaculty: {
-    fontSize: 6.8,
-    color: COLORS.blockText,
-  },
-
-  // ── Legend ──
-  legend: {
-    marginTop: 10,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  legendSwatch: {
-    width: 9,
-    height: 9,
-    borderRadius: 1.5,
-  },
-  legendText: {
-    fontSize: 8.5,
-    color: COLORS.text,
-  },
-
-  // ── Signatures ──
-  signatures: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTop: `1 solid ${COLORS.border}`,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  signatureBlock: { width: '45%' },
-  signatureLabel: {
-    fontSize: 9,
-    color: COLORS.muted,
-    marginBottom: 22,
-  },
-  signatureLine: {
-    borderTop: `0.7 solid ${COLORS.text}`,
-    paddingTop: 3,
-  },
-  signatureName: {
-    fontSize: 9,
-    fontFamily: 'Helvetica-Bold',
-    color: COLORS.text,
-  },
-  signatureRole: {
-    fontSize: 8,
-    color: COLORS.muted,
-  },
-
-  // ── Footer ──
-  pageFooter: {
-    position: 'absolute',
-    bottom: 12,
-    left: 22,
-    right: 22,
-    fontSize: 8,
-    color: COLORS.muted,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTop: `0.5 solid ${COLORS.border}`,
-    paddingTop: 5,
-  },
-});
+  // Apply scale uniformly (width is already exact; only heights shrink
+  // when needed).
+  return {
+    timeAxisWidth,
+    dayColumnWidth,
+    headerHeight: BASE_HEADER_HEIGHT * scaleH,
+    slotHeight: BASE_SLOT_HEIGHT * scaleH,
+    scale: scaleH,
+  };
+}
 
 // ─────────────────────────────────────────────
-// Lane layout — same algorithm as the on-screen grid
+// Lane layout — same algorithm as on-screen grid
 // ─────────────────────────────────────────────
 
 interface LaneInfo {
@@ -308,29 +165,11 @@ function computeLanes(entries: ScheduleEntry[]): Map<string, LaneInfo> {
   return result;
 }
 
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
-function minutesToY(minutes: number): number {
-  return ((minutes - OPERATING_START) / SLOT_MINUTES) * SLOT_HEIGHT;
-}
-
 function facultyShort(name: string): string {
-  // "Juan Dela Cruz" → "J. Dela Cruz"
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return name;
   return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
 }
-
-function subjectCodeShort(code: string): string {
-  // "CPE 101" fits; longer codes are kept as-is and truncated by the block overflow
-  return code;
-}
-
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
 
 export interface ScheduleGridPdfProps {
   entries: ScheduleEntry[];
@@ -351,7 +190,194 @@ export default function ScheduleGridPdfDocument({
   termLabel,
   generatedBy = 'CoE-NNECT',
 }: ScheduleGridPdfProps) {
-  const lanes = computeLanes(entries);
+const lanes = computeLanes(entries);
+const layout = computeGridLayout(DAYS.length);
+
+const TIME_AXIS_WIDTH = layout.timeAxisWidth;
+const DAY_COLUMN_WIDTH = layout.dayColumnWidth;
+const HEADER_HEIGHT = layout.headerHeight;
+const SLOT_HEIGHT = layout.slotHeight;
+const GRID_HEIGHT = TOTAL_SLOTS * SLOT_HEIGHT;
+const scale = layout.scale;
+
+  const styles = StyleSheet.create({
+    page: {
+      padding: PAGE_PADDING,
+      fontSize: 10,
+      fontFamily: 'Helvetica',
+      color: COLORS.text,
+    },
+
+    header: {
+      marginBottom: 8,
+      paddingBottom: 6,
+      borderBottom: `2 solid ${COLORS.primary}`,
+    },
+    headerTitle: {
+      fontSize: 15,
+      fontFamily: 'Helvetica-Bold',
+      color: COLORS.primary,
+      marginBottom: 2,
+    },
+    headerSubtitle: { fontSize: 9, color: COLORS.text, marginBottom: 1 },
+    headerMeta: { fontSize: 8, color: COLORS.muted, marginTop: 2 },
+
+    // ── Grid frame ──
+      gridWrapper: {
+        border: `${GRID_BORDER} solid ${COLORS.borderDark}`,
+        position: 'relative',
+        // Force the frame to shrink to the sum of its columns so there's no
+        // dead space on the right when the grid is scaled below 100%.
+        alignSelf: 'flex-start',
+      },
+
+    // ── Day header row ──
+    headerRow: {
+      flexDirection: 'row',
+      height: HEADER_HEIGHT,
+      backgroundColor: COLORS.surface,
+      borderBottom: `1 solid ${COLORS.borderDark}`,
+    },
+    headerTimeCell: {
+      width: TIME_AXIS_WIDTH,
+      borderRight: `0.7 solid ${COLORS.borderDark}`,
+    },
+    headerDayCell: {
+      width: DAY_COLUMN_WIDTH,
+      borderRight: `0.5 solid ${COLORS.border}`,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerDayCellLast: {
+      width: DAY_COLUMN_WIDTH,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerDayText: {
+      fontSize: 9.5,
+      fontFamily: 'Helvetica-Bold',
+      color: COLORS.text,
+    },
+
+    // ── Body ──
+    body: {
+      flexDirection: 'row',
+      height: GRID_HEIGHT,
+    },
+    timeColumn: {
+      width: TIME_AXIS_WIDTH,
+      borderRight: `0.7 solid ${COLORS.borderDark}`,
+      position: 'relative',
+    },
+    timeLabel: {
+      position: 'absolute',
+      right: 5,
+      fontSize: 8,
+      color: COLORS.muted,
+      fontFamily: 'Helvetica',
+    },
+    daysArea: {
+      flexDirection: 'row',
+      position: 'relative',
+    },
+    dayColumn: {
+      width: DAY_COLUMN_WIDTH,
+      borderRight: `0.5 solid ${COLORS.border}`,
+      position: 'relative',
+    },
+    dayColumnLast: {
+      width: DAY_COLUMN_WIDTH,
+      position: 'relative',
+    },
+    slotLine: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      borderTop: `0.5 solid ${COLORS.border}`,
+    },
+    hourLine: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      borderTop: `1 solid ${COLORS.borderDark}`,
+    },
+
+    // ── Block ──
+    block: {
+      position: 'absolute',
+      borderRadius: 1.5,
+      padding: '2 3',
+      overflow: 'hidden',
+    },
+    blockCode: {
+      fontSize: 8,
+      fontFamily: 'Helvetica-Bold',
+      color: COLORS.blockText,
+      marginBottom: 0.5,
+    },
+    blockSection: {
+      fontSize: 7,
+      color: COLORS.blockText,
+      marginBottom: 0.5,
+    },
+    blockFaculty: {
+      fontSize: 6.5,
+      color: COLORS.blockText,
+    },
+
+    // ── Legend ──
+    legend: {
+      marginTop: 8,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    legendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    legendSwatch: { width: 8, height: 8, borderRadius: 1 },
+    legendText: { fontSize: 8, color: COLORS.text },
+
+    // ── Signatures ──
+    signatures: {
+      marginTop: 10,
+      paddingTop: 8,
+      borderTop: `1 solid ${COLORS.border}`,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    signatureBlock: { width: '45%' },
+    signatureLabel: {
+      fontSize: 8.5,
+      color: COLORS.muted,
+      marginBottom: 20,
+    },
+    signatureLine: {
+      borderTop: `0.7 solid ${COLORS.text}`,
+      paddingTop: 3,
+    },
+    signatureName: {
+      fontSize: 8.5,
+      fontFamily: 'Helvetica-Bold',
+      color: COLORS.text,
+    },
+    signatureRole: { fontSize: 7.5, color: COLORS.muted },
+
+    pageFooter: {
+      position: 'absolute',
+      bottom: 10,
+      left: PAGE_PADDING,
+      right: PAGE_PADDING,
+      fontSize: 7.5,
+      color: COLORS.muted,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      borderTop: `0.5 solid ${COLORS.border}`,
+      paddingTop: 4,
+    },
+  });
 
   const generatedAt = new Date().toLocaleString('en-PH', {
     year: 'numeric',
@@ -361,7 +387,6 @@ export default function ScheduleGridPdfDocument({
     minute: '2-digit',
   });
 
-  // Unique subjects for legend
   const legendSubjects = Array.from(
     new Map(
       entries.map((e) => [
@@ -371,15 +396,18 @@ export default function ScheduleGridPdfDocument({
     ).values(),
   ).sort((a, b) => a.code.localeCompare(b.code));
 
-  // Hour labels every hour on the hour
-  const timeLabels: { y: number; label: string }[] = [];
-  for (let m = OPERATING_START; m <= OPERATING_END; m += 60) {
+  // Hour labels every 30 minutes (on hour: bold, on half: muted)
+  const timeLabels: { y: number; label: string; isHour: boolean }[] = [];
+  for (let m = OPERATING_START; m <= OPERATING_END; m += SLOT_MINUTES) {
     const h = Math.floor(m / 60);
+    const mins = m % 60;
     const period = h >= 12 ? 'PM' : 'AM';
     const hh = h % 12 || 12;
+    const label = `${hh}:${String(mins).padStart(2, '0')} ${period}`;
     timeLabels.push({
-      y: minutesToY(m),
-      label: `${hh}:00 ${period}`,
+      y: ((m - OPERATING_START) / SLOT_MINUTES) * SLOT_HEIGHT,
+      label,
+      isHour: mins === 0,
     });
   }
 
@@ -387,11 +415,11 @@ export default function ScheduleGridPdfDocument({
     <Document
       title={title}
       author="CoE-NNECT"
-      subject="College of Engineering Room Schedule"
+      subject="College of Engineering Schedule"
       creator="CoE-NNECT"
     >
       <Page size="A4" orientation="landscape" style={styles.page}>
-        {/* ── Page header ── */}
+        {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{title}</Text>
           <Text style={styles.headerSubtitle}>{subtitle}</Text>
@@ -401,13 +429,25 @@ export default function ScheduleGridPdfDocument({
           <Text style={styles.headerMeta}>Term: {termLabel}</Text>
         </View>
 
-        {/* ── Grid ── */}
-        <View style={styles.gridWrapper}>
+        {/* ── Grid frame ── */}
+        <View
+  style={[
+    styles.gridWrapper,
+    { width: TIME_AXIS_WIDTH + DAYS.length * DAY_COLUMN_WIDTH },
+  ]}
+>
           {/* Day header row */}
           <View style={styles.headerRow}>
             <View style={styles.headerTimeCell} />
-            {DAYS.map((day) => (
-              <View key={day} style={styles.headerDayCell}>
+            {DAYS.map((day, idx) => (
+              <View
+                key={day}
+                style={
+                  idx === DAYS.length - 1
+                    ? styles.headerDayCellLast
+                    : styles.headerDayCell
+                }
+              >
                 <Text style={styles.headerDayText}>{DAY_LABELS[day]}</Text>
               </View>
             ))}
@@ -420,7 +460,11 @@ export default function ScheduleGridPdfDocument({
               {timeLabels.map((tl, i) => (
                 <Text
                   key={i}
-                  style={[styles.timeLabel, { top: tl.y - 6 }]}
+                  style={[
+                    styles.timeLabel,
+                    tl.isHour ? { fontFamily: 'Helvetica-Bold' } : {},
+                    { top: tl.y + 2 },
+                  ]}
                 >
                   {tl.label}
                 </Text>
@@ -429,14 +473,20 @@ export default function ScheduleGridPdfDocument({
 
             {/* Day columns */}
             <View style={styles.daysArea}>
-              {DAYS.map((day) => {
+              {DAYS.map((day, dayIdx) => {
                 const dayEntries = entries.filter((e) => e.day === day);
+                const isLast = dayIdx === DAYS.length - 1;
                 return (
-                  <View key={day} style={styles.dayColumn}>
+                  <View
+                    key={day}
+                    style={isLast ? styles.dayColumnLast : styles.dayColumn}
+                  >
                     {/* Horizontal slot lines */}
                     {Array.from({ length: TOTAL_SLOTS + 1 }).map((_, i) => {
                       const isHour =
                         (OPERATING_START + i * SLOT_MINUTES) % 60 === 0;
+                      // Skip the very first line (frame draws it)
+                      if (i === 0) return null;
                       return (
                         <View
                           key={i}
@@ -454,15 +504,20 @@ export default function ScheduleGridPdfDocument({
                       const laneCount = info?.laneCount ?? 1;
                       const lane = info?.lane ?? 0;
                       const blockWidth = DAY_COLUMN_WIDTH / laneCount;
-                      const left = lane * blockWidth;
-                      const top = minutesToY(timeToMinutes(entry.startTime));
+                      // Inset by 0.5pt on each side so block doesn't cover grid line
+                      const left = lane * blockWidth + 0.5;
+                      const top =
+                        ((timeToMinutes(entry.startTime) - OPERATING_START) /
+                          SLOT_MINUTES) *
+                          SLOT_HEIGHT +
+                        0.5;
                       const duration =
                         timeToMinutes(entry.endTime) -
                         timeToMinutes(entry.startTime);
-                      const height = (duration / SLOT_MINUTES) * SLOT_HEIGHT;
+                      const height =
+                        (duration / SLOT_MINUTES) * SLOT_HEIGHT - 1;
 
-                      // Show faculty line only when the block has enough vertical room
-                      const showFaculty = height > 26;
+                      const showFaculty = height > 26 * scale;
 
                       return (
                         <View
@@ -473,21 +528,27 @@ export default function ScheduleGridPdfDocument({
                               top,
                               left,
                               width: blockWidth - 1,
-                              height: height - 1,
+                              height,
                               backgroundColor: entry.color,
                             },
                           ]}
                         >
-                          <Text style={styles.blockCode}>
-                            {subjectCodeShort(entry.subjectCode)}
+                          <Text style={styles.blockCode} numberOfLines={2}>
+                            {entry.subjectCode}
                           </Text>
                           {entry.sectionCode ? (
-                            <Text style={styles.blockSection}>
+                            <Text
+                              style={styles.blockSection}
+                              numberOfLines={1}
+                            >
                               {entry.sectionCode}
                             </Text>
                           ) : null}
                           {showFaculty ? (
-                            <Text style={styles.blockFaculty}>
+                            <Text
+                              style={styles.blockFaculty}
+                              numberOfLines={1}
+                            >
                               {facultyShort(entry.facultyName)}
                             </Text>
                           ) : null}
@@ -503,7 +564,7 @@ export default function ScheduleGridPdfDocument({
 
         {/* ── Legend ── */}
         {legendSubjects.length > 0 && (
-          <View style={styles.legend}>
+          <View style={styles.legend} wrap={false}>
             {legendSubjects.map((s) => (
               <View key={s.code} style={styles.legendItem}>
                 <View
@@ -535,7 +596,7 @@ export default function ScheduleGridPdfDocument({
           </View>
         </View>
 
-        {/* ── Page footer ── */}
+        {/* ── Footer ── */}
         <View style={styles.pageFooter} fixed>
           <Text>
             Generated {generatedAt} by {generatedBy}

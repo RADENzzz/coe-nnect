@@ -8,6 +8,7 @@ import {
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import clsx from 'clsx';
+import { formatTime } from '../utils/time.util';
 
 interface Props {
   entry: ScheduleEntry | null;
@@ -259,9 +260,9 @@ export default function ScheduleDetailDrawer({
             <DetailRow icon="groups" label="Section" value={entry.sectionCode || '—'} />
             <DetailRow icon="person" label="Faculty" value={entry.facultyName} />
             <DetailRow
-              icon="meeting_room"
-              label="Room"
-              value={entry.roomNumber !== '—' ? `Room ${entry.roomNumber}` : '—'}
+              icon="schedule"
+              label="Time"
+              value={`${formatTime(entry.startTime)} – ${formatTime(entry.endTime)}`}
             />
             <DetailRow icon="calendar_today" label="Day" value={entry.day} />
             <DetailRow
