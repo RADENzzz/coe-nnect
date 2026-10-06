@@ -1,12 +1,18 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import {
+  useMemo,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
 import { DragDropProvider } from '@dnd-kit/react';
 import type { ScheduleEntry, DropCellData, Day } from '../types';
 import { computeLanes } from '../utils/lane-layout.util';
 import {
   DAYS,
-  formatTime,
   generateTimeSlots,
   timeToMinutes,
+  formatTime, // ← NEW
 } from '../utils/time.util';
 import { ClassBlock } from './ClassBlock';
 import { DropCell } from './DropCell';
@@ -19,6 +25,7 @@ import {
 interface Props {
   entries: ScheduleEntry[];
   density: GridDensity;
+  fitToContainer?: boolean;
   onEntryMove?: (
     entryId: string,
     newDay: string,
@@ -37,7 +44,6 @@ const DAY_LABELS: Record<Day, string> = {
   SUN: 'Sun',
 };
 
-/** True once the viewport is at least md: (768px). */
 function useIsDesktopLike(): boolean {
   const [is, setIs] = useState(() =>
     typeof window === 'undefined'
@@ -53,15 +59,56 @@ function useIsDesktopLike(): boolean {
   return is;
 }
 
+function useMeasuredWidth<T extends HTMLElement>(): [
+  React.RefObject<T>,
+  number,
+] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        setWidth(el.clientWidth);
+      });
+    };
+
+    update();
+
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
+  return [ref, width];
+}
+
 export default function TimetableGrid({
   entries,
   density,
+  fitToContainer = true,
   onEntryMove,
   onEntryClick,
 }: Props) {
+  const [containerRef, containerWidth] = useMeasuredWidth<HTMLDivElement>();
+  const effectiveDensity: GridDensity = fitToContainer ? 'fit' : density;
+
   return (
-    <GridMetricsProvider density={density}>
+    <GridMetricsProvider
+      density={effectiveDensity}
+      containerWidth={containerWidth}
+    >
       <GridBody
+        containerRef={containerRef}
         entries={entries}
         onEntryMove={onEntryMove}
         onEntryClick={onEntryClick}
@@ -70,7 +117,19 @@ export default function TimetableGrid({
   );
 }
 
-function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>) {
+interface GridBodyProps {
+  containerRef: React.RefObject<HTMLDivElement>;
+  entries: ScheduleEntry[];
+  onEntryMove?: Props['onEntryMove'];
+  onEntryClick?: Props['onEntryClick'];
+}
+
+function GridBody({
+  containerRef,
+  entries,
+  onEntryMove,
+  onEntryClick,
+}: GridBodyProps) {
   const metrics = useGridMetrics();
   const isDesktopLike = useIsDesktopLike();
   const [validCells, setValidCells] = useState<Set<string>>(new Set());
@@ -78,7 +137,6 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
 
   const gridWidth = DAYS.length * metrics.dayWidth;
 
-  // Drop cells — 6 days × 24 slots
   const allCells = useMemo<DropCellData[]>(() => {
     const slots = generateTimeSlots();
     const cells: DropCellData[] = [];
@@ -180,15 +238,19 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
   );
 
   const dragActive = draggingId !== null;
-
-  // On mobile we don't render drop cells at all unless dragging,
-  // and dragging is disabled — so effectively they never mount.
   const shouldRenderDropCells = isDesktopLike || dragActive;
+
+  // Precompute time slots once — used for the axis and for the shading rows.
+  const timeSlots = useMemo(() => generateTimeSlots(), []);
+  const slotCount = timeSlots.length;
 
   return (
     <DragDropProvider onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden flex flex-col h-full min-h-0">
-        <div className="flex-1 overflow-auto overscroll-contain">
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-auto overscroll-contain"
+        >
           <div
             className="relative"
             style={{
@@ -222,7 +284,7 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
                 className="sticky left-0 z-20 bg-surface-container-low border-r border-surface-variant shrink-0"
                 style={{ width: metrics.axisWidth }}
               >
-                {generateTimeSlots().map((time, i) => (
+                {timeSlots.map((time, i) => (
                   <div
                     key={time}
                     style={{
@@ -243,7 +305,27 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
                 className="relative"
                 style={{ width: gridWidth, height: metrics.gridHeight }}
               >
-                {/* Background drop cells — only when a drag is active */}
+                {/* ── Zebra shading: every other 30-min slot ── */}
+                {Array.from({ length: slotCount - 1 }).map((_, i) => {
+                  if (i % 2 === 0) return null; // leave even rows transparent
+                  return (
+                    <div
+                      key={`zebra-${i}`}
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        top: (i + 1) * metrics.slotHeight,
+                        height: metrics.slotHeight,
+                        backgroundColor: 'rgba(15, 23, 42, 0.035)',
+                        pointerEvents: 'none',
+                        zIndex: 0,
+                      }}
+                    />
+                  );
+                })}
+
                 {shouldRenderDropCells &&
                   allCells.map((cell, idx) => {
                     const dayIndex = DAYS.indexOf(cell.day);
@@ -265,7 +347,6 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
                     );
                   })}
 
-                {/* Class blocks */}
                 {entries.map((entry) => {
                   const dayIndex = DAYS.indexOf(entry.day);
                   if (dayIndex === -1) return null;
@@ -289,8 +370,6 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
                       overlapCount={overlapCount}
                       onClick={onEntryClick}
                       isDragging={draggingId === entry.id}
-                      // Disable dragging on <md viewports — the columns
-                      // are too narrow for reliable finger dragging.
                       disabled={locked || !isDesktopLike}
                     />
                   );
