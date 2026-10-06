@@ -1,0 +1,66 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { TermsService } from './terms.service';
+import { CreateTermDto } from './dto/create-term.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('v1/terms')
+export class TermsController {
+  constructor(private readonly terms: TermsService) {}
+
+  // Static routes MUST come before :id
+  @Get()
+  async findAll() {
+    return { data: await this.terms.findAll() };
+  }
+
+  @Get('active')
+  async findActive() {
+    return { data: await this.terms.findActive() };
+  }
+
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    return { data: await this.terms.findOne(id) };
+  }
+
+  @Auditable({ action: 'term.create', source: 'Terms' })
+  @Roles('administrator')
+  @Post()
+  async create(@Body() dto: CreateTermDto) {
+    return { data: await this.terms.create(dto) };
+  }
+
+  @Auditable({ action: 'term.deactivate', source: 'Terms' })
+  @Roles('administrator')
+  @Patch(':id/deactivate')
+  async deactivate(@Param('id') id: string) {
+    return { data: await this.terms.deactivate(id) };
+  }
+
+  @Auditable({ action: 'term.activate', source: 'Terms' })
+  @Roles('administrator')
+  @Patch(':id/activate')
+  async activate(@Param('id') id: string) {
+    return { data: await this.terms.activate(id) };
+  }
+
+  @Auditable({ action: 'term.delete', source: 'Terms' })
+  @Roles('administrator')
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    return this.terms.remove(id);
+  }
+}

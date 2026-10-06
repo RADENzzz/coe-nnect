@@ -15,6 +15,7 @@ import { RoomsModule } from './modules/rooms/rooms.module';
 import { ProspectusModule } from './modules/prospectus/prospectus.module';
 import { SystemConfigModule } from './modules/system-config/system-config.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { TermsModule } from './modules/terms/terms.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
@@ -37,6 +38,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     ProspectusModule,
     SystemConfigModule,
     AuditModule,
+    TermsModule,
   ],
   providers: [
     {
