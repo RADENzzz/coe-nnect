@@ -21,7 +21,7 @@ export default function Sidebar({ nav }: SidebarProps) {
   return (
     <nav
       className={clsx(
-        'hidden md:flex flex-col h-screen bg-white border-r border-slate-200 fixed left-0 top-0 z-50',
+        'hidden md:flex flex-col h-screen bg-[#5c1219] border-r border-black/10 fixed left-0 top-0 z-50',
         'transition-[width] duration-200 ease-out',
         collapsed ? 'w-[68px]' : 'w-64',
       )}
@@ -29,20 +29,20 @@ export default function Sidebar({ nav }: SidebarProps) {
       {/* Brand + toggle */}
       <div
         className={clsx(
-          'border-b border-slate-100 flex items-center',
+          'border-b border-white/10 flex items-center',
           collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-5 justify-between gap-2',
         )}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 bg-[#5c1219] flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 bg-white/10 flex items-center justify-center shrink-0">
             <Icon name="school" filled className="text-white" size={20} />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
+              <p className="text-sm font-extrabold text-white leading-tight tracking-tight">
                 CoE-NNECT
               </p>
-              <p className="text-xs text-slate-500 truncate max-w-[140px]">
+              <p className="text-xs text-white/70 truncate max-w-[140px]">
                 {subtitle}
               </p>
             </div>
@@ -53,7 +53,7 @@ export default function Sidebar({ nav }: SidebarProps) {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Collapse sidebar"
             title="Collapse sidebar"
           >
@@ -67,7 +67,7 @@ export default function Sidebar({ nav }: SidebarProps) {
         <button
           type="button"
           onClick={toggleSidebar}
-          className="mx-2 mt-2 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          className="mx-2 mt-2 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
           aria-label="Expand sidebar"
           title="Expand sidebar"
         >
@@ -77,9 +77,9 @@ export default function Sidebar({ nav }: SidebarProps) {
 
       {/* CTA — DH only */}
       {isDH && collapsed && (
-        <div className="px-2 py-3 border-b border-slate-100">
+        <div className="px-2 py-3 border-b border-white/10">
           <button
-            className="w-full bg-[#5c1219] text-white flex items-center justify-center h-9 hover:opacity-90 transition-colors"
+            className="w-full bg-white text-[#5c1219] flex items-center justify-center h-9 hover:bg-white/90 transition-colors"
             title="Create New Term"
             aria-label="Create New Term"
           >
@@ -102,8 +102,8 @@ export default function Sidebar({ nav }: SidebarProps) {
                   ? 'justify-center py-2.5 px-2'
                   : 'px-3 py-2.5',
                 isActive
-                  ? 'bg-[#5c1219] text-white'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                  ? 'bg-white text-[#5c1219]'
+                  : 'text-white/80 hover:bg-white/10 hover:text-white',
               )
             }
           >
@@ -119,7 +119,7 @@ export default function Sidebar({ nav }: SidebarProps) {
 
       {/* Footer Nav */}
       {nav.footer.length > 0 && (
-        <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2">
+        <div className="flex flex-col gap-px py-2 border-t border-white/10 px-2">
           {nav.footer.map((item) => (
             <NavLink
               key={item.path}
@@ -132,8 +132,8 @@ export default function Sidebar({ nav }: SidebarProps) {
                     ? 'justify-center py-2.5 px-2'
                     : 'px-3 py-2.5',
                   isActive
-                    ? 'bg-[#5c1219] text-white'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                    ? 'bg-white text-[#5c1219]'
+                    : 'text-white/80 hover:bg-white/10 hover:text-white',
                 )
               }
             >
