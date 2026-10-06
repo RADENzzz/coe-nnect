@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import TimetableGrid from './components/TimetableGrid';
 import AgendaView from './views/AgendaView';
 import type { ScheduleEntry, Day, LoadType } from './types';
@@ -70,6 +71,14 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
 type ViewMode = 'master' | 'department' | 'room' | 'faculty' | 'section';
 export type LayoutMode = 'agenda' | 'grid';
 
+const QUERY_VIEW_MAP: Record<string, ViewMode> = {
+  master: 'master',
+  department: 'department',
+  room: 'room',
+  faculty: 'faculty',
+  section: 'section',
+};
+
 function defaultLayoutForViewport(): LayoutMode {
   if (typeof window === 'undefined') return 'grid';
   return window.matchMedia('(min-width: 768px)').matches ? 'grid' : 'agenda';
@@ -85,6 +94,7 @@ function defaultDensityForViewport(): GridDensity {
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const queryClient = useQueryClient();
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
@@ -93,9 +103,26 @@ export default function TimetablePage() {
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
   const [viewMode, setViewMode] = useState<ViewMode>('master');
   const [viewTargetId, setViewTargetId] = useState('');
+  const [onlyConflicts, setOnlyConflicts] = useState(false);
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
   const [gridDensity, setGridDensity] = useState<GridDensity>(defaultDensityForViewport);
+
+  // ── Handle ?view= query param (from Reports Hub) ──
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [initialViewApplied, setInitialViewApplied] = useState(false);
+  useEffect(() => {
+    if (initialViewApplied) return;
+    const qv = searchParams.get('view');
+    if (qv && QUERY_VIEW_MAP[qv]) {
+      setViewMode(QUERY_VIEW_MAP[qv]);
+      setViewTargetId('');
+      const next = new URLSearchParams(searchParams);
+      next.delete('view');
+      setSearchParams(next, { replace: true });
+    }
+    setInitialViewApplied(true);
+  }, [searchParams, setSearchParams, initialViewApplied]);
 
   const [layoutTouched, setLayoutTouched] = useState(false);
   useEffect(() => {
@@ -178,21 +205,35 @@ export default function TimetablePage() {
   const allEntries = useMemo(() => (schedules ?? []).map(toEntry), [schedules]);
 
   const entries = useMemo(() => {
-    if (viewMode === 'master' || !viewTargetId) return allEntries;
-    return allEntries.filter((e) => {
-      if (viewMode === 'department') return e.deptId === viewTargetId;
-      if (viewMode === 'room') return e.roomId === viewTargetId;
-      if (viewMode === 'faculty') return e.facultyId === viewTargetId;
-      if (viewMode === 'section') return e.sectionCode === viewTargetId;
-      return true;
-    });
-  }, [allEntries, viewMode, viewTargetId]);
+    let filtered = allEntries;
+
+    if (viewMode !== 'master' && viewTargetId) {
+      filtered = filtered.filter((e) => {
+        if (viewMode === 'department') return e.deptId === viewTargetId;
+        if (viewMode === 'room') return e.roomId === viewTargetId;
+        if (viewMode === 'faculty') return e.facultyId === viewTargetId;
+        if (viewMode === 'section') return e.sectionCode === viewTargetId;
+        return true;
+      });
+    }
+
+    if (onlyConflicts) {
+      filtered = filtered.filter((e) => e.hasConflict || e.hasWarning);
+    }
+
+    return filtered;
+  }, [allEntries, viewMode, viewTargetId, onlyConflicts]);
+
+  const conflictCount = useMemo(
+    () => allEntries.filter((e) => e.hasConflict || e.hasWarning).length,
+    [allEntries],
+  );
 
   const { moveEntry: handleMove, isPending: movePending } = useMoveSchedule({
-  termId: activeTerm?.termId,
-  allEntries,
+    termId: activeTerm?.termId,
+    allEntries,
   });
-  
+
   const handleClick = useCallback(
     (entry: ScheduleEntry) => {
       const sameSlot = entries.filter(
@@ -490,37 +531,55 @@ export default function TimetablePage() {
               </div>
             </div>
 
-            {layoutMode === 'grid' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                  Density
-                </span>
-                <div className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5">
-                  <button
-                    onClick={() => setGridDensity('compact')}
-                    aria-pressed={gridDensity === 'compact'}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                      gridDensity === 'compact'
-                        ? 'bg-white text-primary shadow-sm'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    Compact
-                  </button>
-                  <button
-                    onClick={() => setGridDensity('comfortable')}
-                    aria-pressed={gridDensity === 'comfortable'}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                      gridDensity === 'comfortable'
-                        ? 'bg-white text-primary shadow-sm'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    Comfortable
-                  </button>
+            <div className="flex items-center gap-4">
+              {layoutMode === 'grid' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                    Density
+                  </span>
+                  <div className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5">
+                    <button
+                      onClick={() => setGridDensity('compact')}
+                      aria-pressed={gridDensity === 'compact'}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                        gridDensity === 'compact'
+                          ? 'bg-white text-primary shadow-sm'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      Compact
+                    </button>
+                    <button
+                      onClick={() => setGridDensity('comfortable')}
+                      aria-pressed={gridDensity === 'comfortable'}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                        gridDensity === 'comfortable'
+                          ? 'bg-white text-primary shadow-sm'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      Comfortable
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyConflicts}
+                  onChange={(e) => setOnlyConflicts(e.target.checked)}
+                  className="accent-[#5c1219]"
+                />
+                <Icon name="warning" size={14} />
+                Only conflicts
+                {conflictCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 font-bold">
+                    {conflictCount}
+                  </span>
+                )}
+              </label>
+            </div>
           </div>
         </div>
       )}
@@ -542,12 +601,16 @@ export default function TimetablePage() {
       {!isLoading && !error && activeTerm && entries.length === 0 && (
         <EmptyState
           title={
-            viewMode !== 'master' && viewTargetId
+            onlyConflicts
+              ? 'No conflicts detected'
+              : viewMode !== 'master' && viewTargetId
               ? 'No entries for this view'
               : 'No schedule entries yet'
           }
           description={
-            viewMode !== 'master' && viewTargetId
+            onlyConflicts
+              ? 'Every scheduled class is currently clean — no hard conflicts or soft warnings.'
+              : viewMode !== 'master' && viewTargetId
               ? 'Try selecting a different department, room, faculty, or section.'
               : 'Click "Plot Subject" to add your first class.'
           }
@@ -588,12 +651,12 @@ export default function TimetablePage() {
               <AgendaView entries={entries} onEntryClick={handleClick} />
             ) : (
               <TimetableGrid
-              entries={entries}
-              density={gridDensity}
-              fitToContainer
-              onEntryMove={handleMove}
-              onEntryClick={handleClick}
-            />
+                entries={entries}
+                density={gridDensity}
+                fitToContainer
+                onEntryMove={handleMove}
+                onEntryClick={handleClick}
+              />
             )}
           </div>
         </>
@@ -627,13 +690,13 @@ export default function TimetablePage() {
 
       {activeTerm && (
         <ScheduleDetailDrawer
-        entry={selectedEntry}
-        onClose={() => setSelectedEntry(null)}
-        onEdit={handleEdit}
-        termId={activeTerm.termId}
-        onMove={handleMove}
-        movePending={movePending}
-      />
+          entry={selectedEntry}
+          onClose={() => setSelectedEntry(null)}
+          onEdit={handleEdit}
+          termId={activeTerm.termId}
+          onMove={handleMove}
+          movePending={movePending}
+        />
       )}
 
       <StackPicker

@@ -34,6 +34,23 @@ interface Props {
   onEntryClick?: (entry: ScheduleEntry) => void;
 }
 
+
+/** Get the index in DAYS array for today, or -1 if today isn't a grid day. */
+function getTodayIndex(): number {
+  const jsDay = new Date().getDay(); // 0=Sun ... 6=Sat
+  const map: Record<number, Day> = {
+    1: 'MON',
+    2: 'TUE',
+    3: 'WED',
+    4: 'THU',
+    5: 'FRI',
+    6: 'SAT',
+  };
+  const today = map[jsDay];
+  if (!today) return -1;
+  return DAYS.indexOf(today);
+}
+
 const DAY_LABELS: Record<Day, string> = {
   MON: 'Mon',
   TUE: 'Tue',
@@ -101,7 +118,7 @@ export default function TimetableGrid({
 }: Props) {
   const [containerRef, containerWidth] = useMeasuredWidth<HTMLDivElement>();
   const effectiveDensity: GridDensity = fitToContainer ? 'fit' : density;
-
+  
   return (
     <GridMetricsProvider
       density={effectiveDensity}
@@ -134,6 +151,8 @@ function GridBody({
   const isDesktopLike = useIsDesktopLike();
   const [validCells, setValidCells] = useState<Set<string>>(new Set());
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const todayIdx = useMemo(() => getTodayIndex(), []);
 
   const gridWidth = DAYS.length * metrics.dayWidth;
 
@@ -263,18 +282,31 @@ function GridBody({
               className="flex sticky top-0 z-30 bg-surface-container-low"
               style={{ paddingLeft: metrics.axisWidth }}
             >
-              {DAYS.map((day) => (
+            {DAYS.map((day, idx) => {
+              const isToday = idx === todayIdx;
+              return (
                 <div
                   key={day}
                   style={{
                     width: metrics.dayWidth,
                     minWidth: metrics.dayWidth,
                   }}
-                  className="py-2.5 text-center text-xs font-semibold text-on-surface border-b border-l border-surface-variant first:border-l-0"
+                  className={
+                    'py-2.5 text-center text-xs border-b border-l border-surface-variant first:border-l-0 ' +
+                    (isToday
+                      ? 'font-extrabold text-[#5c1219] bg-red-50'
+                      : 'font-semibold text-on-surface')
+                  }
                 >
                   {DAY_LABELS[day]}
+                  {isToday && (
+                    <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider">
+                      • Today
+                    </span>
+                  )}
                 </div>
-              ))}
+              );
+            })}
             </div>
 
             {/* Main grid body */}
@@ -305,6 +337,23 @@ function GridBody({
                 className="relative"
                 style={{ width: gridWidth, height: metrics.gridHeight }}
               >
+
+                {/* Today column tint */}
+                {todayIdx >= 0 && (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: 'absolute',
+                      left: todayIdx * metrics.dayWidth,
+                      top: 0,
+                      width: metrics.dayWidth,
+                      height: metrics.gridHeight,
+                      backgroundColor: 'rgba(220, 38, 38, 0.04)',
+                      pointerEvents: 'none',
+                      zIndex: 0,
+                    }}
+                  />
+                )}
                 {/* ── Zebra shading: every other 30-min slot ── */}
                 {Array.from({ length: slotCount - 1 }).map((_, i) => {
                   if (i % 2 === 0) return null; // leave even rows transparent
@@ -325,6 +374,23 @@ function GridBody({
                     />
                   );
                 })}
+
+                {/* ── Today column tint ── */}
+                {todayIdx >= 0 && (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: 'absolute',
+                      left: todayIdx * metrics.dayWidth,
+                      top: 0,
+                      width: metrics.dayWidth,
+                      height: metrics.gridHeight,
+                      backgroundColor: 'rgba(220, 38, 38, 0.05)',
+                      pointerEvents: 'none',
+                      zIndex: 0,
+                    }}
+                  />
+                )}
 
                 {shouldRenderDropCells &&
                   allCells.map((cell, idx) => {
