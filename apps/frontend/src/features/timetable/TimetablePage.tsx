@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import TimetableGrid from './components/TimetableGrid';
+import AgendaView from './views/AgendaView';
 import type { ScheduleEntry, Day, LoadType } from './types';
 import {
   fetchSchedules,
@@ -26,6 +27,7 @@ import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 import { colorForSubject } from './utils/color.util';
 import StackPicker from './components/StackPicker';
 import ExportToolbar from './export/ExportToolbar';
+import type { GridDensity } from './components/GridMetricsContext';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -51,7 +53,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
-  
+
   return {
     id: raw.scheduleId,
     subjectId: raw.subjectId,
@@ -79,6 +81,24 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
 }
 
 type ViewMode = 'master' | 'department' | 'room' | 'faculty' | 'section';
+type LayoutMode = 'agenda' | 'grid';
+
+/**
+ * Agenda is the mobile default (phone portrait) because a 6-day grid
+ * with 24 half-hour rows is unusable on a 375px screen.
+ * Tablet + desktop default to Grid.
+ */
+function defaultLayoutForViewport(): LayoutMode {
+  if (typeof window === 'undefined') return 'grid';
+  return window.matchMedia('(min-width: 768px)').matches ? 'grid' : 'agenda';
+}
+
+function defaultDensityForViewport(): GridDensity {
+  if (typeof window === 'undefined') return 'desktop';
+  if (window.matchMedia('(min-width: 1024px)').matches) return 'desktop';
+  if (window.matchMedia('(min-width: 768px)').matches) return 'comfortable';
+  return 'compact';
+}
 
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
@@ -88,16 +108,31 @@ export default function TimetablePage() {
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
 
-  // ── View mode ──
-  // Default: Master for everyone, but DHs default to their own department.
+  // ── View mode (filter which entries) ──
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
-
   const [viewMode, setViewMode] = useState<ViewMode>('master');
   const [viewTargetId, setViewTargetId] = useState('');
 
-  // Once the profile loads, if this is a DH with a dept, jump to their dept view.
-  // Runs once — subsequent manual changes aren't overridden.
+  // ── Layout mode (grid vs agenda) ──
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
+  const [gridDensity, setGridDensity] = useState<GridDensity>(defaultDensityForViewport);
+
+  // React to viewport resize: only auto-switch layout if user hasn't
+  // toggled manually. We track manual change to avoid overriding intent.
+  const [layoutTouched, setLayoutTouched] = useState(false);
+  useEffect(() => {
+    if (layoutTouched) return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handle = () => {
+      setLayoutMode(mq.matches ? 'grid' : 'agenda');
+      setGridDensity(defaultDensityForViewport());
+    };
+    mq.addEventListener('change', handle);
+    return () => mq.removeEventListener('change', handle);
+  }, [layoutTouched]);
+
+  // DH defaults to their own dept (once)
   const [defaultedToDept, setDefaultedToDept] = useState(false);
   useEffect(() => {
     if (defaultedToDept) return;
@@ -109,7 +144,7 @@ export default function TimetablePage() {
     setDefaultedToDept(true);
   }, [profile, isDepartmentHead, myDeptId, defaultedToDept]);
 
-  // ── Fetch active term ──
+  // ── Data ──
   const {
     data: activeTerm,
     isLoading: termLoading,
@@ -120,7 +155,6 @@ export default function TimetablePage() {
     enabled: !!user,
   });
 
-  // ── Fetch schedules ──
   const {
     data: schedules,
     isLoading: schedulesLoading,
@@ -131,7 +165,6 @@ export default function TimetablePage() {
     enabled: !!user && !!activeTerm,
   });
 
-  // ── Fetch dropdown data ──
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
@@ -167,12 +200,8 @@ export default function TimetablePage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const allEntries = useMemo(
-    () => (schedules ?? []).map(toEntry),
-    [schedules],
-  );
+  const allEntries = useMemo(() => (schedules ?? []).map(toEntry), [schedules]);
 
-  // ── Apply filter ──
   const entries = useMemo(() => {
     if (viewMode === 'master' || !viewTargetId) return allEntries;
     return allEntries.filter((e) => {
@@ -313,7 +342,7 @@ export default function TimetablePage() {
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
 
-  // ── View target options depend on mode ──
+  // ── View target options ──
   const viewOptions = useMemo(() => {
     if (viewMode === 'department') {
       return departments
@@ -358,7 +387,6 @@ export default function TimetablePage() {
     section: 'By Section',
   };
 
-  // Label for the target selector dropdown
   const targetLabel =
     viewMode === 'department'
       ? 'Department'
@@ -370,7 +398,7 @@ export default function TimetablePage() {
       ? 'Section'
       : '';
 
-    // ── Export scope metadata ──
+  // ── Export scope metadata ──
   const exportScope = useMemo(() => {
     const termSlug = activeTerm
       ? `${activeTerm.termName}-AY${activeTerm.schoolYear}`
@@ -431,12 +459,19 @@ export default function TimetablePage() {
       filename: `CoE-NNECT_master_${termSlug}_${dateSlug}`,
     };
   }, [viewMode, viewTargetId, activeTerm, departments, rooms, faculty]);
+
+  const entryCountLabel = `${entries.length} ${
+    entries.length === 1 ? 'entry' : 'entries'
+  }`;
+
   return (
-    <div className="p-4 md:p-6 max-w-[1800px] mx-auto">
+    <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-primary">Timetable</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-primary">
+            Timetable
+          </h1>
           <p className="text-sm text-on-surface-variant mt-1">
             {activeTerm
               ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
@@ -446,11 +481,11 @@ export default function TimetablePage() {
 
         <div className="flex items-center gap-3">
           {activeTerm && !isLoading && !error && (
-            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-on-surface-variant">
               <span className="material-symbols-outlined text-base">
                 calendar_view_month
               </span>
-              {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+              {entryCountLabel}
               {viewMode !== 'master' && (
                 <span className="text-primary font-medium">
                   ({viewModeLabel[viewMode]})
@@ -476,65 +511,146 @@ export default function TimetablePage() {
         </div>
       </div>
 
-      {/* ── View Filters ── */}
+      {/* ── Filters + layout switcher ── */}
       {activeTerm && (
-        <div className="mb-4 flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
-          <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-              View
-            </label>
-            <select
-              value={viewMode}
-              onChange={(e) => {
-                setViewMode(e.target.value as ViewMode);
-                // Auto-select the DH's own dept when switching to By Department
-                if (e.target.value === 'department' && myDeptId) {
-                  setViewTargetId(myDeptId);
-                } else {
-                  setViewTargetId('');
-                }
-              }}
-              className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[180px]"
-            >
-              <option value="master">Master View</option>
-              <option value="department">By Department</option>
-              <option value="room">By Room</option>
-              <option value="faculty">By Faculty</option>
-              <option value="section">By Section</option>
-            </select>
-          </div>
-
-          {viewMode !== 'master' && (
-            <div>
+        <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
+          {/* Row 1: filter selects */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[150px]">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                {targetLabel}
+                View
               </label>
               <select
-                value={viewTargetId}
-                onChange={(e) => setViewTargetId(e.target.value)}
-                className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[220px]"
+                value={viewMode}
+                onChange={(e) => {
+                  setViewMode(e.target.value as ViewMode);
+                  if (e.target.value === 'department' && myDeptId) {
+                    setViewTargetId(myDeptId);
+                  } else {
+                    setViewTargetId('');
+                  }
+                }}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
               >
-                <option value="">— select —</option>
-                {viewOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
+                <option value="master">Master View</option>
+                <option value="department">By Department</option>
+                <option value="room">By Room</option>
+                <option value="faculty">By Faculty</option>
+                <option value="section">By Section</option>
               </select>
             </div>
-          )}
 
-          {viewMode !== 'master' && viewTargetId && (
-            <button
-              onClick={() => {
-                setViewMode('master');
-                setViewTargetId('');
-              }}
-              className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
-            >
-              Clear filter
-            </button>
-          )}
+            {viewMode !== 'master' && (
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  {targetLabel}
+                </label>
+                <select
+                  value={viewTargetId}
+                  onChange={(e) => setViewTargetId(e.target.value)}
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                >
+                  <option value="">— select —</option>
+                  {viewOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {viewMode !== 'master' && viewTargetId && (
+              <button
+                onClick={() => {
+                  setViewMode('master');
+                  setViewTargetId('');
+                }}
+                className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+
+          {/* Row 2: layout switcher + density */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-surface-variant">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                Layout
+              </span>
+              <div
+                role="tablist"
+                aria-label="Layout"
+                className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5"
+              >
+                <button
+                  role="tab"
+                  aria-selected={layoutMode === 'agenda'}
+                  onClick={() => {
+                    setLayoutMode('agenda');
+                    setLayoutTouched(true);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    layoutMode === 'agenda'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="view_list" size={14} />
+                  Agenda
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={layoutMode === 'grid'}
+                  onClick={() => {
+                    setLayoutMode('grid');
+                    setLayoutTouched(true);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    layoutMode === 'grid'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="grid_on" size={14} />
+                  Grid
+                </button>
+              </div>
+            </div>
+
+            {layoutMode === 'grid' && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                  Density
+                </span>
+                <div className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5">
+                  <button
+                    onClick={() => setGridDensity('compact')}
+                    aria-pressed={gridDensity === 'compact'}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                      gridDensity === 'compact'
+                        ? 'bg-white text-primary shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    Compact
+                  </button>
+                  <button
+                    onClick={() => setGridDensity('comfortable')}
+                    aria-pressed={gridDensity === 'comfortable'}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                      gridDensity === 'comfortable'
+                        ? 'bg-white text-primary shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    Comfortable
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -567,16 +683,17 @@ export default function TimetablePage() {
           }
         />
       )}
+
       {!isLoading && !error && activeTerm && entries.length > 0 && (
         <>
-          {/* ── Export toolbar ── */}
+          {/* Export toolbar */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl border border-surface-variant bg-surface-container-lowest">
             <div className="text-xs text-on-surface-variant">
               Exporting:{' '}
               <strong className="text-on-surface">
                 {exportScope.scopeLabel}
               </strong>{' '}
-              · {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+              · {entryCountLabel}
             </div>
             <ExportToolbar
               entries={entries}
@@ -587,9 +704,7 @@ export default function TimetablePage() {
                   : 'Term'
               }
               suggestedFilename={exportScope.filename}
-              gridAvailable={
-                viewMode === 'room' || viewMode === 'master'
-              }
+              gridAvailable={viewMode === 'room' || viewMode === 'master'}
               gridScopeLabel={
                 viewMode === 'room'
                   ? exportScope.scopeLabel
@@ -598,11 +713,19 @@ export default function TimetablePage() {
             />
           </div>
 
-          <TimetableGrid
-            entries={entries}
-            onEntryMove={handleMove}
-            onEntryClick={handleClick}
-          />
+          {/* Layout body */}
+          <div className="flex-1 min-h-0">
+            {layoutMode === 'agenda' ? (
+              <AgendaView entries={entries} onEntryClick={handleClick} />
+            ) : (
+              <TimetableGrid
+                entries={entries}
+                density={gridDensity}
+                onEntryMove={handleMove}
+                onEntryClick={handleClick}
+              />
+            )}
+          </div>
         </>
       )}
 
