@@ -1,8 +1,9 @@
 import { pdf } from '@react-pdf/renderer';
 import React from 'react';
-import ScheduleGridPdfDocument, {
-  ScheduleGridPdfProps,
-} from './ScheduleGridPdfDocument';
+import ScheduleGridPdfDocument from './ScheduleGridPdfDocument';
+import type { ScheduleGridPdfProps } from './ScheduleGridPdfDocument';
+
+export type { ScheduleGridPdfProps };
 
 function safeName(name: string): string {
   const safe = name

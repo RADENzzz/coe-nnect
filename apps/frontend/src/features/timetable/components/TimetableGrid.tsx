@@ -30,7 +30,7 @@ interface Props {
     entryId: string,
     newDay: string,
     newStartTime: string,
-  ) => void | Promise<void>;
+  ) => void | Promise<unknown>;
   onEntryClick?: (entry: ScheduleEntry) => void;
 }
 
