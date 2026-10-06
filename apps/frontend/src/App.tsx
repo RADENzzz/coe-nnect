@@ -60,6 +60,7 @@ function App() {
           <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
+          <Route path="timetable" element={<TimetablePage />} />
         </Route>
       </Route>
 

@@ -91,7 +91,16 @@ function defaultDensityForViewport(): GridDensity {
   return 'compact';
 }
 
-export default function TimetablePage() {
+interface Props {
+  /**
+   * When true, the page hides all write actions (Plot, Edit, drag-to-move,
+   * delete, status changes). Used by the Dean portal to give read-only
+   * access to the college-wide schedule.
+   */
+  readOnly?: boolean;
+}
+
+export default function TimetablePage({ readOnly = false }: Props) {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
@@ -99,6 +108,7 @@ export default function TimetablePage() {
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
   const [editEntry, setEditEntry] = useState<ScheduleEntry | null>(null);
+
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
   const [viewMode, setViewMode] = useState<ViewMode>('master');
@@ -108,7 +118,7 @@ export default function TimetablePage() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
   const [gridDensity, setGridDensity] = useState<GridDensity>(defaultDensityForViewport);
 
-  // ── Handle ?view= query param (from Reports Hub) ──
+  // ── Handle ?view= query param ──
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialViewApplied, setInitialViewApplied] = useState(false);
   useEffect(() => {
@@ -140,6 +150,7 @@ export default function TimetablePage() {
   useEffect(() => {
     if (defaultedToDept) return;
     if (!profile) return;
+    // Only DH gets auto-scoped to their own department
     if (isDepartmentHead && myDeptId) {
       setViewMode('department');
       setViewTargetId(myDeptId);
@@ -170,7 +181,7 @@ export default function TimetablePage() {
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
-    enabled: !!user,
+    enabled: !!user && !readOnly, // don't fetch dropdown data for read-only
     staleTime: 5 * 60 * 1000,
   });
 
@@ -382,6 +393,8 @@ export default function TimetablePage() {
     entries.length === 1 ? 'entry' : 'entries'
   }`;
 
+  const writable = !readOnly;
+
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
       <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -393,6 +406,12 @@ export default function TimetablePage() {
             {activeTerm
               ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
               : 'Loading term...'}
+            {readOnly && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5">
+                <Icon name="visibility" size={12} />
+                View only
+              </span>
+            )}
           </p>
         </div>
 
@@ -408,7 +427,7 @@ export default function TimetablePage() {
                   ({viewModeLabel[viewMode]})
                 </span>
               )}
-              {movePending && (
+              {writable && movePending && (
                 <span className="ml-2 text-primary font-medium animate-pulse">
                   Saving…
                 </span>
@@ -416,7 +435,7 @@ export default function TimetablePage() {
             </div>
           )}
 
-          {activeTerm && (
+          {writable && activeTerm && (
             <button
               onClick={() => setPlotOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary transition"
@@ -439,7 +458,7 @@ export default function TimetablePage() {
                 value={viewMode}
                 onChange={(e) => {
                   setViewMode(e.target.value as ViewMode);
-                  if (e.target.value === 'department' && myDeptId) {
+                  if (e.target.value === 'department' && myDeptId && isDepartmentHead) {
                     setViewTargetId(myDeptId);
                   } else {
                     setViewTargetId('');
@@ -614,7 +633,9 @@ export default function TimetablePage() {
               ? 'Every scheduled class is currently clean — no hard conflicts or soft warnings.'
               : viewMode !== 'master' && viewTargetId
               ? 'Try selecting a different department, room, faculty, or section.'
-              : 'Click "Plot Subject" to add your first class.'
+              : writable
+              ? 'Click "Plot Subject" to add your first class.'
+              : 'No schedule entries have been created yet.'
           }
         />
       )}
@@ -656,7 +677,7 @@ export default function TimetablePage() {
                 entries={entries}
                 density={gridDensity}
                 fitToContainer
-                onEntryMove={handleMove}
+                onEntryMove={writable ? handleMove : undefined}
                 onEntryClick={handleClick}
               />
             )}
@@ -664,7 +685,8 @@ export default function TimetablePage() {
         </>
       )}
 
-      {activeTerm && (
+      {/* Plot/Edit modal — only mount when writable */}
+      {writable && activeTerm && (
         <PlotSubjectModal
           open={plotOpen}
           onClose={() => {
@@ -698,10 +720,11 @@ export default function TimetablePage() {
         <ScheduleDetailDrawer
           entry={selectedEntry}
           onClose={() => setSelectedEntry(null)}
-          onEdit={handleEdit}
+          onEdit={writable ? handleEdit : undefined}
           termId={activeTerm.termId}
-          onMove={handleMove}
+          onMove={writable ? handleMove : undefined}
           movePending={movePending}
+          readOnly={readOnly}
         />
       )}
 

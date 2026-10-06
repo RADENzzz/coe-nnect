@@ -84,6 +84,7 @@ const DEAN_NAV: RoleNav = {
   ],
   bottom: [
     { label: 'Dashboard',   path: '/dean/dashboard',   icon: 'dashboard',       primary: true },
+    { label: 'Timetable',   path: '/dean/timetable',   icon: 'calendar_view_month', primary: true },
     { label: 'Departments', path: '/dean/departments', icon: 'corporate_fare',  primary: true },
     { label: 'Approvals',   path: '/dean/approvals',   icon: 'pending_actions', primary: true },
   ],
