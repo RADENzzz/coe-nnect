@@ -28,6 +28,7 @@ const SEMESTERS: { value: SemesterType; label: string }[] = [
 export default function ProspectusPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
 
   const [selectedProgramId, setSelectedProgramId] = useState('');
   const [selectedYearLevel, setSelectedYearLevel] = useState<number>(1);
@@ -38,6 +39,7 @@ export default function ProspectusPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProspectusRecord | null>(null);
 
+  // ── Data ──
   const { data: programs = [] } = useQuery({
     queryKey: ['programs'],
     queryFn: fetchPrograms,
@@ -56,8 +58,51 @@ export default function ProspectusPage() {
     enabled: !!user,
   });
 
-  const effectiveProgramId = selectedProgramId || programs[0]?.programId || '';
+  // ── Department-scoped program list ──
+  // DHs see only programs owned by their own department.
+  // Admin and Dean see everything.
+  const visiblePrograms = useMemo(() => {
+    if (!profile) return programs;
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean'
+    ) {
+      return programs;
+    }
+    return programs.filter(
+      (p) => String(p.deptId) === String(profile.dept_id ?? ''),
+    );
+  }, [programs, profile]);
 
+  // First visible program is the default
+  const effectiveProgramId =
+    selectedProgramId || visiblePrograms[0]?.programId || '';
+
+  const currentProgram = useMemo(
+    () =>
+      visiblePrograms.find(
+        (p) => String(p.programId) === String(effectiveProgramId),
+      ),
+    [visiblePrograms, effectiveProgramId],
+  );
+
+  // Can the caller write to the currently selected program?
+  const canWrite = useMemo(() => {
+    if (!profile) return false;
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean'
+    ) {
+      return true;
+    }
+    if (profile.role !== 'department_head') return false;
+    if (!currentProgram) return false;
+    return (
+      String(currentProgram.deptId) === String(profile.dept_id ?? '')
+    );
+  }, [profile, currentProgram]);
+
+  // ── Filtering ──
   const filteredEntries = useMemo(() => {
     if (!effectiveProgramId) return [];
     return allEntries.filter(
@@ -83,6 +128,7 @@ export default function ProspectusPage() {
     return map;
   }, [allEntries, effectiveProgramId, selectedSemester]);
 
+  // ── Mutations ──
   const toggleMutation = useMutation({
     mutationFn: toggleProspectusActive,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['prospectus'] }),
@@ -101,6 +147,7 @@ export default function ProspectusPage() {
       setError(err?.response?.data?.message ?? 'Delete failed'),
   });
 
+  // ── Handlers ──
   const handleAdd = () => {
     setEditing(null);
     setModalOpen(true);
@@ -115,10 +162,7 @@ export default function ProspectusPage() {
     setSuccess(null);
   };
 
-  const currentProgram = programs.find(
-    (p) => String(p.programId) === String(effectiveProgramId),
-  );
-
+  // ── Columns ──
   const columns: Column<ProspectusRecord>[] = [
     {
       key: 'code',
@@ -158,22 +202,25 @@ export default function ProspectusPage() {
     },
   ];
 
-  const getActions = (e: ProspectusRecord): RowAction[] => [
-    { label: 'Edit', icon: 'edit', onClick: () => handleEdit(e) },
-    {
-      label: e.isActive ? 'Deactivate' : 'Activate',
-      icon: e.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => toggleMutation.mutate(e.prospectusId),
-      disabled: toggleMutation.isPending,
-    },
-    {
-      label: 'Delete',
-      icon: 'delete',
-      danger: true,
-      onClick: () => setDeleteTarget(e),
-      disabled: deleteMutation.isPending,
-    },
-  ];
+  const getActions = (e: ProspectusRecord): RowAction[] => {
+    if (!canWrite) return [];
+    return [
+      { label: 'Edit', icon: 'edit', onClick: () => handleEdit(e) },
+      {
+        label: e.isActive ? 'Deactivate' : 'Activate',
+        icon: e.isActive ? 'toggle_off' : 'toggle_on',
+        onClick: () => toggleMutation.mutate(e.prospectusId),
+        disabled: toggleMutation.isPending,
+      },
+      {
+        label: 'Delete',
+        icon: 'delete',
+        danger: true,
+        onClick: () => setDeleteTarget(e),
+        disabled: deleteMutation.isPending,
+      },
+    ];
+  };
 
   return (
     <div className="space-y-6">
@@ -184,14 +231,16 @@ export default function ProspectusPage() {
             Map subjects to each program, year level, and semester.
           </p>
         </div>
-        <button
-          onClick={handleAdd}
-          disabled={!effectiveProgramId}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Icon name="add" size={18} />
-          Add Subject
-        </button>
+        {canWrite && (
+          <button
+            onClick={handleAdd}
+            disabled={!effectiveProgramId}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Icon name="add" size={18} />
+            Add Subject
+          </button>
+        )}
       </div>
 
       {error && (
@@ -212,8 +261,8 @@ export default function ProspectusPage() {
             Prospectus is step 3 of 3 in the Academic Structure flow.
           </p>
           <p className="text-blue-800 text-xs mt-0.5">
-            Only subjects created in the Subjects page can be mapped here. If you
-            don't see a subject you need, add it in Subjects first.
+            Only subjects created in the Subjects page can be mapped here. If
+            you don't see a subject you need, add it in Subjects first.
           </p>
         </div>
         <Link
@@ -225,7 +274,7 @@ export default function ProspectusPage() {
         </Link>
       </div>
 
-      {programs.length === 0 ? (
+      {visiblePrograms.length === 0 ? (
         <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-12 text-center">
           <Icon
             name="school"
@@ -233,10 +282,14 @@ export default function ProspectusPage() {
             className="text-on-surface-variant mb-3 mx-auto"
           />
           <p className="text-on-surface font-semibold mb-1">
-            No programs available
+            {programs.length === 0
+              ? 'No programs available'
+              : 'No programs for your department'}
           </p>
           <p className="text-on-surface-variant text-sm">
-            Run the demo seed to populate programs.
+            {programs.length === 0
+              ? 'Run the demo seed to populate programs.'
+              : "Your department doesn't own any programs yet. Contact the administrator."}
           </p>
         </div>
       ) : (
@@ -251,7 +304,7 @@ export default function ProspectusPage() {
                 onChange={(e) => setSelectedProgramId(e.target.value)}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
               >
-                {programs.map((p) => (
+                {visiblePrograms.map((p) => (
                   <option key={p.programId} value={p.programId}>
                     [{p.programCode}] {p.programName}
                   </option>
@@ -279,7 +332,9 @@ export default function ProspectusPage() {
             {currentProgram && (
               <div className="ml-auto text-xs text-on-surface-variant">
                 Showing{' '}
-                <strong className="text-on-surface">{filteredEntries.length}</strong>{' '}
+                <strong className="text-on-surface">
+                  {filteredEntries.length}
+                </strong>{' '}
                 subject{filteredEntries.length === 1 ? '' : 's'} in{' '}
                 <strong className="text-on-surface">
                   {currentProgram.programCode}
@@ -330,22 +385,24 @@ export default function ProspectusPage() {
             hasSourceRows={allEntries.length > 0}
             emptyMessage="No subjects for this combination yet."
             noMatchMessage="No subjects match your filters."
-            getActions={getActions}
+            getActions={canWrite ? getActions : undefined}
           />
 
-          <ProspectusFormModal
-            open={modalOpen}
-            onClose={() => {
-              setModalOpen(false);
-              setEditing(null);
-            }}
-            programs={programs}
-            subjects={subjects}
-            editing={editing}
-            defaultProgramId={effectiveProgramId}
-            defaultYearLevel={selectedYearLevel}
-            defaultSemester={selectedSemester}
-          />
+          {canWrite && (
+            <ProspectusFormModal
+              open={modalOpen}
+              onClose={() => {
+                setModalOpen(false);
+                setEditing(null);
+              }}
+              programs={visiblePrograms}
+              subjects={subjects}
+              editing={editing}
+              defaultProgramId={effectiveProgramId}
+              defaultYearLevel={selectedYearLevel}
+              defaultSemester={selectedSemester}
+            />
+          )}
         </>
       )}
 
@@ -366,7 +423,8 @@ export default function ProspectusPage() {
             <button
               type="button"
               onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.prospectusId)
+                deleteTarget &&
+                deleteMutation.mutate(deleteTarget.prospectusId)
               }
               disabled={deleteMutation.isPending}
               className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"

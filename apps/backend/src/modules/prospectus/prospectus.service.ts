@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,6 +12,11 @@ import { Program } from '../programs/entities/program.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { CreateProspectusDto } from './dto/create-prospectus.dto';
 import { UpdateProspectusDto } from './dto/update-prospectus.dto';
+
+export interface ProspectusCaller {
+  role: string;
+  deptId: string | null;
+}
 
 @Injectable()
 export class ProspectusService {
@@ -22,6 +28,10 @@ export class ProspectusService {
     @InjectRepository(Subject)
     private readonly subjects: Repository<Subject>,
   ) {}
+
+  // ────────────────────────────────────────────
+  // Reads
+  // ────────────────────────────────────────────
 
   findAll(): Promise<Prospectus[]> {
     return this.repo.find({
@@ -51,7 +61,6 @@ export class ProspectusService {
     return found;
   }
 
-  // ── Read-only helper for the frontend dropdown ──
   listActivePrograms(): Promise<Program[]> {
     return this.programs.find({
       where: { isActive: true },
@@ -59,14 +68,61 @@ export class ProspectusService {
     });
   }
 
-  async create(dto: CreateProspectusDto): Promise<Prospectus> {
-    // FK checks
+  // ────────────────────────────────────────────
+  // Authorization helper
+  // ────────────────────────────────────────────
+
+  /**
+   * Ensures the caller is allowed to write prospectus entries for the
+   * given program.
+   *
+   *   administrator / college_dean  → allowed for any program
+   *   department_head               → only own department's programs
+   *   everyone else                 → rejected
+   */
+  private async assertProgramWriteAccess(
+    programId: string,
+    caller: ProspectusCaller,
+  ): Promise<Program> {
     const program = await this.programs.findOne({
-      where: { programId: dto.programId },
+      where: { programId },
     });
     if (!program) {
       throw new BadRequestException('Program not found.');
     }
+
+    if (caller.role === 'administrator' || caller.role === 'college_dean') {
+      return program;
+    }
+
+    if (caller.role !== 'department_head') {
+      throw new ForbiddenException(
+        'You do not have permission to modify prospectus entries.',
+      );
+    }
+
+    if (
+      !caller.deptId ||
+      String(program.deptId) !== String(caller.deptId)
+    ) {
+      throw new ForbiddenException(
+        `Program "${program.programCode}" belongs to another department. You can only manage prospectus entries for your own department's programs.`,
+      );
+    }
+
+    return program;
+  }
+
+  // ────────────────────────────────────────────
+  // Writes
+  // ────────────────────────────────────────────
+
+  async create(
+    dto: CreateProspectusDto,
+    caller: ProspectusCaller,
+  ): Promise<Prospectus> {
+    const program = await this.assertProgramWriteAccess(dto.programId, caller);
+
     if (!program.isActive) {
       throw new BadRequestException(
         `Program "${program.programCode}" is inactive.`,
@@ -85,7 +141,6 @@ export class ProspectusService {
       );
     }
 
-    // Duplicate check: same program + subject + year + semester
     const existing = await this.repo.findOne({
       where: {
         programId: dto.programId,
@@ -102,7 +157,6 @@ export class ProspectusService {
             `${dto.yearLevel}${this.ordinal(dto.yearLevel)} Year, ${dto.semester} semester prospectus.`,
         );
       }
-      // If it existed but was deactivated, reactivate it instead of inserting a duplicate
       existing.isActive = true;
       return this.repo.save(existing);
     }
@@ -119,27 +173,41 @@ export class ProspectusService {
     return this.findOne(saved.prospectusId);
   }
 
-  async update(id: string, dto: UpdateProspectusDto): Promise<Prospectus> {
+  async update(
+    id: string,
+    dto: UpdateProspectusDto,
+    caller: ProspectusCaller,
+  ): Promise<Prospectus> {
     const found = await this.repo.findOne({
       where: { prospectusId: id },
     });
     if (!found) throw new NotFoundException('Prospectus entry not found');
 
-    // If programId is changing, verify it
+    await this.assertProgramWriteAccess(found.programId, caller);
+
     if (dto.programId !== undefined && dto.programId !== found.programId) {
-      const program = await this.programs.findOne({
-        where: { programId: dto.programId },
-      });
-      if (!program) throw new BadRequestException('Program not found.');
+      const targetProgram = await this.assertProgramWriteAccess(
+        dto.programId,
+        caller,
+      );
+      if (!targetProgram.isActive) {
+        throw new BadRequestException(
+          `Program "${targetProgram.programCode}" is inactive.`,
+        );
+      }
       found.programId = dto.programId;
     }
 
-    // If subjectId is changing, verify it
     if (dto.subjectId !== undefined && dto.subjectId !== found.subjectId) {
       const subject = await this.subjects.findOne({
         where: { subjectId: dto.subjectId },
       });
       if (!subject) throw new BadRequestException('Subject not found.');
+      if (!subject.isActive) {
+        throw new BadRequestException(
+          `Subject "${subject.subjectCode}" is inactive.`,
+        );
+      }
       found.subjectId = dto.subjectId;
     }
 
@@ -151,26 +219,38 @@ export class ProspectusService {
     return this.findOne(id);
   }
 
-  async toggleActive(id: string): Promise<Prospectus> {
+  async toggleActive(
+    id: string,
+    caller: ProspectusCaller,
+  ): Promise<Prospectus> {
     const found = await this.repo.findOne({
       where: { prospectusId: id },
     });
     if (!found) throw new NotFoundException('Prospectus entry not found');
+
+    await this.assertProgramWriteAccess(found.programId, caller);
+
     found.isActive = !found.isActive;
     await this.repo.save(found);
     return this.findOne(id);
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
+  async remove(
+    id: string,
+    caller: ProspectusCaller,
+  ): Promise<{ success: boolean }> {
     const found = await this.repo.findOne({
       where: { prospectusId: id },
     });
     if (!found) throw new NotFoundException('Prospectus entry not found');
+
+    await this.assertProgramWriteAccess(found.programId, caller);
+
     await this.repo.remove(found);
     return { success: true };
   }
 
-  // ── Tiny helper for friendly duplicate error messages ──
+  // ── Helper ──
   private ordinal(n: number): string {
     if (n === 1) return 'st';
     if (n === 2) return 'nd';
