@@ -19,6 +19,7 @@ import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
 import QualificationsModal from './components/QualificationsModal';
 import { fetchDesignations } from '@/api/system-config.api';
+import PreferencesModal from './components/PreferencesModal';
 
 const CLASSIFICATIONS: { value: FacultyClass; label: string }[] = [
   { value: 'regular', label: 'Regular' },
@@ -56,6 +57,8 @@ export default function FacultyPage() {
     classification: 'regular' as FacultyClass,
     requiredHours: '',
   });
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [prefsFaculty, setPrefsFaculty] = useState<FacultyRecord | null>(null);
   const [qualOpen, setQualOpen] = useState(false);
   const [qualFaculty, setQualFaculty] = useState<FacultyRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -316,6 +319,14 @@ export default function FacultyPage() {
       onClick: () => {
         setQualFaculty(f);
         setQualOpen(true);
+      },
+    },
+    {
+      label: 'Preferences',
+      icon: 'event_available',
+      onClick: () => {
+        setPrefsFaculty(f);
+        setPrefsOpen(true);
       },
     },
     {
@@ -667,6 +678,16 @@ export default function FacultyPage() {
           setQualFaculty(null);
         }}
         faculty={qualFaculty}
+      />
+
+      {/* Preferences */}
+      <PreferencesModal
+        open={prefsOpen}
+        onClose={() => {
+          setPrefsOpen(false);
+          setPrefsFaculty(null);
+        }}
+        faculty={prefsFaculty}
       />
     </div>
   );

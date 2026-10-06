@@ -17,6 +17,8 @@ import { UpdateQualificationDto } from './dto/update-qualification.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto';
+import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/faculty')
@@ -74,6 +76,43 @@ export class FacultyController {
     @Param('qualId') qualId: string,
   ) {
     return this.faculty.removeQualification(id, qualId);
+  }
+
+  // ── Preferences (must come before `:id`)
+
+  @Get(':id/preferences')
+  async findPreferences(@Param('id') id: string) {
+    return { data: await this.faculty.findPreferences(id) };
+  }
+
+  @Roles('administrator', 'department_head')
+  @Post(':id/preferences')
+  async addPreference(
+    @Param('id') id: string,
+    @Body() dto: CreateFacultyPreferenceDto,
+  ) {
+    return { data: await this.faculty.addPreference(id, dto) };
+  }
+
+  @Roles('administrator', 'department_head')
+  @Patch(':id/preferences/:preferenceId')
+  async updatePreference(
+    @Param('id') id: string,
+    @Param('preferenceId') preferenceId: string,
+    @Body() dto: UpdateFacultyPreferenceDto,
+  ) {
+    return {
+      data: await this.faculty.updatePreference(id, preferenceId, dto),
+    };
+  }
+
+  @Roles('administrator', 'department_head')
+  @Delete(':id/preferences/:preferenceId')
+  async removePreference(
+    @Param('id') id: string,
+    @Param('preferenceId') preferenceId: string,
+  ) {
+    return this.faculty.removePreference(id, preferenceId);
   }
 
   // ── Generic :id routes ──

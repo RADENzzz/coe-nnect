@@ -13,6 +13,48 @@ import { CreateFacultyDto } from './dto/create-faculty.dto';
 import { UpdateFacultyDto } from './dto/update-faculty.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 import { UpdateQualificationDto } from './dto/update-qualification.dto';
+import { FacultyPreference } from './entities/faculty-preference.entity';       
+import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto'; 
+import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto'; 
+
+
+// ────────────────────────────────────────────
+// day_of_week mapping
+//
+// The Postgres `day_of_week` enum uses full names
+// ("Monday", "Tuesday", ...), but the frontend `Day` type
+// uses 3-letter abbreviations ("MON", "TUE", ...).
+// Map between them at the API boundary.
+// ────────────────────────────────────────────
+
+const ABBR_TO_FULL: Record<string, string> = {
+  MON: 'Monday',
+  TUE: 'Tuesday',
+  WED: 'Wednesday',
+  THU: 'Thursday',
+  FRI: 'Friday',
+  SAT: 'Saturday',
+  SUN: 'Sunday',
+};
+
+const FULL_TO_ABBR: Record<string, string> = {
+  Monday: 'MON',
+  Tuesday: 'TUE',
+  Wednesday: 'WED',
+  Thursday: 'THU',
+  Friday: 'FRI',
+  Saturday: 'SAT',
+  Sunday: 'SUN',
+};
+
+function abbrToFull(abbr: string): string {
+  return ABBR_TO_FULL[abbr] ?? abbr;
+}
+
+function fullToAbbr(full: string): string {
+  return FULL_TO_ABBR[full] ?? full;
+}
+
 
 @Injectable()
 export class FacultyService {
@@ -21,6 +63,8 @@ export class FacultyService {
     private readonly repo: Repository<Faculty>,
     @InjectRepository(FacultyQualification)
     private readonly quals: Repository<FacultyQualification>,
+    @InjectRepository(FacultyPreference)
+    private readonly prefs: Repository<FacultyPreference>,
     @InjectRepository(Subject)
     private readonly subjects: Repository<Subject>,
   ) {}
@@ -195,4 +239,120 @@ export class FacultyService {
     await this.quals.remove(found);
     return { success: true };
   }
+
+  // ────────────────────────────────────────────
+  // Faculty Preference CRUD (FR 3.1.6 – 3.1.7)   ← NEW SECTION
+  // ────────────────────────────────────────────
+
+  async findPreferences(facultyId: string): Promise<FacultyPreference[]> {
+    await this.findOne(facultyId);
+    const rows = await this.prefs.find({
+      where: { facultyId },
+      order: { preferenceId: 'ASC' },
+    });
+    // Convert DB full names back to the frontend's 3-letter abbreviations
+    return rows.map((r) => ({
+      ...r,
+      preferredDay: fullToAbbr(r.preferredDay) as any,
+    }));
+  }
+
+  async addPreference(
+    facultyId: string,
+    dto: CreateFacultyPreferenceDto,
+  ): Promise<FacultyPreference> {
+    await this.findOne(facultyId);
+
+    // Sanity: start < end
+    const start = normalizeTime(dto.preferredStartTime);
+    const end = normalizeTime(dto.preferredEndTime);
+    if (start >= end) {
+      throw new BadRequestException(
+        'preferredStartTime must be earlier than preferredEndTime.',
+      );
+    }
+
+    // Duplicate check: same faculty + same day + same window
+    const existing = await this.prefs.findOne({
+      where: {
+        facultyId,
+        preferredDay: abbrToFull(dto.preferredDay) as any,
+        preferredStartTime: start,
+        preferredEndTime: end,
+      },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'This preference window already exists for this faculty member.',
+      );
+    }
+
+    const entity = this.prefs.create({
+      facultyId,
+      preferredDay: abbrToFull(dto.preferredDay) as any,
+      preferredStartTime: start,
+      preferredEndTime: end,
+    });
+    const saved = await this.prefs.save(entity);
+    return {
+      ...saved,
+      preferredDay: fullToAbbr(saved.preferredDay as unknown as string) as any,
+    };
+  }
+
+  async updatePreference(
+    facultyId: string,
+    preferenceId: string,
+    dto: UpdateFacultyPreferenceDto,
+  ): Promise<FacultyPreference> {
+    await this.findOne(facultyId);
+    const found = await this.prefs.findOne({
+      where: { preferenceId, facultyId },
+    });
+    if (!found) throw new NotFoundException('Preference not found');
+
+    const day = dto.preferredDay
+      ? abbrToFull(dto.preferredDay)
+      : found.preferredDay;
+    const start = dto.preferredStartTime
+      ? normalizeTime(dto.preferredStartTime)
+      : found.preferredStartTime;
+    const end = dto.preferredEndTime
+      ? normalizeTime(dto.preferredEndTime)
+      : found.preferredEndTime;
+
+    if (start >= end) {
+      throw new BadRequestException(
+        'preferredStartTime must be earlier than preferredEndTime.',
+      );
+    }
+
+    found.preferredDay = day as any;
+    found.preferredStartTime = start;
+    found.preferredEndTime = end;
+    const saved = await this.prefs.save(found);
+    return {
+      ...saved,
+      preferredDay: fullToAbbr(saved.preferredDay as unknown as string) as any,
+    };
+  }
+
+  async removePreference(
+    facultyId: string,
+    preferenceId: string,
+  ): Promise<{ success: boolean }> {
+    await this.findOne(facultyId);
+    const found = await this.prefs.findOne({
+      where: { preferenceId, facultyId },
+    });
+    if (!found) throw new NotFoundException('Preference not found');
+    await this.prefs.remove(found);
+    return { success: true };
+  }
 }
+
+// Helper — normalize "HH:MM" → "HH:MM:00" for consistent string comparison  ← NEW
+function normalizeTime(t: string): string {
+  return t.length === 5 ? `${t}:00` : t;
+}
+
