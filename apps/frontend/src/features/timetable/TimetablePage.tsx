@@ -1,15 +1,12 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import TimetableGrid from './components/TimetableGrid';
 import AgendaView from './views/AgendaView';
 import type { ScheduleEntry, Day, LoadType } from './types';
 import {
   fetchSchedules,
   fetchActiveTerm,
-  updateSchedule,
-  validatePlot,
   type RawSchedule,
-  type ValidateResult,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -17,7 +14,6 @@ import { fetchRooms } from '../../api/rooms.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchDepartments } from '../../api/departments.api';
 import { useAuthStore } from '../../store/auth.store';
-import { timeToMinutes, minutesToTime } from './utils/time.util';
 import LoadingState from '../../components/feedback/LoadingState';
 import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
@@ -28,6 +24,7 @@ import { colorForSubject } from './utils/color.util';
 import StackPicker from './components/StackPicker';
 import ExportToolbar from './export/ExportToolbar';
 import type { GridDensity } from './components/GridMetricsContext';
+import { useMoveSchedule } from './hooks/useMoveSchedule';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -37,16 +34,6 @@ const DAY_MAP: Record<string, Day> = {
   Friday: 'FRI',
   Saturday: 'SAT',
   Sunday: 'SUN',
-};
-
-const DAY_MAP_REVERSE: Record<Day, string> = {
-  MON: 'Monday',
-  TUE: 'Tuesday',
-  WED: 'Wednesday',
-  THU: 'Thursday',
-  FRI: 'Friday',
-  SAT: 'Saturday',
-  SUN: 'Sunday',
 };
 
 function toEntry(raw: RawSchedule): ScheduleEntry {
@@ -98,7 +85,6 @@ function defaultDensityForViewport(): GridDensity {
 export default function TimetablePage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
-  const queryClient = useQueryClient();
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
@@ -202,107 +188,11 @@ export default function TimetablePage() {
     });
   }, [allEntries, viewMode, viewTargetId]);
 
-  const moveMutation = useMutation({
-    mutationFn: (args: {
-      id: string;
-      dayOfWeek: string;
-      startTime: string;
-      endTime: string;
-    }) =>
-      updateSchedule(args.id, {
-        dayOfWeek: args.dayOfWeek,
-        startTime: args.startTime,
-        endTime: args.endTime,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['schedules', activeTerm?.termId],
-      });
-    },
-    onError: (err: any) => {
-      console.error('[Move] Failed:', err);
-      alert(
-        err?.response?.data?.message ??
-          err?.message ??
-          'Failed to move schedule entry',
-      );
-    },
+  const { moveEntry: handleMove, isPending: movePending } = useMoveSchedule({
+  termId: activeTerm?.termId,
+  allEntries,
   });
-
-  const handleMove = useCallback(
-    async (entryId: string, newDay: string, newStartTime: string) => {
-      const existing = allEntries.find((e) => e.id === entryId);
-      if (!existing || !activeTerm) return;
-
-      const startMin = timeToMinutes(newStartTime);
-      const duration =
-        timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
-      const newEnd = minutesToTime(startMin + duration);
-      const newDayOfWeek = DAY_MAP_REVERSE[newDay as Day] ?? 'Monday';
-
-      let validation: ValidateResult;
-      try {
-        validation = await validatePlot({
-          termId: activeTerm.termId,
-          subjectId: existing.subjectId,
-          facultyId: existing.facultyId || undefined,
-          roomId: existing.roomId || undefined,
-          section: existing.sectionCode || undefined,
-          dayOfWeek: newDayOfWeek,
-          startTime: newStartTime,
-          endTime: newEnd,
-          loadType: existing.loadType,
-          excludeId: entryId,
-        });
-      } catch (err) {
-        console.error('[Move] validate failed:', err);
-        alert('Failed to validate the move.');
-        return;
-      }
-
-      if (validation.hardConflicts.length > 0) {
-        const lines = validation.hardConflicts
-          .map((c) => `• ${c.ruleId}: ${c.reason}`)
-          .join('\n');
-        alert(`Move rejected:\n\n${lines}`);
-        return;
-      }
-
-      if (validation.softWarnings.length > 0) {
-        const lines = validation.softWarnings
-          .map((w) => `• ${w.ruleId}: ${w.reason}`)
-          .join('\n');
-        if (!window.confirm(`Move has warnings:\n\n${lines}\n\nProceed?`)) {
-          return;
-        }
-      }
-
-      queryClient.setQueryData<RawSchedule[]>(
-        ['schedules', activeTerm.termId],
-        (old) => {
-          if (!old) return old;
-          return old.map((raw) => {
-            if (raw.scheduleId !== entryId) return raw;
-            return {
-              ...raw,
-              dayOfWeek: newDayOfWeek,
-              startTime: `${newStartTime}:00`,
-              endTime: `${newEnd}:00`,
-            };
-          });
-        },
-      );
-
-      moveMutation.mutate({
-        id: entryId,
-        dayOfWeek: newDayOfWeek,
-        startTime: newStartTime,
-        endTime: newEnd,
-      });
-    },
-    [allEntries, moveMutation, queryClient, activeTerm?.termId],
-  );
-
+  
   const handleClick = useCallback(
     (entry: ScheduleEntry) => {
       const sameSlot = entries.filter(
@@ -475,7 +365,7 @@ export default function TimetablePage() {
                   ({viewModeLabel[viewMode]})
                 </span>
               )}
-              {moveMutation.isPending && (
+              {movePending && (
                 <span className="ml-2 text-primary font-medium animate-pulse">
                   Saving…
                 </span>
@@ -737,11 +627,13 @@ export default function TimetablePage() {
 
       {activeTerm && (
         <ScheduleDetailDrawer
-          entry={selectedEntry}
-          onClose={() => setSelectedEntry(null)}
-          onEdit={handleEdit}
-          termId={activeTerm.termId}
-        />
+        entry={selectedEntry}
+        onClose={() => setSelectedEntry(null)}
+        onEdit={handleEdit}
+        termId={activeTerm.termId}
+        onMove={handleMove}
+        movePending={movePending}
+      />
       )}
 
       <StackPicker
