@@ -11,6 +11,10 @@ import {
 import { fetchPrograms } from '../../api/programs.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import Icon from '../../components/ui/Icon';
+import Modal from '../../components/ui/Modal';
+import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
+import type { RowAction } from '../../components/ui/RowActionMenu';
+import { ActiveBadge } from '../../components/ui/StatusBadge';
 import ProspectusFormModal from './components/ProspectusFormModal';
 import { Link } from 'react-router-dom';
 
@@ -32,34 +36,28 @@ export default function ProspectusPage() {
   const [editing, setEditing] = useState<ProspectusRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProspectusRecord | null>(null);
 
-  // ── Fetch programs for the dropdown ──
   const { data: programs = [] } = useQuery({
     queryKey: ['programs'],
     queryFn: fetchPrograms,
     enabled: !!user,
   });
 
-  // ── Fetch all prospectus entries once; filter client-side ──
-  // (Program size is small enough that this is simpler than
-  //  re-fetching on every program change.)
   const { data: allEntries = [], isLoading } = useQuery({
     queryKey: ['prospectus'],
     queryFn: fetchProspectus,
     enabled: !!user,
   });
 
-  // ── Fetch subjects for the modal ──
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects', { includeInactive: true }],
     queryFn: () => fetchSubjects(true),
     enabled: !!user,
   });
 
-  // Default to the first program once loaded
   const effectiveProgramId = selectedProgramId || programs[0]?.programId || '';
 
-  // ── Filter for the current view ──
   const filteredEntries = useMemo(() => {
     if (!effectiveProgramId) return [];
     return allEntries.filter(
@@ -70,7 +68,6 @@ export default function ProspectusPage() {
     );
   }, [allEntries, effectiveProgramId, selectedYearLevel, selectedSemester]);
 
-  // ── Counts per year (for tab badges) ──
   const countsByYear = useMemo(() => {
     const map: Record<number, number> = {};
     for (const y of YEAR_LEVELS) map[y] = 0;
@@ -97,6 +94,7 @@ export default function ProspectusPage() {
     mutationFn: deleteProspectus,
     onSuccess: () => {
       setSuccess('Prospectus entry removed.');
+      setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['prospectus'] });
     },
     onError: (err: any) =>
@@ -117,19 +115,68 @@ export default function ProspectusPage() {
     setSuccess(null);
   };
 
-  const handleDelete = (entry: ProspectusRecord) => {
-    const code = entry.subject?.subjectCode ?? 'this subject';
-    if (!window.confirm(`Remove "${code}" from the prospectus?`)) return;
-    deleteMutation.mutate(entry.prospectusId);
-  };
-
   const currentProgram = programs.find(
     (p) => String(p.programId) === String(effectiveProgramId),
   );
 
+  const columns: Column<ProspectusRecord>[] = [
+    {
+      key: 'code',
+      header: 'Code',
+      cardVariant: 'title',
+      cellClassName: 'font-bold font-mono text-primary',
+      render: (e) => e.subject?.subjectCode ?? '—',
+    },
+    {
+      key: 'title',
+      header: 'Title',
+      cardVariant: 'subtitle',
+      cellClassName: 'text-on-surface',
+      render: (e) => e.subject?.title ?? '—',
+    },
+    {
+      key: 'units',
+      header: 'Units',
+      cardVariant: 'mono',
+      cellClassName: 'text-on-surface-variant font-mono text-xs',
+      render: (e) =>
+        e.subject
+          ? `${Number(e.subject.lectureUnits)}L + ${Number(e.subject.labUnits)}Lab = ${Number(e.subject.totalUnits)}`
+          : '—',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (e) => <ActiveBadge isActive={e.isActive} />,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      render: () => null,
+    },
+  ];
+
+  const getActions = (e: ProspectusRecord): RowAction[] => [
+    { label: 'Edit', icon: 'edit', onClick: () => handleEdit(e) },
+    {
+      label: e.isActive ? 'Deactivate' : 'Activate',
+      icon: e.isActive ? 'toggle_off' : 'toggle_on',
+      onClick: () => toggleMutation.mutate(e.prospectusId),
+      disabled: toggleMutation.isPending,
+    },
+    {
+      label: 'Delete',
+      icon: 'delete',
+      danger: true,
+      onClick: () => setDeleteTarget(e),
+      disabled: deleteMutation.isPending,
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Prospectus</h1>
@@ -157,13 +204,9 @@ export default function ProspectusPage() {
           {success}
         </div>
       )}
-      {/* Flow hint — SRS Academic Structure Management order */}
+
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
-        <Icon
-          name="info"
-          size={18}
-          className="text-blue-700 shrink-0 mt-0.5"
-        />
+        <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
         <div className="flex-1">
           <p className="text-blue-900 font-medium">
             Prospectus is step 3 of 3 in the Academic Structure flow.
@@ -181,7 +224,7 @@ export default function ProspectusPage() {
           <Icon name="arrow_forward" size={14} />
         </Link>
       </div>
-      {/* Filters */}
+
       {programs.length === 0 ? (
         <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-12 text-center">
           <Icon
@@ -199,14 +242,14 @@ export default function ProspectusPage() {
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
-            <div>
+            <div className="flex-1 min-w-[220px]">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Program
               </label>
               <select
                 value={effectiveProgramId}
                 onChange={(e) => setSelectedProgramId(e.target.value)}
-                className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[240px]"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
               >
                 {programs.map((p) => (
                   <option key={p.programId} value={p.programId}>
@@ -215,7 +258,7 @@ export default function ProspectusPage() {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="min-w-[160px]">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Semester
               </label>
@@ -224,7 +267,7 @@ export default function ProspectusPage() {
                 onChange={(e) =>
                   setSelectedSemester(e.target.value as SemesterType)
                 }
-                className="bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary min-w-[160px]"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
               >
                 {SEMESTERS.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -236,9 +279,7 @@ export default function ProspectusPage() {
             {currentProgram && (
               <div className="ml-auto text-xs text-on-surface-variant">
                 Showing{' '}
-                <strong className="text-on-surface">
-                  {filteredEntries.length}
-                </strong>{' '}
+                <strong className="text-on-surface">{filteredEntries.length}</strong>{' '}
                 subject{filteredEntries.length === 1 ? '' : 's'} in{' '}
                 <strong className="text-on-surface">
                   {currentProgram.programCode}
@@ -247,7 +288,6 @@ export default function ProspectusPage() {
             )}
           </div>
 
-          {/* Year level tabs */}
           <div className="flex flex-wrap gap-1 border-b border-surface-variant">
             {YEAR_LEVELS.map((y) => {
               const count = countsByYear[y] ?? 0;
@@ -280,111 +320,19 @@ export default function ProspectusPage() {
             })}
           </div>
 
-          {/* Table */}
-          <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-                  <th className="text-left px-5 py-3">Code</th>
-                  <th className="text-left px-5 py-3">Title</th>
-                  <th className="text-left px-5 py-3">Units</th>
-                  <th className="text-left px-5 py-3">Status</th>
-                  <th className="text-right px-5 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-8 text-center text-on-surface-variant"
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        Loading…
-                      </div>
-                    </td>
-                  </tr>
-                ) : filteredEntries.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-12 text-center text-on-surface-variant"
-                    >
-                      <p className="font-medium mb-1">
-                        No subjects for this combination yet.
-                      </p>
-                      <p className="text-xs">
-                        Click "Add Subject" to add the first one.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredEntries.map((entry) => (
-                    <tr
-                      key={entry.prospectusId}
-                      className="border-b border-white/5 hover:bg-surface-container-low"
-                    >
-                      <td className="px-5 py-3.5 font-bold font-mono text-primary">
-                        {entry.subject?.subjectCode ?? '—'}
-                      </td>
-                      <td className="px-5 py-3.5 text-on-surface">
-                        {entry.subject?.title ?? '—'}
-                      </td>
-                      <td className="px-5 py-3.5 text-on-surface-variant font-mono text-xs">
-                        {entry.subject
-                          ? `${Number(entry.subject.lectureUnits)}L + ${Number(
-                              entry.subject.labUnits,
-                            )}Lab = ${Number(entry.subject.totalUnits)}`
-                          : '—'}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                            entry.isActive
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {entry.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-right space-x-2 whitespace-nowrap">
-                        <button
-                          onClick={() => handleEdit(entry)}
-                          className="text-xs px-3 py-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() =>
-                            toggleMutation.mutate(entry.prospectusId)
-                          }
-                          disabled={toggleMutation.isPending}
-                          className={`text-xs px-3 py-1 rounded-lg border transition ${
-                            entry.isActive
-                              ? 'border-red-300 text-red-700 hover:bg-red-100'
-                              : 'border-green-300 text-green-700 hover:bg-green-100'
-                          }`}
-                        >
-                          {entry.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(entry)}
-                          disabled={deleteMutation.isPending}
-                          className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            columns={columns}
+            rows={filteredEntries}
+            rowKey={(e) => e.prospectusId}
+            rowTitle={(e) => e.subject?.subjectCode ?? '—'}
+            rowSubtitle={(e) => e.subject?.title ?? ''}
+            isLoading={isLoading}
+            hasSourceRows={allEntries.length > 0}
+            emptyMessage="No subjects for this combination yet."
+            noMatchMessage="No subjects match your filters."
+            getActions={getActions}
+          />
 
-          {/* Modal */}
           <ProspectusFormModal
             open={modalOpen}
             onClose={() => {
@@ -400,6 +348,39 @@ export default function ProspectusPage() {
           />
         </>
       )}
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Remove from prospectus?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.prospectusId)
+              }
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Removing…' : 'Remove'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Remove <strong>"{deleteTarget?.subject?.subjectCode}"</strong> from
+          the prospectus?
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -13,6 +13,10 @@ import {
 } from '../../api/rooms.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
+import Modal from '../../components/ui/Modal';
+import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
+import type { RowAction } from '../../components/ui/RowActionMenu';
+import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
 
 const ROOM_TYPES: { value: RoomType; label: string }[] = [
   { value: 'lecture_room', label: 'Lecture Room' },
@@ -23,6 +27,14 @@ const ROOM_TYPES: { value: RoomType; label: string }[] = [
 ];
 
 type Mode = 'create' | 'edit';
+
+const TYPE_TONE: Record<RoomType, 'info' | 'warning' | 'purple' | 'success' | 'neutral'> = {
+  lecture_room: 'info',
+  laboratory: 'warning',
+  computer_lab: 'purple',
+  drafting_room: 'success',
+  other: 'neutral',
+};
 
 export default function RoomsPage() {
   const qc = useQueryClient();
@@ -41,6 +53,7 @@ export default function RoomsPage() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all');
+  const [deleteTarget, setDeleteTarget] = useState<RoomRecord | null>(null);
 
   const { data: rooms = [], isLoading } = useQuery({
     queryKey: ['rooms', { includeInactive: true }],
@@ -65,7 +78,7 @@ export default function RoomsPage() {
       );
     });
   }, [rooms, searchQuery, typeFilter]);
-  
+
   const createMutation = useMutation({
     mutationFn: createRoom,
     onSuccess: (r) => {
@@ -74,28 +87,19 @@ export default function RoomsPage() {
       qc.invalidateQueries({ queryKey: ['rooms'] });
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to create',
-      ),
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      input,
-    }: {
-      id: string;
-      input: Partial<CreateRoomInput>;
-    }) => updateRoom(id, input),
+    mutationFn: ({ id, input }: { id: string; input: Partial<CreateRoomInput> }) =>
+      updateRoom(id, input),
     onSuccess: (r) => {
       setSuccess(`Room ${r.roomNumber} updated.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['rooms'] });
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to update',
-      ),
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
   });
 
   const toggleMutation = useMutation({
@@ -109,6 +113,7 @@ export default function RoomsPage() {
     mutationFn: deleteRoom,
     onSuccess: () => {
       setSuccess('Room deleted.');
+      setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['rooms'] });
     },
     onError: (err: any) =>
@@ -182,37 +187,85 @@ export default function RoomsPage() {
     }
   };
 
-  const handleDelete = (r: RoomRecord) => {
-    if (
-      !window.confirm(
-        `Delete Room ${r.roomNumber} (${r.building})? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-    deleteMutation.mutate(r.roomId);
-  };
-
   const deptName = (id: string | null) => {
     if (!id) return '— shared —';
     const d = departments.find((x) => String(x.deptId) === String(id));
     return d ? d.deptCode : `#${id}`;
   };
 
-  const typeBadge = (t: RoomType) => {
-    const map: Record<RoomType, string> = {
-      lecture_room: 'bg-blue-100 text-blue-700',
-      laboratory: 'bg-amber-100 text-amber-700',
-      computer_lab: 'bg-purple-100 text-purple-700',
-      drafting_room: 'bg-emerald-100 text-emerald-700',
-      other: 'bg-slate-100 text-slate-600',
-    };
-    return map[t] ?? 'bg-slate-100 text-slate-600';
-  };
+  const columns: Column<RoomRecord>[] = [
+    {
+      key: 'roomNumber',
+      header: 'Room',
+      cardVariant: 'title',
+      cellClassName: 'font-bold font-mono text-primary',
+      render: (r) => r.roomNumber,
+    },
+    {
+      key: 'building',
+      header: 'Building',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface',
+      render: (r) => r.building,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      cardVariant: 'badge',
+      render: (r) => (
+        <StatusBadge tone={TYPE_TONE[r.roomType]}>
+          {r.roomType.replace('_', ' ')}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'capacity',
+      header: 'Capacity',
+      cardVariant: 'mono',
+      cellClassName: 'text-on-surface-variant font-mono text-xs',
+      render: (r) => (r.capacity != null ? String(r.capacity) : '—'),
+    },
+    {
+      key: 'owner',
+      header: 'Owner',
+      cardVariant: 'mono',
+      cellClassName: 'text-on-surface-variant text-xs font-mono',
+      render: (r) => deptName(r.deptId),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (r) => <ActiveBadge isActive={r.isActive} />,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      render: () => null,
+    },
+  ];
+
+  const getActions = (r: RoomRecord): RowAction[] => [
+    { label: 'Edit', icon: 'edit', onClick: () => openEdit(r) },
+    {
+      label: r.isActive ? 'Deactivate' : 'Activate',
+      icon: r.isActive ? 'toggle_off' : 'toggle_on',
+      onClick: () => toggleMutation.mutate(r.roomId),
+      disabled: toggleMutation.isPending,
+    },
+    {
+      label: 'Delete',
+      icon: 'delete',
+      danger: true,
+      onClick: () => setDeleteTarget(r),
+      disabled: deleteMutation.isPending,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Rooms</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -239,131 +292,6 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {/* Create / Edit Modal */}
-      {mode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-base font-semibold text-on-surface mb-4">
-              {mode === 'create'
-                ? 'Create Room'
-                : `Edit Room — ${editing?.roomNumber}`}
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Room Number *
-                  </label>
-                  <input
-                    type="text"
-                    name="roomNumber"
-                    required
-                    value={form.roomNumber}
-                    onChange={handleChange}
-                    placeholder="e.g. 206"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Building *
-                  </label>
-                  <input
-                    type="text"
-                    name="building"
-                    required
-                    value={form.building}
-                    onChange={handleChange}
-                    placeholder="e.g. CE"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Room Type *
-                  </label>
-                  <select
-                    name="roomType"
-                    required
-                    value={form.roomType}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  >
-                    {ROOM_TYPES.map((rt) => (
-                      <option key={rt.value} value={rt.value}>
-                        {rt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Capacity
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    name="capacity"
-                    value={form.capacity}
-                    onChange={handleChange}
-                    placeholder="e.g. 40"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    Used by S-8 (cohort overflow warning).
-                  </p>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Department
-                  </label>
-                  <select
-                    name="deptId"
-                    value={form.deptId}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">— shared (any department) —</option>
-                    {departments
-                      .filter((d) => d.isActive)
-                      .map((d) => (
-                        <option key={d.deptId} value={d.deptId}>
-                          [{d.deptCode}] {d.deptName}
-                        </option>
-                      ))}
-                  </select>
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    Used by S-10 (room ownership warning).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                  className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
-                >
-                  {createMutation.isPending || updateMutation.isPending
-                    ? 'Saving...'
-                    : mode === 'create'
-                    ? 'Create Room'
-                    : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Search & filter */}
       <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
         <div className="flex-1 min-w-[220px]">
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -390,9 +318,7 @@ export default function RoomsPage() {
           </label>
           <select
             value={typeFilter}
-            onChange={(e) =>
-              setTypeFilter(e.target.value as 'all' | RoomType)
-            }
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | RoomType)}
             className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           >
             <option value="all">All types</option>
@@ -415,107 +341,177 @@ export default function RoomsPage() {
           </button>
         )}
         <div className="ml-auto text-xs text-on-surface-variant">
-          Showing{' '}
-          <strong className="text-on-surface">{filteredRooms.length}</strong> of{' '}
+          Showing <strong className="text-on-surface">{filteredRooms.length}</strong> of{' '}
           {rooms.length}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-              <th className="text-left px-5 py-3">Room</th>
-              <th className="text-left px-5 py-3">Building</th>
-              <th className="text-left px-5 py-3">Type</th>
-              <th className="text-left px-5 py-3">Capacity</th>
-              <th className="text-left px-5 py-3">Owner</th>
-              <th className="text-left px-5 py-3">Status</th>
-              <th className="text-right px-5 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-on-surface-variant">
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Loading...
-                  </div>
-                </td>
-              </tr>
-            ) : filteredRooms.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-on-surface-variant">
-                  {rooms.length === 0
-                    ? 'No rooms yet.'
-                    : 'No rooms match your filters.'}
-                </td>
-              </tr>
-            ) : (
-              filteredRooms.map((r) => (
-                <tr key={r.roomId} className="border-b border-white/5 hover:bg-surface-container-low">
-                  <td className="px-5 py-3.5 font-bold font-mono text-primary">
-                    {r.roomNumber}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface">{r.building}</td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${typeBadge(r.roomType)}`}
-                    >
-                      {r.roomType.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface-variant font-mono text-xs">
-                    {r.capacity ?? '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface-variant text-xs font-mono">
-                    {deptName(r.deptId)}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                        r.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {r.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right space-x-2 whitespace-nowrap">
-                    <button
-                      onClick={() => openEdit(r)}
-                      className="text-xs px-3 py-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => toggleMutation.mutate(r.roomId)}
-                      disabled={toggleMutation.isPending}
-                      className={`text-xs px-3 py-1 rounded-lg border transition ${
-                        r.isActive
-                          ? 'border-red-300 text-red-700 hover:bg-red-100'
-                          : 'border-green-300 text-green-700 hover:bg-green-100'
-                      }`}
-                    >
-                      {r.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(r)}
-                      disabled={deleteMutation.isPending}
-                      className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        columns={columns}
+        rows={filteredRooms}
+        rowKey={(r) => r.roomId}
+        rowTitle={(r) => `Room ${r.roomNumber}`}
+        rowSubtitle={(r) => r.building}
+        isLoading={isLoading}
+        hasSourceRows={rooms.length > 0}
+        emptyMessage="No rooms yet."
+        noMatchMessage="No rooms match your filters."
+        getActions={getActions}
+      />
+
+      <Modal
+        open={!!mode}
+        onClose={closeForm}
+        title={
+          mode === 'create'
+            ? 'Create Room'
+            : `Edit Room — ${editing?.roomNumber}`
+        }
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Room Number *
+              </label>
+              <input
+                type="text"
+                name="roomNumber"
+                required
+                value={form.roomNumber}
+                onChange={handleChange}
+                placeholder="e.g. 206"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Building *
+              </label>
+              <input
+                type="text"
+                name="building"
+                required
+                value={form.building}
+                onChange={handleChange}
+                placeholder="e.g. CE"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Room Type *
+              </label>
+              <select
+                name="roomType"
+                required
+                value={form.roomType}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              >
+                {ROOM_TYPES.map((rt) => (
+                  <option key={rt.value} value={rt.value}>
+                    {rt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Capacity
+              </label>
+              <input
+                type="number"
+                min="0"
+                name="capacity"
+                value={form.capacity}
+                onChange={handleChange}
+                placeholder="e.g. 40"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                Used by S-8 (cohort overflow warning).
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Department
+              </label>
+              <select
+                name="deptId"
+                value={form.deptId}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">— shared (any department) —</option>
+                {departments
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                Used by S-10 (room ownership warning).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+            <button
+              type="button"
+              onClick={closeForm}
+              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+            >
+              {createMutation.isPending || updateMutation.isPending
+                ? 'Saving...'
+                : mode === 'create'
+                ? 'Create Room'
+                : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete room?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.roomId)}
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>Room {deleteTarget?.roomNumber}</strong> (
+          {deleteTarget?.building})? This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }

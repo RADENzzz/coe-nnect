@@ -9,6 +9,10 @@ import {
 import { fetchSubjects, type SubjectRecord } from '../../../api/subjects.api';
 import type { FacultyRecord } from '../../../api/faculty.api';
 import Icon from '../../../components/ui/Icon';
+import Modal from '../../../components/ui/Modal';
+import ResponsiveTable, { type Column } from '../../../components/ui/ResponsiveTable';
+import StatusBadge from '../../../components/ui/StatusBadge';
+import type { RowAction } from '../../../components/ui/RowActionMenu';
 
 interface Props {
   open: boolean;
@@ -16,14 +20,11 @@ interface Props {
   faculty: FacultyRecord | null;
 }
 
-export default function QualificationsModal({
-  open,
-  onClose,
-  faculty,
-}: Props) {
+export default function QualificationsModal({ open, onClose, faculty }: Props) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [removeTarget, setRemoveTarget] = useState<FacultyQualification | null>(null);
 
   const { data: quals = [], isLoading } = useQuery({
     queryKey: ['faculty-qualifications', faculty?.facultyId],
@@ -48,36 +49,21 @@ export default function QualificationsModal({
       setError(null);
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to add',
-      ),
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to add'),
   });
 
   const removeMutation = useMutation({
     mutationFn: (qualId: string) =>
       removeFacultyQualification(faculty!.facultyId, qualId),
-    onSuccess: () =>
+    onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ['faculty-qualifications', faculty?.facultyId],
-      }),
-    onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to remove',
-      ),
-  });
-
-  if (!open || !faculty) return null;
-
-  // Group subjects by department for the dropdown
-  const grouped = subjects.reduce<Record<string, SubjectRecord[]>>(
-    (acc, s) => {
-      const key = s.deptId || 'unknown';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(s);
-      return acc;
+      });
+      setRemoveTarget(null);
     },
-    {},
-  );
+    onError: (err: any) =>
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to remove'),
+  });
 
   // Filter out subjects already qualified
   const existingIds = new Set(quals.map((q) => String(q.subjectId)));
@@ -89,30 +75,82 @@ export default function QualificationsModal({
     (a.subject?.subjectCode ?? '').localeCompare(b.subject?.subjectCode ?? ''),
   );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-xl border border-surface-variant bg-surface-container-lowest shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant sticky top-0 bg-surface-container-lowest z-10">
-          <div>
-            <h2 className="text-lg font-bold text-primary">
-              Subject Qualifications
-            </h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">
-              {faculty.lastName}, {faculty.firstName}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant"
-            aria-label="Close"
-          >
-            <Icon name="close" />
-          </button>
-        </div>
+  const columns: Column<FacultyQualification>[] = [
+    {
+      key: 'code',
+      header: 'Code',
+      cardVariant: 'title',
+      cellClassName: 'font-mono text-xs text-primary font-bold',
+      render: (q) => q.subject?.subjectCode ?? '—',
+    },
+    {
+      key: 'title',
+      header: 'Title',
+      cardVariant: 'subtitle',
+      cellClassName: 'text-on-surface',
+      render: (q) => q.subject?.title ?? '—',
+    },
+    {
+      key: 'units',
+      header: 'Units',
+      cardVariant: 'mono',
+      cellClassName: 'text-on-surface-variant font-mono text-xs',
+      render: (q) =>
+        q.subject
+          ? `${Number(q.subject.lectureUnits)}L + ${Number(q.subject.labUnits)}Lab`
+          : '—',
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      cardVariant: 'badge',
+      render: (q) => (
+        <StatusBadge tone={q.sourceSystem ? 'info' : 'neutral'}>
+          {q.sourceSystem ?? 'Manual'}
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      render: () => null,
+    },
+  ];
 
-        <div className="p-6 space-y-5">
+  const getActions = (q: FacultyQualification): RowAction[] => [
+    {
+      label: 'Remove',
+      icon: 'delete',
+      danger: true,
+      onClick: () => setRemoveTarget(q),
+      disabled: removeMutation.isPending,
+    },
+  ];
+
+  return (
+    <>
+      <Modal
+        open={open && !!faculty}
+        onClose={onClose}
+        title="Subject Qualifications"
+        description={
+          faculty ? `${faculty.lastName}, ${faculty.firstName}` : undefined
+        }
+        size="lg"
+        footer={
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="space-y-5">
           {error && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
+            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm">
               {error}
             </div>
           )}
@@ -143,15 +181,15 @@ export default function QualificationsModal({
           </div>
 
           {/* Add new */}
-          <div className="flex items-end gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
             <div className="flex-1">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
                 Add Subject
               </label>
               <select
                 value={selectedSubjectId}
                 onChange={(e) => setSelectedSubjectId(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
                 <option value="">Select a subject…</option>
                 {availableSubjects.map((s) => (
@@ -166,7 +204,7 @@ export default function QualificationsModal({
                 if (selectedSubjectId) addMutation.mutate(selectedSubjectId);
               }}
               disabled={!selectedSubjectId || addMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Icon name="add" size={16} />
               {addMutation.isPending ? 'Adding…' : 'Add'}
@@ -174,92 +212,55 @@ export default function QualificationsModal({
           </div>
 
           {/* List */}
-          <div className="rounded-lg border border-surface-variant overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-container-low border-b border-surface-variant text-xs uppercase tracking-wider text-on-surface-variant">
-                  <th className="text-left px-4 py-2.5">Code</th>
-                  <th className="text-left px-4 py-2.5">Title</th>
-                  <th className="text-left px-4 py-2.5">Units</th>
-                  <th className="text-left px-4 py-2.5">Source</th>
-                  <th className="text-right px-4 py-2.5">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-4 py-8 text-center text-on-surface-variant"
-                    >
-                      Loading…
-                    </td>
-                  </tr>
-                ) : sortedQuals.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-4 py-8 text-center text-on-surface-variant"
-                    >
-                      No qualifications yet.
-                    </td>
-                  </tr>
-                ) : (
-                  sortedQuals.map((q) => (
-                    <tr
-                      key={q.qualId}
-                      className="border-b border-white/5 hover:bg-surface-container-low"
-                    >
-                      <td className="px-4 py-3 font-mono text-xs text-primary font-bold">
-                        {q.subject?.subjectCode ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-on-surface">
-                        {q.subject?.title ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-on-surface-variant font-mono text-xs">
-                        {q.subject
-                          ? `${Number(q.subject.lectureUnits)}L + ${Number(
-                              q.subject.labUnits,
-                            )}Lab`
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-on-surface-variant">
-                        {q.sourceSystem ?? 'Manual'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Remove "${q.subject?.subjectCode}" from this faculty's qualifications?`,
-                              )
-                            ) {
-                              removeMutation.mutate(q.qualId);
-                            }
-                          }}
-                          disabled={removeMutation.isPending}
-                          className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveTable
+            columns={columns}
+            rows={sortedQuals}
+            rowKey={(q) => q.qualId}
+            rowTitle={(q) => q.subject?.subjectCode ?? 'Qualification'}
+            rowSubtitle={(q) => q.subject?.title ?? ''}
+            isLoading={isLoading}
+            hasSourceRows={quals.length > 0}
+            emptyMessage="No qualifications yet."
+            noMatchMessage="No qualifications match your filters."
+            getActions={getActions}
+          />
         </div>
+      </Modal>
 
-        <div className="px-6 py-4 border-t border-surface-variant flex justify-end bg-surface-container-low">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-high rounded-lg transition"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
+      {/* Remove confirmation */}
+      <Modal
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        title="Remove qualification?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRemoveTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                removeTarget && removeMutation.mutate(removeTarget.qualId)
+              }
+              disabled={removeMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {removeMutation.isPending ? 'Removing…' : 'Remove'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Remove{' '}
+          <strong>"{removeTarget?.subject?.subjectCode}"</strong> from this
+          faculty's qualifications? This cannot be undone.
+        </p>
+      </Modal>
+    </>
   );
 }
