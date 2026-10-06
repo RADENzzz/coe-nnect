@@ -533,22 +533,12 @@ const scale = layout.scale;
                             },
                           ]}
                         >
-                          <Text style={styles.blockCode} numberOfLines={2}>
-                            {entry.subjectCode}
-                          </Text>
+                        <Text style={styles.blockCode}>{entry.subjectCode}</Text>
                           {entry.sectionCode ? (
-                            <Text
-                              style={styles.blockSection}
-                              numberOfLines={1}
-                            >
-                              {entry.sectionCode}
-                            </Text>
+                            <Text style={styles.blockSection}>{entry.sectionCode}</Text>
                           ) : null}
                           {showFaculty ? (
-                            <Text
-                              style={styles.blockFaculty}
-                              numberOfLines={1}
-                            >
+                            <Text style={styles.blockFaculty}>
                               {facultyShort(entry.facultyName)}
                             </Text>
                           ) : null}

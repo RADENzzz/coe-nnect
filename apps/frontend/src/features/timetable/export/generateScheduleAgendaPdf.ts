@@ -1,8 +1,9 @@
 import { pdf } from '@react-pdf/renderer';
 import React from 'react';
-import ScheduleAgendaPdfDocument, {
-  ScheduleAgendaPdfProps,
-} from './ScheduleAgendaPdfDocument';
+import ScheduleAgendaPdfDocument from './ScheduleAgendaPdfDocument';
+import type { ScheduleAgendaPdfProps } from './ScheduleAgendaPdfDocument';
+
+export type { ScheduleAgendaPdfProps };
 
 export async function generateScheduleAgendaPdfBlob(
   props: ScheduleAgendaPdfProps,

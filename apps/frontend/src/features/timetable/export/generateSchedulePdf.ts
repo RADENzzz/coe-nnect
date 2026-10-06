@@ -1,6 +1,9 @@
 import { pdf } from '@react-pdf/renderer';
 import React from 'react';
-import SchedulePdfDocument, { SchedulePdfProps } from './SchedulePdfDocument';
+import SchedulePdfDocument from './SchedulePdfDocument';
+import type { SchedulePdfProps } from './SchedulePdfDocument';
+
+export type { SchedulePdfProps };
 
 function safeName(name: string): string {
   const safe = name
