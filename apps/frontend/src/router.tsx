@@ -22,6 +22,9 @@ export const ROUTES = {
   USERS: '/users',
   VACANT_SLOTS: '/vacant-slots',
   CREATE_DEPARTMENT: '/admin/create-department',
+  WORKLOAD_SUMMARY: '/reports/workload',
+  REPORTS_HUB: '/reports',
+  APPROVALS_REPORT: '/reports/approvals',
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
