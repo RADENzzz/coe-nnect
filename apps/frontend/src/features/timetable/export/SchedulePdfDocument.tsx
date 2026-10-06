@@ -8,10 +8,6 @@ import {
 } from '@react-pdf/renderer';
 import type { ScheduleEntry } from '../types';
 
-// ─────────────────────────────────────────────
-// Layout constants
-// ─────────────────────────────────────────────
-
 const COLORS = {
   primary: '#5c1219',
   surface: '#f5f5f5',
@@ -31,7 +27,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
 
-  // ── Header ──
   header: {
     marginBottom: 12,
     paddingBottom: 8,
@@ -43,21 +38,10 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginBottom: 2,
   },
-  headerSubtitle: {
-    fontSize: 9,
-    color: COLORS.muted,
-    marginBottom: 1,
-  },
-  headerMeta: {
-    fontSize: 8,
-    color: COLORS.muted,
-    marginTop: 4,
-  },
+  headerSubtitle: { fontSize: 9, color: COLORS.muted, marginBottom: 1 },
+  headerMeta: { fontSize: 8, color: COLORS.muted, marginTop: 4 },
 
-  // ── Day section ──
-  daySection: {
-    marginBottom: 10,
-  },
+  daySection: { marginBottom: 10 },
   dayTitle: {
     fontSize: 11,
     fontFamily: 'Helvetica-Bold',
@@ -74,7 +58,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  // ── Table ──
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: COLORS.headerBg,
@@ -95,7 +78,6 @@ const styles = StyleSheet.create({
     borderBottom: `0.5 solid ${COLORS.border}`,
   },
 
-  // Column widths — sum to 100
   colTime: { width: '12%' },
   colCode: { width: '12%' },
   colTitle: { width: '26%' },
@@ -104,7 +86,6 @@ const styles = StyleSheet.create({
   colRoom: { width: '8%' },
   colType: { width: '8%' },
 
-  // ── Footer / signatures ──
   signatures: {
     marginTop: 20,
     paddingTop: 12,
@@ -112,14 +93,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  signatureBlock: {
-    width: '45%',
-  },
-  signatureLabel: {
-    fontSize: 8,
-    color: COLORS.muted,
-    marginBottom: 20,
-  },
+  signatureBlock: { width: '45%' },
+  signatureLabel: { fontSize: 8, color: COLORS.muted, marginBottom: 20 },
   signatureLine: {
     borderTop: `0.5 solid ${COLORS.text}`,
     paddingTop: 2,
@@ -129,12 +104,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
     color: COLORS.text,
   },
-  signatureRole: {
-    fontSize: 7,
-    color: COLORS.muted,
-  },
+  signatureRole: { fontSize: 7, color: COLORS.muted },
 
-  // ── Page footer ──
   pageFooter: {
     position: 'absolute',
     bottom: 12,
@@ -148,7 +119,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
 
-  // ── Legend ──
   legend: {
     fontSize: 7,
     color: COLORS.muted,
@@ -156,10 +126,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 });
-
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
 
 const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const;
 const DAY_LABELS: Record<string, string> = {
@@ -181,10 +147,6 @@ export interface SchedulePdfProps {
   scopeLabel?: string;
 }
 
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
 function timeLabel(start: string, end: string): string {
   const fmt = (t: string) => {
     const [h, m] = t.split(':').map(Number);
@@ -196,15 +158,10 @@ function timeLabel(start: string, end: string): string {
 }
 
 function facultyShort(name: string): string {
-  // "Juan Dela Cruz" → "J. Dela Cruz"
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return name;
   return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
 }
-
-// ─────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────
 
 export default function SchedulePdfDocument({
   entries,
@@ -214,7 +171,6 @@ export default function SchedulePdfDocument({
   generatedBy = 'CoE-NNECT',
   scopeLabel,
 }: SchedulePdfProps) {
-  // Group entries by day
   const byDay = DAY_ORDER.map((day) => ({
     day,
     label: DAY_LABELS[day],
@@ -239,7 +195,6 @@ export default function SchedulePdfDocument({
       creator="CoE-NNECT"
     >
       <Page size="A4" orientation="landscape" style={styles.page}>
-        {/* ── Header ── */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{title}</Text>
           {subtitle && <Text style={styles.headerSubtitle}>{subtitle}</Text>}
@@ -252,7 +207,6 @@ export default function SchedulePdfDocument({
           </Text>
         </View>
 
-        {/* ── Day sections ── */}
         {byDay.length === 0 ? (
           <Text style={styles.emptyDay}>
             No scheduled entries for this view.
@@ -298,7 +252,6 @@ export default function SchedulePdfDocument({
           ))
         )}
 
-        {/* ── Signatures ── */}
         <View style={styles.signatures} wrap={false}>
           <View style={styles.signatureBlock}>
             <Text style={styles.signatureLabel}>Prepared by:</Text>
@@ -318,12 +271,10 @@ export default function SchedulePdfDocument({
           </View>
         </View>
 
-        {/* ── Legend ── */}
-        <Text style={styles.legend}>
+        <Text style={styles.legend} wrap={false}>
           Lec = Lecture  ·  Lab = Laboratory  ·  VL = Various Lecturers
         </Text>
 
-        {/* ── Page footer ── */}
         <View style={styles.pageFooter} fixed>
           <Text>
             Generated {generatedAt} by {generatedBy}

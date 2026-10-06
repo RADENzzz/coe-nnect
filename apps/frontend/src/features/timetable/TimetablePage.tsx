@@ -81,13 +81,8 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
 }
 
 type ViewMode = 'master' | 'department' | 'room' | 'faculty' | 'section';
-type LayoutMode = 'agenda' | 'grid';
+export type LayoutMode = 'agenda' | 'grid';
 
-/**
- * Agenda is the mobile default (phone portrait) because a 6-day grid
- * with 24 half-hour rows is unusable on a 375px screen.
- * Tablet + desktop default to Grid.
- */
 function defaultLayoutForViewport(): LayoutMode {
   if (typeof window === 'undefined') return 'grid';
   return window.matchMedia('(min-width: 768px)').matches ? 'grid' : 'agenda';
@@ -108,18 +103,14 @@ export default function TimetablePage() {
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
 
-  // ── View mode (filter which entries) ──
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
   const [viewMode, setViewMode] = useState<ViewMode>('master');
   const [viewTargetId, setViewTargetId] = useState('');
 
-  // ── Layout mode (grid vs agenda) ──
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
   const [gridDensity, setGridDensity] = useState<GridDensity>(defaultDensityForViewport);
 
-  // React to viewport resize: only auto-switch layout if user hasn't
-  // toggled manually. We track manual change to avoid overriding intent.
   const [layoutTouched, setLayoutTouched] = useState(false);
   useEffect(() => {
     if (layoutTouched) return;
@@ -132,7 +123,6 @@ export default function TimetablePage() {
     return () => mq.removeEventListener('change', handle);
   }, [layoutTouched]);
 
-  // DH defaults to their own dept (once)
   const [defaultedToDept, setDefaultedToDept] = useState(false);
   useEffect(() => {
     if (defaultedToDept) return;
@@ -144,7 +134,6 @@ export default function TimetablePage() {
     setDefaultedToDept(true);
   }, [profile, isDepartmentHead, myDeptId, defaultedToDept]);
 
-  // ── Data ──
   const {
     data: activeTerm,
     isLoading: termLoading,
@@ -213,7 +202,6 @@ export default function TimetablePage() {
     });
   }, [allEntries, viewMode, viewTargetId]);
 
-  // ── Move mutation ──
   const moveMutation = useMutation({
     mutationFn: (args: {
       id: string;
@@ -330,7 +318,6 @@ export default function TimetablePage() {
   );
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
-    // TODO: open edit form
     console.log('TODO: open edit form for', entry);
   }, []);
 
@@ -342,7 +329,6 @@ export default function TimetablePage() {
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
 
-  // ── View target options ──
   const viewOptions = useMemo(() => {
     if (viewMode === 'department') {
       return departments
@@ -398,7 +384,6 @@ export default function TimetablePage() {
       ? 'Section'
       : '';
 
-  // ── Export scope metadata ──
   const exportScope = useMemo(() => {
     const termSlug = activeTerm
       ? `${activeTerm.termName}-AY${activeTerm.schoolYear}`
@@ -466,7 +451,6 @@ export default function TimetablePage() {
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
-      {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
@@ -511,10 +495,8 @@ export default function TimetablePage() {
         </div>
       </div>
 
-      {/* ── Filters + layout switcher ── */}
       {activeTerm && (
         <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
-          {/* Row 1: filter selects */}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[150px]">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -573,7 +555,6 @@ export default function TimetablePage() {
             )}
           </div>
 
-          {/* Row 2: layout switcher + density */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-surface-variant">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
@@ -654,7 +635,6 @@ export default function TimetablePage() {
         </div>
       )}
 
-      {/* States */}
       {isLoading && <LoadingState message="Loading schedule…" />}
       {error && (
         <ErrorState
@@ -686,7 +666,6 @@ export default function TimetablePage() {
 
       {!isLoading && !error && activeTerm && entries.length > 0 && (
         <>
-          {/* Export toolbar */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl border border-surface-variant bg-surface-container-lowest">
             <div className="text-xs text-on-surface-variant">
               Exporting:{' '}
@@ -710,10 +689,10 @@ export default function TimetablePage() {
                   ? exportScope.scopeLabel
                   : 'Master Schedule'
               }
+              layoutMode={layoutMode}
             />
           </div>
 
-          {/* Layout body */}
           <div className="flex-1 min-h-0">
             {layoutMode === 'agenda' ? (
               <AgendaView entries={entries} onEntryClick={handleClick} />
@@ -729,7 +708,6 @@ export default function TimetablePage() {
         </>
       )}
 
-      {/* Plot Subject Modal */}
       {activeTerm && (
         <PlotSubjectModal
           open={plotOpen}
@@ -756,7 +734,6 @@ export default function TimetablePage() {
         />
       )}
 
-      {/* Detail Drawer */}
       {activeTerm && (
         <ScheduleDetailDrawer
           entry={selectedEntry}
@@ -766,7 +743,6 @@ export default function TimetablePage() {
         />
       )}
 
-      {/* Stack Picker */}
       <StackPicker
         entries={stackOpen}
         onClose={() => setStackOpen(null)}

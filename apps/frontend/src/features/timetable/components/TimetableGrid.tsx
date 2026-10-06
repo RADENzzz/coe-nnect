@@ -4,6 +4,7 @@ import type { ScheduleEntry, DropCellData, Day } from '../types';
 import { computeLanes } from '../utils/lane-layout.util';
 import {
   DAYS,
+  formatTime,
   generateTimeSlots,
   timeToMinutes,
 } from '../utils/time.util';
@@ -230,9 +231,9 @@ function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>
                       position: 'absolute',
                       width: '100%',
                     }}
-                    className="flex items-start justify-end pr-2 text-[10px] text-on-surface-variant"
+                    className="flex items-start justify-end pr-2 text-[10px] text-on-surface-variant tabular-nums"
                   >
-                    {i % metrics.axisLabelEvery === 0 ? time : ''}
+                    {i % metrics.axisLabelEvery === 0 ? formatTime(time) : ''}
                   </div>
                 ))}
               </div>
