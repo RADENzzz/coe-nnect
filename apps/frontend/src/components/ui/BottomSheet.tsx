@@ -21,20 +21,36 @@ export default function BottomSheet({
 }: BottomSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
+
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const timer = window.setTimeout(() => panelRef.current?.focus(), 40);
+
+    const timer = window.setTimeout(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const active = document.activeElement;
+      if (active && panel.contains(active)) return;
+      panel.focus();
+    }, 40);
+
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       window.clearTimeout(timer);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -54,13 +70,10 @@ export default function BottomSheet({
         aria-label={title}
         className={clsx(
           'relative w-full bg-white shadow-2xl border border-slate-200 flex flex-col outline-none',
-          // Mobile: bottom sheet
           'rounded-t-2xl max-h-[90vh] animate-[sheetUp_260ms_cubic-bezier(0.2,0.9,0.3,1)]',
-          // Desktop: centered modal
           'md:rounded-none md:max-w-md md:max-h-[85vh] md:animate-fade-up',
         )}
       >
-        {/* Mobile drag handle */}
         <div className="md:hidden flex justify-center pt-2 pb-1">
           <span className="w-10 h-1 bg-slate-300 rounded-full" />
         </div>
