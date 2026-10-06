@@ -20,6 +20,9 @@ import RoomsPage from './features/rooms/RoomsPage';
 import ProspectusPage from './features/prospectus/ProspectusPage';
 import SystemConfigPage from './features/system-config/SystemConfigPage';
 import AuditTrailPage from './features/audit-trail/AuditTrailPage';
+import FacultyWorkloadPage from './features/reports/FacultyWorkloadPage';
+import ReportsHubPage from './features/reports/ReportsHubPage';
+import ApprovalsReportPage from './features/reports/ApprovalsReportPage';
 
 function App() {
   return (
@@ -38,6 +41,9 @@ function App() {
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="system-settings" element={<SystemConfigPage />} />
           <Route path="audit-trail" element={<AuditTrailPage />} />
+          <Route path="reports" element={<ReportsHubPage />} />
+          <Route path="reports/workload" element={<FacultyWorkloadPage />} />
+          <Route path="reports/approvals" element={<ApprovalsReportPage />} />
         </Route>
       </Route>
 
@@ -51,6 +57,9 @@ function App() {
           <Route path="dashboard" element={<DeanDashboardPage />} />
           <Route path="departments" element={<DeanDepartmentsPage />} />
           <Route path="approvals" element={<DeanApprovalsPage />} />
+          <Route path="reports" element={<ReportsHubPage />} />
+          <Route path="reports/workload" element={<FacultyWorkloadPage />} />
+          <Route path="reports/approvals" element={<ApprovalsReportPage />} />
         </Route>
       </Route>
 
@@ -69,6 +78,9 @@ function App() {
           <Route path="prospectus" element={<ProspectusPage />} />
           <Route path="faculty" element={<FacultyPage />} />
           <Route path="rooms" element={<RoomsPage />} />
+          <Route path="reports" element={<ReportsHubPage />} />
+          <Route path="reports/workload" element={<FacultyWorkloadPage />} />
+          <Route path="reports/approvals" element={<ApprovalsReportPage />} />
         </Route>
       </Route>
 
