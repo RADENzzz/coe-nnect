@@ -45,13 +45,11 @@ export default function ScheduleDetailDrawer({
   const [remarks, setRemarks] = useState('');
   const [remarksSaved, setRemarksSaved] = useState(false);
 
-  // Sync local remarks when entry changes
   useEffect(() => {
     setRemarks(entry?.remarks ?? '');
     setRemarksSaved(false);
   }, [entry?.id, entry?.remarks]);
 
-  // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -66,7 +64,6 @@ export default function ScheduleDetailDrawer({
     };
   }, [entry, onClose]);
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(entry!.id),
     onSuccess: () => {
@@ -78,7 +75,6 @@ export default function ScheduleDetailDrawer({
     },
   });
 
-  // Status mutation
   const statusMutation = useMutation({
     mutationFn: (status: 'draft' | 'review' | 'finalized' | 'published') =>
       updateScheduleStatus(entry!.id, status),
@@ -92,7 +88,6 @@ export default function ScheduleDetailDrawer({
     },
   });
 
-  // Remarks mutation
   const remarksMutation = useMutation({
     mutationFn: (text: string) => updateRemarks(entry!.id, text),
     onSuccess: () => {
@@ -117,7 +112,6 @@ export default function ScheduleDetailDrawer({
     statusMutation.mutate(newStatus as any);
   };
 
-  // Finalize: set status to 'finalized'. If already finalized/published, unfinalize → 'draft'
   const handleToggleLock = () => {
     if (!entry) return;
     const currentlyLocked = isLocked(entry.status);
@@ -142,12 +136,29 @@ export default function ScheduleDetailDrawer({
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/20 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-backdrop-in"
         onClick={onClose}
       />
 
-      {/* Drawer */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-surface-container-lowest shadow-2xl border-l border-surface-variant flex flex-col">
+      {/* Panel: bottom sheet on mobile, right drawer on md+ */}
+      <aside
+        className={clsx(
+          'absolute bg-surface-container-lowest shadow-2xl border-surface-variant flex flex-col',
+          // Mobile: bottom sheet
+          'left-0 right-0 bottom-0 max-h-[92vh] border-t rounded-t-2xl',
+          'animate-[sheetUp_260ms_cubic-bezier(0.2,0.9,0.3,1)]',
+          // Desktop: right drawer
+          'md:left-auto md:right-0 md:top-0 md:bottom-0 md:w-full md:max-w-md md:max-h-none md:rounded-none md:border-t-0 md:border-l',
+        )}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Class details"
+      >
+        {/* Mobile drag handle */}
+        <div className="md:hidden flex justify-center pt-2 pb-1">
+          <span className="w-10 h-1 bg-slate-300 rounded-full" />
+        </div>
+
         {/* Header */}
         <header className="flex items-center justify-between px-5 py-4 border-b border-surface-variant">
           <div>
@@ -158,14 +169,13 @@ export default function ScheduleDetailDrawer({
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant"
+            className="tap-target hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant -mr-2"
             aria-label="Close"
           >
             <Icon name="close" />
           </button>
         </header>
 
-        {/* Lock banner */}
         {locked && (
           <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-xs text-blue-900">
             <Icon name="lock" size={16} className="shrink-0" />
@@ -177,10 +187,10 @@ export default function ScheduleDetailDrawer({
         )}
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 overscroll-contain">
           {/* Subject title */}
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                 {entry.subjectCode}
               </span>
@@ -201,7 +211,7 @@ export default function ScheduleDetailDrawer({
             </h3>
           </div>
 
-          {/* Status + lock control */}
+          {/* Status + lock */}
           <div className="pt-3 border-t border-surface-variant">
             <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
               Status
@@ -246,26 +256,14 @@ export default function ScheduleDetailDrawer({
 
           {/* Info grid */}
           <div className="space-y-3 text-sm pt-3 border-t border-surface-variant">
-            <DetailRow
-              icon="groups"
-              label="Section"
-              value={entry.sectionCode || '—'}
-            />
-            <DetailRow
-              icon="person"
-              label="Faculty"
-              value={entry.facultyName}
-            />
+            <DetailRow icon="groups" label="Section" value={entry.sectionCode || '—'} />
+            <DetailRow icon="person" label="Faculty" value={entry.facultyName} />
             <DetailRow
               icon="meeting_room"
               label="Room"
               value={entry.roomNumber !== '—' ? `Room ${entry.roomNumber}` : '—'}
             />
-            <DetailRow
-              icon="calendar_today"
-              label="Day"
-              value={entry.day}
-            />
+            <DetailRow icon="calendar_today" label="Day" value={entry.day} />
             <DetailRow
               icon="schedule"
               label="Time"
@@ -276,7 +274,8 @@ export default function ScheduleDetailDrawer({
           {/* Remarks */}
           <div className="pt-3 border-t border-surface-variant">
             <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
-              Remarks {locked && <span className="text-blue-700">(read-only)</span>}
+              Remarks{' '}
+              {locked && <span className="text-blue-700">(read-only)</span>}
             </label>
             <textarea
               value={remarks}
@@ -313,8 +312,8 @@ export default function ScheduleDetailDrawer({
           </div>
         </div>
 
-        {/* Footer actions */}
-        <footer className="border-t border-surface-variant p-4 flex items-center gap-3 bg-surface-container-low">
+        {/* Footer */}
+        <footer className="border-t border-surface-variant p-4 flex items-center gap-3 bg-surface-container-low pb-safe">
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending || locked}

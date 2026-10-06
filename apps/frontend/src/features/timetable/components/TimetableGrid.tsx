@@ -1,25 +1,23 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { DragDropProvider } from '@dnd-kit/react';
 import type { ScheduleEntry, DropCellData, Day } from '../types';
 import { computeLanes } from '../utils/lane-layout.util';
-
 import {
   DAYS,
   generateTimeSlots,
   timeToMinutes,
-  SLOT_MINUTES,
 } from '../utils/time.util';
-import {
-  CELL_HEIGHT_PX,
-  DAY_WIDTH_PX,
-  TIME_AXIS_WIDTH_PX,
-  getGridHeightPx,
-} from '../utils/grid-layout.util';
 import { ClassBlock } from './ClassBlock';
 import { DropCell } from './DropCell';
+import {
+  GridMetricsProvider,
+  useGridMetrics,
+  type GridDensity,
+} from './GridMetricsContext';
 
 interface Props {
   entries: ScheduleEntry[];
+  density: GridDensity;
   onEntryMove?: (
     entryId: string,
     newDay: string,
@@ -38,18 +36,48 @@ const DAY_LABELS: Record<Day, string> = {
   SUN: 'Sun',
 };
 
+/** True once the viewport is at least md: (768px). */
+function useIsDesktopLike(): boolean {
+  const [is, setIs] = useState(() =>
+    typeof window === 'undefined'
+      ? true
+      : window.matchMedia('(min-width: 768px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const handle = () => setIs(mq.matches);
+    mq.addEventListener('change', handle);
+    return () => mq.removeEventListener('change', handle);
+  }, []);
+  return is;
+}
+
 export default function TimetableGrid({
   entries,
+  density,
   onEntryMove,
   onEntryClick,
 }: Props) {
+  return (
+    <GridMetricsProvider density={density}>
+      <GridBody
+        entries={entries}
+        onEntryMove={onEntryMove}
+        onEntryClick={onEntryClick}
+      />
+    </GridMetricsProvider>
+  );
+}
+
+function GridBody({ entries, onEntryMove, onEntryClick }: Omit<Props, 'density'>) {
+  const metrics = useGridMetrics();
+  const isDesktopLike = useIsDesktopLike();
   const [validCells, setValidCells] = useState<Set<string>>(new Set());
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
-  const gridHeight = getGridHeightPx();
-  const gridWidth = DAYS.length * DAY_WIDTH_PX;
+  const gridWidth = DAYS.length * metrics.dayWidth;
 
-  // ── Compute all drop cells (background grid) ──
+  // Drop cells — 6 days × 24 slots
   const allCells = useMemo<DropCellData[]>(() => {
     const slots = generateTimeSlots();
     const cells: DropCellData[] = [];
@@ -67,11 +95,8 @@ export default function TimetableGrid({
   }, []);
 
   const slotsPerDay = allCells.length / DAYS.length;
-
-  // ── Lane assignments for overlapping blocks ──
   const laneInfo = useMemo(() => computeLanes(entries), [entries]);
 
-  // ── Overlap counts (for the +N badge) ──
   const overlapCounts = useMemo(() => {
     const counts = new Map<string, number>();
     const groups = new Map<string, ScheduleEntry[]>();
@@ -81,14 +106,11 @@ export default function TimetableGrid({
       groups.get(key)!.push(e);
     }
     for (const group of groups.values()) {
-      for (const e of group) {
-        counts.set(e.id, group.length);
-      }
+      for (const e of group) counts.set(e.id, group.length);
     }
     return counts;
   }, [entries]);
 
-  // ── Compute valid drop cells for a dragged entry ──
   const computeValidCells = useCallback(
     (entry: ScheduleEntry): Set<string> => {
       const valid = new Set<string>();
@@ -99,12 +121,8 @@ export default function TimetableGrid({
       for (const cell of allCells) {
         const cellStart = timeToMinutes(cell.startTime);
         const cellEnd = cellStart + duration;
-
-        // Must fit within operating hours
         if (cellEnd > operatingEnd) continue;
 
-        // Only block exact same-position collisions:
-        // another block in the same day + same start time + same room.
         const sameCellBlock = entries.some(
           (e) =>
             e.id !== entry.id &&
@@ -155,33 +173,41 @@ export default function TimetableGrid({
       if (validCells.has(cell.cellId)) {
         onEntryMove?.(entry.id, cell.day, cell.startTime);
       }
-
       setValidCells(new Set());
     },
     [onEntryMove, validCells],
   );
 
+  const dragActive = draggingId !== null;
+
+  // On mobile we don't render drop cells at all unless dragging,
+  // and dragging is disabled — so effectively they never mount.
+  const shouldRenderDropCells = isDesktopLike || dragActive;
+
   return (
     <DragDropProvider onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden">
-        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+      <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden flex flex-col h-full min-h-0">
+        <div className="flex-1 overflow-auto overscroll-contain">
           <div
             className="relative"
             style={{
-              width: TIME_AXIS_WIDTH_PX + gridWidth,
+              width: metrics.axisWidth + gridWidth,
               minWidth: '100%',
             }}
           >
             {/* Sticky day header row */}
             <div
               className="flex sticky top-0 z-30 bg-surface-container-low"
-              style={{ paddingLeft: TIME_AXIS_WIDTH_PX }}
+              style={{ paddingLeft: metrics.axisWidth }}
             >
               {DAYS.map((day) => (
                 <div
                   key={day}
-                  style={{ width: DAY_WIDTH_PX, minWidth: DAY_WIDTH_PX }}
-                  className="py-3 text-center text-sm font-semibold text-on-surface border-b border-l border-surface-variant first:border-l-0"
+                  style={{
+                    width: metrics.dayWidth,
+                    minWidth: metrics.dayWidth,
+                  }}
+                  className="py-2.5 text-center text-xs font-semibold text-on-surface border-b border-l border-surface-variant first:border-l-0"
                 >
                   {DAY_LABELS[day]}
                 </div>
@@ -189,24 +215,24 @@ export default function TimetableGrid({
             </div>
 
             {/* Main grid body */}
-            <div className="flex" style={{ height: gridHeight }}>
+            <div className="flex" style={{ height: metrics.gridHeight }}>
               {/* Sticky time axis */}
               <div
                 className="sticky left-0 z-20 bg-surface-container-low border-r border-surface-variant shrink-0"
-                style={{ width: TIME_AXIS_WIDTH_PX }}
+                style={{ width: metrics.axisWidth }}
               >
                 {generateTimeSlots().map((time, i) => (
                   <div
                     key={time}
                     style={{
-                      height: CELL_HEIGHT_PX,
-                      top: i * CELL_HEIGHT_PX,
+                      height: metrics.slotHeight,
+                      top: i * metrics.slotHeight,
                       position: 'absolute',
                       width: '100%',
                     }}
-                    className="flex items-start justify-end pr-2 text-[11px] text-on-surface-variant"
+                    className="flex items-start justify-end pr-2 text-[10px] text-on-surface-variant"
                   >
-                    {i % 2 === 0 ? time : ''}
+                    {i % metrics.axisLabelEvery === 0 ? time : ''}
                   </div>
                 ))}
               </div>
@@ -214,55 +240,60 @@ export default function TimetableGrid({
               {/* Day columns container */}
               <div
                 className="relative"
-                style={{ width: gridWidth, height: gridHeight }}
+                style={{ width: gridWidth, height: metrics.gridHeight }}
               >
-                {/* Background drop cells */}
-                {allCells.map((cell, idx) => {
-                  const dayIndex = DAYS.indexOf(cell.day);
-                  const slotIndex = idx % slotsPerDay;
-                  const x = dayIndex * DAY_WIDTH_PX;
-                  const y = slotIndex * CELL_HEIGHT_PX;
-                  const isValid = validCells.has(cell.cellId);
+                {/* Background drop cells — only when a drag is active */}
+                {shouldRenderDropCells &&
+                  allCells.map((cell, idx) => {
+                    const dayIndex = DAYS.indexOf(cell.day);
+                    const slotIndex = idx % slotsPerDay;
+                    const x = dayIndex * metrics.dayWidth;
+                    const y = slotIndex * metrics.slotHeight;
+                    const isValid = validCells.has(cell.cellId);
+
+                    return (
+                      <DropCell
+                        key={cell.cellId}
+                        cell={cell}
+                        x={x}
+                        y={y}
+                        width={metrics.dayWidth}
+                        height={metrics.slotHeight}
+                        isValidTarget={isValid}
+                      />
+                    );
+                  })}
+
+                {/* Class blocks */}
+                {entries.map((entry) => {
+                  const dayIndex = DAYS.indexOf(entry.day);
+                  if (dayIndex === -1) return null;
+
+                  const info = laneInfo.get(entry.id);
+                  const laneCount = info?.laneCount ?? 1;
+                  const lane = info?.lane ?? 0;
+                  const overlapCount = overlapCounts.get(entry.id) ?? 1;
+
+                  const locked =
+                    entry.status === 'finalized' ||
+                    entry.status === 'published';
 
                   return (
-                    <DropCell
-                      key={cell.cellId}
-                      cell={cell}
-                      x={x}
-                      y={y}
-                      width={DAY_WIDTH_PX}
-                      height={CELL_HEIGHT_PX}
-                      isValidTarget={isValid}
+                    <ClassBlock
+                      key={entry.id}
+                      entry={entry}
+                      dayIndex={dayIndex}
+                      lane={lane}
+                      laneCount={laneCount}
+                      overlapCount={overlapCount}
+                      onClick={onEntryClick}
+                      isDragging={draggingId === entry.id}
+                      // Disable dragging on <md viewports — the columns
+                      // are too narrow for reliable finger dragging.
+                      disabled={locked || !isDesktopLike}
                     />
                   );
                 })}
-
-              {/* Class blocks */}
-              {entries.map((entry) => {
-                const dayIndex = DAYS.indexOf(entry.day);
-                if (dayIndex === -1) return null;
-
-                const info = laneInfo.get(entry.id);
-                const laneCount = info?.laneCount ?? 1;
-                const lane = info?.lane ?? 0;
-                const overlapCount = overlapCounts.get(entry.id) ?? 1;
-
-                return (
-                  <ClassBlock
-                    key={entry.id}
-                    entry={entry}
-                    dayIndex={dayIndex}
-                    lane={lane}
-                    laneCount={laneCount}
-                    overlapCount={overlapCount}
-                    onClick={onEntryClick}
-                    isDragging={draggingId === entry.id}
-                    disabled={
-                      entry.status === 'finalized' || entry.status === 'published'
-                    }
-                  />
-                );
-              })}
               </div>
             </div>
           </div>

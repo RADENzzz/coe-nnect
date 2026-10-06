@@ -1,7 +1,8 @@
 import { generateTimeSlots, formatTime } from '../utils/time.util';
-import { CELL_HEIGHT_PX } from '../utils/grid-layout.util';
+import { useGridMetrics } from './GridMetricsContext';
 
 export function TimeAxis() {
+  const metrics = useGridMetrics();
   const slots = generateTimeSlots();
 
   return (
@@ -10,14 +11,14 @@ export function TimeAxis() {
         <div
           key={time}
           style={{
-            height: CELL_HEIGHT_PX,
-            top: i * CELL_HEIGHT_PX,
+            height: metrics.slotHeight,
+            top: i * metrics.slotHeight,
             position: 'absolute',
             width: '100%',
           }}
           className="flex items-start justify-end pr-2 text-xs text-on-surface-variant"
         >
-          {i % 2 === 0 ? formatTime(time) : ''}
+          {i % metrics.axisLabelEvery === 0 ? formatTime(time) : ''}
         </div>
       ))}
     </div>
