@@ -8,9 +8,7 @@ interface ModalProps {
   title: string;
   description?: string;
   children: React.ReactNode;
-  /** Optional sticky footer. */
   footer?: React.ReactNode;
-  /** Max width on desktop. Default: 'md' (max-w-md). */
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -31,21 +29,36 @@ export default function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
+
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    // Focus the panel for screen readers / keyboard
-    const timer = window.setTimeout(() => panelRef.current?.focus(), 40);
+
+    const timer = window.setTimeout(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const active = document.activeElement;
+      if (active && panel.contains(active)) return;
+      panel.focus();
+    }, 40);
+
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       window.clearTimeout(timer);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
