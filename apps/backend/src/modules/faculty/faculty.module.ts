@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Faculty } from './entities/faculty.entity';
 import { FacultyQualification } from './entities/faculty-qualification.entity';
+import { FacultyPreference } from './entities/faculty-preference.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { FacultyService } from './faculty.service';
 import { FacultyController } from './faculty.controller';
@@ -10,7 +11,13 @@ import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Faculty, FacultyQualification, Subject, User]),
+    TypeOrmModule.forFeature([
+      Faculty,
+      FacultyQualification,
+      FacultyPreference,   // ← NEW
+      Subject,
+      User,
+    ]),
   ],
   controllers: [FacultyController],
   providers: [FacultyService, RolesGuard],
