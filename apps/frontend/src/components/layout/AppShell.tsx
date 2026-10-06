@@ -11,25 +11,47 @@ import { getNavForRole } from '../../lib/constants/nav-config';
 export default function AppShell() {
   const profile = useAuthStore((s) => s.profile);
   const setLastPath = useUiStore((s) => s.setLastPath);
+  const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const location = useLocation();
 
   const nav = getNavForRole(profile?.role);
 
-  // Auto-close mobile drawer when the route changes.
+  // Auto-collapse on tablet widths (768–1023), expand on desktop
+  useEffect(() => {
+    const mqTablet = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
+    const mqDesktop = window.matchMedia('(min-width: 1024px)');
+    const set = useUiStore.getState().setSidebarCollapsed;
+
+    const handle = () => {
+      if (mqTablet.matches) set(true);
+      else if (mqDesktop.matches) set(false);
+    };
+
+    // Apply once on mount
+    handle();
+
+    mqTablet.addEventListener('change', handle);
+    mqDesktop.addEventListener('change', handle);
+    return () => {
+      mqTablet.removeEventListener('change', handle);
+      mqDesktop.removeEventListener('change', handle);
+    };
+  }, []);
+
   useEffect(() => {
     setLastPath(location.pathname);
   }, [location.pathname, setLastPath]);
 
   return (
     <div className="bg-slate-50 text-slate-900 min-h-screen flex">
-      {/* Desktop sidebar */}
       <Sidebar nav={nav} />
-
-      {/* Mobile drawer (renders only when open) */}
       <MobileDrawer nav={nav} />
 
-      {/* Main column */}
-      <div className="flex-1 flex flex-col min-w-0 md:ml-64">
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-200 ease-out ${
+          collapsed ? 'md:ml-[68px]' : 'md:ml-64'
+        }`}
+      >
         <TopBar label={nav.topBarLabel} />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
@@ -37,7 +59,6 @@ export default function AppShell() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
       <BottomNav items={nav.bottom} />
     </div>
   );
