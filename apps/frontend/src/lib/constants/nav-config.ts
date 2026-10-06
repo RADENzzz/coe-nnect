@@ -29,7 +29,7 @@ const DH_NAV: RoleNav = {
     { label: 'Dashboard',        path: ROUTES.DASHBOARD,  icon: 'dashboard' },
     { label: 'Schedule Planner', path: ROUTES.TIMETABLE,  icon: 'calendar_view_month', primary: true },
     { label: 'Faculty Directory',path: ROUTES.FACULTY,    icon: 'groups',              primary: true },
-    { label: 'Conflict Resolver',path: ROUTES.APPROVALS,  icon: 'report_problem',      primary: true },
+    { label: 'Approvals', path: ROUTES.APPROVALS, icon: 'report_problem', primary: true },
     { label: 'Rooms',            path: ROUTES.ROOMS,      icon: 'meeting_room' },
     { label: 'Subjects',         path: ROUTES.SUBJECTS,   icon: 'menu_book' },
     { label: 'Prospectus',       path: ROUTES.PROSPECTUS, icon: 'library_books' },
@@ -44,7 +44,7 @@ const DH_NAV: RoleNav = {
     { label: 'Dashboard', path: ROUTES.DASHBOARD,  icon: 'dashboard',            primary: true },
     { label: 'Planner',   path: ROUTES.TIMETABLE,  icon: 'calendar_view_month',  primary: true },
     { label: 'Faculty',   path: ROUTES.FACULTY,    icon: 'groups',               primary: true },
-    { label: 'Conflicts', path: ROUTES.APPROVALS,  icon: 'report_problem',       primary: true },
+    { label: 'Approvals', path: ROUTES.APPROVALS, icon: 'report_problem', primary: true },
   ],
 };
 

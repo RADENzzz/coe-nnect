@@ -11,27 +11,24 @@ import {
   type FacultyRequestStatus,
 } from '../../api/faculty-requests.api';
 import { fetchDepartments } from '../../api/departments.api';
-import { fetchSections } from '../../api/sections.api';
 import { fetchActiveTerm } from '../../api/schedule.api';
 import Icon from '../../components/ui/Icon';
+import Modal from '../../components/ui/Modal';
+import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
+import StatusBadge from '../../components/ui/StatusBadge';
+import type { RowAction } from '../../components/ui/RowActionMenu';
 
 type FilterTab = 'all' | FacultyRequestStatus;
 
-function StatusBadge({ status }: { status: FacultyRequestStatus }) {
-  const styles: Record<FacultyRequestStatus, string> = {
-    pending: 'bg-amber-100 text-amber-800',
-    approved: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
-    cancelled: 'bg-slate-100 text-slate-600',
-  };
-  return (
-    <span
-      className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${styles[status]}`}
-    >
-      {status}
-    </span>
-  );
-}
+const STATUS_TONE: Record<
+  FacultyRequestStatus,
+  'warning' | 'success' | 'danger' | 'neutral'
+> = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  cancelled: 'neutral',
+};
 
 export default function ApprovalsPage() {
   const qc = useQueryClient();
@@ -42,11 +39,14 @@ export default function ApprovalsPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
   const [respondTarget, setRespondTarget] = useState<{
     request: FacultyRequest;
     action: 'approve' | 'reject';
   } | null>(null);
   const [respondRemarks, setRespondRemarks] = useState('');
+
+  const [cancelTarget, setCancelTarget] = useState<FacultyRequest | null>(null);
 
   const [form, setForm] = useState({
     targetDeptId: '',
@@ -118,6 +118,7 @@ export default function ApprovalsPage() {
     mutationFn: cancelFacultyRequest,
     onSuccess: () => {
       setSuccess('Request cancelled.');
+      setCancelTarget(null);
       qc.invalidateQueries({ queryKey: ['faculty-requests'] });
     },
     onError: (err: any) =>
@@ -125,7 +126,9 @@ export default function ApprovalsPage() {
   });
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -168,10 +171,112 @@ export default function ApprovalsPage() {
   const deptName = (id: string) =>
     departments.find((d) => d.deptId === id)?.deptCode ?? `#${id}`;
 
+  const columns: Column<FacultyRequest>[] = [
+    {
+      key: 'request',
+      header: 'Request',
+      cardVariant: 'title',
+      cellClassName: 'text-on-surface',
+      render: (r) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="font-mono text-primary font-bold">
+            {deptName(r.requestingDeptId)}
+          </span>
+          <Icon
+            name="arrow_forward"
+            size={14}
+            className="text-on-surface-variant"
+          />
+          <span className="font-mono font-bold">{deptName(r.targetDeptId)}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'id',
+      header: 'ID',
+      hideOnMobile: true,
+      cardVariant: 'meta',
+      cellClassName: 'text-xs text-on-surface-variant',
+      render: (r) => `#${r.requestId}`,
+    },
+    {
+      key: 'faculty',
+      header: 'Faculty',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface',
+      render: (r) =>
+        r.facultyId ? (
+          <span className="font-mono text-sm">#{r.facultyId}</span>
+        ) : (
+          <span className="text-on-surface-variant text-xs italic">
+            any available
+          </span>
+        ),
+    },
+    {
+      key: 'reason',
+      header: 'Reason',
+      cardVariant: 'subtitle',
+      cellClassName: 'text-on-surface-variant max-w-md',
+      render: (r) => (
+        <div>
+          <p className="line-clamp-2">{r.reason}</p>
+          {r.responseRemarks && (
+            <p className="text-xs italic mt-1 text-on-surface-variant/70">
+              Response: {r.responseRemarks}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (r) => (
+        <StatusBadge tone={STATUS_TONE[r.status]}>
+          <span className="capitalize">{r.status}</span>
+        </StatusBadge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      render: () => null,
+    },
+  ];
+
+  const getActions = (r: FacultyRequest): RowAction[] => {
+    const actions: RowAction[] = [];
+    if (canRespondTo(r)) {
+      actions.push({
+        label: 'Approve',
+        icon: 'check_circle',
+        onClick: () => setRespondTarget({ request: r, action: 'approve' }),
+      });
+      actions.push({
+        label: 'Reject',
+        icon: 'cancel',
+        danger: true,
+        onClick: () => setRespondTarget({ request: r, action: 'reject' }),
+      });
+    }
+    if (canCancel(r) && !canRespondTo(r)) {
+      actions.push({
+        label: 'Cancel Request',
+        icon: 'undo',
+        danger: true,
+        onClick: () => setCancelTarget(r),
+      });
+    }
+    return actions;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Faculty Requests</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -180,7 +285,7 @@ export default function ApprovalsPage() {
         </div>
         <button
           onClick={() => {
-            setShowForm(!showForm);
+            setShowForm(true);
             setError(null);
             setSuccess(null);
           }}
@@ -203,13 +308,13 @@ export default function ApprovalsPage() {
       )}
 
       {/* Filter tabs */}
-      <div className="flex gap-2 border-b border-surface-variant">
+      <div className="flex gap-2 border-b border-surface-variant overflow-x-auto">
         {(['all', 'pending', 'approved', 'rejected', 'cancelled'] as FilterTab[]).map(
           (tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
-              className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+              className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px whitespace-nowrap ${
                 filter === tab
                   ? 'border-primary text-primary'
                   : 'border-transparent text-on-surface-variant hover:text-on-surface'
@@ -226,296 +331,228 @@ export default function ApprovalsPage() {
         )}
       </div>
 
-      {/* New request form */}
-      {showForm && (
-        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-6">
-          <h2 className="text-base font-semibold text-on-surface mb-4">
-            Create Cross-Department Request
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Target Department *
-                </label>
-                <select
-                  name="targetDeptId"
-                  required
-                  value={form.targetDeptId}
-                  onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="">Select a department…</option>
-                  {departments
-                    .filter(
-                      (d) =>
-                        d.isActive &&
-                        String(d.deptId) !== String(profile?.dept_id),
-                    )
-                    .map((d) => (
-                      <option key={d.deptId} value={d.deptId}>
-                        [{d.deptCode}] {d.deptName}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Preferred Faculty ID (optional)
-                </label>
-                <input
-                  type="text"
-                  name="facultyId"
-                  value={form.facultyId}
-                  onChange={handleChange}
-                  placeholder="Leave blank for any available faculty"
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Subject ID *
-                </label>
-                <input
-                  type="text"
-                  name="subjectId"
-                  required
-                  value={form.subjectId}
-                  onChange={handleChange}
-                  placeholder="e.g. 5"
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Reason *
-                </label>
-                <textarea
-                  name="reason"
-                  required
-                  rows={3}
-                  value={form.reason}
-                  onChange={handleChange}
-                  placeholder="e.g. Need a qualified instructor for this subject; our department is at capacity."
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary resize-none"
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
-              >
-                {createMutation.isPending ? 'Submitting…' : 'Submit Request'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <ResponsiveTable
+        columns={columns}
+        rows={filtered}
+        rowKey={(r) => r.requestId}
+        rowTitle={(r) =>
+          `${deptName(r.requestingDeptId)} → ${deptName(r.targetDeptId)}`
+        }
+        rowSubtitle={(r) => r.reason}
+        isLoading={isLoading}
+        hasSourceRows={requests.length > 0}
+        emptyMessage={
+          filter === 'all' ? 'No requests yet.' : `No ${filter} requests.`
+        }
+        noMatchMessage="No requests match this filter."
+        getActions={getActions}
+      />
 
-      {/* Table */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-              <th className="text-left px-5 py-3">Request</th>
-              <th className="text-left px-5 py-3">Faculty</th>
-              <th className="text-left px-5 py-3">Reason</th>
-              <th className="text-left px-5 py-3">Status</th>
-              <th className="text-right px-5 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-5 py-8 text-center text-on-surface-variant"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Loading...
-                  </div>
-                </td>
-              </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-5 py-12 text-center text-on-surface-variant"
-                >
-                  No {filter === 'all' ? '' : filter} requests.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((r) => (
-                <tr
-                  key={r.requestId}
-                  className="border-b border-white/5 hover:bg-surface-container-low align-top"
-                >
-                  <td className="px-5 py-3.5">
-                    <p className="text-xs text-on-surface-variant mb-0.5">
-                      #{r.requestId}
-                    </p>
-                    <p className="text-on-surface">
-                      <span className="font-mono text-primary font-bold">
-                        {deptName(r.requestingDeptId)}
-                      </span>
-                      <Icon
-                        name="arrow_forward"
-                        size={14}
-                        className="mx-1.5 text-on-surface-variant"
-                      />
-                      <span className="font-mono font-bold">
-                        {deptName(r.targetDeptId)}
-                      </span>
-                    </p>
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface">
-                    {r.facultyId ? (
-                      <span className="font-mono text-sm">#{r.facultyId}</span>
-                    ) : (
-                      <span className="text-on-surface-variant text-xs italic">
-                        any available
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface-variant max-w-md">
-                    <p className="line-clamp-2">{r.reason}</p>
-                    {r.responseRemarks && (
-                      <p className="text-xs italic mt-1 text-on-surface-variant/70">
-                        Response: {r.responseRemarks}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <StatusBadge status={r.status} />
-                  </td>
-                  <td className="px-5 py-3.5 text-right space-x-2 whitespace-nowrap">
-                    {canRespondTo(r) && (
-                      <>
-                        <button
-                          onClick={() =>
-                            setRespondTarget({ request: r, action: 'approve' })
-                          }
-                          className="text-xs px-3 py-1 rounded-lg border border-green-300 text-green-700 hover:bg-green-100 transition"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() =>
-                            setRespondTarget({ request: r, action: 'reject' })
-                          }
-                          className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                        >
-                          Reject
-                        </button>
-                      </>
-                    )}
-                    {canCancel(r) && !canRespondTo(r) && (
-                      <button
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              'Cancel this request? This cannot be undone.',
-                            )
-                          ) {
-                            cancelMutation.mutate(r.requestId);
-                          }
-                        }}
-                        className="text-xs px-3 py-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    {r.status !== 'pending' && (
-                      <span className="text-xs text-on-surface-variant">
-                        No actions
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Respond modal */}
-      {respondTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-            onClick={() => setRespondTarget(null)}
-          />
-          <div className="relative w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant p-6">
-            <h3 className="text-lg font-bold text-on-surface mb-1">
-              {respondTarget.action === 'approve' ? 'Approve' : 'Reject'} Request
-            </h3>
-            <p className="text-xs text-on-surface-variant mb-4">
-              {respondTarget.action === 'approve'
-                ? 'Add an optional note explaining the approval.'
-                : 'A rejection requires an explanation.'}
-            </p>
-            <textarea
-              rows={3}
-              value={respondRemarks}
-              onChange={(e) => setRespondRemarks(e.target.value)}
-              placeholder={
-                respondTarget.action === 'approve'
-                  ? 'Optional remarks…'
-                  : 'Reason for rejection (required)…'
-              }
-              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none"
-            />
-            <div className="flex gap-3 justify-end mt-4">
-              <button
-                onClick={() => {
-                  setRespondTarget(null);
-                  setRespondRemarks('');
-                }}
-                className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-low transition"
+      {/* New request modal */}
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="Create Cross-Department Request"
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Target Department *
+              </label>
+              <select
+                name="targetDeptId"
+                required
+                value={form.targetDeptId}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               >
-                Cancel
-              </button>
-              <button
-                disabled={
-                  approveMutation.isPending || rejectMutation.isPending
-                }
-                onClick={() => {
-                  const { request, action } = respondTarget;
-                  if (action === 'approve') {
-                    approveMutation.mutate({
-                      id: request.requestId,
-                      remarks: respondRemarks || undefined,
-                    });
-                  } else {
-                    rejectMutation.mutate({
-                      id: request.requestId,
-                      remarks: respondRemarks,
-                    });
-                  }
-                }}
-                className={`px-6 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 ${
-                  respondTarget.action === 'approve'
-                    ? 'bg-green-600 text-white hover:bg-green-700'
-                    : 'bg-red-600 text-white hover:bg-red-700'
-                }`}
-              >
-                {respondTarget.action === 'approve' ? 'Approve' : 'Reject'}
-              </button>
+                <option value="">Select a department…</option>
+                {departments
+                  .filter(
+                    (d) =>
+                      d.isActive &&
+                      String(d.deptId) !== String(profile?.dept_id),
+                  )
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Preferred Faculty ID (optional)
+              </label>
+              <input
+                type="text"
+                name="facultyId"
+                value={form.facultyId}
+                onChange={handleChange}
+                placeholder="Leave blank for any available faculty"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Subject ID *
+              </label>
+              <input
+                type="text"
+                name="subjectId"
+                required
+                value={form.subjectId}
+                onChange={handleChange}
+                placeholder="e.g. 5"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Reason *
+              </label>
+              <textarea
+                name="reason"
+                required
+                rows={3}
+                value={form.reason}
+                onChange={handleChange}
+                placeholder="e.g. Need a qualified instructor for this subject; our department is at capacity."
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary resize-none"
+              />
             </div>
           </div>
-        </div>
-      )}
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending}
+              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Submitting…' : 'Submit Request'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Respond modal (approve / reject) */}
+      <Modal
+        open={!!respondTarget}
+        onClose={() => {
+          setRespondTarget(null);
+          setRespondRemarks('');
+        }}
+        title={
+          respondTarget?.action === 'approve'
+            ? 'Approve Request'
+            : 'Reject Request'
+        }
+        description={
+          respondTarget?.action === 'approve'
+            ? 'Add an optional note explaining the approval.'
+            : 'A rejection requires an explanation.'
+        }
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setRespondTarget(null);
+                setRespondRemarks('');
+              }}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={
+                approveMutation.isPending ||
+                rejectMutation.isPending ||
+                (respondTarget?.action === 'reject' && !respondRemarks.trim())
+              }
+              onClick={() => {
+                if (!respondTarget) return;
+                const { request, action } = respondTarget;
+                if (action === 'approve') {
+                  approveMutation.mutate({
+                    id: request.requestId,
+                    remarks: respondRemarks || undefined,
+                  });
+                } else {
+                  rejectMutation.mutate({
+                    id: request.requestId,
+                    remarks: respondRemarks,
+                  });
+                }
+              }}
+              className={`px-6 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${
+                respondTarget?.action === 'approve'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
+              }`}
+            >
+              {respondTarget?.action === 'approve' ? 'Approve' : 'Reject'}
+            </button>
+          </>
+        }
+      >
+        <textarea
+          rows={3}
+          value={respondRemarks}
+          onChange={(e) => setRespondRemarks(e.target.value)}
+          placeholder={
+            respondTarget?.action === 'approve'
+              ? 'Optional remarks…'
+              : 'Reason for rejection (required)…'
+          }
+          className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none"
+        />
+      </Modal>
+
+      {/* Cancel confirm */}
+      <Modal
+        open={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        title="Cancel request?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setCancelTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Keep request
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                cancelTarget && cancelMutation.mutate(cancelTarget.requestId)
+              }
+              disabled={cancelMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {cancelMutation.isPending ? 'Cancelling…' : 'Cancel request'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Cancel request{' '}
+          <strong>#{cancelTarget?.requestId}</strong>? This cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }

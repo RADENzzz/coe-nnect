@@ -12,6 +12,10 @@ import {
 } from '../../api/subjects.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
+import Modal from '../../components/ui/Modal';
+import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
+import type { RowAction } from '../../components/ui/RowActionMenu';
+import { ActiveBadge } from '../../components/ui/StatusBadge';
 import RestrictionsPanel from './components/RestrictionsPanel';
 import { Link } from 'react-router-dom';
 
@@ -34,6 +38,7 @@ export default function SubjectsPage() {
   const [editing, setEditing] = useState<SubjectRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
   const [form, setForm] = useState({
     subjectCode: '',
     title: '',
@@ -63,28 +68,19 @@ export default function SubjectsPage() {
       qc.invalidateQueries({ queryKey: ['subjects'] });
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to create',
-      ),
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      input,
-    }: {
-      id: string;
-      input: Partial<CreateSubjectInput>;
-    }) => updateSubject(id, input),
+    mutationFn: ({ id, input }: { id: string; input: Partial<CreateSubjectInput> }) =>
+      updateSubject(id, input),
     onSuccess: (s) => {
       setSuccess(`Subject "${s.subjectCode}" updated.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['subjects'] });
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to update',
-      ),
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
   });
 
   const toggleMutation = useMutation({
@@ -98,6 +94,7 @@ export default function SubjectsPage() {
     mutationFn: deleteSubject,
     onSuccess: () => {
       setSuccess('Subject deleted.');
+      setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['subjects'] });
     },
     onError: (err: any) =>
@@ -185,33 +182,91 @@ export default function SubjectsPage() {
     }
   };
 
-  const handleDelete = (s: SubjectRecord) => {
-    if (
-      !window.confirm(
-        `Delete subject "${s.subjectCode}"? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-    deleteMutation.mutate(s.subjectId);
-  };
-
   const deptName = (id: string | null) => {
     if (!id) return '—';
     const d = departments.find((x) => String(x.deptId) === String(id));
     return d ? d.deptCode : `#${id}`;
   };
 
+  const columns: Column<SubjectRecord>[] = [
+    {
+      key: 'code',
+      header: 'Code',
+      cardVariant: 'title',
+      cellClassName: 'font-bold font-mono text-primary',
+      render: (s) => s.subjectCode,
+    },
+    {
+      key: 'title',
+      header: 'Title',
+      cardVariant: 'subtitle',
+      cellClassName: 'text-on-surface',
+      render: (s) => s.title,
+    },
+    {
+      key: 'units',
+      header: 'Units',
+      cardVariant: 'mono',
+      cellClassName: 'text-on-surface-variant font-mono text-xs',
+      render: (s) =>
+        `${Number(s.lectureUnits)}L + ${Number(s.labUnits)}Lab = ${Number(s.totalUnits)}`,
+    },
+    {
+      key: 'dept',
+      header: 'Dept',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface-variant text-xs font-mono',
+      render: (s) => deptName(s.deptId),
+    },
+    {
+      key: 'roomType',
+      header: 'Room Type',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface-variant text-xs',
+      render: (s) =>
+        s.requiredRoomType ? s.requiredRoomType.replace('_', ' ') : '—',
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (s) => <ActiveBadge isActive={s.isActive} />,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      render: () => null,
+    },
+  ];
+
+  const getActions = (s: SubjectRecord): RowAction[] => [
+    { label: 'Edit', icon: 'edit', onClick: () => openEdit(s) },
+    {
+      label: s.isActive ? 'Deactivate' : 'Activate',
+      icon: s.isActive ? 'toggle_off' : 'toggle_on',
+      onClick: () => toggleMutation.mutate(s.subjectId),
+      disabled: toggleMutation.isPending,
+    },
+    {
+      label: 'Delete',
+      icon: 'delete',
+      danger: true,
+      onClick: () => setDeleteTarget(s),
+      disabled: deleteMutation.isPending,
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Subjects</h1>
           <p className="text-on-surface-variant text-sm mt-1">
             {subjects.length} subject(s) registered
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setRestrictionsOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant text-on-surface-variant text-sm font-semibold hover:bg-surface-container-low transition"
@@ -228,13 +283,9 @@ export default function SubjectsPage() {
           </button>
         </div>
       </div>
-      {/* Flow hint — SRS Academic Structure Management order */}
+
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
-        <Icon
-          name="info"
-          size={18}
-          className="text-blue-700 shrink-0 mt-0.5"
-        />
+        <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
         <div className="flex-1">
           <p className="text-blue-900 font-medium">
             Subjects are step 2 of 3 in the Academic Structure flow.
@@ -252,6 +303,7 @@ export default function SubjectsPage() {
           <Icon name="arrow_forward" size={14} />
         </Link>
       </div>
+
       {error && (
         <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
           {error}
@@ -263,262 +315,198 @@ export default function SubjectsPage() {
         </div>
       )}
 
-      {/* Create / Edit Modal */}
-      {mode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-surface-variant bg-surface-container-lowest p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-base font-semibold text-on-surface mb-4">
-              {mode === 'create'
-                ? 'Create Subject'
-                : `Edit Subject — ${editing?.subjectCode}`}
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Subject Code *
-                  </label>
-                  <input
-                    type="text"
-                    name="subjectCode"
-                    required
-                    value={form.subjectCode}
-                    onChange={handleChange}
-                    placeholder="e.g. CPE 101"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Department *
-                  </label>
-                  <select
-                    name="deptId"
-                    required
-                    value={form.deptId}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">Select a department…</option>
-                    {departments
-                      .filter((d) => d.isActive)
-                      .map((d) => (
-                        <option key={d.deptId} value={d.deptId}>
-                          [{d.deptCode}] {d.deptName}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Title *
-                  </label>
-                  <input
-                    type="text"
-                    name="title"
-                    required
-                    value={form.title}
-                    onChange={handleChange}
-                    placeholder="e.g. Programming Logic & Design"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
+      <ResponsiveTable
+        columns={columns}
+        rows={subjects}
+        rowKey={(s) => s.subjectId}
+        rowTitle={(s) => s.subjectCode}
+        rowSubtitle={(s) => s.title}
+        isLoading={isLoading}
+        hasSourceRows={subjects.length > 0}
+        emptyMessage="No subjects yet."
+        noMatchMessage="No subjects match your filters."
+        getActions={getActions}
+      />
 
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Lecture Units *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    name="lectureUnits"
-                    required
-                    value={form.lectureUnits}
-                    onChange={handleChange}
-                    placeholder="0"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Lab Units *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    name="labUnits"
-                    required
-                    value={form.labUnits}
-                    onChange={handleChange}
-                    placeholder="0"
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <p className="text-xs text-on-surface-variant">
-                    Total units:{' '}
-                    <strong className="text-on-surface">
-                      {Number(form.lectureUnits || 0) +
-                        Number(form.labUnits || 0)}
-                    </strong>
-                  </p>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Required Room Type
-                  </label>
-                  <select
-                    name="requiredRoomType"
-                    value={form.requiredRoomType}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-                  >
-                    {ROOM_TYPES.map((rt) => (
-                      <option key={rt.value} value={rt.value}>
-                        {rt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    Leave as "any" if the subject can be scheduled in any room.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    createMutation.isPending || updateMutation.isPending
-                  }
-                  className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
-                >
-                  {createMutation.isPending || updateMutation.isPending
-                    ? 'Saving...'
-                    : mode === 'create'
-                    ? 'Create Subject'
-                    : 'Save Changes'}
-                </button>
-              </div>
-            </form>
+      <Modal
+        open={!!mode}
+        onClose={closeForm}
+        title={
+          mode === 'create'
+            ? 'Create Subject'
+            : `Edit Subject — ${editing?.subjectCode}`
+        }
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Subject Code *
+              </label>
+              <input
+                type="text"
+                name="subjectCode"
+                required
+                value={form.subjectCode}
+                onChange={handleChange}
+                placeholder="e.g. CPE 101"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Department *
+              </label>
+              <select
+                name="deptId"
+                required
+                value={form.deptId}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">Select a department…</option>
+                {departments
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Title *
+              </label>
+              <input
+                type="text"
+                name="title"
+                required
+                value={form.title}
+                onChange={handleChange}
+                placeholder="e.g. Programming Logic & Design"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Lecture Units *
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                name="lectureUnits"
+                required
+                value={form.lectureUnits}
+                onChange={handleChange}
+                placeholder="0"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Lab Units *
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                name="labUnits"
+                required
+                value={form.labUnits}
+                onChange={handleChange}
+                placeholder="0"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-xs text-on-surface-variant">
+                Total units:{' '}
+                <strong className="text-on-surface">
+                  {Number(form.lectureUnits || 0) + Number(form.labUnits || 0)}
+                </strong>
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Required Room Type
+              </label>
+              <select
+                name="requiredRoomType"
+                value={form.requiredRoomType}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              >
+                {ROOM_TYPES.map((rt) => (
+                  <option key={rt.value} value={rt.value}>
+                    {rt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                Leave as "any" if the subject can be scheduled in any room.
+              </p>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Table */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-              <th className="text-left px-5 py-3">Code</th>
-              <th className="text-left px-5 py-3">Title</th>
-              <th className="text-left px-5 py-3">Units</th>
-              <th className="text-left px-5 py-3">Dept</th>
-              <th className="text-left px-5 py-3">Room Type</th>
-              <th className="text-left px-5 py-3">Status</th>
-              <th className="text-right px-5 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-5 py-8 text-center text-on-surface-variant"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Loading...
-                  </div>
-                </td>
-              </tr>
-            ) : subjects.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-5 py-12 text-center text-on-surface-variant"
-                >
-                  No subjects yet.
-                </td>
-              </tr>
-            ) : (
-              subjects.map((s) => (
-                <tr
-                  key={s.subjectId}
-                  className="border-b border-white/5 hover:bg-surface-container-low"
-                >
-                  <td className="px-5 py-3.5 font-bold font-mono text-primary">
-                    {s.subjectCode}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface">{s.title}</td>
-                  <td className="px-5 py-3.5 text-on-surface-variant font-mono text-xs">
-                    {Number(s.lectureUnits)}L + {Number(s.labUnits)}Lab ={' '}
-                    {Number(s.totalUnits)}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface-variant text-xs font-mono">
-                    {deptName(s.deptId)}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface-variant text-xs">
-                    {s.requiredRoomType
-                      ? s.requiredRoomType.replace('_', ' ')
-                      : '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                        s.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {s.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right space-x-2 whitespace-nowrap">
-                    <button
-                      onClick={() => openEdit(s)}
-                      className="text-xs px-3 py-1 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => toggleMutation.mutate(s.subjectId)}
-                      disabled={toggleMutation.isPending}
-                      className={`text-xs px-3 py-1 rounded-lg border transition ${
-                        s.isActive
-                          ? 'border-red-300 text-red-700 hover:bg-red-100'
-                          : 'border-green-300 text-green-700 hover:bg-green-100'
-                      }`}
-                    >
-                      {s.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(s)}
-                      disabled={deleteMutation.isPending}
-                      className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+            <button
+              type="button"
+              onClick={closeForm}
+              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+            >
+              {createMutation.isPending || updateMutation.isPending
+                ? 'Saving...'
+                : mode === 'create'
+                ? 'Create Subject'
+                : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      {/* Restrictions Panel (S-11) */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete subject?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.subjectId)
+              }
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete subject <strong>"{deleteTarget?.subjectCode}"</strong>? This
+          action cannot be undone.
+        </p>
+      </Modal>
+
       <RestrictionsPanel
         open={restrictionsOpen}
         onClose={() => setRestrictionsOpen(false)}

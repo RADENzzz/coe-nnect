@@ -9,6 +9,10 @@ import {
   type Section,
 } from '../../api/sections.api';
 import Icon from '../../components/ui/Icon';
+import Modal from '../../components/ui/Modal';
+import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
+import type { RowAction } from '../../components/ui/RowActionMenu';
+import { ActiveBadge } from '../../components/ui/StatusBadge';
 
 export default function SectionsPage() {
   const qc = useQueryClient();
@@ -22,6 +26,7 @@ export default function SectionsPage() {
     yearLevel: '',
     studentCount: '',
   });
+  const [deleteTarget, setDeleteTarget] = useState<Section | null>(null);
 
   const { data: sections = [], isLoading } = useQuery({
     queryKey: ['sections'],
@@ -38,9 +43,7 @@ export default function SectionsPage() {
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
     onError: (err: any) => {
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to create',
-      );
+      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create');
     },
   });
 
@@ -55,6 +58,7 @@ export default function SectionsPage() {
     mutationFn: deleteSection,
     onSuccess: () => {
       setSuccess('Section deleted.');
+      setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
     onError: (err: any) =>
@@ -78,21 +82,54 @@ export default function SectionsPage() {
     });
   };
 
-  const handleDelete = (section: Section) => {
-    if (
-      !window.confirm(
-        `Delete section "${section.sectionCode}"? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-    deleteMutation.mutate(section.sectionId);
-  };
+  const columns: Column<Section>[] = [
+    {
+      key: 'code',
+      header: 'Section Code',
+      cardVariant: 'title',
+      cellClassName: 'font-bold font-mono text-primary',
+      render: (s) => s.sectionCode,
+    },
+    {
+      key: 'yearLevel',
+      header: 'Year Level',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface-variant',
+      render: (s) => (s.yearLevel != null ? String(s.yearLevel) : '—'),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (s) => <ActiveBadge isActive={s.isActive} />,
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      render: () => null,
+    },
+  ];
+
+  const getActions = (s: Section): RowAction[] => [
+    {
+      label: s.isActive ? 'Deactivate' : 'Activate',
+      icon: s.isActive ? 'toggle_off' : 'toggle_on',
+      onClick: () => toggleMutation.mutate(s.sectionId),
+      disabled: toggleMutation.isPending,
+    },
+    {
+      label: 'Delete',
+      icon: 'delete',
+      danger: true,
+      onClick: () => setDeleteTarget(s),
+      disabled: deleteMutation.isPending,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Sections</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -111,7 +148,6 @@ export default function SectionsPage() {
           New Section
         </button>
       </div>
-      
 
       {error && (
         <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
@@ -124,166 +160,128 @@ export default function SectionsPage() {
         </div>
       )}
 
-      {/* Form */}
-      {showForm && (
-        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-6">
-          <h2 className="text-base font-semibold text-on-surface mb-4">
-            Create Section
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Section Code *
-                </label>
-                <input
-                  type="text"
-                  name="sectionCode"
-                  required
-                  value={form.sectionCode}
-                  onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                  placeholder="e.g. CpE-1A"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Year Level
-                </label>
-                <select
-                  name="yearLevel"
-                  value={form.yearLevel}
-                  onChange={handleChange}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                >
-                  <option value="">— none —</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
-              </div>
-                            <div>
-                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Students (advisory)
-                </label>
-                <input
-                  type="number"
-                  name="studentCount"
-                  min="0"
-                  value={form.studentCount}
-                  onChange={handleChange}
-                  placeholder="e.g. 40"
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary transition"
-                />
-                <p className="text-[10px] text-on-surface-variant mt-1">
-                  Rough count only — used by S-8 as a soft signal. Not enforced.
-                </p>
-              </div>
+      <Modal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="Create Section"
+        size="md"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Section Code *
+              </label>
+              <input
+                type="text"
+                name="sectionCode"
+                required
+                value={form.sectionCode}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+                placeholder="e.g. CpE-1A"
+              />
             </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Year Level
+              </label>
+              <select
+                name="yearLevel"
+                value={form.yearLevel}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
-              >
-                {createMutation.isPending ? 'Creating...' : 'Create Section'}
-              </button>
+                <option value="">— none —</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
             </div>
-          </form>
-        </div>
-      )}
+            <div>
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Students (advisory)
+              </label>
+              <input
+                type="number"
+                name="studentCount"
+                min="0"
+                value={form.studentCount}
+                onChange={handleChange}
+                placeholder="e.g. 40"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              />
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                Rough count only — used by S-8 as a soft signal. Not enforced.
+              </p>
+            </div>
+          </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-              <th className="text-left px-5 py-3">Section Code</th>
-              <th className="text-left px-5 py-3">Year Level</th>
-              <th className="text-left px-5 py-3">Status</th>
-              <th className="text-right px-5 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-5 py-8 text-center text-on-surface-variant"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Loading...
-                  </div>
-                </td>
-              </tr>
-            ) : sections.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="px-5 py-12 text-center text-on-surface-variant"
-                >
-                  No sections yet.
-                </td>
-              </tr>
-            ) : (
-              sections.map((s) => (
-                <tr
-                  key={s.sectionId}
-                  className="border-b border-white/5 hover:bg-surface-container-low"
-                >
-                  <td className="px-5 py-3.5 font-bold font-mono text-primary">
-                    {s.sectionCode}
-                  </td>
-                  <td className="px-5 py-3.5 text-on-surface-variant">
-                    {s.yearLevel ?? '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                        s.isActive
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {s.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right space-x-2">
-                    <button
-                      onClick={() => toggleMutation.mutate(s.sectionId)}
-                      disabled={toggleMutation.isPending}
-                      className={`text-xs px-3 py-1 rounded-lg border transition ${
-                        s.isActive
-                          ? 'border-red-300 text-red-700 hover:bg-red-100'
-                          : 'border-green-300 text-green-700 hover:bg-green-100'
-                      }`}
-                    >
-                      {s.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(s)}
-                      disabled={deleteMutation.isPending}
-                      className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending}
+              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create Section'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <ResponsiveTable
+        columns={columns}
+        rows={sections}
+        rowKey={(s) => s.sectionId}
+        rowTitle={(s) => s.sectionCode}
+        isLoading={isLoading}
+        hasSourceRows={sections.length > 0}
+        emptyMessage="No sections yet."
+        noMatchMessage="No sections match your filters."
+        getActions={getActions}
+      />
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete section?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.sectionId)
+              }
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>"{deleteTarget?.sectionCode}"</strong>? This action
+          cannot be undone.
+        </p>
+      </Modal>
     </div>
   );
 }
