@@ -4,8 +4,10 @@ import { useAuthStore } from '../../store/auth.store';
 import {
   fetchDepartments,
   createDepartment,
+  updateDepartment,
   toggleDepartmentActive,
   type Department,
+  type CreateDepartmentInput,
 } from '../../api/departments.api';
 import { login } from '../../api/auth.api';
 import Icon from '../../components/ui/Icon';
@@ -14,11 +16,14 @@ import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTabl
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
 
+type Mode = 'create' | 'edit';
+
 export default function AdminDepartmentsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
 
-  const [showForm, setShowForm] = useState(false);
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [editing, setEditing] = useState<Department | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -38,12 +43,12 @@ export default function AdminDepartmentsPage() {
     enabled: !!user,
   });
 
+  // ── Create ──
   const createMutation = useMutation({
     mutationFn: createDepartment,
     onSuccess: (dept) => {
       setSuccess(`Department "${dept.deptName}" created.`);
-      setForm({ deptCode: '', deptName: '', description: '' });
-      setShowForm(false);
+      closeForm();
       qc.invalidateQueries({ queryKey: ['departments'] });
     },
     onError: (err: any) => {
@@ -53,6 +58,28 @@ export default function AdminDepartmentsPage() {
     },
   });
 
+  // ── Update ──
+  const updateMutation = useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: Partial<CreateDepartmentInput>;
+    }) => updateDepartment(id, input),
+    onSuccess: (dept) => {
+      setSuccess(`Department "${dept.deptName}" updated.`);
+      closeForm();
+      qc.invalidateQueries({ queryKey: ['departments'] });
+    },
+    onError: (err: any) => {
+      setError(
+        err?.response?.data?.message ?? err.message ?? 'Failed to update',
+      );
+    },
+  });
+
+  // ── Toggle active ──
   const toggleMutation = useMutation({
     mutationFn: toggleDepartmentActive,
     onSuccess: () => {
@@ -87,13 +114,48 @@ export default function AdminDepartmentsPage() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    createMutation.mutate({
-      deptCode: form.deptCode.toUpperCase(),
-      deptName: form.deptName,
-      description: form.description || undefined,
-    });
+
+    const payload = {
+      deptCode: form.deptCode.trim().toUpperCase(),
+      deptName: form.deptName.trim(),
+      description: form.description.trim() || undefined,
+    };
+
+    if (mode === 'create') {
+      createMutation.mutate(payload);
+    } else if (mode === 'edit' && editing) {
+      updateMutation.mutate({ id: editing.deptId, input: payload });
+    }
   };
 
+  const openCreate = () => {
+    setMode('create');
+    setEditing(null);
+    setForm({ deptCode: '', deptName: '', description: '' });
+    setError(null);
+    setSuccess(null);
+  };
+
+  const openEdit = (d: Department) => {
+    setMode('edit');
+    setEditing(d);
+    setForm({
+      deptCode: d.deptCode,
+      deptName: d.deptName,
+      description: d.description ?? '',
+    });
+    setError(null);
+    setSuccess(null);
+  };
+
+  const closeForm = () => {
+    setMode(null);
+    setEditing(null);
+    setForm({ deptCode: '', deptName: '', description: '' });
+    setError(null);
+  };
+
+  // ── Columns ──
   const columns: Column<Department>[] = [
     {
       key: 'code',
@@ -112,7 +174,6 @@ export default function AdminDepartmentsPage() {
     {
       key: 'id',
       header: 'ID',
-      cardVariant: 'hideOnMobile' as any,
       hideOnMobile: true,
       cellClassName: 'text-on-surface-variant font-mono',
       render: (d) => String(d.deptId),
@@ -140,6 +201,11 @@ export default function AdminDepartmentsPage() {
 
   const getActions = (d: Department): RowAction[] => [
     {
+      label: 'Edit',
+      icon: 'edit',
+      onClick: () => openEdit(d),
+    },
+    {
       label: d.isActive ? 'Deactivate' : 'Activate',
       icon: d.isActive ? 'toggle_off' : 'toggle_on',
       danger: d.isActive,
@@ -164,11 +230,7 @@ export default function AdminDepartmentsPage() {
           </p>
         </div>
         <button
-          onClick={() => {
-            setShowForm(true);
-            setError(null);
-            setSuccess(null);
-          }}
+          onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
         >
           <Icon name="add" size={18} />
@@ -187,13 +249,45 @@ export default function AdminDepartmentsPage() {
         </div>
       )}
 
+      {/* Create / Edit modal */}
       <Modal
-        open={showForm}
-        onClose={() => setShowForm(false)}
-        title="Create New Department"
+        open={!!mode}
+        onClose={closeForm}
+        title={
+          mode === 'create'
+            ? 'Create New Department'
+            : `Edit Department — ${editing?.deptCode ?? ''}`
+        }
         size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closeForm}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="department-form"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-6 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50"
+            >
+              {createMutation.isPending || updateMutation.isPending
+                ? 'Saving…'
+                : mode === 'create'
+                ? 'Create Department'
+                : 'Save Changes'}
+            </button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          id="department-form"
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
           <div>
             <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Department Code *
@@ -204,9 +298,12 @@ export default function AdminDepartmentsPage() {
               required
               value={form.deptCode}
               onChange={handleChange}
-              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary uppercase"
               placeholder="e.g. CE, CpE, ME"
             />
+            <p className="text-[10px] text-on-surface-variant mt-1">
+              Stored uppercase. Must be unique.
+            </p>
           </div>
           <div>
             <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -235,26 +332,10 @@ export default function AdminDepartmentsPage() {
               placeholder="Optional"
             />
           </div>
-
-          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create Department'}
-            </button>
-          </div>
         </form>
       </Modal>
 
+      {/* Deactivate confirmation */}
       <Modal
         open={!!deactivateTarget}
         onClose={() => {
