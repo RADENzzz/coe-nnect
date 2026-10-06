@@ -166,9 +166,33 @@ function computeLanes(entries: ScheduleEntry[]): Map<string, LaneInfo> {
 }
 
 function facultyShort(name: string): string {
+  // "Juan Dela Cruz" → "J. Dela Cruz"
   const parts = name.trim().split(/\s+/);
   if (parts.length < 2) return name;
   return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+}
+
+/**
+ * Compressed time range for the tiny label inside a class block.
+ * "07:30" + "09:00" → "7:30-9:00"
+ * Drops the AM/PM suffix when both times share the same half of the day,
+ * otherwise shows "7:30-1:00p" style to keep it short.
+ */
+function pdfTimeRange(start: string, end: string): string {
+  const fmt = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    const period = h >= 12 ? 'p' : 'a';
+    const hh = h % 12 || 12;
+    return { str: `${hh}:${String(m).padStart(2, '0')}`, period };
+  };
+  const s = fmt(start);
+  const e = fmt(end);
+  // Same period — show one AM/PM at the end
+  if (s.period === e.period) {
+    return `${s.str}–${e.str}${e.period}`;
+  }
+  // Crossing noon — show both
+  return `${s.str}${s.period}–${e.str}${e.period}`;
 }
 
 export interface ScheduleGridPdfProps {
@@ -301,6 +325,12 @@ const scale = layout.scale;
       right: 0,
       borderTop: `1 solid ${COLORS.borderDark}`,
     },
+    zebraBand: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      backgroundColor: '#f4f4f5',
+    },
 
     // ── Block ──
     block: {
@@ -324,6 +354,15 @@ const scale = layout.scale;
       fontSize: 6.5,
       color: COLORS.blockText,
     },
+
+    blockTime: {
+    fontSize: 6,
+    color: COLORS.blockText,
+    fontFamily: 'Helvetica',
+    // Subtle drop shadow would help contrast on light-colored blocks, but
+    // react-pdf doesn't support text-shadow — opacity is the closest we get.
+    opacity: 0.85,
+  },
 
     // ── Legend ──
     legend: {
@@ -480,7 +519,24 @@ const scale = layout.scale;
                   <View
                     key={day}
                     style={isLast ? styles.dayColumnLast : styles.dayColumn}
+                  
                   >
+                    {/* Zebra bands — every other 30-min slot */}
+                    {Array.from({ length: TOTAL_SLOTS }).map((_, i) => {
+                      if (i % 2 === 0) return null;
+                      return (
+                        <View
+                          key={`zebra-${i}`}
+                          style={[
+                            styles.zebraBand,
+                            {
+                              top: i * SLOT_HEIGHT,
+                              height: SLOT_HEIGHT,
+                            },
+                          ]}
+                        />
+                      );
+                    })}
                     {/* Horizontal slot lines */}
                     {Array.from({ length: TOTAL_SLOTS + 1 }).map((_, i) => {
                       const isHour =
@@ -533,13 +589,25 @@ const scale = layout.scale;
                             },
                           ]}
                         >
-                        <Text style={styles.blockCode}>{entry.subjectCode}</Text>
+                          <Text style={styles.blockCode}>{entry.subjectCode}</Text>
                           {entry.sectionCode ? (
                             <Text style={styles.blockSection}>{entry.sectionCode}</Text>
                           ) : null}
                           {showFaculty ? (
                             <Text style={styles.blockFaculty}>
                               {facultyShort(entry.facultyName)}
+                            </Text>
+                          ) : null}
+
+                          {/* Time label anchored to the bottom of the block */}
+                          {height >= 22 ? (
+                            <Text
+                              style={[
+                                styles.blockTime,
+                                { bottom: 1.5, position: 'absolute', left: 3, right: 3 },
+                              ]}
+                            >
+                              {pdfTimeRange(entry.startTime, entry.endTime)}
                             </Text>
                           ) : null}
                         </View>
