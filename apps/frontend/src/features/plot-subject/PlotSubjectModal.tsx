@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   plotSubject,
+  updateSchedule,
   validatePlot,
   type PlotSubjectPayload,
   type ValidateResult,
 } from '../../api/schedule.api';
 import { fetchSections } from '../../api/sections.api';
+import type { ScheduleEntry } from '../timetable/types';
 import Icon from '../../components/ui/Icon';
 
 const DAYS = [
@@ -24,6 +26,16 @@ const TIME_OPTIONS = [
   '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
   '16:00', '16:30', '17:00', '17:30', '18:00', '18:30',
 ];
+
+const DAY_ABBR_TO_FULL: Record<string, string> = {
+  MON: 'Monday',
+  TUE: 'Tuesday',
+  WED: 'Wednesday',
+  THU: 'Thursday',
+  FRI: 'Friday',
+  SAT: 'Saturday',
+  SUN: 'Sunday',
+};
 
 interface SubjectOption {
   subjectId: string;
@@ -53,7 +65,20 @@ interface Props {
   subjects: SubjectOption[];
   faculty: FacultyOption[];
   rooms: RoomOption[];
+  /** When provided, the modal runs in edit mode. */
+  editing?: ScheduleEntry | null;
 }
+
+const EMPTY_FORM = {
+  subjectId: '',
+  section: '',
+  facultyId: '',
+  roomId: '',
+  dayOfWeek: 'Monday',
+  startTime: '08:00',
+  endTime: '09:30',
+  loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
+};
 
 export default function PlotSubjectModal({
   open,
@@ -62,8 +87,10 @@ export default function PlotSubjectModal({
   subjects,
   faculty,
   rooms,
+  editing = null,
 }: Props) {
   const queryClient = useQueryClient();
+  const isEditMode = !!editing;
 
   const { data: sections = [] } = useQuery({
     queryKey: ['sections'],
@@ -71,41 +98,48 @@ export default function PlotSubjectModal({
     enabled: open,
   });
 
-  const [form, setForm] = useState({
-    subjectId: '',
-    section: '',
-    facultyId: '',
-    roomId: '',
-    dayOfWeek: 'Monday',
-    startTime: '08:00',
-    endTime: '09:30',
-    loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
-  });
-
+  const [form, setForm] = useState(EMPTY_FORM);
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const selectedSubject = subjects.find((s) => s.subjectId === form.subjectId);
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
 
-  // Reset form when modal closes
+  // Prefill / reset when the modal opens or the editing target changes
   useEffect(() => {
     if (!open) {
+      setForm(EMPTY_FORM);
+      setValidation(null);
+      setTouched(false);
+      setSubmitting(false);
+      return;
+    }
+    if (editing) {
       setForm({
-        subjectId: '',
-        section: '',
-        facultyId: '',
-        roomId: '',
-        dayOfWeek: 'Monday',
-        startTime: '08:00',
-        endTime: '09:30',
-        loadType: 'lecture',
+        subjectId: editing.subjectId,
+        section: editing.sectionCode ?? '',
+        facultyId: editing.facultyId ?? '',
+        roomId: editing.roomId ?? '',
+        dayOfWeek: DAY_ABBR_TO_FULL[editing.day] ?? 'Monday',
+        startTime: editing.startTime,
+        endTime: editing.endTime,
+        loadType: (editing.loadType ?? 'lecture') as
+          | 'lecture'
+          | 'laboratory'
+          | 'other',
       });
       setValidation(null);
       setTouched(false);
+      setSubmitting(false);
+    } else {
+      setForm(EMPTY_FORM);
+      setValidation(null);
+      setTouched(false);
+      setSubmitting(false);
     }
-  }, [open]);
+  }, [open, editing]);
 
   // Auto-correct load type when the subject changes
   useEffect(() => {
@@ -135,6 +169,9 @@ export default function PlotSubjectModal({
           startTime: form.startTime,
           endTime: form.endTime,
           loadType: form.loadType,
+          // In edit mode, exclude the entry being edited so we don't
+          // detect a conflict with itself.
+          excludeId: editing?.id,
         });
         setValidation(result);
       } catch (err) {
@@ -144,7 +181,7 @@ export default function PlotSubjectModal({
     }, 400);
 
     return () => clearTimeout(timeout);
-  }, [open, form, termId]);
+  }, [open, form, termId, editing?.id]);
 
   const plotMutation = useMutation({
     mutationFn: (payload: PlotSubjectPayload) => plotSubject(payload),
@@ -156,6 +193,30 @@ export default function PlotSubjectModal({
       alert(
         err?.response?.data?.message ?? err?.message ?? 'Failed to plot subject',
       );
+      setSubmitting(false);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: {
+      id: string;
+      dayOfWeek: string;
+      startTime: string;
+      endTime: string;
+      roomId?: string;
+      facultyId?: string;
+    }) => updateSchedule(payload.id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      onClose();
+    },
+    onError: (err: any) => {
+      alert(
+        err?.response?.data?.message ??
+          err?.message ??
+          'Failed to update schedule entry',
+      );
+      setSubmitting(false);
     },
   });
 
@@ -165,8 +226,6 @@ export default function PlotSubjectModal({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const [submitting, setSubmitting] = useState(false);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.facultyId) return;
@@ -174,7 +233,7 @@ export default function PlotSubjectModal({
 
     setSubmitting(true);
     try {
-      // ── Fresh validation right before plot (avoids debounce race) ──
+      // ── Fresh validation right before submit (avoids debounce race) ──
       const fresh = await validatePlot({
         termId,
         subjectId: form.subjectId,
@@ -185,30 +244,40 @@ export default function PlotSubjectModal({
         startTime: form.startTime,
         endTime: form.endTime,
         loadType: form.loadType,
+        excludeId: editing?.id,
       });
 
-      // Update the UI so the user sees the result
       setValidation(fresh);
       setTouched(true);
 
       if (fresh.hardConflicts.length > 0) {
-        // Block — leave the modal open so they can fix it
         setSubmitting(false);
         return;
       }
 
-      // ── Safe to plot ──
-      plotMutation.mutate({
-        termId,
-        subjectId: form.subjectId,
-        facultyId: form.facultyId || undefined,
-        roomId: form.roomId || undefined,
-        section: form.section || undefined,
-        loadType: form.loadType,
-        dayOfWeek: form.dayOfWeek,
-        startTime: form.startTime,
-        endTime: form.endTime,
-      });
+      // ── Safe to persist ──
+      if (isEditMode && editing) {
+        updateMutation.mutate({
+          id: editing.id,
+          dayOfWeek: form.dayOfWeek,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          roomId: form.roomId || undefined,
+          facultyId: form.facultyId || undefined,
+        });
+      } else {
+        plotMutation.mutate({
+          termId,
+          subjectId: form.subjectId,
+          facultyId: form.facultyId || undefined,
+          roomId: form.roomId || undefined,
+          section: form.section || undefined,
+          loadType: form.loadType,
+          dayOfWeek: form.dayOfWeek,
+          startTime: form.startTime,
+          endTime: form.endTime,
+        });
+      }
     } catch (err) {
       console.error('Pre-flight validate failed:', err);
       setSubmitting(false);
@@ -220,6 +289,7 @@ export default function PlotSubjectModal({
   const submitDisabled =
     submitting ||
     plotMutation.isPending ||
+    updateMutation.isPending ||
     !form.subjectId ||
     !form.roomId ||
     !form.facultyId ||
@@ -235,9 +305,13 @@ export default function PlotSubjectModal({
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant">
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant sticky top-0 bg-surface-container-lowest z-10">
           <div>
-            <h2 className="text-lg font-bold text-primary">Plot Subject</h2>
+            <h2 className="text-lg font-bold text-primary">
+              {isEditMode ? 'Edit Class' : 'Plot Subject'}
+            </h2>
             <p className="text-xs text-on-surface-variant">
-              Add a new class to the timetable
+              {isEditMode
+                ? 'Modify day, time, room, or faculty'
+                : 'Add a new class to the timetable'}
             </p>
           </div>
           <button
@@ -254,13 +328,19 @@ export default function PlotSubjectModal({
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Subject *
+              {isEditMode && (
+                <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-on-surface-variant">
+                  (locked in edit mode)
+                </span>
+              )}
             </label>
             <select
               name="subjectId"
               required
               value={form.subjectId}
               onChange={handleChange}
-              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+              disabled={isEditMode}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="">Select a subject…</option>
               {subjects.map((s) => (
@@ -442,7 +522,7 @@ export default function PlotSubjectModal({
                     <p className="font-medium">
                       {validation.hardConflicts.length} hard conflict
                       {validation.hardConflicts.length === 1 ? '' : 's'} — cannot
-                      plot:
+                      {isEditMode ? ' save' : ' plot'}:
                     </p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5">
                       {validation.hardConflicts.map((c) => (
@@ -508,15 +588,21 @@ export default function PlotSubjectModal({
               disabled={submitDisabled}
               className="px-6 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
             >
-              {submitting || plotMutation.isPending ? (
+              {submitting ||
+              plotMutation.isPending ||
+              updateMutation.isPending ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  {submitting ? 'Checking…' : 'Plotting…'}
+                  {submitting
+                    ? 'Checking…'
+                    : isEditMode
+                    ? 'Saving…'
+                    : 'Plotting…'}
                 </>
               ) : (
                 <>
-                  <Icon name="add" size={16} />
-                  Plot Subject
+                  <Icon name={isEditMode ? 'save' : 'add'} size={16} />
+                  {isEditMode ? 'Save Changes' : 'Plot Subject'}
                 </>
               )}
             </button>
