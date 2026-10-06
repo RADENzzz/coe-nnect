@@ -85,14 +85,6 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         </div>
 
         {/* CTA — DH only */}
-        {nav.brandSubtitle === 'Department Portal' && (
-          <div className="px-4 py-3 border-b border-slate-100">
-            <button className="btn-primary w-full flex items-center justify-center gap-2">
-              <Icon name="add" />
-              Create New Term
-            </button>
-          </div>
-        )}
 
         {/* Main Nav */}
         <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2 overscroll-contain">

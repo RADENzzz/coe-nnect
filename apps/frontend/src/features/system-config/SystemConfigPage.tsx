@@ -12,6 +12,7 @@ import {
   type Designation,
 } from '../../api/system-config.api';
 import Icon from '../../components/ui/Icon';
+import TermsPanel from './components/TermsPanel';
 
 // ────────────────────────────────────────────
 // Field metadata — how each setting is grouped and rendered
@@ -299,6 +300,9 @@ export default function SystemConfigPage() {
           {success}
         </div>
       )}
+
+      {/* Academic Terms — FR 7.1.4 */}
+      <TermsPanel isAdmin={isAdmin} />
 
       {isLoading ? (
         <div className="flex items-center gap-2 text-on-surface-variant">

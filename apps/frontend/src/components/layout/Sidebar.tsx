@@ -76,14 +76,6 @@ export default function Sidebar({ nav }: SidebarProps) {
       )}
 
       {/* CTA — DH only */}
-      {isDH && !collapsed && (
-        <div className="px-4 py-3 border-b border-slate-100">
-          <button className="w-full bg-[#5c1219] text-white font-semibold text-sm py-2 hover:opacity-90 transition-colors flex items-center justify-center gap-2">
-            <Icon name="add" />
-            Create New Term
-          </button>
-        </div>
-      )}
       {isDH && collapsed && (
         <div className="px-2 py-3 border-b border-slate-100">
           <button
