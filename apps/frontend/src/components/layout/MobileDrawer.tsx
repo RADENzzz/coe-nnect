@@ -1,25 +1,42 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
-import { mainNavItems, footerNavItems } from './Sidebar';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
+import type { RoleNav } from '../../lib/constants/nav-config';
 
-export default function MobileDrawer() {
+interface MobileDrawerProps {
+  nav: RoleNav;
+}
+
+export default function MobileDrawer({ nav }: MobileDrawerProps) {
   const { isMobileDrawerOpen, closeMobileDrawer } = useUiStore();
   const { deptName } = useDepartmentLabel();
-  // Close on Escape
+  const drawerRef = useRef<HTMLElement>(null);
+
+  const subtitle =
+    nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
+
+  // Escape to close + body scroll lock + initial focus
   useEffect(() => {
+    if (!isMobileDrawerOpen) return;
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeMobileDrawer();
     };
-    if (isMobileDrawerOpen) {
-      document.addEventListener('keydown', onKeyDown);
-      document.body.style.overflow = 'hidden';
-    }
+
+    document.addEventListener('keydown', onKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    // Move focus into the drawer so screen readers + keyboard land here.
+    const focusTimer = window.setTimeout(() => {
+      drawerRef.current?.focus();
+    }, 50);
+
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = '';
+      window.clearTimeout(focusTimer);
     };
   }, [isMobileDrawerOpen, closeMobileDrawer]);
 
@@ -29,56 +46,65 @@ export default function MobileDrawer() {
     <div className="md:hidden fixed inset-0 z-[100]">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 animate-[fadeIn_200ms_ease-out]"
+        className="absolute inset-0 bg-black/40 animate-backdrop-in"
         onClick={closeMobileDrawer}
         aria-hidden="true"
       />
 
       {/* Drawer */}
-      <aside className="absolute left-0 top-0 bottom-0 w-[85%] max-w-[300px] bg-white border-r border-slate-200 flex flex-col animate-[slideIn_250ms_cubic-bezier(0.2,0.9,0.3,1)]">
+      <aside
+        ref={drawerRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
+        className="absolute left-0 top-0 bottom-0 w-[85%] max-w-[300px] bg-white border-r border-slate-200 flex flex-col animate-drawer-in outline-none"
+      >
         {/* Brand */}
-        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-2 pt-safe">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 bg-[#5c1219] flex items-center justify-center shrink-0">
               <Icon name="school" filled className="text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
                 CoE-NNECT
               </p>
               <p className="text-[11px] text-slate-500 truncate max-w-[180px]">
-                {deptName}
+                {subtitle}
               </p>
             </div>
           </div>
           <button
             onClick={closeMobileDrawer}
-            className="w-7 h-7 hover:bg-slate-50 flex items-center justify-center text-slate-500"
+            className="tap-target hover:bg-slate-50 flex items-center justify-center text-slate-500 -mr-2"
             aria-label="Close menu"
           >
             <Icon name="close" />
           </button>
         </div>
 
-        {/* CTA */}
-        <div className="px-4 py-3 border-b border-slate-100">
-          <button className="w-full bg-[#5c1219] text-white font-semibold text-xs py-2 hover:opacity-90 transition flex items-center justify-center gap-2">
-            <Icon name="add" />
-            Create New Term
-          </button>
-        </div>
+        {/* CTA — DH only */}
+        {nav.brandSubtitle === 'Department Portal' && (
+          <div className="px-4 py-3 border-b border-slate-100">
+            <button className="btn-primary w-full flex items-center justify-center gap-2">
+              <Icon name="add" />
+              Create New Term
+            </button>
+          </div>
+        )}
 
         {/* Main Nav */}
-        <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2">
-          {mainNavItems.map((item) => (
+        <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2 overscroll-contain">
+          {nav.main.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               onClick={closeMobileDrawer}
               className={({ isActive }) =>
                 isActive
-                  ? 'flex items-center gap-2.5 px-3 py-2.5 bg-[#5c1219] text-white font-semibold text-xs transition-all'
-                  : 'flex items-center gap-2.5 px-3 py-2.5 text-slate-600 font-semibold text-xs hover:bg-slate-50 hover:text-slate-900 transition-all'
+                  ? 'flex items-center gap-3 px-3 py-3 bg-[#5c1219] text-white font-semibold text-sm transition-colors'
+                  : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors'
               }
             >
               {({ isActive }) => (
@@ -92,36 +118,26 @@ export default function MobileDrawer() {
         </div>
 
         {/* Footer Nav */}
-        <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2">
-          {footerNavItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={closeMobileDrawer}
-              className={({ isActive }) =>
-                isActive
-                  ? 'flex items-center gap-2.5 px-3 py-2.5 bg-[#5c1219] text-white font-semibold text-xs transition-all'
-                  : 'flex items-center gap-2.5 px-3 py-2.5 text-slate-600 font-semibold text-xs hover:bg-slate-50 hover:text-slate-900 transition-all'
-              }
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </div>
+        {nav.footer.length > 0 && (
+          <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2 pb-safe">
+            {nav.footer.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={closeMobileDrawer}
+                className={({ isActive }) =>
+                  isActive
+                    ? 'flex items-center gap-3 px-3 py-3 bg-[#5c1219] text-white font-semibold text-sm transition-colors'
+                    : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors'
+                }
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        )}
       </aside>
-
-      {/* Animations */}
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideIn {
-          from { transform: translateX(-100%); }
-          to { transform: translateX(0); }
-        }
-      `}</style>
     </div>
   );
 }

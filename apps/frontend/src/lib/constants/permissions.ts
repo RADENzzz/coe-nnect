@@ -1,3 +1,5 @@
+import { ROLES } from './roles';
+
 export const PERMISSIONS = {
   MANAGE_USERS: 'manage_users',
   MANAGE_DEPARTMENTS: 'manage_departments',
@@ -21,8 +23,12 @@ export const PERMISSIONS = {
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
+/**
+ * Keys are the runtime role strings (Supabase user_role enum).
+ * Do NOT use 'ADMIN' / 'DEPT_HEAD' / 'DEAN' here — those are not runtime values.
+ */
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
-  ADMIN: [
+  [ROLES.ADMIN]: [
     PERMISSIONS.MANAGE_USERS,
     PERMISSIONS.MANAGE_DEPARTMENTS,
     PERMISSIONS.MANAGE_SUBJECTS,
@@ -36,7 +42,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.GENERATE_REPORTS,
     PERMISSIONS.VIEW_AUDIT_TRAIL,
   ],
-  DEPT_HEAD: [
+  [ROLES.DEPT_HEAD]: [
     PERMISSIONS.PLOT_SUBJECT,
     PERMISSIONS.EDIT_SCHEDULE,
     PERMISSIONS.FINALIZE_SCHEDULE,
@@ -44,7 +50,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.VIEW_DEPT_SCHEDULE,
     PERMISSIONS.GENERATE_REPORTS,
   ],
-  DEAN: [
+  [ROLES.DEAN]: [
     PERMISSIONS.VIEW_DEPT_SCHEDULE,
     PERMISSIONS.VIEW_COLLEGE_SCHEDULE,
     PERMISSIONS.OVERRIDE_CROSS_DEPT_CONFLICT,
@@ -52,3 +58,8 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.VIEW_AUDIT_TRAIL,
   ],
 };
+
+export function hasPermission(role: string | undefined, permission: Permission): boolean {
+  if (!role) return false;
+  return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
+}

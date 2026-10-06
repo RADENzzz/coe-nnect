@@ -96,7 +96,8 @@ export class AuditService {
       .getRawMany<{ action: string }>();
     return rows.map((r) => r.action);
   }
-    /** Distinct source_system labels — useful for the filter dropdown in Pass B. */
+
+  /** Distinct source_system labels — useful for the filter dropdown in Pass B. */
   async distinctSources(): Promise<string[]> {
     const rows = await this.repo
       .createQueryBuilder('a')
