@@ -15,6 +15,12 @@
     padding: 0;
   }
 
+  html {
+    /* Prevent font scaling on orientation change on iOS */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
       Helvetica, Arial, sans-serif;
@@ -25,6 +31,10 @@
     color: #0f172a;
     font-size: 15px;
     line-height: 22px;
+
+    /* Mobile ergonomics */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
   }
 
   /* Material Symbols default settings */
@@ -68,6 +78,15 @@
     outline: 2px solid #5c1219;
     outline-offset: 2px;
   }
+
+  /* Prevent iOS auto-zoom when focusing inputs */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer components {
@@ -87,9 +106,19 @@
 
   /* ----- Buttons base ----- */
   .btn {
-    @apply inline-flex items-center justify-center rounded-none font-semibold transition
+    @apply inline-flex items-center justify-center rounded-none font-semibold transition-colors
            whitespace-nowrap text-xs sm:text-sm px-3.5 py-1.5
            disabled:opacity-50 disabled:cursor-not-allowed;
+
+    /* Touch target: Apple HIG minimum is 44x44. We enforce 44px height
+       on phones, relax on md+ where pointer precision is higher. */
+    min-height: 44px;
+  }
+
+  @media (min-width: 768px) {
+    .btn {
+      min-height: 0;
+    }
   }
 
   /* Primary */
@@ -119,6 +148,15 @@
     @apply bg-white border border-slate-300;
     @apply text-slate-900 placeholder:text-slate-400;
     @apply transition-colors;
+
+    /* Touch-friendly height on mobile */
+    min-height: 44px;
+  }
+
+  @media (min-width: 768px) {
+    .input {
+      min-height: 0;
+    }
   }
 
   .input:focus {
@@ -156,9 +194,41 @@
   .badge-brand {
     @apply badge bg-red-50 text-red-800 border-red-200;
   }
+
+  /* ----- Tap target helper -----
+     For icon-only buttons that don't use .btn */
+  .tap-target {
+    @apply inline-flex items-center justify-center;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 @layer utilities {
+  /* Safe-area padding utilities */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .h-safe-bottom {
+    height: env(safe-area-inset-bottom);
+  }
+
+  /* Contain overscroll for inner scroll areas */
+  .overscroll-contain {
+    overscroll-behavior: contain;
+  }
+
+  /* Prevent text selection on chrome UI */
+  .select-none-chrome {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -210,6 +280,17 @@
     }
   }
 
+  /* For MobileDrawer slide-in from left */
+  @keyframes drawer-in {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+
+  @keyframes backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
     20% { transform: translateX(-6px); }
@@ -238,6 +319,14 @@
 
   .animate-slide-in {
     animation: slide-in 350ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  .animate-drawer-in {
+    animation: drawer-in 250ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  .animate-backdrop-in {
+    animation: backdrop-in 200ms ease-out;
   }
 
   .animate-pulse-slow {

@@ -1,12 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
-  content: [
-    './index.html',
-    './src/**/*.{js,ts,jsx,tsx}',
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      screens: {
+        xs: '480px',
+      },
       colors: {
         // ── New Design System ──
         // Brand
@@ -15,19 +15,19 @@ export default {
           hover: '#4a0e14',
         },
         // Backgrounds
-        'app-root': '#020617',         // slate-950
-        'workspace': '#f8fafc',        // slate-50
+        'app-root': '#020617', // slate-950
+        workspace: '#f8fafc', // slate-50
         surface: '#ffffff',
 
         // Text
-        'text-primary': '#0f172a',     // slate-900
-        'text-secondary': '#64748b',   // slate-500
-        'text-muted': '#475569',       // slate-600
+        'text-primary': '#0f172a', // slate-900
+        'text-secondary': '#64748b', // slate-500
+        'text-muted': '#475569', // slate-600
 
         // Borders
-        'border-default': '#e2e8f0',   // slate-200
-        'border-subtle': '#f1f5f9',    // slate-100
-        'border-outline': '#cbd5e1',   // slate-300
+        'border-default': '#e2e8f0', // slate-200
+        'border-subtle': '#f1f5f9', // slate-100
+        'border-outline': '#cbd5e1', // slate-300
 
         // ── Legacy aliases so existing code keeps working ──
         surface: {
@@ -37,7 +37,7 @@ export default {
           variant: '#e2e8f0',
           'container-lowest': '#ffffff',
           'container-low': '#f8fafc',
-          'container': '#f1f5f9',
+          container: '#f1f5f9',
           'container-high': '#e2e8f0',
           'container-highest': '#cbd5e1',
         },
@@ -136,7 +136,6 @@ export default {
       },
 
       fontSize: {
-        // Keep custom sizes used elsewhere
         'display-lg': ['48px', { lineHeight: '56px', letterSpacing: '-0.02em', fontWeight: '700' }],
         'headline-lg': ['32px', { lineHeight: '40px', fontWeight: '700' }],
         'headline-lg-mobile': ['24px', { lineHeight: '32px', fontWeight: '700' }],
@@ -164,6 +163,9 @@ export default {
         'margin-sm': '12px',
         'margin-md': '24px',
         'margin-lg': '40px',
+        // Safe-area helpers (used via pb-safe / pt-safe utilities below)
+        'safe-bottom': 'env(safe-area-inset-bottom)',
+        'safe-top': 'env(safe-area-inset-top)',
       },
 
       boxShadow: {
