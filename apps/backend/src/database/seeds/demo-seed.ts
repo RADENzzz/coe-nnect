@@ -58,6 +58,11 @@ const DEPARTMENTS = [
     dept_name: 'Mechanical Engineering',
     description: 'Department of Mechanical Engineering',
   },
+  {
+    dept_code: 'CE',
+    dept_name: 'Civil Engineering',
+    description: 'Department of Civil Engineering',
+  },
 ];
 
 const SUBJECTS = [
@@ -158,6 +163,11 @@ const PROGRAMS = [
     program_code: 'BSEE',
     program_name: 'BS Electrical Engineering',
     dept_code: 'EE',
+  },
+  {
+    program_code: 'BSME',
+    program_name: 'BS Mechanical Engineering',
+    dept_code: 'ME',
   },
   {
     program_code: 'BSCE',
@@ -400,8 +410,10 @@ async function main() {
   for (const p of PROGRAMS) {
     const deptId = deptIds[p.dept_code];
     if (!deptId) {
-      console.warn(`  Skipping program ${p.program_code}: dept ${p.dept_code} not found`);
-      continue;
+      console.error(
+        `  ❌ FAILED: program ${p.program_code} — dept "${p.dept_code}" not found in DEPARTMENTS. Add it first.`,
+      );
+      process.exit(1);
     }
     const { data: existing } = await supabase
       .from('program')
