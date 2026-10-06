@@ -698,11 +698,12 @@ export default function TimetablePage() {
               <AgendaView entries={entries} onEntryClick={handleClick} />
             ) : (
               <TimetableGrid
-                entries={entries}
-                density={gridDensity}
-                onEntryMove={handleMove}
-                onEntryClick={handleClick}
-              />
+              entries={entries}
+              density={gridDensity}
+              fitToContainer
+              onEntryMove={handleMove}
+              onEntryClick={handleClick}
+            />
             )}
           </div>
         </>
