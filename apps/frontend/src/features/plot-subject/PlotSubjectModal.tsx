@@ -165,26 +165,60 @@ export default function PlotSubjectModal({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.facultyId) return;
-    if ((validation?.hardConflicts.length ?? 0) > 0) return;
-    plotMutation.mutate({
-      termId,
-      subjectId: form.subjectId,
-      facultyId: form.facultyId || undefined,
-      roomId: form.roomId || undefined,
-      section: form.section || undefined,
-      loadType: form.loadType,
-      dayOfWeek: form.dayOfWeek,
-      startTime: form.startTime,
-      endTime: form.endTime,
-    });
+    if (submitting) return;
+
+    setSubmitting(true);
+    try {
+      // ── Fresh validation right before plot (avoids debounce race) ──
+      const fresh = await validatePlot({
+        termId,
+        subjectId: form.subjectId,
+        facultyId: form.facultyId || undefined,
+        roomId: form.roomId || undefined,
+        section: form.section || undefined,
+        dayOfWeek: form.dayOfWeek,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        loadType: form.loadType,
+      });
+
+      // Update the UI so the user sees the result
+      setValidation(fresh);
+      setTouched(true);
+
+      if (fresh.hardConflicts.length > 0) {
+        // Block — leave the modal open so they can fix it
+        setSubmitting(false);
+        return;
+      }
+
+      // ── Safe to plot ──
+      plotMutation.mutate({
+        termId,
+        subjectId: form.subjectId,
+        facultyId: form.facultyId || undefined,
+        roomId: form.roomId || undefined,
+        section: form.section || undefined,
+        loadType: form.loadType,
+        dayOfWeek: form.dayOfWeek,
+        startTime: form.startTime,
+        endTime: form.endTime,
+      });
+    } catch (err) {
+      console.error('Pre-flight validate failed:', err);
+      setSubmitting(false);
+    }
   };
 
   if (!open) return null;
 
   const submitDisabled =
+    submitting ||
     plotMutation.isPending ||
     !form.subjectId ||
     !form.roomId ||
@@ -474,10 +508,10 @@ export default function PlotSubjectModal({
               disabled={submitDisabled}
               className="px-6 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
             >
-              {plotMutation.isPending ? (
+              {submitting || plotMutation.isPending ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Plotting…
+                  {submitting ? 'Checking…' : 'Plotting…'}
                 </>
               ) : (
                 <>

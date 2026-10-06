@@ -141,30 +141,76 @@ async validate(dto: ValidatePlotDto): Promise<{
   // Mutations
   // ────────────────────────────────────────────
 
-  async plot(dto: PlotSubjectDto): Promise<Schedule> {
+    async plot(dto: PlotSubjectDto): Promise<Schedule> {
     if (!dto.facultyId) {
       throw new BadRequestException('facultyId is required to plot a subject.');
     }
 
-  const sectionId = await this.resolveSectionId(dto.section);
+    // ── Pre-flight guards (structural, matches validate()) ──
+    const startMin = this.timeToMinutes(dto.startTime);
+    const endMin = this.timeToMinutes(dto.endTime);
 
-  const entry = this.scheduleRepo.create({
-    termId: dto.termId,
-    subjectId: dto.subjectId,
-    facultyId: dto.facultyId ?? null,
-    roomId: dto.roomId ?? null,
-    timeslotId: null,
-    section: dto.section ?? null,
-    sectionId,                              // ← NEW
-    loadType: dto.loadType ?? null,
-    dayOfWeek: dto.dayOfWeek as any,
-    startTime:
-      dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
-    endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
-    status: 'draft',
-  });
-  return this.scheduleRepo.save(entry);
-}
+    if (endMin <= startMin) {
+      throw new BadRequestException(
+        'H-7: End time must be after start time.',
+      );
+    }
+    if (startMin < 7 * 60) {
+      throw new BadRequestException(
+        'H-8: Class cannot start before 7:00 AM.',
+      );
+    }
+    if (endMin > 19 * 60) {
+      throw new BadRequestException(
+        'H-8: Class cannot end after 7:00 PM.',
+      );
+    }
+
+    // ── Full engine pass (hard rules block the plot) ──
+    const context = await this.ruleContextBuilder.build({
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      facultyId: dto.facultyId,
+      roomId: dto.roomId,
+      section: dto.section,
+      dayOfWeek: dto.dayOfWeek,
+      startTime: dto.startTime,
+      endTime: dto.endTime,
+      loadType: dto.loadType,
+      // No excludeScheduleId — this is a new plot
+    });
+
+    const engineResult = this.constraints.evaluate(context);
+
+    if (!engineResult.valid) {
+      const reasons = engineResult.hardConflicts
+        .map((c) => `${c.ruleId}: ${c.reason}`)
+        .join('\n');
+      throw new BadRequestException(
+        `Cannot plot — hard conflicts detected:\n${reasons}`,
+      );
+    }
+
+    // ── Insert ──
+    const sectionId = await this.resolveSectionId(dto.section);
+
+    const entry = this.scheduleRepo.create({
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      facultyId: dto.facultyId ?? null,
+      roomId: dto.roomId ?? null,
+      timeslotId: null,
+      section: dto.section ?? null,
+      sectionId,
+      loadType: dto.loadType ?? null,
+      dayOfWeek: dto.dayOfWeek as any,
+      startTime:
+        dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
+      endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
+      status: 'draft',
+    });
+    return this.scheduleRepo.save(entry);
+  }
 
   /**
    * Update a schedule entry — used for drag-to-move, room changes, etc.
