@@ -98,7 +98,7 @@ export default function TimetablePage() {
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
-
+  const [editEntry, setEditEntry] = useState<ScheduleEntry | null>(null);
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
   const [viewMode, setViewMode] = useState<ViewMode>('master');
@@ -249,7 +249,9 @@ export default function TimetablePage() {
   );
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
-    console.log('TODO: open edit form for', entry);
+    setSelectedEntry(null);
+    setEditEntry(entry);
+    setPlotOpen(true);
   }, []);
 
   const handlePickFromStack = useCallback((entry: ScheduleEntry) => {
@@ -665,8 +667,12 @@ export default function TimetablePage() {
       {activeTerm && (
         <PlotSubjectModal
           open={plotOpen}
-          onClose={() => setPlotOpen(false)}
+          onClose={() => {
+            setPlotOpen(false);
+            setEditEntry(null);
+          }}
           termId={activeTerm.termId}
+          editing={editEntry}
           subjects={subjects.map((s) => ({
             subjectId: s.subjectId,
             subjectCode: s.subjectCode,
