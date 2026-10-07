@@ -11,8 +11,9 @@ import { computeLanes } from '../utils/lane-layout.util';
 import {
   DAYS,
   generateTimeSlots,
+  generateSlotBoundaries,
   timeToMinutes,
-  formatTime, // ← NEW
+  formatTime, // ← already returns AM/PM
 } from '../utils/time.util';
 import { ClassBlock } from './ClassBlock';
 import { DropCell } from './DropCell';
@@ -33,7 +34,6 @@ interface Props {
   ) => void | Promise<unknown>;
   onEntryClick?: (entry: ScheduleEntry) => void;
 }
-
 
 /** Get the index in DAYS array for today, or -1 if today isn't a grid day. */
 function getTodayIndex(): number {
@@ -118,7 +118,7 @@ export default function TimetableGrid({
 }: Props) {
   const [containerRef, containerWidth] = useMeasuredWidth<HTMLDivElement>();
   const effectiveDensity: GridDensity = fitToContainer ? 'fit' : density;
-  
+
   return (
     <GridMetricsProvider
       density={effectiveDensity}
@@ -156,16 +156,17 @@ function GridBody({
 
   const gridWidth = DAYS.length * metrics.dayWidth;
 
+  // ── Build cells from BOUNDARIES (N+1 boundaries → N cells) ──
   const allCells = useMemo<DropCellData[]>(() => {
-    const slots = generateTimeSlots();
+    const boundaries = generateSlotBoundaries();
     const cells: DropCellData[] = [];
     for (const day of DAYS) {
-      for (let i = 0; i < slots.length - 1; i++) {
+      for (let i = 0; i < boundaries.length - 1; i++) {
         cells.push({
           day,
-          startTime: slots[i],
-          endTime: slots[i + 1],
-          cellId: `${day}-${slots[i]}`,
+          startTime: boundaries[i],
+          endTime: boundaries[i + 1],
+          cellId: `${day}-${boundaries[i]}`,
         });
       }
     }
@@ -259,9 +260,9 @@ function GridBody({
   const dragActive = draggingId !== null;
   const shouldRenderDropCells = isDesktopLike || dragActive;
 
-  // Precompute time slots once — used for the axis and for the shading rows.
-  const timeSlots = useMemo(() => generateTimeSlots(), []);
-  const slotCount = timeSlots.length;
+  // ── Time axis: use boundaries so 19:00 has a labeled row ──
+  const timeBoundaries = useMemo(() => generateSlotBoundaries(), []);
+  const boundaryCount = timeBoundaries.length;
 
   return (
     <DragDropProvider onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -282,41 +283,41 @@ function GridBody({
               className="flex sticky top-0 z-30 bg-surface-container-low"
               style={{ paddingLeft: metrics.axisWidth }}
             >
-            {DAYS.map((day, idx) => {
-              const isToday = idx === todayIdx;
-              return (
-                <div
-                  key={day}
-                  style={{
-                    width: metrics.dayWidth,
-                    minWidth: metrics.dayWidth,
-                  }}
-                  className={
-                    'py-2.5 text-center text-xs border-b border-l border-surface-variant first:border-l-0 ' +
-                    (isToday
-                      ? 'font-extrabold text-[#5c1219] bg-red-50'
-                      : 'font-semibold text-on-surface')
-                  }
-                >
-                  {DAY_LABELS[day]}
-                  {isToday && (
-                    <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider">
-                      • Today
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+              {DAYS.map((day, idx) => {
+                const isToday = idx === todayIdx;
+                return (
+                  <div
+                    key={day}
+                    style={{
+                      width: metrics.dayWidth,
+                      minWidth: metrics.dayWidth,
+                    }}
+                    className={
+                      'py-2.5 text-center text-xs border-b border-l border-surface-variant first:border-l-0 ' +
+                      (isToday
+                        ? 'font-extrabold text-[#5c1219] bg-red-50'
+                        : 'font-semibold text-on-surface')
+                    }
+                  >
+                    {DAY_LABELS[day]}
+                    {isToday && (
+                      <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider">
+                        • Today
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Main grid body */}
             <div className="flex" style={{ height: metrics.gridHeight }}>
-              {/* Sticky time axis */}
+              {/* Sticky time axis — now includes 19:00 */}
               <div
                 className="sticky left-0 z-20 bg-surface-container-low border-r border-surface-variant shrink-0"
                 style={{ width: metrics.axisWidth }}
               >
-                {timeSlots.map((time, i) => (
+                {timeBoundaries.map((time, i) => (
                   <div
                     key={time}
                     style={{
@@ -337,7 +338,6 @@ function GridBody({
                 className="relative"
                 style={{ width: gridWidth, height: metrics.gridHeight }}
               >
-
                 {/* Today column tint */}
                 {todayIdx >= 0 && (
                   <div
@@ -354,9 +354,10 @@ function GridBody({
                     }}
                   />
                 )}
-                {/* ── Zebra shading: every other 30-min slot ── */}
-                {Array.from({ length: slotCount - 1 }).map((_, i) => {
-                  if (i % 2 === 0) return null; // leave even rows transparent
+
+                {/* Zebra shading: every other 30-min slot */}
+                {Array.from({ length: boundaryCount - 1 }).map((_, i) => {
+                  if (i % 2 === 0) return null;
                   return (
                     <div
                       key={`zebra-${i}`}
@@ -374,23 +375,6 @@ function GridBody({
                     />
                   );
                 })}
-
-                {/* ── Today column tint ── */}
-                {todayIdx >= 0 && (
-                  <div
-                    aria-hidden
-                    style={{
-                      position: 'absolute',
-                      left: todayIdx * metrics.dayWidth,
-                      top: 0,
-                      width: metrics.dayWidth,
-                      height: metrics.gridHeight,
-                      backgroundColor: 'rgba(220, 38, 38, 0.05)',
-                      pointerEvents: 'none',
-                      zIndex: 0,
-                    }}
-                  />
-                )}
 
                 {shouldRenderDropCells &&
                   allCells.map((cell, idx) => {
