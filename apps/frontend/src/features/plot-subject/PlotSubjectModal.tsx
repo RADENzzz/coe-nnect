@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   plotSubject,
@@ -10,6 +10,11 @@ import {
 import { fetchSections } from '../../api/sections.api';
 import type { ScheduleEntry } from '../timetable/types';
 import Icon from '../../components/ui/Icon';
+import TimeSlotSelect from '../../components/ui/TimeSlotSelect';
+import {
+  generateSlotBoundaries,
+  formatTime,
+} from '../timetable/utils/time.util';
 
 const DAYS = [
   'Monday',
@@ -20,12 +25,11 @@ const DAYS = [
   'Saturday',
 ] as const;
 
-const TIME_OPTIONS = [
-  '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
-  '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
-  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
-  '16:00', '16:30', '17:00', '17:30', '18:00', '18:30',
-];
+/**
+ * Boundaries inclusive of operating-hours end (19:00).
+ * Values stay 24h internally; display is AM/PM via formatTime().
+ */
+const TIME_OPTIONS = generateSlotBoundaries(); // ['07:00', ..., '18:30', '19:00']
 
 const DAY_ABBR_TO_FULL: Record<string, string> = {
   MON: 'Monday',
@@ -107,6 +111,16 @@ export default function PlotSubjectModal({
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
 
+  // Start times: all boundaries except the last (can't start at 19:00)
+  const startOptions = useMemo(() => TIME_OPTIONS.slice(0, -1), []);
+
+  // End times: boundaries strictly after the selected start
+  const endOptions = useMemo(() => {
+    const startIdx = TIME_OPTIONS.indexOf(form.startTime);
+    if (startIdx === -1) return TIME_OPTIONS.slice(1);
+    return TIME_OPTIONS.slice(startIdx + 1);
+  }, [form.startTime]);
+
   // Prefill / reset when the modal opens or the editing target changes
   useEffect(() => {
     if (!open) {
@@ -152,6 +166,18 @@ export default function PlotSubjectModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubject?.subjectId, allowsLaboratory, allowsLecture]);
 
+  // If start time changes and end time is now invalid, bump end time
+  useEffect(() => {
+    const startIdx = TIME_OPTIONS.indexOf(form.startTime);
+    const endIdx = TIME_OPTIONS.indexOf(form.endTime);
+    if (startIdx !== -1 && endIdx !== -1 && endIdx <= startIdx) {
+      const nextEnd = TIME_OPTIONS[startIdx + 1];
+      if (nextEnd) {
+        setForm((prev) => ({ ...prev, endTime: nextEnd }));
+      }
+    }
+  }, [form.startTime, form.endTime]);
+
   // Debounced live validation
   useEffect(() => {
     if (!open || !form.subjectId || !form.roomId || !form.dayOfWeek) return;
@@ -169,8 +195,6 @@ export default function PlotSubjectModal({
           startTime: form.startTime,
           endTime: form.endTime,
           loadType: form.loadType,
-          // In edit mode, exclude the entry being edited so we don't
-          // detect a conflict with itself.
           excludeId: editing?.id,
         });
         setValidation(result);
@@ -233,7 +257,6 @@ export default function PlotSubjectModal({
 
     setSubmitting(true);
     try {
-      // ── Fresh validation right before submit (avoids debounce race) ──
       const fresh = await validatePlot({
         termId,
         subjectId: form.subjectId,
@@ -255,7 +278,6 @@ export default function PlotSubjectModal({
         return;
       }
 
-      // ── Safe to persist ──
       if (isEditMode && editing) {
         updateMutation.mutate({
           id: editing.id,
@@ -478,37 +500,23 @@ export default function PlotSubjectModal({
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Start *
               </label>
-              <select
-                name="startTime"
-                required
+              <TimeSlotSelect
                 value={form.startTime}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              >
-                {TIME_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, startTime: v }))}
+                options={startOptions}
+                ariaLabel="Start time"
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 End *
               </label>
-              <select
-                name="endTime"
-                required
+              <TimeSlotSelect
                 value={form.endTime}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              >
-                {TIME_OPTIONS.slice(1).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((prev) => ({ ...prev, endTime: v }))}
+                options={endOptions}
+                ariaLabel="End time"
+              />
             </div>
           </div>
 
