@@ -126,7 +126,7 @@ export default function ResponsiveTable<T>({
                       c.headerClassName,
                     )}
                   >
-                    {c.header}
+                    {typeof c.header === 'string' ? c.header : c.header}
                   </th>
                 );
               })}
