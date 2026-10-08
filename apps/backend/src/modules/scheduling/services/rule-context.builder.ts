@@ -315,7 +315,7 @@ export class RuleContextBuilder {
       }));
   }
 
-  private async loadConfig(): Promise<SchedulingConfig> {
+    private async loadConfig(): Promise<SchedulingConfig> {
     const { data } = await this.db
       .from('scheduling_setting')
       .select('setting_key, value');

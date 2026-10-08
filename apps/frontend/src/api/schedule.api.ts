@@ -43,6 +43,46 @@ export interface Term {
   isActive: boolean;
 }
 
+export interface UnscheduledBlock {
+  sectionId: string;
+  sectionCode: string;
+  subjectId: string;
+  subjectCode: string;
+  kind: 'lecture' | 'lab';
+  sessionIndex: number;
+}
+
+export interface RoomDeficit {
+  roomType: string;
+  neededHours: number;
+  availableHours: number;
+  shortByHours: number;
+  suggestedExtraRooms: number;
+}
+
+export interface AutoGenerateResult {
+  success: boolean;
+  message?: string;
+  scheduleCount?: number;
+  solveTimeSeconds?: number | null;
+  warnings?: Array<{ ruleId: string; ruleName: string; reason: string }>;
+  failures?: Array<{ ruleId: string; ruleName: string; reason: string }>;
+  unscheduled?: UnscheduledBlock[];
+  roomDeficits?: RoomDeficit[];   // ← NEW
+}
+
+export async function autoGenerateSchedule(
+  termId: string,
+  deptId: string,
+): Promise<AutoGenerateResult> {
+  const { data } = await api.post(
+    '/v1/schedules/auto-generate',
+    { termId, deptId },
+    { timeout: 120_000 }, // 2 min — CP-SAT can take up to 60s
+  );
+  return data.data;
+}
+
 export async function updateRemarks(
   id: string,
   remarks: string,
