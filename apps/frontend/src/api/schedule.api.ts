@@ -52,7 +52,40 @@ export interface UnscheduledBlock {
   sessionIndex: number;
 }
 
+export interface RoomDeficitDetail {
+  roomType: string;
+  neededHours: number;
+  availableHours: number;
+  shortByHours: number;
+  suggestedExtraRooms: number;
+}
 
+export interface RoomSufficiencyReport {
+  deptId: string;
+  deptCode: string;
+  deptName: string;
+  termId: string;
+  termLabel: string | null;
+  sufficient: boolean;
+  hint: string;
+  deficits: RoomDeficitDetail[];
+  totals: {
+    subjects: number;
+    sections: number;
+    blocks: number;
+    rooms: number;
+  };
+}
+
+export async function fetchRoomSufficiency(params?: {
+  deptId?: string;
+  termId?: string;
+}): Promise<RoomSufficiencyReport[]> {
+  const { data } = await api.get('/v1/schedules/room-sufficiency', {
+    params,
+  });
+  return data.data;
+}
 
 export interface RoomDeficit {
   roomType: string;
