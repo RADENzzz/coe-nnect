@@ -97,4 +97,11 @@ export class SchedulingController {
     );
     return { data };
   }
+  @Delete('auto-drafts')
+  async clearAutoDrafts(@Query('termId') termId: string) {
+    const data = await this.service.clearAutoDrafts(termId);
+    return { data };
+  }
+
+  
 }
