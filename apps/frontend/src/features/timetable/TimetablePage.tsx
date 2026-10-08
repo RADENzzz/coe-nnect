@@ -32,6 +32,7 @@ import ExportToolbar from './export/ExportToolbar';
 import type { GridDensity } from './components/GridMetricsContext';
 import { useMoveSchedule } from './hooks/useMoveSchedule';
 import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
+import { fetchAllProspectus } from '../../api/prospectus.api';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -47,6 +48,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
+  
 
   return {
     id: raw.scheduleId,
@@ -84,6 +86,8 @@ const QUERY_VIEW_MAP: Record<string, ViewMode> = {
   faculty: 'faculty',
   section: 'section',
 };
+
+
 
 function defaultLayoutForViewport(): LayoutMode {
   if (typeof window === 'undefined') return 'grid';
@@ -124,6 +128,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoPreview, setAutoPreview] = useState<ScheduleEntry[] | null>(null);
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
+
+  const { data: prospectus = [] } = useQuery({
+    queryKey: ['prospectus-all'],
+    queryFn: fetchAllProspectus,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // ── Handle ?view= query param ──
   const [searchParams, setSearchParams] = useSearchParams();
@@ -768,13 +779,28 @@ export default function TimetablePage({ readOnly = false }: Props) {
           }}
           termId={activeTerm.termId}
           editing={editEntry}
-          subjects={subjects.map((s) => ({
-            subjectId: s.subjectId,
-            subjectCode: s.subjectCode,
-            title: s.title,
-            lectureUnits: s.lectureUnits,
-            labUnits: s.labUnits,
+          departments={departments.map((d) => ({
+            deptId: String(d.deptId),
+            deptCode: d.deptCode,
+            deptName: d.deptName,
           }))}
+          subjects={subjects.map((s) => {
+            const years = prospectus
+              .filter((p) => p.subjectId === s.subjectId)
+              .map((p) => ({
+                yearLevel: p.yearLevel,
+                semester: p.semester,
+              }));
+            return {
+              subjectId: s.subjectId,
+              subjectCode: s.subjectCode,
+              title: s.title,
+              lectureUnits: s.lectureUnits,
+              labUnits: s.labUnits,
+              deptId: s.deptId,
+              prospectusYears: years,
+            };
+          })}
           faculty={faculty.map((f) => ({
             facultyId: f.facultyId,
             firstName: f.firstName,

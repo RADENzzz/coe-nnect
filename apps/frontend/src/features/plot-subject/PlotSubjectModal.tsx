@@ -47,6 +47,8 @@ interface SubjectOption {
   title: string;
   lectureUnits: number;
   labUnits: number;
+  deptId?: string;
+  prospectusYears?: Array<{ yearLevel: number; semester: string }>;
 }
 
 interface FacultyOption {
@@ -62,6 +64,12 @@ interface RoomOption {
   roomType: string;
 }
 
+interface DepartmentOption {
+  deptId: string;
+  deptCode: string;
+  deptName: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -71,6 +79,7 @@ interface Props {
   rooms: RoomOption[];
   /** When provided, the modal runs in edit mode. */
   editing?: ScheduleEntry | null;
+  departments?: DepartmentOption[];
 }
 
 const EMPTY_FORM = {
@@ -92,6 +101,7 @@ export default function PlotSubjectModal({
   faculty,
   rooms,
   editing = null,
+  departments = [],
 }: Props) {
   const queryClient = useQueryClient();
   const isEditMode = !!editing;
@@ -107,6 +117,11 @@ export default function PlotSubjectModal({
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Filter state ──
+  const [filterDept, setFilterDept] = useState('');
+  const [filterYear, setFilterYear] = useState('');
+  const [filterSem, setFilterSem] = useState('');
+
   const selectedSubject = subjects.find((s) => s.subjectId === form.subjectId);
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
@@ -121,6 +136,54 @@ export default function PlotSubjectModal({
     return TIME_OPTIONS.slice(startIdx + 1);
   }, [form.startTime]);
 
+  // ── Filtered subject list ──
+  const filteredSubjects = useMemo(() => {
+    return subjects.filter((s) => {
+      if (filterDept && String(s.deptId ?? '') !== filterDept) return false;
+      if (filterYear || filterSem) {
+        const years = s.prospectusYears ?? [];
+        if (years.length === 0) return false; // No prospectus entry — exclude
+        const match = years.some((y) => {
+          if (filterYear && String(y.yearLevel) !== filterYear) return false;
+          if (filterSem && y.semester !== filterSem) return false;
+          return true;
+        });
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [subjects, filterDept, filterYear, filterSem]);
+
+  // Clear selected subject if filters make it invalid
+  useEffect(() => {
+    if (!form.subjectId) return;
+    const stillValid = filteredSubjects.some(
+      (s) => s.subjectId === form.subjectId,
+    );
+    if (!stillValid) {
+      setForm((prev) => ({ ...prev, subjectId: '' }));
+    }
+  }, [filteredSubjects, form.subjectId]);
+
+  // ── Faculty grouped by department ──
+  const facultyGroups = useMemo(() => {
+    const groups = new Map<string, FacultyOption[]>();
+    for (const f of faculty) {
+      const dept = departments.find(
+        (d) => String(d.deptId) === String(f.deptId ?? ''),
+      );
+      const label = dept
+        ? `[${dept.deptCode}] ${dept.deptName}`
+        : 'Unassigned';
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label)!.push(f);
+    }
+    // Return as sorted array of [label, faculty[]] entries
+    return Array.from(groups.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    );
+  }, [faculty, departments]);
+
   // Prefill / reset when the modal opens or the editing target changes
   useEffect(() => {
     if (!open) {
@@ -128,6 +191,9 @@ export default function PlotSubjectModal({
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
+      setFilterDept('');
+      setFilterYear('');
+      setFilterSem('');
       return;
     }
     if (editing) {
@@ -317,6 +383,8 @@ export default function PlotSubjectModal({
     !form.facultyId ||
     (touched && (validation?.hardConflicts.length ?? 0) > 0);
 
+  const hasActiveFilter = filterDept || filterYear || filterSem;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
@@ -346,6 +414,65 @@ export default function PlotSubjectModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* ── Filters ── (hidden in edit mode since subject is locked) */}
+          {!isEditMode && (
+            <div className="rounded-lg border border-surface-variant bg-surface-container-low p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                  Filter subjects
+                </span>
+                {hasActiveFilter && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterDept('');
+                      setFilterYear('');
+                      setFilterSem('');
+                    }}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <select
+                  value={filterDept}
+                  onChange={(e) => setFilterDept(e.target.value)}
+                  className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
+                >
+                  <option value="">All departments</option>
+                  {departments.map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
+                >
+                  <option value="">Any year</option>
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+                <select
+                  value={filterSem}
+                  onChange={(e) => setFilterSem(e.target.value)}
+                  className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
+                >
+                  <option value="">Any semester</option>
+                  <option value="1st">1st</option>
+                  <option value="2nd">2nd</option>
+                  <option value="summer">Summer</option>
+                </select>
+              </div>
+            </div>
+          )}
+
           {/* Subject */}
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -364,8 +491,12 @@ export default function PlotSubjectModal({
               disabled={isEditMode}
               className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <option value="">Select a subject…</option>
-              {subjects.map((s) => (
+              <option value="">
+                {filteredSubjects.length === 0
+                  ? 'No subjects match your filters'
+                  : `Select a subject… (${filteredSubjects.length} available)`}
+              </option>
+              {filteredSubjects.map((s) => (
                 <option key={s.subjectId} value={s.subjectId}>
                   [{s.subjectCode}] {s.title}
                 </option>
@@ -447,11 +578,14 @@ export default function PlotSubjectModal({
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
                 <option value="">Select a faculty…</option>
-                {faculty.map((f) => (
-                  <option key={f.facultyId} value={f.facultyId}>
-                    {f.lastName}, {f.firstName}
-                    {f.deptId ? ` (dept ${f.deptId})` : ''}
-                  </option>
+                {facultyGroups.map(([label, facs]) => (
+                  <optgroup key={label} label={label}>
+                    {facs.map((f) => (
+                      <option key={f.facultyId} value={f.facultyId}>
+                        {f.lastName}, {f.firstName}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>

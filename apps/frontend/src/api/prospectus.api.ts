@@ -12,6 +12,19 @@ export interface ProgramRef {
   programName: string;
 }
 
+export async function fetchAllProspectus(): Promise<
+  Array<{
+    prospectusId: string;
+    programId: string;
+    subjectId: string;
+    yearLevel: number;
+    semester: string;
+  }>
+> {
+  const { data } = await api.get('/v1/prospectus');
+  return data.data;
+}
+
 export interface SubjectRef {
   subjectId: string;
   subjectCode: string;
