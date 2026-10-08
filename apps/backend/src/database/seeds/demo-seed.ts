@@ -73,115 +73,136 @@ const PROGRAMS = [
 //   - required_room_type = 'laboratory' or 'computer_lab' → enforces room type match
 //
 // Units from PDF: LEC, LAB, TOTAL columns
+// ── Subjects ──
+// Real BSCPE curriculum, effective SY 2023-2024
+// (CHED CMO #87 s. 2017 + BOR Res. No. 70 s. 2023)
+//
+// Format: { subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_code, source_dept }
+//   - required_room_type = null     → lecture room or any
+//   - required_room_type = 'laboratory' | 'computer_lab' → enforces room type match
+//   - source_dept = null     → CPE-owned (scheduled by CPE solver)
+//   - source_dept = 'X'      → external (Math, GenEd, PE, EPIC, NSTP Office) — not scheduled by CPE solver
 const SUBJECTS = [
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 1 — 1st Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'BEM 111',    title: 'Engineering Calculus 1',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'BES 111',    title: 'Chemistry for Engineers',             total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 111',    title: 'Computer Engineering as Discipline',  total_units: 1, lecture_units: 1, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 113',    title: 'Programming Logic and Design',        total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 115',    title: 'Computer Hardware Fundamentals',      total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'US 101',     title: 'Understanding the Self',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'MATH 100',   title: 'Mathematics in the Modern World',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CAS 101',    title: 'Purposive Communication',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'PATHFit 1',  title: 'Movement and Competency Training',    total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'NSTP 1',     title: 'CWTS 1 / LTS 1 / ROTC 1',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'EPIC 1',     title: 'EPIC Start 1',                        total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 111',    title: 'Engineering Calculus 1',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'BES 111',    title: 'Chemistry for Engineers',             total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'CPE 111',    title: 'Computer Engineering as Discipline',  total_units: 1, lecture_units: 1, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 113',    title: 'Programming Logic and Design',        total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 115',    title: 'Computer Hardware Fundamentals',      total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'US 101',     title: 'Understanding the Self',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'MATH 100',   title: 'Mathematics in the Modern World',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'CAS 101',    title: 'Purposive Communication',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 1',  title: 'Movement and Competency Training',    total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'NSTP 1',     title: 'CWTS 1 / LTS 1 / ROTC 1',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'NSTP Office' },
+  { subject_code: 'EPIC 1',     title: 'EPIC Start 1',                        total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
 
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 1 — 2nd Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'BEM 112',    title: 'Engineering Calculus 2',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'BES 112',    title: 'Physics for Engineers',               total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'BEM 114',    title: 'Engineering Data Analytics',          total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 114',    title: 'Object-oriented Programming',         total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 112',    title: 'Discrete Mathematics',                total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'STS 100',    title: 'Science, Technology and Society',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'ETHICS 101', title: 'Ethics',                              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'PATHFit 2',  title: 'Exercise-based Fitness Activities',   total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'NSTP 2',     title: 'CWTS 2 / LTS 2 / ROTC 2',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'EPIC 2',     title: 'EPIC Start 2',                        total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 112',    title: 'Engineering Calculus 2',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'BES 112',    title: 'Physics for Engineers',               total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'BEM 114',    title: 'Engineering Data Analytics',          total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'CPE 114',    title: 'Object-oriented Programming',         total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 112',    title: 'Discrete Mathematics',                total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'STS 100',    title: 'Science, Technology and Society',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'ETHICS 101', title: 'Ethics',                              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 2',  title: 'Exercise-based Fitness Activities',   total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'NSTP 2',     title: 'CWTS 2 / LTS 2 / ROTC 2',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'NSTP Office' },
+  { subject_code: 'EPIC 2',     title: 'EPIC Start 2',                        total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
 
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 2 — 1st Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'BEM 121',    title: 'Differential Equations',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'BES 121',    title: 'Computer-Aided Drafting',             total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 121',    title: 'Data Structures and Algorithms',      total_units: 4, lecture_units: 2, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 123',    title: 'Fundamentals of Electrical Circuits', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 125',    title: 'Design Thinking and Innovation',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 127',    title: 'Fundamentals of Artificial Intelligence', total_units: 3, lecture_units: 1, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'BES 123',    title: 'Engineering Economics',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'HIST 100',   title: 'Life & Works of Rizal',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'PATHFit 3',  title: 'Dance / Sports / Martial Arts / Group Exercise', total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null, dept_code: 'BSCPE' },
-  { subject_code: 'EPIC 3',     title: 'EPIC Accelerate 3',                   total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 121',    title: 'Differential Equations',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'BES 121',    title: 'Computer-Aided Drafting',             total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'CPE 121',    title: 'Data Structures and Algorithms',      total_units: 4, lecture_units: 2, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 123',    title: 'Fundamentals of Electrical Circuits', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 125',    title: 'Design Thinking and Innovation',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 127',    title: 'Fundamentals of Artificial Intelligence', total_units: 3, lecture_units: 1, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'BES 123',    title: 'Engineering Economics',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'HIST 100',   title: 'Life & Works of Rizal',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 3',  title: 'Dance / Sports / Martial Arts / Group Exercise', total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null, dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'EPIC 3',     title: 'EPIC Accelerate 3',                   total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
 
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 2 — 2nd Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'BEM 122',    title: 'Numerical Methods',                   total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 122',    title: 'Software Design',                     total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 124',    title: 'Fundamentals of Digital Systems',     total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 126',    title: 'Fundamentals of Electronic Circuits', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 128',    title: 'Web Development',                     total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CW 101',     title: 'The Contemporary World',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'PHILCON',    title: 'Philippine Constitution',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'PATHFit 4',  title: 'Dance 2 / Sports 2 / Martial Arts 2', total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'EPIC 4',     title: 'EPIC Accelerate 4',                   total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 122',    title: 'Numerical Methods',                   total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'CPE 122',    title: 'Software Design',                     total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 124',    title: 'Fundamentals of Digital Systems',     total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 126',    title: 'Fundamentals of Electronic Circuits', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 128',    title: 'Web Development',                     total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CW 101',     title: 'The Contemporary World',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PHILCON',    title: 'Philippine Constitution',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 4',  title: 'Dance 2 / Sports 2 / Martial Arts 2', total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'EPIC 4',     title: 'EPIC Accelerate 4',                   total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
 
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 3 — 1st Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'CPE 131',    title: 'Logic Circuits and Design',           total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 133',    title: 'Data and Digital Communication',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 135',    title: 'Feedback and Control Systems',        total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 137',    title: 'Computer Engineering Drafting and Design', total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 141',    title: 'Fundamentals of Mixed Signals and Sensors', total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,      dept_code: 'BSCPE' },
-  { subject_code: 'CPE 143',    title: 'Operating System',                    total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 145',    title: 'Introduction to HDL',                 total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 131',    title: 'Logic Circuits and Design',           total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 133',    title: 'Data and Digital Communication',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 135',    title: 'Feedback and Control Systems',        total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 137',    title: 'Computer Engineering Drafting and Design', total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 141',    title: 'Fundamentals of Mixed Signals and Sensors', total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,      dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 143',    title: 'Operating System',                    total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 145',    title: 'Introduction to HDL',                 total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE NETWORK 1', title: 'Fundamentals of Networking',      total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
 
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 3 — 2nd Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'CPE 132',    title: 'Microprocessors',                     total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 134',    title: 'Methods of Research',                 total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 136',    title: 'Computer Networks and Security',      total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 138',    title: 'Digital Signal Processing',           total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'BES 142',    title: 'Technopreneurship 101',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'HIST 101',   title: 'Readings in Philippine History',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'A&H 100',    title: 'Art Appreciation',                    total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 132',    title: 'Microprocessors',                     total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 134',    title: 'Methods of Research',                 total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 136',    title: 'Computer Networks and Security',      total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 138',    title: 'Digital Signal Processing',           total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'BES 142',    title: 'Technopreneurship 101',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'HIST 101',   title: 'Readings in Philippine History',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'A&H 100',    title: 'Art Appreciation',                    total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'CPE NETWORK 2', title: 'Routing Protocols and Concepts',  total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
 
-  // ─────────────────────────────────────────
-  // NETWORK TRACK ELECTIVES (Year 3 and 4)
-  // — CHOSEN BY MAJORITY OF THE BATCH (23/38)
-  // — SD/RPA/TECHNO tracks exist in the SRS but are not modeled here
-  // ─────────────────────────────────────────
-  { subject_code: 'CPE NETWORK 1', title: 'Fundamentals of Networking',      total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE NETWORK 2', title: 'Routing Protocols and Concepts',  total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE NETWORK 3', title: 'LAN Switching and Wireless',      total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-
-  // ─────────────────────────────────────────
-  // SUMMER CLASS
-  // ─────────────────────────────────────────
-  { subject_code: 'CPE 147',    title: 'Embedded Systems',                    total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE' },
-  { subject_code: 'CPE 149',    title: 'CpE Practice and Design 1',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 4 — 1st Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'CPE 151',    title: 'CpE Laws and Professional Practice',  total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 153',    title: 'Basic Occupational Health & Safety',  total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 155',    title: 'CpE Practice and Design 2',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 151',    title: 'CpE Laws and Professional Practice',  total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 153',    title: 'Basic Occupational Health & Safety',  total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 155',    title: 'CpE Practice and Design 2',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE NETWORK 3', title: 'LAN Switching and Wireless',      total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
 
-  // ─────────────────────────────────────────
+  // ═════════════════════════════════════════
   // YEAR 4 — 2nd Semester
-  // ─────────────────────────────────────────
-  { subject_code: 'CPE 152',    title: 'Emerging Technologies in CpE',        total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 154',    title: 'Computer Architecture and Organization', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 156',    title: 'CpE Practice and Design 2',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE' },
-  { subject_code: 'CPE 158',    title: 'Seminars and Field Trips',            total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE' },
-  { subject_code: 'CPE 160',    title: 'On-the-Job Training (240 hours)',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE' },
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 152',    title: 'Emerging Technologies in CpE',        total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 154',    title: 'Computer Architecture and Organization', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 156',    title: 'CpE Practice and Design 2',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 158',    title: 'Seminars and Field Trips',            total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 160',    title: 'On-the-Job Training (240 hours)',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // SUMMER CLASS
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 147',    title: 'Embedded Systems',                    total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 149',    title: 'CpE Practice and Design 1',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // TRACK ELECTIVES — SD, RPA, TECHNO
+  // (NETWORK track already defined above)
+  // These are seeded as subjects only — not in PROSPECTUS yet,
+  // because the SRS doesn't model per-section track selection.
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE SD 1',     title: 'Database Management Systems',   total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE SD 2',     title: 'Software Engineering',          total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE SD 3',     title: 'Management Information System', total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  { subject_code: 'CPE RPA 1',    title: 'Vision Intelligence and Machine Learning', total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE RPA 2',    title: 'Deep Learning',                 total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE RPA 3',    title: 'Data Analytics',                total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  { subject_code: 'CPE TECHNO 1', title: 'Basic Accounting',              total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE TECHNO 2', title: 'Development of Enterprise',     total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE TECHNO 3', title: 'Management of Technology Enterprise', total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: null,     dept_code: 'BSCPE', source_dept: null },
 ];
 
 // ── Prospectus ──
@@ -413,7 +434,7 @@ const SETTINGS = [
   { setting_key: 'lab_split_hours', value: 3 },
   { setting_key: 'lecture_block_minutes', value: 90 },
   { setting_key: 'daytime_priority_end_hour', value: '17:30' },
-
+  { setting_key: 'auto_generate_soft_rules', value: ['H-4', 'H-6', 'S-7', 'S-2'] },
   // ── NEW: configurable block-duration rules ──
   { setting_key: 'lecture_minutes_per_unit', value: 30 },
   { setting_key: 'lecture_minimum_minutes', value: 60 },
@@ -566,6 +587,7 @@ async function main() {
       lab_units: s.lab_units,
       required_room_type: s.required_room_type,
       dept_id: deptId,
+      source_dept: s.source_dept ?? null,
     });
     if (error) {
       console.error(`Subject ${s.subject_code}:`, error.message);
