@@ -346,7 +346,7 @@ export class SchedulingService {
       result.schedule,
       userId,
     );
-
+    await this.persistUnscheduled(termId, result.unscheduled ?? []);
     return {
       success: true,
       scheduleCount: saved.length,
@@ -730,6 +730,111 @@ export class SchedulingService {
   // ────────────────────────────────────────────
   // persistDraftSchedule
   // ────────────────────────────────────────────
+    /**
+   * Persist the "couldn't be placed" list from the solver.
+   * Wipes prior entries for the term first (since each generate produces
+   * a fresh list), then inserts the current batch.
+   */
+  private async persistUnscheduled(
+    termId: string,
+    unscheduled: Array<{
+      sectionId: string;
+      subjectId: string;
+      kind: 'lecture' | 'lab';
+      sessionIndex: number;
+    }>,
+  ): Promise<void> {
+    const db = this.supabase.getAdminClient();
+
+    // Clear old entries for this term
+    const { error: clearErr } = await db
+      .from('schedule_unscheduled')
+      .delete()
+      .eq('term_id', termId);
+
+    if (clearErr) {
+      this.logger.warn(
+        `Failed to clear old unscheduled rows: ${clearErr.message}`,
+      );
+    }
+
+    if (unscheduled.length === 0) return;
+
+    const rows = unscheduled.map((u) => ({
+      term_id: termId,
+      section_id: u.sectionId,
+      subject_id: u.subjectId,
+      kind: u.kind,
+      session_index: u.sessionIndex ?? 0,
+      reason: 'Could not find a non-conflicting time slot',
+    }));
+
+    const { error } = await db.from('schedule_unscheduled').insert(rows);
+
+    if (error) {
+      this.logger.error(
+        `Failed to persist unscheduled rows: ${error.message}`,
+      );
+      // Non-fatal — don't throw. The schedule was persisted successfully.
+      return;
+    }
+
+    this.logger.log(
+      `Persisted ${rows.length} unscheduled block(s) for term=${termId}`,
+    );
+  }
+
+  /**
+   * Read the persisted unscheduled list for a term. Used by the frontend
+   * "Needs plotting" panel.
+   */
+  async getUnscheduled(termId: string): Promise<
+    Array<{
+      unscheduledId: string;
+      sectionId: string | null;
+      sectionCode: string;
+      subjectId: string;
+      subjectCode: string;
+      subjectTitle: string;
+      kind: 'lecture' | 'lab';
+      sessionIndex: number;
+      reason: string | null;
+    }>
+  > {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('schedule_unscheduled')
+      .select(
+        `
+        unscheduled_id,
+        section_id,
+        subject_id,
+        kind,
+        session_index,
+        reason,
+        section:section_id ( section_code ),
+        subject:subject_id ( subject_code, title )
+        `,
+      )
+      .eq('term_id', termId);
+
+    if (error) {
+      this.logger.error(`getUnscheduled failed: ${error.message}`);
+      return [];
+    }
+
+    return (data ?? []).map((r) => ({
+      unscheduledId: String(r.unscheduled_id),
+      sectionId: r.section_id ? String(r.section_id) : null,
+      sectionCode: (r as any).section?.section_code ?? '?',
+      subjectId: String(r.subject_id),
+      subjectCode: (r as any).subject?.subject_code ?? '?',
+      subjectTitle: (r as any).subject?.title ?? '',
+      kind: r.kind as 'lecture' | 'lab',
+      sessionIndex: r.session_index ?? 0,
+      reason: r.reason ?? null,
+    }));
+  }
   private async persistDraftSchedule(
     termId: string,
     deptId: string,
