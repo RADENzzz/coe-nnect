@@ -23,24 +23,16 @@ async function findAuthUserByEmail(email: string) {
   if (error) return null;
   return (
     (data?.users ?? []).find(
-      (u) => (u as { email?: string }).email?.toLowerCase() === email.toLowerCase(),
+      (u) =>
+        (u as { email?: string }).email?.toLowerCase() === email.toLowerCase(),
     ) ?? null
   );
 }
 
 // ─────────────────────────────────────────────
-// Demo credentials — all dept heads share this password for convenience
+// Constants
 // ─────────────────────────────────────────────
 const DEMO_PASSWORD = 'Demo!2345';
-
-// ─────────────────────────────────────────────
-// Data to seed
-// ─────────────────────────────────────────────
-//
-// Seed order mirrors the SRS academic-structure flow:
-//   Departments → Subjects → Programs → Prospectus → Sections
-//   → Faculty → Users → Settings → Restrictions
-//
 
 const DEPARTMENTS = [
   {
@@ -65,214 +57,366 @@ const DEPARTMENTS = [
   },
 ];
 
-const SUBJECTS = [
-  // CpE — pure lecture
-  {
-    subject_code: 'CPE 101',
-    title: 'Programming Logic & Design',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-  {
-    subject_code: 'CPE 102',
-    title: 'Computer Programming 2',
-    total_units: 4,
-    lecture_units: 3,
-    lab_units: 1,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-  {
-    subject_code: 'CPE 103',
-    title: 'Digital Logic Laboratory',
-    total_units: 1,
-    lecture_units: 0,
-    lab_units: 1,
-    required_room_type: 'laboratory',
-    dept_code: 'BSCPE',
-  },
-  {
-    subject_code: 'CPE 104',
-    title: 'Data Structures & Algorithms',
-    total_units: 2,
-    lecture_units: 0,
-    lab_units: 2,
-    required_room_type: 'computer_lab',
-    dept_code: 'BSCPE',
-  },
-  // EE
-  {
-    subject_code: 'EE 101',
-    title: 'Circuit Analysis I',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'EE',
-  },
-  {
-    subject_code: 'EE 102',
-    title: 'Electronics I',
-    total_units: 4,
-    lecture_units: 3,
-    lab_units: 1,
-    required_room_type: null,
-    dept_code: 'EE',
-  },
-  // ME
-  {
-    subject_code: 'ME 101',
-    title: 'Engineering Mechanics',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'ME',
-  },
-  // General Ed — cross-dept usage
-  {
-    subject_code: 'MATH 101',
-    title: 'Engineering Calculus I',
-    total_units: 3,
-    lecture_units: 3,
-    lab_units: 0,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-  {
-    subject_code: 'PHYS 101',
-    title: 'Physics for Engineers',
-    total_units: 4,
-    lecture_units: 3,
-    lab_units: 1,
-    required_room_type: null,
-    dept_code: 'BSCPE',
-  },
-];
-
 const PROGRAMS = [
-  {
-    program_code: 'BSCPE',
-    program_name: 'BS Computer Engineering',
-    dept_code: 'BSCPE',
-  },
-  {
-    program_code: 'BSEE',
-    program_name: 'BS Electrical Engineering',
-    dept_code: 'EE',
-  },
-  {
-    program_code: 'BSME',
-    program_name: 'BS Mechanical Engineering',
-    dept_code: 'ME',
-  },
-  {
-    program_code: 'BSCE',
-    program_name: 'BS Civil Engineering',
-    dept_code: 'CE',
-  },
+  { program_code: 'BSCPE', program_name: 'BS Computer Engineering', dept_code: 'BSCPE' },
+  { program_code: 'BSEE',  program_name: 'BS Electrical Engineering', dept_code: 'EE' },
+  { program_code: 'BSME',  program_name: 'BS Mechanical Engineering', dept_code: 'ME' },
+  { program_code: 'BSCE',  program_name: 'BS Civil Engineering',      dept_code: 'CE' },
 ];
 
-// Prospectus entries: [program_code, subject_code, year_level, semester]
-// Semester is one of: '1st' | '2nd' | 'summer'
+// ── Subjects ──
+// Real BSCPE curriculum, effective SY 2023-2024
+// (CHED CMO #87 s. 2017 + BOR Res. No. 70 s. 2023)
+//
+// Format: { subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_code }
+//   - required_room_type = null     → lecture room or any
+//   - required_room_type = 'laboratory' or 'computer_lab' → enforces room type match
+//
+// Units from PDF: LEC, LAB, TOTAL columns
+// ── Subjects ──
+// Real BSCPE curriculum, effective SY 2023-2024
+// (CHED CMO #87 s. 2017 + BOR Res. No. 70 s. 2023)
+//
+// Format: { subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_code, source_dept }
+//   - required_room_type = null     → lecture room or any
+//   - required_room_type = 'laboratory' | 'computer_lab' → enforces room type match
+//   - source_dept = null     → CPE-owned (scheduled by CPE solver)
+//   - source_dept = 'X'      → external (Math, GenEd, PE, EPIC, NSTP Office) — not scheduled by CPE solver
+const SUBJECTS = [
+  // ═════════════════════════════════════════
+  // YEAR 1 — 1st Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 111',    title: 'Engineering Calculus 1',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'BES 111',    title: 'Chemistry for Engineers',             total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'CPE 111',    title: 'Computer Engineering as Discipline',  total_units: 1, lecture_units: 1, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 113',    title: 'Programming Logic and Design',        total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 115',    title: 'Computer Hardware Fundamentals',      total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'US 101',     title: 'Understanding the Self',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'MATH 100',   title: 'Mathematics in the Modern World',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'CAS 101',    title: 'Purposive Communication',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 1',  title: 'Movement and Competency Training',    total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'NSTP 1',     title: 'CWTS 1 / LTS 1 / ROTC 1',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'NSTP Office' },
+  { subject_code: 'EPIC 1',     title: 'EPIC Start 1',                        total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
+
+  // ═════════════════════════════════════════
+  // YEAR 1 — 2nd Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 112',    title: 'Engineering Calculus 2',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'BES 112',    title: 'Physics for Engineers',               total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'BEM 114',    title: 'Engineering Data Analytics',          total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'CPE 114',    title: 'Object-oriented Programming',         total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 112',    title: 'Discrete Mathematics',                total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'STS 100',    title: 'Science, Technology and Society',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'ETHICS 101', title: 'Ethics',                              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 2',  title: 'Exercise-based Fitness Activities',   total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'NSTP 2',     title: 'CWTS 2 / LTS 2 / ROTC 2',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'NSTP Office' },
+  { subject_code: 'EPIC 2',     title: 'EPIC Start 2',                        total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
+
+  // ═════════════════════════════════════════
+  // YEAR 2 — 1st Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 121',    title: 'Differential Equations',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'BES 121',    title: 'Computer-Aided Drafting',             total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'CPE 121',    title: 'Data Structures and Algorithms',      total_units: 4, lecture_units: 2, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 123',    title: 'Fundamentals of Electrical Circuits', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 125',    title: 'Design Thinking and Innovation',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 127',    title: 'Fundamentals of Artificial Intelligence', total_units: 3, lecture_units: 1, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'BES 123',    title: 'Engineering Economics',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'HIST 100',   title: 'Life & Works of Rizal',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 3',  title: 'Dance / Sports / Martial Arts / Group Exercise', total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null, dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'EPIC 3',     title: 'EPIC Accelerate 3',                   total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
+
+  // ═════════════════════════════════════════
+  // YEAR 2 — 2nd Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'BEM 122',    title: 'Numerical Methods',                   total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Math Dept' },
+  { subject_code: 'CPE 122',    title: 'Software Design',                     total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 124',    title: 'Fundamentals of Digital Systems',     total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 126',    title: 'Fundamentals of Electronic Circuits', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 128',    title: 'Web Development',                     total_units: 2, lecture_units: 0, lab_units: 2, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CW 101',     title: 'The Contemporary World',              total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PHILCON',    title: 'Philippine Constitution',             total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'PATHFit 4',  title: 'Dance 2 / Sports 2 / Martial Arts 2', total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'PE Dept' },
+  { subject_code: 'EPIC 4',     title: 'EPIC Accelerate 4',                   total_units: 3, lecture_units: 0, lab_units: 3, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'EPIC Office' },
+
+  // ═════════════════════════════════════════
+  // YEAR 3 — 1st Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 131',    title: 'Logic Circuits and Design',           total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 133',    title: 'Data and Digital Communication',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 135',    title: 'Feedback and Control Systems',        total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 137',    title: 'Computer Engineering Drafting and Design', total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 141',    title: 'Fundamentals of Mixed Signals and Sensors', total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,      dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 143',    title: 'Operating System',                    total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 145',    title: 'Introduction to HDL',                 total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE NETWORK 1', title: 'Fundamentals of Networking',      total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // YEAR 3 — 2nd Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 132',    title: 'Microprocessors',                     total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 134',    title: 'Methods of Research',                 total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 136',    title: 'Computer Networks and Security',      total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 138',    title: 'Digital Signal Processing',           total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'BES 142',    title: 'Technopreneurship 101',               total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Eng Sciences' },
+  { subject_code: 'HIST 101',   title: 'Readings in Philippine History',      total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'A&H 100',    title: 'Art Appreciation',                    total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: 'Liberal Arts' },
+  { subject_code: 'CPE NETWORK 2', title: 'Routing Protocols and Concepts',  total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // YEAR 4 — 1st Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 151',    title: 'CpE Laws and Professional Practice',  total_units: 2, lecture_units: 2, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 153',    title: 'Basic Occupational Health & Safety',  total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 155',    title: 'CpE Practice and Design 2',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE NETWORK 3', title: 'LAN Switching and Wireless',      total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // YEAR 4 — 2nd Semester
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 152',    title: 'Emerging Technologies in CpE',        total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 154',    title: 'Computer Architecture and Organization', total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 156',    title: 'CpE Practice and Design 2',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 158',    title: 'Seminars and Field Trips',            total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 160',    title: 'On-the-Job Training (240 hours)',     total_units: 3, lecture_units: 3, lab_units: 0, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // SUMMER CLASS
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE 147',    title: 'Embedded Systems',                    total_units: 4, lecture_units: 3, lab_units: 1, required_room_type: 'laboratory',   dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE 149',    title: 'CpE Practice and Design 1',           total_units: 1, lecture_units: 0, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  // ═════════════════════════════════════════
+  // TRACK ELECTIVES — SD, RPA, TECHNO
+  // (NETWORK track already defined above)
+  // These are seeded as subjects only — not in PROSPECTUS yet,
+  // because the SRS doesn't model per-section track selection.
+  // ═════════════════════════════════════════
+  { subject_code: 'CPE SD 1',     title: 'Database Management Systems',   total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE SD 2',     title: 'Software Engineering',          total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE SD 3',     title: 'Management Information System', total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  { subject_code: 'CPE RPA 1',    title: 'Vision Intelligence and Machine Learning', total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE RPA 2',    title: 'Deep Learning',                 total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE RPA 3',    title: 'Data Analytics',                total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: 'computer_lab', dept_code: 'BSCPE', source_dept: null },
+
+  { subject_code: 'CPE TECHNO 1', title: 'Basic Accounting',              total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE TECHNO 2', title: 'Development of Enterprise',     total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: null,           dept_code: 'BSCPE', source_dept: null },
+  { subject_code: 'CPE TECHNO 3', title: 'Management of Technology Enterprise', total_units: 3, lecture_units: 2, lab_units: 1, required_room_type: null,     dept_code: 'BSCPE', source_dept: null },
+];
+
+// ── Prospectus ──
+// Full BSCPE curriculum map. Only 1st-semester entries are used by
+// the solver (since term.semester doesn't exist yet — future SRS work).
+// All entries are seeded for completeness.
 const PROSPECTUS = [
-  { program_code: 'BSCPE', subject_code: 'CPE 101', year_level: 1, semester: '1st' },
-  { program_code: 'BSCPE', subject_code: 'MATH 101', year_level: 1, semester: '1st' },
-  { program_code: 'BSCPE', subject_code: 'CPE 102', year_level: 1, semester: '2nd' },
-  { program_code: 'BSCPE', subject_code: 'PHYS 101', year_level: 1, semester: '2nd' },
-  { program_code: 'BSCPE', subject_code: 'CPE 103', year_level: 2, semester: '1st' },
-  { program_code: 'BSCPE', subject_code: 'CPE 104', year_level: 2, semester: '2nd' },
-  { program_code: 'BSEE', subject_code: 'EE 101', year_level: 1, semester: '1st' },
-  { program_code: 'BSEE', subject_code: 'EE 102', year_level: 1, semester: '2nd' },
+  // YEAR 1 — 1st Sem
+  { program_code: 'BSCPE', subject_code: 'BEM 111',   year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'BES 111',   year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 111',   year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 113',   year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 115',   year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'US 101',    year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'MATH 100',  year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CAS 101',   year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'PATHFit 1', year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'NSTP 1',    year_level: 1, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'EPIC 1',    year_level: 1, semester: '1st' },
+
+  // YEAR 1 — 2nd Sem
+  { program_code: 'BSCPE', subject_code: 'BEM 112',   year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'BES 112',   year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'BEM 114',   year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 114',   year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 112',   year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'STS 100',   year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'ETHICS 101', year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'PATHFit 2', year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'NSTP 2',    year_level: 1, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'EPIC 2',    year_level: 1, semester: '2nd' },
+
+  // YEAR 2 — 1st Sem
+  { program_code: 'BSCPE', subject_code: 'BEM 121',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'BES 121',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 121',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 123',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 125',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 127',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'BES 123',   year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'HIST 100',  year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'PATHFit 3', year_level: 2, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'EPIC 3',    year_level: 2, semester: '1st' },
+
+  // YEAR 2 — 2nd Sem
+  { program_code: 'BSCPE', subject_code: 'BEM 122',   year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 122',   year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 124',   year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 126',   year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 128',   year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CW 101',    year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'PHILCON',   year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'PATHFit 4', year_level: 2, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'EPIC 4',    year_level: 2, semester: '2nd' },
+
+  // YEAR 3 — 1st Sem
+  { program_code: 'BSCPE', subject_code: 'CPE 131',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 133',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 135',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 137',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 141',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 143',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 145',   year_level: 3, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE NETWORK 1', year_level: 3, semester: '1st' },
+
+  // YEAR 3 — 2nd Sem
+  { program_code: 'BSCPE', subject_code: 'CPE 132',   year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 134',   year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 136',   year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 138',   year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'BES 142',   year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'HIST 101',  year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'A&H 100',   year_level: 3, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE NETWORK 2', year_level: 3, semester: '2nd' },
+
+  // YEAR 4 — 1st Sem
+  { program_code: 'BSCPE', subject_code: 'CPE 151',   year_level: 4, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 153',   year_level: 4, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE 155',   year_level: 4, semester: '1st' },
+  { program_code: 'BSCPE', subject_code: 'CPE NETWORK 3', year_level: 4, semester: '1st' },
+
+  // YEAR 4 — 2nd Sem
+  { program_code: 'BSCPE', subject_code: 'CPE 152',   year_level: 4, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 154',   year_level: 4, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 156',   year_level: 4, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 158',   year_level: 4, semester: '2nd' },
+  { program_code: 'BSCPE', subject_code: 'CPE 160',   year_level: 4, semester: '2nd' },
+
+  // SUMMER
+  { program_code: 'BSCPE', subject_code: 'CPE 147',   year_level: 3, semester: 'summer' },
+  { program_code: 'BSCPE', subject_code: 'CPE 149',   year_level: 3, semester: 'summer' },
 ];
 
-// NOTE: student_count removed per PM note (Oct 2026) — a section's
-// student count does not reliably indicate which subjects its students take.
+// ── Sections ──
+// 4 sections — one per year level. No sub-sections (per PM confirmation
+// Oct 2026: track split happens within the section, not as new sections).
 const SECTIONS = [
-  { section_code: 'CpE-1A', year_level: 1, student_count: 42 },
-  { section_code: 'CpE-1B', year_level: 1, student_count: 40 },
-  { section_code: 'CpE-2A', year_level: 2, student_count: 38 },
-  { section_code: 'CpE-3A', year_level: 3, student_count: 35 },
-  { section_code: 'EE-1A', year_level: 1, student_count: 30 },
+  { section_code: 'CpE-1A', program_code: 'BSCPE', year_level: 1 },
+  { section_code: 'CpE-2A', program_code: 'BSCPE', year_level: 2 },
+  { section_code: 'CpE-3A', program_code: 'BSCPE', year_level: 3 },
+  { section_code: 'CpE-4A', program_code: 'BSCPE', year_level: 4 },
 ];
 
+// ── Faculty ──
 const FACULTY = [
-  // CpE
-  {
-    wmsu_id: 'WMSU-001',
-    first_name: 'Juan',
-    last_name: 'Dela Cruz',
-    email: 'juan.dc@wmsu.edu.ph',
-    dept_code: 'BSCPE',
-    classification: 'regular',
-    required_hours: 18,
-  },
-  {
-    wmsu_id: 'WMSU-002',
-    first_name: 'Maria',
-    last_name: 'Santos',
-    email: 'maria.s@wmsu.edu.ph',
-    dept_code: 'BSCPE',
-    classification: 'regular',
-    required_hours: 18,
-  },
-  {
-    wmsu_id: 'WMSU-003',
-    first_name: 'Pedro',
-    last_name: 'Reyes',
-    email: 'pedro.r@wmsu.edu.ph',
-    dept_code: 'BSCPE',
-    classification: 'regular',
-    required_hours: 18,
-  },
-  // EE
-  {
-    wmsu_id: 'WMSU-004',
-    first_name: 'Ana',
-    last_name: 'Ramos',
-    email: 'ana.r@wmsu.edu.ph',
-    dept_code: 'EE',
-    classification: 'regular',
-    required_hours: 18,
-  },
-  {
-    wmsu_id: 'WMSU-005',
-    first_name: 'Luis',
-    last_name: 'Tan',
-    email: 'luis.t@wmsu.edu.ph',
-    dept_code: 'EE',
-    classification: 'regular',
-    required_hours: 18,
-  },
+  // BSCPE — 7 regular faculty
+  { wmsu_id: 'WMSU-001', first_name: 'Darcy Roy',  last_name: 'Francisco',   email: 'darcy.f@wmsu.edu.ph',   dept_code: 'BSCPE', classification: 'regular',           required_hours: 18 },
+  { wmsu_id: 'WMSU-002', first_name: 'Monira',     last_name: 'Kamlian',     email: 'monira.k@wmsu.edu.ph',  dept_code: 'BSCPE', classification: 'regular',           required_hours: 18 },
+  { wmsu_id: 'WMSU-003', first_name: 'Lemuel',     last_name: 'Bigay',       email: 'lemuel.b@wmsu.edu.ph',  dept_code: 'BSCPE', classification: 'regular',           required_hours: 18 },
+  { wmsu_id: 'WMSU-004', first_name: 'Ferdinand',  last_name: 'Guardo',      email: 'ferdinand.g@wmsu.edu.ph', dept_code: 'BSCPE', classification: 'regular',         required_hours: 18 },
+  { wmsu_id: 'WMSU-005', first_name: 'Gajil',      last_name: 'Santos',      email: 'gajil.s@wmsu.edu.ph',   dept_code: 'BSCPE', classification: 'regular',           required_hours: 18 },
+  { wmsu_id: 'WMSU-006', first_name: 'Fheldaura',  last_name: 'Abubakar',    email: 'fheldaura.a@wmsu.edu.ph', dept_code: 'BSCPE', classification: 'regular',         required_hours: 18 },
+  { wmsu_id: 'WMSU-007', first_name: 'Nadine',     last_name: 'Evangelista', email: 'nadine.e@wmsu.edu.ph',  dept_code: 'BSCPE', classification: 'regular',           required_hours: 18 },
+
+  // BSCPE — 2 visiting lecturers
+  { wmsu_id: 'WMSU-008', first_name: 'Brian',      last_name: 'Lanorias',    email: 'brian.l@wmsu.edu.ph',   dept_code: 'BSCPE', classification: 'visiting_lecturer', required_hours: 12 },
+  { wmsu_id: 'WMSU-009', first_name: 'Madie',      last_name: 'Ibno',        email: 'madie.i@wmsu.edu.ph',   dept_code: 'BSCPE', classification: 'visiting_lecturer', required_hours: 12 },
+
+  // EE — for cross-dept demo
+  { wmsu_id: 'WMSU-010', first_name: 'Ana',   last_name: 'Ramos', email: 'ana.r@wmsu.edu.ph', dept_code: 'EE', classification: 'regular', required_hours: 18 },
+  { wmsu_id: 'WMSU-011', first_name: 'Luis',  last_name: 'Tan',   email: 'luis.t@wmsu.edu.ph', dept_code: 'EE', classification: 'regular', required_hours: 18 },
+
   // ME
-  {
-    wmsu_id: 'WMSU-006',
-    first_name: 'Carlo',
-    last_name: 'Mendez',
-    email: 'carlo.m@wmsu.edu.ph',
-    dept_code: 'ME',
-    classification: 'regular',
-    required_hours: 18,
-  },
+  { wmsu_id: 'WMSU-012', first_name: 'Carlo', last_name: 'Mendez', email: 'carlo.m@wmsu.edu.ph', dept_code: 'ME', classification: 'regular', required_hours: 18 },
+
+  { wmsu_id: 'WMSU-013', first_name: 'Carla', last_name: 'Reyes',    email: 'carla.r@wmsu.edu.ph', dept_code: 'BSCPE', classification: 'visiting_lecturer', required_hours: 24 },
+  { wmsu_id: 'WMSU-014', first_name: 'Niel',  last_name: 'Domingo',  email: 'niel.d@wmsu.edu.ph',  dept_code: 'BSCPE', classification: 'visiting_lecturer', required_hours: 24 },
+  { wmsu_id: 'WMSU-015', first_name: 'Rosa',  last_name: 'Villamor', email: 'rosa.v@wmsu.edu.ph',  dept_code: 'BSCPE', classification: 'visiting_lecturer', required_hours: 24 },
 ];
 
-// Faculty qualifications — FR 3.1.8
-// Once a faculty member has at least one qualification, rule F-5 restricts
-// them to only these subjects. Faculty with no qualifications on file are
-// considered "unrestricted" (rule F-5 passes for anything).
+// ── Qualifications ──
+// Every prospectus subject must have at least 1 qualified faculty,
+// or the solver reports "no qualified faculty for X".
 const QUALIFICATIONS = [
-  { wmsu_id: 'WMSU-001', subject_code: 'CPE 101' },
-  { wmsu_id: 'WMSU-001', subject_code: 'CPE 102' },
-  { wmsu_id: 'WMSU-002', subject_code: 'CPE 103' },
-  { wmsu_id: 'WMSU-002', subject_code: 'CPE 104' },
-  { wmsu_id: 'WMSU-003', subject_code: 'CPE 101' },
-  { wmsu_id: 'WMSU-003', subject_code: 'MATH 101' },
-  { wmsu_id: 'WMSU-004', subject_code: 'EE 101' },
-  { wmsu_id: 'WMSU-004', subject_code: 'EE 102' },
-  { wmsu_id: 'WMSU-005', subject_code: 'EE 101' },
+  // Juan — programming + math + gen-ed cross
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 111' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 113' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 114' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 121' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 122' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 128' },
+  { wmsu_id: 'WMSU-001', subject_code: 'BEM 111' },
+  { wmsu_id: 'WMSU-001', subject_code: 'BEM 112' },
+  { wmsu_id: 'WMSU-001', subject_code: 'BEM 114' },
+  { wmsu_id: 'WMSU-001', subject_code: 'BEM 121' },
+  { wmsu_id: 'WMSU-001', subject_code: 'BEM 122' },
+  { wmsu_id: 'WMSU-001', subject_code: 'MATH 100' },
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 112' },
+
+  // Maria — hardware + architecture + lab
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 115' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 123' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 124' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 126' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 131' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 132' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 135' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 138' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 141' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 145' },
+  { wmsu_id: 'WMSU-002', subject_code: 'CPE 154' },
+  { wmsu_id: 'WMSU-002', subject_code: 'BES 111' },
+  { wmsu_id: 'WMSU-002', subject_code: 'BES 112' },
+  { wmsu_id: 'WMSU-002', subject_code: 'BES 121' },
+
+  // Pedro — systems + networking
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE 133' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE 136' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE 143' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE 147' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE 152' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE NETWORK 1' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE NETWORK 2' },
+  { wmsu_id: 'WMSU-003', subject_code: 'CPE NETWORK 3' },
+
+  // Rina — AI / capstone / design
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 127' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 134' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 137' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 149' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 151' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 155' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 156' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 158' },
+
+  // Marco — gen ed / cross-dept
+  { wmsu_id: 'WMSU-008', subject_code: 'US 101' },
+  { wmsu_id: 'WMSU-008', subject_code: 'CAS 101' },
+  { wmsu_id: 'WMSU-008', subject_code: 'STS 100' },
+  { wmsu_id: 'WMSU-008', subject_code: 'ETHICS 101' },
+  { wmsu_id: 'WMSU-008', subject_code: 'CW 101' },
+  { wmsu_id: 'WMSU-008', subject_code: 'PHILCON' },
+  { wmsu_id: 'WMSU-008', subject_code: 'HIST 100' },
+  { wmsu_id: 'WMSU-008', subject_code: 'HIST 101' },
+  { wmsu_id: 'WMSU-008', subject_code: 'A&H 100' },
+
+  // Elena — PE / NSTP / EPIC / practice
+  { wmsu_id: 'WMSU-009', subject_code: 'PATHFit 1' },
+  { wmsu_id: 'WMSU-009', subject_code: 'PATHFit 2' },
+  { wmsu_id: 'WMSU-009', subject_code: 'PATHFit 3' },
+  { wmsu_id: 'WMSU-009', subject_code: 'PATHFit 4' },
+  { wmsu_id: 'WMSU-009', subject_code: 'NSTP 1' },
+  { wmsu_id: 'WMSU-009', subject_code: 'NSTP 2' },
+  { wmsu_id: 'WMSU-009', subject_code: 'EPIC 1' },
+  { wmsu_id: 'WMSU-009', subject_code: 'EPIC 2' },
+  { wmsu_id: 'WMSU-009', subject_code: 'EPIC 3' },
+  { wmsu_id: 'WMSU-009', subject_code: 'EPIC 4' },
+
+  // Remaining subjects with fallback assignments
+  { wmsu_id: 'WMSU-001', subject_code: 'CPE 125' },
+  { wmsu_id: 'WMSU-002', subject_code: 'BES 123' },
+  { wmsu_id: 'WMSU-003', subject_code: 'BES 142' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 160' },
+  { wmsu_id: 'WMSU-007', subject_code: 'CPE 153' },
 ];
 
 const SETTINGS = [
@@ -290,46 +434,56 @@ const SETTINGS = [
   { setting_key: 'lab_split_hours', value: 3 },
   { setting_key: 'lecture_block_minutes', value: 90 },
   { setting_key: 'daytime_priority_end_hour', value: '17:30' },
+  { setting_key: 'auto_generate_soft_rules', value: ['H-4', 'H-6', 'S-7', 'S-2'] },
+  // ── NEW: configurable block-duration rules ──
+  { setting_key: 'lecture_minutes_per_unit', value: 30 },
+  { setting_key: 'lecture_minimum_minutes', value: 60 },
+  { setting_key: 'lab_minutes_per_unit', value: 180 },
+  { setting_key: 'lab_max_consecutive_minutes', value: 180 },
+  { setting_key: 'special_category_minutes_per_unit', value: 60 },
+  { setting_key: 'special_category_prefixes', value: 'PATHFit,NSTP,ROTC,CWTS,EPIC' },
 ];
 
-// Designations — FR 7.1.4
-// Release hours are granted in multiples of 3 per Sir Jhil's rules doc.
+const ROOMS = [
+  // ── Actual rooms ──
+  { room_number: '131', building: 'Engineering Bldg', room_type: 'lecture_room', capacity: null, dept_code: null },
+  { room_number: '206', building: 'Engineering Bldg', room_type: 'lecture_room', capacity: 45,   dept_code: null },
+  { room_number: 'TBA', building: 'Engineering Bldg', room_type: 'lecture_room', capacity: 50,   dept_code: null },
+  { room_number: '205', building: 'Engineering Bldg', room_type: 'laboratory',   capacity: 20,   dept_code: null },
+  { room_number: '203', building: 'Engineering Bldg', room_type: 'computer_lab', capacity: 40,   dept_code: null },
+  { room_number: '204', building: 'Engineering Bldg', room_type: 'computer_lab', capacity: 40,   dept_code: null },
+
+  // ── Theoretical rooms (placeholder) ──
+  { room_number: 'LAB-A (T)',  building: 'Theoretical', room_type: 'laboratory',   capacity: 30, dept_code: null },
+  { room_number: 'LAB-B (T)',  building: 'Theoretical', room_type: 'laboratory',   capacity: 30, dept_code: null },
+  { room_number: 'CLAB-A (T)', building: 'Theoretical', room_type: 'computer_lab', capacity: 40, dept_code: null },
+  { room_number: 'LEC-A (T)',  building: 'Theoretical', room_type: 'lecture_room', capacity: 45, dept_code: null },
+];
+
 const DESIGNATIONS = [
   { designation_name: 'Department Head', release_hours: 3 },
   { designation_name: 'TWG Member', release_hours: 6 },
 ];
 
 const USERS = [
-  {
-    email: 'admin@wmsu.edu.ph',
-    username: 'admin',
-    role: 'administrator',
-    dept_code: null,
-    wmsu_id: null,
-  },
-  {
-    email: 'head.cpe@wmsu.edu.ph',
-    username: 'head.cpe',
-    role: 'department_head',
-    dept_code: 'BSCPE',
-    wmsu_id: 'WMSU-001', // Juan Dela Cruz
-  },
-  {
-    email: 'head.ee@wmsu.edu.ph',
-    username: 'head.ee',
-    role: 'department_head',
-    dept_code: 'EE',
-    wmsu_id: 'WMSU-004', // Ana Ramos
-  },
-  {
-    email: 'head.me@wmsu.edu.ph',
-    username: 'head.me',
-    role: 'department_head',
-    dept_code: 'ME',
-    wmsu_id: 'WMSU-006', // Carlo Mendez
-  },
+  { email: 'admin@wmsu.edu.ph',    username: 'admin',    role: 'administrator',   dept_code: null,    wmsu_id: null },
+  { email: 'head.cpe@wmsu.edu.ph', username: 'head.cpe', role: 'department_head', dept_code: 'BSCPE', wmsu_id: 'WMSU-005' },
+  { email: 'head.ee@wmsu.edu.ph',  username: 'head.ee',  role: 'department_head', dept_code: 'EE',    wmsu_id: 'WMSU-010' },
+  { email: 'head.me@wmsu.edu.ph',  username: 'head.me',  role: 'department_head', dept_code: 'ME',    wmsu_id: 'WMSU-012' },
 ];
 
+// ── Term ──
+// A single active term so auto-generate has somewhere to write.
+const TERMS = [
+  {
+    term_name: '1st Semester',
+    school_year: '2025-2026',
+    semester: '1st',           
+    start_date: '2025-08-04',
+    end_date: '2025-12-15',
+    is_active: true,
+  },
+];
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
@@ -348,7 +502,11 @@ async function upsertByCode(table: string, codeCol: string, rows: any[]) {
       continue;
     }
 
-    const { data, error } = await supabase.from(table).insert(row).select().single();
+    const { data, error } = await supabase
+      .from(table)
+      .insert(row)
+      .select()
+      .single();
     if (error || !data) {
       console.error(`Failed to insert into ${table}:`, error?.message);
       process.exit(1);
@@ -364,55 +522,22 @@ async function upsertByCode(table: string, codeCol: string, rows: any[]) {
 // ─────────────────────────────────────────────
 async function main() {
   console.log('\n=== CoE-NNECT: Demo Seed ===\n');
-  console.log('Flow: Departments → Subjects → Programs → Prospectus → Sections → Faculty → Users → Settings → Restrictions\n');
+  console.log(
+    'Order: Depts → Programs → Subjects → Prospectus → Sections → Faculty → Quals → Users → Settings → Designations → Term → Restriction\n',
+  );
 
-  // ─────────────────────────────────────
-  // STEP 1: Departments (FR 2.1.1)
-  // ─────────────────────────────────────
-  console.log('[1/9] Upserting departments…');
+  // ── 1. Departments
+  console.log('[1/13] Upserting departments…');
   const deptIds = await upsertByCode('department', 'dept_code', DEPARTMENTS);
   console.log('  →', deptIds);
 
-  // ─────────────────────────────────────
-  // STEP 2: Subjects (FR 2.1.2)
-  // ─────────────────────────────────────
-  console.log('[2/9] Upserting subjects…');
-  for (const s of SUBJECTS) {
-    const deptId = deptIds[s.dept_code];
-    const { data: existing } = await supabase
-      .from('subject')
-      .select('subject_id')
-      .eq('subject_code', s.subject_code)
-      .maybeSingle();
-    if (existing) continue;
-
-    const { error } = await supabase.from('subject').insert({
-      subject_code: s.subject_code,
-      title: s.title,
-      total_units: s.total_units,
-      lecture_units: s.lecture_units,
-      lab_units: s.lab_units,
-      required_room_type: s.required_room_type,
-      dept_id: deptId,
-    });
-    if (error) {
-      console.error(`Subject ${s.subject_code}:`, error.message);
-      process.exit(1);
-    }
-  }
-  console.log('  → subjects ready');
-
-  // ─────────────────────────────────────
-  // STEP 3: Programs (prerequisite for prospectus + sections)
-  // ─────────────────────────────────────
-  console.log('[3/9] Upserting programs…');
+  // ── 2. Programs
+  console.log('[2/13] Upserting programs…');
   const programIds: Record<string, string> = {};
   for (const p of PROGRAMS) {
     const deptId = deptIds[p.dept_code];
     if (!deptId) {
-      console.error(
-        `  ❌ FAILED: program ${p.program_code} — dept "${p.dept_code}" not found in DEPARTMENTS. Add it first.`,
-      );
+      console.error(`Program ${p.program_code}: dept ${p.dept_code} missing`);
       process.exit(1);
     }
     const { data: existing } = await supabase
@@ -435,7 +560,6 @@ async function main() {
       })
       .select()
       .single();
-
     if (error || !data) {
       console.error(`Program ${p.program_code}:`, error?.message);
       process.exit(1);
@@ -444,10 +568,34 @@ async function main() {
   }
   console.log('  →', programIds);
 
-  // ─────────────────────────────────────
-  // STEP 4: Prospectus (FR 2.1.3)
-  // ─────────────────────────────────────
-  console.log('[4/9] Upserting prospectus entries…');
+  // ── 3. Subjects
+  console.log('[3/13] Upserting subjects…');
+  for (const s of SUBJECTS) {
+    const deptId = deptIds[s.dept_code];
+    const { data: existing } = await supabase
+      .from('subject')
+      .select('subject_id')
+      .eq('subject_code', s.subject_code)
+      .maybeSingle();
+    if (existing) continue;
+
+    const { error } = await supabase.from('subject').insert({
+      subject_code: s.subject_code,
+      title: s.title,
+      total_units: s.total_units,
+      lecture_units: s.lecture_units,
+      lab_units: s.lab_units,
+      required_room_type: s.required_room_type,
+      dept_id: deptId,
+      source_dept: s.source_dept ?? null,
+    });
+    if (error) {
+      console.error(`Subject ${s.subject_code}:`, error.message);
+      process.exit(1);
+    }
+  }
+  console.log('  → subjects ready');
+
   const { data: subjectRows } = await supabase
     .from('subject')
     .select('subject_id, subject_code');
@@ -456,13 +604,15 @@ async function main() {
     subjectIdByCode[row.subject_code] = String(row.subject_id);
   }
 
+  // ── 4. Prospectus
+  console.log('[4/13] Upserting prospectus…');
   let prospectusInserted = 0;
   for (const entry of PROSPECTUS) {
     const programId = programIds[entry.program_code];
     const subjectId = subjectIdByCode[entry.subject_code];
     if (!programId || !subjectId) {
       console.warn(
-        `  Skipping prospectus ${entry.program_code}/${entry.subject_code}: missing FK`,
+        `  Skipping ${entry.program_code}/${entry.subject_code}: missing FK`,
       );
       continue;
     }
@@ -475,7 +625,6 @@ async function main() {
       .eq('year_level', entry.year_level)
       .eq('semester', entry.semester)
       .maybeSingle();
-
     if (existing) continue;
 
     const { error } = await supabase.from('prospectus').insert({
@@ -485,7 +634,6 @@ async function main() {
       semester: entry.semester,
       is_active: true,
     });
-
     if (error) {
       console.error(
         `Prospectus ${entry.program_code}/${entry.subject_code}:`,
@@ -495,24 +643,38 @@ async function main() {
     }
     prospectusInserted++;
   }
-  console.log(`  → ${prospectusInserted} new prospectus entries`);
+  console.log(`  → ${prospectusInserted} new prospectus rows`);
 
-  // ─────────────────────────────────────
-  // STEP 5: Sections
-  // ─────────────────────────────────────
-  console.log('[5/9] Upserting sections…');
+  // ── 5. Sections
+  console.log('[5/13] Upserting sections…');
   for (const s of SECTIONS) {
+    const programId = programIds[s.program_code];
+    if (!programId) {
+      console.warn(`  Skipping section ${s.section_code}: missing program`);
+      continue;
+    }
+
     const { data: existing } = await supabase
       .from('section')
-      .select('section_id')
+      .select('section_id, program_id, year_level')
       .eq('section_code', s.section_code)
       .maybeSingle();
-    if (existing) continue;
+
+    if (existing) {
+      if (!existing.program_id || existing.year_level !== s.year_level) {
+        const { error } = await supabase
+          .from('section')
+          .update({ program_id: programId, year_level: s.year_level })
+          .eq('section_id', existing.section_id);
+        if (error) console.warn(`  Patch ${s.section_code}: ${error.message}`);
+      }
+      continue;
+    }
 
     const { error } = await supabase.from('section').insert({
       section_code: s.section_code,
+      program_id: programId,
       year_level: s.year_level,
-      // student_count intentionally omitted — see PM note (Oct 2026).
     });
     if (error) {
       console.error(`Section ${s.section_code}:`, error.message);
@@ -521,10 +683,8 @@ async function main() {
   }
   console.log('  → sections ready');
 
-  // ─────────────────────────────────────
-  // STEP 6: Faculty
-  // ─────────────────────────────────────
-  console.log('[6/9] Upserting faculty…');
+  // ── 6. Faculty
+  console.log('[6/13] Upserting faculty…');
   for (const f of FACULTY) {
     const deptId = deptIds[f.dept_code];
     const { data: existing } = await supabase
@@ -550,42 +710,68 @@ async function main() {
   }
   console.log('  → faculty ready');
 
-  // ─────────────────────────────────────
-  // STEP 7: Users
-  // ─────────────────────────────────────
-  console.log('[7/9] Creating users…');
-    const { data: facultyRowsForUsers } = await supabase
+  const { data: facultyRows } = await supabase
     .from('faculty')
     .select('faculty_id, wmsu_id, first_name');
-  const facultyIdByWmsuForUsers: Record<string, { id: string; firstName: string }> = {};
-  for (const row of facultyRowsForUsers ?? []) {
+  const facultyIdByWmsu: Record<string, { id: string; firstName: string }> = {};
+  for (const row of facultyRows ?? []) {
     if (row.wmsu_id) {
-      facultyIdByWmsuForUsers[row.wmsu_id] = {
+      facultyIdByWmsu[row.wmsu_id] = {
         id: String(row.faculty_id),
         firstName: row.first_name,
       };
     }
   }
+
+  // ── 7. Faculty Qualifications
+  console.log('[7/13] Upserting faculty qualifications…');
+  let qualsInserted = 0;
+  for (const q of QUALIFICATIONS) {
+    const facultyId = facultyIdByWmsu[q.wmsu_id]?.id;
+    const subjectId = subjectIdByCode[q.subject_code];
+    if (!facultyId || !subjectId) {
+      console.warn(
+        `  Skipping qual ${q.wmsu_id}/${q.subject_code}: missing FK`,
+      );
+      continue;
+    }
+
+    const { data: existing } = await supabase
+      .from('faculty_qualification')
+      .select('qual_id')
+      .eq('faculty_id', facultyId)
+      .eq('subject_id', subjectId)
+      .maybeSingle();
+    if (existing) continue;
+
+    const { error } = await supabase.from('faculty_qualification').insert({
+      faculty_id: facultyId,
+      subject_id: subjectId,
+      source_system: null,
+    });
+    if (error) {
+      console.error(`Qual ${q.wmsu_id}/${q.subject_code}:`, error.message);
+      process.exit(1);
+    }
+    qualsInserted++;
+  }
+  console.log(`  → ${qualsInserted} new qualifications`);
+
+  // ── 8. Users
+  console.log('[8/13] Ensuring users…');
   for (const u of USERS) {
     const deptId = u.dept_code ? deptIds[u.dept_code] : null;
-    const deptMeta = u.dept_code
-      ? DEPARTMENTS.find((d) => d.dept_code === u.dept_code)
-      : null;
-    const facultyLink = u.wmsu_id ? facultyIdByWmsuForUsers[u.wmsu_id] : null;
+    const facultyLink = u.wmsu_id ? facultyIdByWmsu[u.wmsu_id] : null;
     const facultyId = facultyLink?.id ?? null;
     const firstName = facultyLink?.firstName ?? u.username;
 
     const existing = await findAuthUserByEmail(u.email);
-
     if (existing) {
-      console.log(`  ${u.email} already exists — updating metadata`);
       await supabase.auth.admin.updateUserById(existing.id, {
         app_metadata: {
           role: u.role,
           username: u.username,
           dept_id: deptId,
-          dept_code: u.dept_code ?? null,
-          dept_name: deptMeta?.dept_name ?? null,
           faculty_id: facultyId,
           first_name: firstName,
         },
@@ -599,6 +785,7 @@ async function main() {
           username: u.username,
         })
         .eq('user_id', existing.id);
+      console.log(`  ${u.email} — updated`);
       continue;
     }
 
@@ -610,8 +797,6 @@ async function main() {
         role: u.role,
         username: u.username,
         dept_id: deptId,
-        dept_code: u.dept_code ?? null,
-        dept_name: deptMeta?.dept_name ?? null,
         faculty_id: facultyId,
         first_name: firstName,
       },
@@ -636,67 +821,15 @@ async function main() {
     console.log(`  Created ${u.email}`);
   }
 
-    // ─────────────────────────────────────
-  // STEP 7b: Faculty Qualifications (FR 3.1.8)
-  // ─────────────────────────────────────
-  console.log('[7b/9] Upserting faculty qualifications…');
-  // Build lookups once
-  const { data: facultyRows } = await supabase
-    .from('faculty')
-    .select('faculty_id, wmsu_id');
-  const facultyIdByWmsu: Record<string, string> = {};
-  for (const row of facultyRows ?? []) {
-    if (row.wmsu_id) facultyIdByWmsu[row.wmsu_id] = String(row.faculty_id);
-  }
-
-  let qualsInserted = 0;
-  for (const q of QUALIFICATIONS) {
-    const facultyId = facultyIdByWmsu[q.wmsu_id];
-    const subjectId = subjectIdByCode[q.subject_code];
-    if (!facultyId || !subjectId) {
-      console.warn(
-        `  Skipping qualification ${q.wmsu_id}/${q.subject_code}: missing FK`,
-      );
-      continue;
-    }
-
-    const { data: existing } = await supabase
-      .from('faculty_qualification')
-      .select('qual_id')
-      .eq('faculty_id', facultyId)
-      .eq('subject_id', subjectId)
-      .maybeSingle();
-
-    if (existing) continue;
-
-    const { error } = await supabase.from('faculty_qualification').insert({
-      faculty_id: facultyId,
-      subject_id: subjectId,
-      source_system: null,
-    });
-    if (error) {
-      console.error(
-        `Qualification ${q.wmsu_id}/${q.subject_code}:`,
-        error.message,
-      );
-      process.exit(1);
-    }
-    qualsInserted++;
-  }
-  console.log(`  → ${qualsInserted} new qualifications`);
-
-  // ─────────────────────────────────────
-  // STEP 8: Scheduling settings
-  // ─────────────────────────────────────
-  console.log('[8/9] Upserting scheduling settings…');
+  // ── 9. Settings
+  console.log('[9/13] Upserting scheduling settings…');
   for (const s of SETTINGS) {
-    const { error } = await supabase.from('scheduling_setting').upsert(
-      {
-        setting_key: s.setting_key,
-        value: s.value,
-      },
-      { onConflict: 'setting_key' },
-    );
+    const { error } = await supabase
+      .from('scheduling_setting')
+      .upsert(
+        { setting_key: s.setting_key, value: s.value },
+        { onConflict: 'setting_key' },
+      );
     if (error) {
       console.error(`Setting ${s.setting_key}:`, error.message);
       process.exit(1);
@@ -704,17 +837,14 @@ async function main() {
   }
   console.log('  → settings ready');
 
-    // ─────────────────────────────────────
-  // STEP 8b: Designations (FR 7.1.4)
-  // ─────────────────────────────────────
-  console.log('[8b/9] Upserting designations…');
+  // ── 10. Designations
+  console.log('[10/13] Upserting designations…');
   for (const d of DESIGNATIONS) {
     const { data: existing } = await supabase
       .from('designation')
       .select('designation_id')
       .eq('designation_name', d.designation_name)
       .maybeSingle();
-
     if (existing) continue;
 
     const { error } = await supabase.from('designation').insert({
@@ -728,52 +858,127 @@ async function main() {
   }
   console.log('  → designations ready');
 
-  // ─────────────────────────────────────
-  // STEP 9: Demo subject restriction
-  // ─────────────────────────────────────
-  console.log('[9/9] Adding demo subject restriction…');
-  const { data: mathSubj } = await supabase
-    .from('subject')
-    .select('subject_id')
-    .eq('subject_code', 'MATH 101')
-    .maybeSingle();
-  const { data: physSubj } = await supabase
-    .from('subject')
-    .select('subject_id')
-    .eq('subject_code', 'PHYS 101')
-    .maybeSingle();
+  // ── 11. Rooms
+  console.log('[11/13] Upserting rooms…');
+  for (const r of ROOMS) {
+    const { data: existing } = await supabase
+      .from('room')
+      .select('room_id')
+      .eq('room_number', r.room_number)
+      .eq('building', r.building)
+      .maybeSingle();
+    if (existing) continue;
 
-  if (mathSubj && physSubj) {
+    const { error } = await supabase.from('room').insert({
+      room_number: r.room_number,
+      building: r.building,
+      room_type: r.room_type,
+      capacity: r.capacity,
+      dept_id: r.dept_code ? deptIds[r.dept_code] : null,
+    });
+    if (error) {
+      console.error(`Room ${r.room_number}:`, error.message);
+      process.exit(1);
+    }
+  }
+  console.log('  → rooms ready');
+
+  // ── 12. Terms
+  console.log('[12/13] Upserting terms…');
+  for (const t of TERMS) {
+    const { data: existing } = await supabase
+      .from('term')
+      .select('term_id, semester')
+      .eq('term_name', t.term_name)
+      .eq('school_year', t.school_year)
+      .maybeSingle();
+
+    if (existing) {
+      // Patch missing/incorrect semester on existing terms
+      if (existing.semester !== t.semester) {
+        const { error: updateErr } = await supabase
+          .from('term')
+          .update({ semester: t.semester })
+          .eq('term_id', existing.term_id);
+        if (updateErr) {
+          console.warn(
+            `  Term semester patch ${t.term_name}: ${updateErr.message}`,
+          );
+        } else {
+          console.log(
+            `  → patched ${t.term_name} semester to '${t.semester}'`,
+          );
+        }
+      }
+      continue;
+    }
+
+    // Deactivate any other active terms first
+    if (t.is_active) {
+      const { error: deactivateErr } = await supabase
+        .from('term')
+        .update({ is_active: false })
+        .eq('is_active', true);
+      if (deactivateErr) {
+        console.warn(
+          `  Could not deactivate old active terms: ${deactivateErr.message}`,
+        );
+      }
+    }
+
+    const { error } = await supabase.from('term').insert({
+      term_name: t.term_name,
+      school_year: t.school_year,
+      semester: t.semester,
+      start_date: t.start_date,
+      end_date: t.end_date,
+      is_active: t.is_active,
+    });
+    if (error) {
+      console.error(`Term ${t.term_name}:`, error.message);
+      process.exit(1);
+    }
+  }
+  console.log('  → terms ready');
+
+  // ── 13. Demo subject restriction
+  console.log('[13/13] Adding demo subject restriction…');
+  const mathId = subjectIdByCode['BEM 111'];
+  const physId = subjectIdByCode['BES 112'];
+  if (mathId && physId) {
     const { data: existingRestr } = await supabase
       .from('subject_restriction')
       .select('restriction_id')
-      .eq('subject_id_1', mathSubj.subject_id)
-      .eq('subject_id_2', physSubj.subject_id)
+      .eq('subject_id_1', mathId)
+      .eq('subject_id_2', physId)
       .maybeSingle();
 
     if (!existingRestr) {
       await supabase.from('subject_restriction').insert({
-        subject_id_1: mathSubj.subject_id,
-        subject_id_2: physSubj.subject_id,
+        subject_id_1: mathId,
+        subject_id_2: physId,
         warning_message:
-          'MATH 101 and PHYS 101 are commonly taken together by irregular students — avoid clashes.',
+          'BEM 111 and BES 112 are commonly taken together — avoid clashes.',
         is_active: true,
       });
     }
   }
   console.log('  → restriction ready');
 
-  // ─────────────────────────────────────
-  // Summary
-  // ─────────────────────────────────────
+  // ── Summary
   console.log('\n=== Seed complete ===\n');
   console.log('Demo credentials:');
   console.log(`  Password (all users): ${DEMO_PASSWORD}`);
   console.log('');
-  console.log('  Administrator   admin@wmsu.edu.ph');
-  console.log('  CpE Dept Head   head.cpe@wmsu.edu.ph');
-  console.log('  EE Dept Head    head.ee@wmsu.edu.ph');
-  console.log('  ME Dept Head    head.me@wmsu.edu.ph');
+  console.log('  Administrator    admin@wmsu.edu.ph');
+  console.log('  CpE Dept Head    head.cpe@wmsu.edu.ph');
+  console.log('  EE Dept Head     head.ee@wmsu.edu.ph');
+  console.log('  ME Dept Head     head.me@wmsu.edu.ph');
+  console.log('');
+  console.log('Seeded sections: CpE-1A, CpE-2A, CpE-3A, CpE-4A');
+  console.log('Track: Network Administration (majority of batch, 23/38)');
+  console.log('Total subjects: ' + SUBJECTS.length);
+  console.log('Total prospectus entries: ' + PROSPECTUS.length);
   console.log('');
 }
 

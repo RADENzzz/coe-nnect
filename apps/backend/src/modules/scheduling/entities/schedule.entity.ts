@@ -49,6 +49,9 @@ export class Schedule {
   @Column({ name: 'section_id', type: 'bigint', nullable: true })
   sectionId: string | null;
 
+  @Column({ name: 'dept_id', type: 'bigint', nullable: true })
+  deptId: string | null;
+
   @Column({
     name: 'load_type',
     type: 'enum',
