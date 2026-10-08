@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  ForbiddenException, 
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -189,6 +190,16 @@ export class SchedulingService {
       );
     }
 
+    // Look up the subject's owning department for the ownership check.
+    const { data: subjectRow } = await this.supabase
+      .getAdminClient()
+      .from('subject')
+      .select('dept_id')
+      .eq('subject_id', dto.subjectId)
+      .maybeSingle();
+
+    const deptId = subjectRow?.dept_id ? String(subjectRow.dept_id) : null;
+
     const entry = this.scheduleRepo.create({
       termId: dto.termId,
       subjectId: dto.subjectId,
@@ -197,6 +208,7 @@ export class SchedulingService {
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
+      deptId,   // ← NEW
       loadType: dto.loadType ?? null,
       dayOfWeek: dto.dayOfWeek as any,
       startTime:
@@ -792,6 +804,21 @@ export class SchedulingService {
       (sectionRows ?? []).map((r) => [String(r.section_id), r.section_code]),
     );
 
+    // Preload subject → dept_id map for the ownership assignment
+    const subjectIds = Array.from(new Set(schedule.map((b) => b.subjectId)));
+    const { data: subjectRows } = await this.supabase
+      .getAdminClient()
+      .from('subject')
+      .select('subject_id, dept_id')
+      .in('subject_id', subjectIds);
+
+    const deptBySubject = new Map<string, string | null>(
+      (subjectRows ?? []).map((r) => [
+        String(r.subject_id),
+        r.dept_id ? String(r.dept_id) : null,
+      ]),
+    );
+
     const toInsert = schedule
       .filter((b) => codeById.has(b.sectionId))
       .map((b) => ({
@@ -802,6 +829,7 @@ export class SchedulingService {
         timeslot_id: null,
         section: codeById.get(b.sectionId) ?? null,
         section_id: b.sectionId,
+        dept_id: deptBySubject.get(b.subjectId) ?? null,   // ← NEW
         load_type: b.loadType,
         day_of_week: b.day,
         start_time:
@@ -1286,5 +1314,31 @@ export class SchedulingService {
     }
 
     return new Set(['H-4', 'H-6', 'S-7', 'S-2']);
+  }
+  private async assertOwnership(
+    scheduleId: string,
+    user: any,
+  ): Promise<Schedule> {
+    const found = await this.scheduleRepo.findOne({
+      where: { scheduleId },
+    });
+    if (!found) throw new NotFoundException('Schedule entry not found');
+
+    // Admins bypass
+    if (user.role === 'administrator' || user.role === 'college_dean') {
+      return found;
+    }
+
+    // DH: only own dept
+    if (user.role === 'department_head') {
+      const userDeptId = user.dept_id ? String(user.dept_id) : null;
+      if (!userDeptId || String(found.deptId) !== userDeptId) {
+        throw new ForbiddenException(
+          'You cannot edit schedules from other departments.',
+        );
+      }
+    }
+
+    return found;
   }
 }
