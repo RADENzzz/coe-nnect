@@ -7,7 +7,9 @@ import type { ScheduleEntry, Day, LoadType } from './types';
 import {
   fetchSchedules,
   fetchActiveTerm,
+  autoGenerateSchedule,
   type RawSchedule,
+  type UnscheduledBlock,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -26,6 +28,7 @@ import StackPicker from './components/StackPicker';
 import ExportToolbar from './export/ExportToolbar';
 import type { GridDensity } from './components/GridMetricsContext';
 import { useMoveSchedule } from './hooks/useMoveSchedule';
+import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -92,11 +95,6 @@ function defaultDensityForViewport(): GridDensity {
 }
 
 interface Props {
-  /**
-   * When true, the page hides all write actions (Plot, Edit, drag-to-move,
-   * delete, status changes). Used by the Dean portal to give read-only
-   * access to the college-wide schedule.
-   */
   readOnly?: boolean;
 }
 
@@ -117,6 +115,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
   const [gridDensity, setGridDensity] = useState<GridDensity>(defaultDensityForViewport);
+
+  // ── Auto-generate state ──
+  const [autoGenerating, setAutoGenerating] = useState(false);
+  const [autoPreview, setAutoPreview] = useState<ScheduleEntry[] | null>(null);
+  const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
 
   // ── Handle ?view= query param ──
   const [searchParams, setSearchParams] = useSearchParams();
@@ -150,7 +153,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   useEffect(() => {
     if (defaultedToDept) return;
     if (!profile) return;
-    // Only DH gets auto-scoped to their own department
     if (isDepartmentHead && myDeptId) {
       setViewMode('department');
       setViewTargetId(myDeptId);
@@ -181,7 +183,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
-    enabled: !!user && !readOnly, // don't fetch dropdown data for read-only
+    enabled: !!user && !readOnly,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -269,6 +271,47 @@ export default function TimetablePage({ readOnly = false }: Props) {
     setStackOpen(null);
     setSelectedEntry(entry);
   }, []);
+  // ── Auto-generate handler ──
+  const handleAutoGenerate = useCallback(async () => {
+    if (!activeTerm || !myDeptId) return;
+    setAutoGenerating(true);
+    try {
+      const result = await autoGenerateSchedule(activeTerm.termId, myDeptId);
+
+      if (!result.success) {
+        // Room deficit → richer message
+        if (result.roomDeficits && result.roomDeficits.length > 0) {
+          const lines = result.roomDeficits.map(
+            (d) =>
+              `• ${d.roomType}: need ${d.neededHours}h, have ${d.availableHours}h (short by ${d.shortByHours}h → add ${d.suggestedExtraRooms} room${d.suggestedExtraRooms === 1 ? '' : 's'})`,
+          );
+          alert(`${result.message}\n\n${lines.join('\n')}`);
+          return;
+        }
+
+        const detail = result.failures
+          ?.slice(0, 5)
+          .map((f) => `• ${f.ruleId} ${f.reason}`)
+          .join('\n');
+        alert(
+          `${result.message ?? 'Auto-generation failed'}${detail ? `\n\n${detail}` : ''}`,
+        );
+        return;
+      }
+
+      // Refetch schedules so the new rows flow through the normal channel
+      await queryClient.invalidateQueries({
+        queryKey: ['schedules', activeTerm.termId],
+      });
+      const fresh = await fetchSchedules(activeTerm.termId);
+      setAutoPreview(fresh.map(toEntry));
+      setAutoUnscheduled(result.unscheduled ?? []);
+    } catch (err) {
+      alert(`Auto-generate failed: ${(err as Error).message}`);
+    } finally {
+      setAutoGenerating(false);
+    }
+  }, [activeTerm, myDeptId, queryClient]);
 
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
@@ -433,6 +476,26 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 </span>
               )}
             </div>
+          )}
+
+          {writable && activeTerm && isDepartmentHead && (
+            <button
+              onClick={handleAutoGenerate}
+              disabled={autoGenerating}
+              className="flex items-center gap-2 px-4 py-2 border border-primary text-primary text-sm font-semibold rounded-lg hover:bg-primary/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {autoGenerating ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Icon name="auto_awesome" size={16} />
+                  Auto-Generate
+                </>
+              )}
+            </button>
           )}
 
           {writable && activeTerm && (
@@ -634,7 +697,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               : viewMode !== 'master' && viewTargetId
               ? 'Try selecting a different department, room, faculty, or section.'
               : writable
-              ? 'Click "Plot Subject" to add your first class.'
+              ? 'Click "Plot Subject" or "Auto-Generate" to add classes.'
               : 'No schedule entries have been created yet.'
           }
         />
@@ -733,6 +796,36 @@ export default function TimetablePage({ readOnly = false }: Props) {
         onClose={() => setStackOpen(null)}
         onPick={handlePickFromStack}
       />
+
+      {/* ── Auto-generate preview overlay ── */}
+      {autoPreview && (
+        
+        <div className="fixed inset-0 z-50 bg-surface-container-lowest">
+          <AutoSchedulePreview
+            solvedSchedule={autoPreview}
+            unscheduledBlocks={autoUnscheduled}
+            scopeLabel={
+              activeTerm
+                ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+                : undefined
+            }
+            onAccept={() => {
+              setAutoPreview(null);
+              setAutoUnscheduled([]);
+              queryClient.invalidateQueries({
+                queryKey: ['schedules', activeTerm?.termId],
+              });
+            }}
+            onCancel={() => {
+              setAutoPreview(null);
+              setAutoUnscheduled([]);
+              queryClient.invalidateQueries({
+                queryKey: ['schedules', activeTerm?.termId],
+              });
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { User } from '../users/entities/user.entity';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { RuleContextBuilder } from './services/rule-context.builder';
+import { SolverClient } from './services/solver.client';
 import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
@@ -27,7 +28,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
     ]),
   ],
   controllers: [SchedulingController],
-  providers: [SchedulingService, RuleContextBuilder, RolesGuard],
+  providers: [SchedulingService, RuleContextBuilder, SolverClient, RolesGuard],
   exports: [SchedulingService],
 })
 export class SchedulingModule {}

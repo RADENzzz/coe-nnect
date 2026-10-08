@@ -35,6 +35,8 @@ interface WorkloadRow {
   assignedHours: number;
   requiredHours: number;
   remaining: number;
+  overloadHours: number;
+  underloadHours: number;
   status: WorkloadStatus;
   entryCount: number;
 }
@@ -112,6 +114,7 @@ function SummaryTile({
   tone: StatusTone;
   hint?: string;
 }) {
+  
   const iconMap: Record<StatusTone, string> = {
     danger: 'error',
     warning: 'warning',
@@ -155,6 +158,7 @@ function SummaryTile({
     </div>
   );
 }
+
 
 // ─────────────────────────────────────────────
 // Page
@@ -234,6 +238,8 @@ export default function FacultyWorkloadPage() {
         ? releaseById.get(String(f.designationId)) ?? 0
         : 0;
       const required = Math.max(0, baseRequired - release);
+      const overloadHours = Math.max(0, assigned - required);
+      const underloadHours = Math.max(0, required - assigned);
 
       return {
         facultyId: f.facultyId,
@@ -244,6 +250,8 @@ export default function FacultyWorkloadPage() {
         assignedHours: assigned,
         requiredHours: required,
         remaining: required - assigned,
+        overloadHours,
+        underloadHours,
         status: classify(assigned, required),
         entryCount: entries.length,
       };
@@ -297,6 +305,16 @@ export default function FacultyWorkloadPage() {
     return { overload, under, full, idle };
   }, [filtered]);
 
+  const totals = useMemo(() => {
+    let overloadTotal = 0;
+    let underloadTotal = 0;
+    for (const r of filtered) {
+      overloadTotal += r.overloadHours;
+      underloadTotal += r.underloadHours;
+    }
+    return { overloadTotal, underloadTotal };
+    }, [filtered]);
+
   // ── Columns ──
   const columns: Column<WorkloadRow>[] = [
     {
@@ -349,6 +367,22 @@ export default function FacultyWorkloadPage() {
       ),
     },
     {
+      key: 'overload',
+      header: 'Overload',
+      cardVariant: 'mono',
+      cellClassName: 'font-mono text-xs text-red-700 dark:text-red-400',
+      render: (r) =>
+        r.overloadHours > 0 ? `+${formatHours(r.overloadHours)}` : '—',
+    },
+    {
+      key: 'underload',
+      header: 'Under',
+      cardVariant: 'mono',
+      cellClassName: 'font-mono text-xs text-amber-700 dark:text-amber-400',
+      render: (r) =>
+        r.underloadHours > 0 ? `−${formatHours(r.underloadHours)}` : '—',
+    },
+    {
       key: 'status',
       header: 'Status',
       cardVariant: 'badge',
@@ -384,30 +418,42 @@ export default function FacultyWorkloadPage() {
 
       {/* Summary tiles */}
       {activeTerm && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <SummaryTile
             label="Overloaded"
             value={summary.overload}
             tone="danger"
-            hint="Above required + 2h"
+            hint="Above required"
           />
           <SummaryTile
             label="Under-loaded"
             value={summary.under}
             tone="warning"
-            hint="Below required − 2h"
+            hint="Below required"
           />
           <SummaryTile
             label="Full"
             value={summary.full}
             tone="success"
-            hint="Within ±2h of required"
+            hint="Within ±2h"
           />
           <SummaryTile
             label="No load"
             value={summary.idle}
             tone="neutral"
-            hint="Zero assigned hours"
+            hint="Zero hours"
+          />
+          <SummaryTile
+            label="Total Overload"
+            value={Number(totals.overloadTotal.toFixed(1))}
+            tone="danger"
+            hint="Sum across filtered"
+          />
+          <SummaryTile
+            label="Total Under"
+            value={Number(totals.underloadTotal.toFixed(1))}
+            tone="warning"
+            hint="Sum across filtered"
           />
         </div>
       )}
