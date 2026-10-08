@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../api/faculty-requests.api';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchActiveTerm } from '../../api/schedule.api';
+import { fetchSubjects } from '../../api/subjects.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
@@ -34,8 +35,11 @@ export default function ApprovalsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
 
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'waiting-on-me' | 'waiting-on-them'>('all');
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -55,6 +59,7 @@ export default function ApprovalsPage() {
     reason: '',
   });
 
+  // ── Queries ──
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ['faculty-requests'],
     queryFn: fetchFacultyRequests,
@@ -64,15 +69,23 @@ export default function ApprovalsPage() {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: fetchDepartments,
-    enabled: !!user && showForm,
+    enabled: !!user,
   });
 
   const { data: activeTerm } = useQuery({
     queryKey: ['active-term'],
     queryFn: fetchActiveTerm,
-    enabled: !!user && showForm,
+    enabled: !!user,
   });
 
+  const { data: subjects = [] } = useQuery({
+    queryKey: ['subjects'],
+    queryFn: () => fetchSubjects(false),
+    enabled: !!user && showForm,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createFacultyRequest,
     onSuccess: () => {
@@ -125,6 +138,72 @@ export default function ApprovalsPage() {
       setError(err?.response?.data?.message ?? 'Cancel failed'),
   });
 
+  // ── Permissions ──
+  const isAdminOrDean =
+    profile?.role === 'administrator' || profile?.role === 'college_dean';
+
+  const canRespondTo = useCallback(
+    (r: FacultyRequest) => {
+      if (r.status !== 'pending') return false;
+      if (isAdminOrDean) return true;
+      return String(profile?.dept_id) === String(r.targetDeptId);
+    },
+    [isAdminOrDean, profile?.dept_id],
+  );
+
+  const canCancel = useCallback(
+    (r: FacultyRequest) => {
+      if (r.status !== 'pending') return false;
+      if (isAdminOrDean) return true;
+      return String(profile?.dept_id) === String(r.requestingDeptId);
+    },
+    [isAdminOrDean, profile?.dept_id],
+  );
+
+  // ── Filtering ──
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return requests.filter((r) => {
+      // Tab
+      if (filter !== 'all' && r.status !== filter) return false;
+
+      // Scope
+      if (scopeFilter === 'waiting-on-me' && !canRespondTo(r)) return false;
+      if (scopeFilter === 'waiting-on-them' && !canCancel(r)) return false;
+
+      // Search
+      if (q) {
+        const haystack = [
+          r.requestId,
+          r.facultyId ?? '',
+          r.subjectId,
+          r.reason,
+          r.responseRemarks ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [requests, filter, searchQuery, scopeFilter, canRespondTo, canCancel]);
+
+  // ── Counts ──
+  const counts = useMemo(() => {
+    const pending = requests.filter((r) => r.status === 'pending');
+    return {
+      total: requests.length,
+      pending: pending.length,
+      waitingOnMe: pending.filter(canRespondTo).length,
+      waitingOnThem: pending.filter(canCancel).length,
+      approved: requests.filter((r) => r.status === 'approved').length,
+      rejected: requests.filter((r) => r.status === 'rejected').length,
+      cancelled: requests.filter((r) => r.status === 'cancelled').length,
+    };
+  }, [requests, canRespondTo, canCancel]);
+
+  // ── Handlers ──
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
@@ -150,27 +229,16 @@ export default function ApprovalsPage() {
     });
   };
 
-  const filtered =
-    filter === 'all' ? requests : requests.filter((r) => r.status === filter);
-
-  const isAdminOrDean =
-    profile?.role === 'administrator' || profile?.role === 'college_dean';
-
-  const canRespondTo = (r: FacultyRequest) => {
-    if (r.status !== 'pending') return false;
-    if (isAdminOrDean) return true;
-    return String(profile?.dept_id) === String(r.targetDeptId);
-  };
-
-  const canCancel = (r: FacultyRequest) => {
-    if (r.status !== 'pending') return false;
-    if (isAdminOrDean) return true;
-    return String(profile?.dept_id) === String(r.requestingDeptId);
-  };
-
   const deptName = (id: string) =>
-    departments.find((d) => d.deptId === id)?.deptCode ?? `#${id}`;
+    departments.find((d) => String(d.deptId) === String(id))?.deptCode ??
+    `#${id}`;
 
+  const subjectLabel = (id: string) => {
+    const s = subjects.find((x) => String(x.subjectId) === String(id));
+    return s ? `[${s.subjectCode}] ${s.title}` : `#${id}`;
+  };
+
+  // ── Columns ──
   const columns: Column<FacultyRequest>[] = [
     {
       key: 'request',
@@ -192,24 +260,26 @@ export default function ApprovalsPage() {
       ),
     },
     {
-      key: 'id',
-      header: 'ID',
-      hideOnMobile: true,
+      key: 'subject',
+      header: 'Subject',
       cardVariant: 'meta',
-      cellClassName: 'text-xs text-on-surface-variant',
-      render: (r) => `#${r.requestId}`,
+      cellClassName: 'text-xs text-on-surface',
+      render: (r) => (
+        <span className="font-mono text-xs">{subjectLabel(r.subjectId)}</span>
+      ),
     },
     {
       key: 'faculty',
       header: 'Faculty',
+      hideOnMobile: true,
       cardVariant: 'meta',
       cellClassName: 'text-on-surface',
       render: (r) =>
         r.facultyId ? (
-          <span className="font-mono text-sm">#{r.facultyId}</span>
+          <span className="font-mono text-xs">#{r.facultyId}</span>
         ) : (
           <span className="text-on-surface-variant text-xs italic">
-            any available
+            any
           </span>
         ),
     },
@@ -278,7 +348,9 @@ export default function ApprovalsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-on-surface">Faculty Requests</h1>
+          <h1 className="text-2xl font-bold text-on-surface">
+            Faculty Requests
+          </h1>
           <p className="text-on-surface-variant text-sm mt-1">
             Cross-department faculty assignment requests
           </p>
@@ -307,10 +379,108 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 border-b border-surface-variant overflow-x-auto">
-        {(['all', 'pending', 'approved', 'rejected', 'cancelled'] as FilterTab[]).map(
-          (tab) => (
+      {/* Quick-scope split */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button
+          onClick={() => setScopeFilter('all')}
+          className={`p-4 rounded-xl border text-left transition ${
+            scopeFilter === 'all'
+              ? 'border-primary bg-primary/5'
+              : 'border-surface-variant bg-surface-container-lowest hover:border-primary/40'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+              All Requests
+            </span>
+            <Icon name="list_alt" size={16} className="text-on-surface-variant" />
+          </div>
+          <div className="text-2xl font-extrabold text-on-surface">
+            {counts.total}
+          </div>
+        </button>
+
+        <button
+          onClick={() => setScopeFilter('waiting-on-me')}
+          className={`p-4 rounded-xl border text-left transition ${
+            scopeFilter === 'waiting-on-me'
+              ? 'border-amber-400 bg-amber-50'
+              : 'border-surface-variant bg-surface-container-lowest hover:border-amber-300'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
+              Waiting on You
+            </span>
+            <Icon name="pending_actions" size={16} className="text-amber-700" />
+          </div>
+          <div className="text-2xl font-extrabold text-amber-800">
+            {counts.waitingOnMe}
+          </div>
+        </button>
+
+        <button
+          onClick={() => setScopeFilter('waiting-on-them')}
+          className={`p-4 rounded-xl border text-left transition ${
+            scopeFilter === 'waiting-on-them'
+              ? 'border-blue-400 bg-blue-50'
+              : 'border-surface-variant bg-surface-container-lowest hover:border-blue-300'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+              Waiting on Them
+            </span>
+            <Icon name="hourglass_top" size={16} className="text-blue-700" />
+          </div>
+          <div className="text-2xl font-extrabold text-blue-800">
+            {counts.waitingOnThem}
+          </div>
+        </button>
+      </div>
+
+      {/* Search + filter panel */}
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4">
+        <div className="flex flex-wrap items-end gap-3 mb-3">
+          <div className="flex-1 min-w-[240px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Search
+            </label>
+            <div className="relative">
+              <Icon
+                name="search"
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Subject, faculty, reason, or request ID…"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="ml-auto text-xs text-on-surface-variant whitespace-nowrap">
+            Showing <strong className="text-on-surface">{filtered.length}</strong>{' '}
+            of {requests.length}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-surface-variant overflow-x-auto">
+          {(
+            ['all', 'pending', 'approved', 'rejected', 'cancelled'] as FilterTab[]
+          ).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
@@ -323,12 +493,17 @@ export default function ApprovalsPage() {
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
               {tab !== 'all' && (
                 <span className="ml-1.5 text-xs opacity-60">
-                  ({requests.filter((r) => r.status === tab).length})
+                  ({counts[tab as keyof typeof counts]})
+                </span>
+              )}
+              {tab === 'all' && (
+                <span className="ml-1.5 text-xs opacity-60">
+                  ({counts.total})
                 </span>
               )}
             </button>
-          ),
-        )}
+          ))}
+        </div>
       </div>
 
       <ResponsiveTable
@@ -342,9 +517,11 @@ export default function ApprovalsPage() {
         isLoading={isLoading}
         hasSourceRows={requests.length > 0}
         emptyMessage={
-          filter === 'all' ? 'No requests yet.' : `No ${filter} requests.`
+          filter === 'all' && !searchQuery && scopeFilter === 'all'
+            ? 'No requests yet.'
+            : 'No requests match your filters.'
         }
-        noMatchMessage="No requests match this filter."
+        noMatchMessage="No requests match your filters."
         getActions={getActions}
       />
 
@@ -391,23 +568,28 @@ export default function ApprovalsPage() {
                 name="facultyId"
                 value={form.facultyId}
                 onChange={handleChange}
-                placeholder="Leave blank for any available faculty"
+                placeholder="Leave blank for any available"
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Subject ID *
+                Subject *
               </label>
-              <input
-                type="text"
+              <select
                 name="subjectId"
                 required
                 value={form.subjectId}
                 onChange={handleChange}
-                placeholder="e.g. 5"
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-              />
+              >
+                <option value="">Select a subject…</option>
+                {subjects.map((s) => (
+                  <option key={s.subjectId} value={s.subjectId}>
+                    [{s.subjectCode}] {s.title}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -444,7 +626,7 @@ export default function ApprovalsPage() {
         </form>
       </Modal>
 
-      {/* Respond modal (approve / reject) */}
+      {/* Respond modal */}
       <Modal
         open={!!respondTarget}
         onClose={() => {
@@ -549,8 +731,8 @@ export default function ApprovalsPage() {
         }
       >
         <p className="text-sm text-slate-600">
-          Cancel request{' '}
-          <strong>#{cancelTarget?.requestId}</strong>? This cannot be undone.
+          Cancel request <strong>#{cancelTarget?.requestId}</strong>? This
+          cannot be undone.
         </p>
       </Modal>
     </div>

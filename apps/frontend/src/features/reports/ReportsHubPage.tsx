@@ -81,6 +81,16 @@ export default function ReportsHubPage() {
       tone: 'info',
     },
     {
+      id: 'rooms',
+      title: 'Room Sufficiency',
+      description:
+        'Projected demand vs. available room-hours per room type. Flags shortfalls before generation.',
+      icon: 'meeting_room',
+      to: `${prefix}/reports/rooms`,
+      fr: 'FR 6.1.7',
+      tone: 'warning',
+    },
+    {
       id: 'dept-summary',
       title: 'Department Schedule Summary',
       description:
@@ -100,17 +110,6 @@ export default function ReportsHubPage() {
       roles: ['college_dean'],
       tone: 'success',
     },
-    {
-      id: 'rooms',
-      title: 'Room Sufficiency',
-      description:
-        'Projected demand vs. available room-hours per room type. Flags shortfalls.',
-      icon: 'meeting_room',
-      to: `${prefix}/reports/rooms`,
-      roles: ['administrator', 'college_dean'],
-      fr: 'FR 6.1.7',
-      tone: 'warning',
-    },
   ];
 
   // ── Filter to what this role sees ──
@@ -118,7 +117,6 @@ export default function ReportsHubPage() {
     (c) => !c.roles || c.roles.includes(role),
   );
 
-  // ── Heading per role ──
   const subtitle = isAdmin
     ? 'College-wide reports for faculty workload, room demand, and cross-department activity.'
     : isDean
