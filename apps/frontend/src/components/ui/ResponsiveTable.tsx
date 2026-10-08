@@ -12,7 +12,7 @@ export type CardVariant =
 
 export interface Column<T> {
   key: string;
-  header: string;
+  header: React.ReactNode;
   render: (row: T) => React.ReactNode;
   cardVariant?: CardVariant;
   hideOnMobile?: boolean;
