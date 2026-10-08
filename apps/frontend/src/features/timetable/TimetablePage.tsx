@@ -9,8 +9,10 @@ import {
   fetchActiveTerm,
   autoGenerateSchedule,
   clearAutoDrafts,
+  fetchUnscheduled,
   type RawSchedule,
   type UnscheduledBlock,
+  type UnscheduledRecord,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -103,6 +105,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
+  
   const [plotOpen, setPlotOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
@@ -178,6 +181,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
   } = useQuery({
     queryKey: ['schedules', activeTerm?.termId],
     queryFn: () => fetchSchedules(activeTerm?.termId),
+    enabled: !!user && !!activeTerm,
+  });
+
+  const { data: unscheduledRecords = [] } = useQuery({
+    queryKey: ['unscheduled', activeTerm?.termId],
+    queryFn: () => fetchUnscheduled(activeTerm!.termId),
     enabled: !!user && !!activeTerm,
   });
 
@@ -830,6 +839,56 @@ export default function TimetablePage({ readOnly = false }: Props) {
               });
             }}
           />
+        </div>
+      )}
+            {/* ── Unscheduled blocks panel ── */}
+      {unscheduledRecords.length > 0 && !autoPreview && (
+        <div className="fixed bottom-4 right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
+          <details className="bg-white border border-amber-200 shadow-lg rounded-lg overflow-hidden">
+            <summary className="px-4 py-3 cursor-pointer bg-amber-50 text-amber-900 font-semibold text-sm flex items-center gap-2 hover:bg-amber-100 transition select-none">
+              <Icon name="warning" size={16} />
+              <span className="flex-1">
+                {unscheduledRecords.length} subject
+                {unscheduledRecords.length === 1 ? '' : 's'} need manual plotting
+              </span>
+              <Icon name="expand_more" size={16} />
+            </summary>
+            <ul className="max-h-80 overflow-y-auto divide-y divide-amber-100">
+              {unscheduledRecords.map((u) => (
+                <li key={u.unscheduledId} className="px-4 py-3 text-xs">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-mono font-bold text-primary">
+                      {u.subjectCode}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-on-surface-variant">
+                      {u.kind}
+                    </span>
+                  </div>
+                  <div className="text-on-surface-variant truncate mt-0.5">
+                    {u.subjectTitle}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[11px] text-on-surface-variant">
+                      {u.sectionCode}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Open PlotSubjectModal — for now, alert.
+                        // Full pre-fill comes in a follow-up.
+                        alert(
+                          `Plot manually: ${u.subjectCode} for ${u.sectionCode}`,
+                        );
+                      }}
+                      className="text-[11px] font-semibold text-primary hover:underline"
+                    >
+                      Plot manually →
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
     </div>

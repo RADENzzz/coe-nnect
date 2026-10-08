@@ -94,6 +94,27 @@ export async function clearAutoDrafts(
   return data.data;
 }
 
+export interface UnscheduledRecord {
+  unscheduledId: string;
+  sectionId: string | null;
+  sectionCode: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectTitle: string;
+  kind: 'lecture' | 'lab';
+  sessionIndex: number;
+  reason: string | null;
+}
+
+export async function fetchUnscheduled(
+  termId: string,
+): Promise<UnscheduledRecord[]> {
+  const { data } = await api.get('/v1/schedules/unscheduled', {
+    params: { termId },
+  });
+  return data.data;
+}
+
 export async function updateRemarks(
   id: string,
   remarks: string,
