@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
@@ -57,10 +57,10 @@ export default function SectionsPage() {
 
   // Simple debounce with useEffect
   const [debouncedSearch, setDebouncedSearch] = useState(searchInput);
-  useState(() => {
+  useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 200);
     return () => clearTimeout(t);
-  });
+  }, [searchInput]);
 
   const programFilter = searchParams.get('program') ?? '';
   const yearFilter = searchParams.get('year') ?? '';
