@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchSubjects,
@@ -29,25 +30,95 @@ const ROOM_TYPES = [
 ];
 
 type Mode = 'create' | 'edit';
+type RoomTypeFilter = '' | 'lecture_room' | 'laboratory' | 'computer_lab' | 'drafting_room' | 'other' | 'none';
+type ComponentFilter = 'all' | 'lecture_only' | 'lab_only' | 'mixed';
+type StatusFilter = 'all' | 'active' | 'inactive';
+type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
+type SortDir = 'asc' | 'desc';
+
+// Debounce hook — keeps the search input snappy
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 export default function SubjectsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+
   const [restrictionsOpen, setRestrictionsOpen] = useState(false);
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<SubjectRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
-  const [form, setForm] = useState({
-    subjectCode: '',
-    title: '',
-    lectureUnits: '',
-    labUnits: '',
-    requiredRoomType: '',
-    deptId: '',
-  });
 
+  // ── Filters (URL-synced) ──
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchInput, setSearchInput] = useState(
+    () => searchParams.get('q') ?? '',
+  );
+  const debouncedSearch = useDebouncedValue(searchInput, 200);
+
+  const deptFilter = searchParams.get('dept') ?? '';
+  const roomFilter = (searchParams.get('room') ?? '') as RoomTypeFilter;
+  const compFilter = (searchParams.get('comp') ?? 'all') as ComponentFilter;
+  const statusFilter = (searchParams.get('status') ?? 'all') as StatusFilter;
+  const sortKey = (searchParams.get('sort') ?? 'code') as SortKey;
+  const sortDir = (searchParams.get('dir') ?? 'asc') as SortDir;
+
+  const setFilter = useCallback(
+    (key: string, value: string) => {
+      const next = new URLSearchParams(searchParams);
+      if (!value || value === 'all' || value === '') {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  // Sync debounced search into URL
+  useEffect(() => {
+    if (debouncedSearch !== (searchParams.get('q') ?? '')) {
+      setFilter('q', debouncedSearch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const toggleSort = useCallback(
+    (key: SortKey) => {
+      if (sortKey === key) {
+        setFilter('dir', sortDir === 'asc' ? 'desc' : 'asc');
+      } else {
+        const next = new URLSearchParams(searchParams);
+        next.set('sort', key);
+        next.set('dir', 'asc');
+        setSearchParams(next, { replace: true });
+      }
+    },
+    [sortKey, sortDir, searchParams, setSearchParams, setFilter],
+  );
+
+  const clearAll = useCallback(() => {
+    setSearchInput('');
+    setSearchParams(new URLSearchParams(), { replace: true });
+  }, [setSearchParams]);
+
+  const hasAnyFilter =
+    !!searchInput ||
+    !!deptFilter ||
+    !!roomFilter ||
+    compFilter !== 'all' ||
+    statusFilter !== 'all';
+
+  // ── Data ──
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects', { includeInactive: true }],
     queryFn: () => fetchSubjects(true),
@@ -60,6 +131,102 @@ export default function SubjectsPage() {
     enabled: !!user,
   });
 
+  // ── Dept counts (for filter dropdown labels) ──
+  const deptCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of subjects) {
+      const id = String(s.deptId ?? '');
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+  }, [subjects]);
+
+  // ── Filtering + sorting ──
+  const filtered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+
+    let rows = subjects.filter((s) => {
+      // Search
+      if (q) {
+        const code = (s.subjectCode ?? '').toLowerCase();
+        const title = (s.title ?? '').toLowerCase();
+        if (!code.includes(q) && !title.includes(q)) return false;
+      }
+
+      // Dept
+      if (deptFilter && String(s.deptId ?? '') !== deptFilter) return false;
+
+      // Room type
+      if (roomFilter === 'none') {
+        if (s.requiredRoomType) return false;
+      } else if (roomFilter) {
+        if (s.requiredRoomType !== roomFilter) return false;
+      }
+
+      // Component
+      const lec = Number(s.lectureUnits ?? 0);
+      const lab = Number(s.labUnits ?? 0);
+      if (compFilter === 'lecture_only' && (lec === 0 || lab > 0)) return false;
+      if (compFilter === 'lab_only' && (lab === 0 || lec > 0)) return false;
+      if (compFilter === 'mixed' && (lec === 0 || lab === 0)) return false;
+
+      // Status
+      if (statusFilter === 'active' && !s.isActive) return false;
+      if (statusFilter === 'inactive' && s.isActive) return false;
+
+      return true;
+    });
+
+    // Sort
+    const deptCodeFor = (id: string | null) => {
+      if (!id) return '';
+      const d = departments.find((x) => String(x.deptId) === String(id));
+      return d?.deptCode ?? '';
+    };
+
+    const dir = sortDir === 'asc' ? 1 : -1;
+    rows = [...rows].sort((a, b) => {
+      let av = '';
+      let bv = '';
+      switch (sortKey) {
+        case 'code':
+          av = a.subjectCode ?? '';
+          bv = b.subjectCode ?? '';
+          break;
+        case 'title':
+          av = a.title ?? '';
+          bv = b.title ?? '';
+          break;
+        case 'units':
+          av = String(Number(a.totalUnits ?? 0)).padStart(6, '0');
+          bv = String(Number(b.totalUnits ?? 0)).padStart(6, '0');
+          break;
+        case 'dept':
+          av = deptCodeFor(a.deptId);
+          bv = deptCodeFor(b.deptId);
+          break;
+        case 'roomType':
+          av = a.requiredRoomType ?? '';
+          bv = b.requiredRoomType ?? '';
+          break;
+      }
+      return av.localeCompare(bv) * dir;
+    });
+
+    return rows;
+  }, [
+    subjects,
+    debouncedSearch,
+    deptFilter,
+    roomFilter,
+    compFilter,
+    statusFilter,
+    sortKey,
+    sortDir,
+    departments,
+  ]);
+
+  // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createSubject,
     onSuccess: (s) => {
@@ -99,6 +266,16 @@ export default function SubjectsPage() {
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Delete failed'),
+  });
+
+  // ── Form state ──
+  const [form, setForm] = useState({
+    subjectCode: '',
+    title: '',
+    lectureUnits: '',
+    labUnits: '',
+    requiredRoomType: '',
+    deptId: '',
   });
 
   const closeForm = () => {
@@ -188,24 +365,53 @@ export default function SubjectsPage() {
     return d ? d.deptCode : `#${id}`;
   };
 
+  // ── Sortable header helper ──
+  const sortIcon = (key: SortKey) => {
+    if (sortKey !== key) return 'unfold_more';
+    return sortDir === 'asc' ? 'expand_less' : 'expand_more';
+  };
+
+  const SortHeader = ({
+    label,
+    sortKeyName,
+    align = 'left',
+  }: {
+    label: string;
+    sortKeyName: SortKey;
+    align?: 'left' | 'right';
+  }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(sortKeyName)}
+      className={`inline-flex items-center gap-1 hover:text-primary transition ${
+        align === 'right' ? 'ml-auto' : ''
+      }`}
+      title={`Sort by ${label}`}
+    >
+      {label}
+      <Icon name={sortIcon(sortKeyName)} size={14} />
+    </button>
+  );
+
+  // ── Columns ──
   const columns: Column<SubjectRecord>[] = [
     {
       key: 'code',
-      header: 'Code',
+      header: <SortHeader label="Code" sortKeyName="code" />,
       cardVariant: 'title',
       cellClassName: 'font-bold font-mono text-primary',
       render: (s) => s.subjectCode,
     },
     {
       key: 'title',
-      header: 'Title',
+      header: <SortHeader label="Title" sortKeyName="title" />,
       cardVariant: 'subtitle',
       cellClassName: 'text-on-surface',
       render: (s) => s.title,
     },
     {
       key: 'units',
-      header: 'Units',
+      header: <SortHeader label="Units" sortKeyName="units" />,
       cardVariant: 'mono',
       cellClassName: 'text-on-surface-variant font-mono text-xs',
       render: (s) =>
@@ -213,14 +419,14 @@ export default function SubjectsPage() {
     },
     {
       key: 'dept',
-      header: 'Dept',
+      header: <SortHeader label="Dept" sortKeyName="dept" />,
       cardVariant: 'meta',
       cellClassName: 'text-on-surface-variant text-xs font-mono',
       render: (s) => deptName(s.deptId),
     },
     {
       key: 'roomType',
-      header: 'Room Type',
+      header: <SortHeader label="Room Type" sortKeyName="roomType" />,
       cardVariant: 'meta',
       cellClassName: 'text-on-surface-variant text-xs',
       render: (s) =>
@@ -259,6 +465,7 @@ export default function SubjectsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Subjects</h1>
@@ -284,6 +491,7 @@ export default function SubjectsPage() {
         </div>
       </div>
 
+      {/* Info banner */}
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
         <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
         <div className="flex-1">
@@ -315,9 +523,140 @@ export default function SubjectsPage() {
         </div>
       )}
 
+      {/* ── Filter panel ── */}
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Search */}
+          <div className="flex-1 min-w-[240px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Search
+            </label>
+            <div className="relative">
+              <Icon
+                name="search"
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Subject code or title…"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1"
+                  aria-label="Clear search"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Department */}
+          <div className="min-w-[180px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Department
+            </label>
+            <select
+              value={deptFilter}
+              onChange={(e) => setFilter('dept', e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="">All departments</option>
+              {departments
+                .filter((d) => d.isActive)
+                .map((d) => {
+                  const count = deptCounts.get(String(d.deptId)) ?? 0;
+                  return (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName} ({count})
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
+
+          {/* Room type */}
+          <div className="min-w-[150px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Room Type
+            </label>
+            <select
+              value={roomFilter}
+              onChange={(e) => setFilter('room', e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="">Any room type</option>
+              <option value="none">No specific room</option>
+              <option value="lecture_room">Lecture Room</option>
+              <option value="laboratory">Laboratory</option>
+              <option value="computer_lab">Computer Lab</option>
+              <option value="drafting_room">Drafting Room</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Component */}
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Component
+            </label>
+            <select
+              value={compFilter}
+              onChange={(e) => setFilter('comp', e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="all">Any</option>
+              <option value="lecture_only">Lecture only</option>
+              <option value="lab_only">Lab only</option>
+              <option value="mixed">Mixed (Lec + Lab)</option>
+            </select>
+          </div>
+
+          {/* Status */}
+          <div className="min-w-[120px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Status
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setFilter('status', e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          {/* Clear */}
+          {hasAnyFilter && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition flex items-center gap-1.5"
+            >
+              <Icon name="close" size={14} />
+              Clear all
+            </button>
+          )}
+
+          <div className="ml-auto text-xs text-on-surface-variant whitespace-nowrap">
+            Showing <strong className="text-on-surface">{filtered.length}</strong>{' '}
+            of {subjects.length}
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
       <ResponsiveTable
         columns={columns}
-        rows={subjects}
+        rows={filtered}
         rowKey={(s) => s.subjectId}
         rowTitle={(s) => s.subjectCode}
         rowSubtitle={(s) => s.title}
@@ -328,6 +667,7 @@ export default function SubjectsPage() {
         getActions={getActions}
       />
 
+      {/* Create/Edit modal */}
       <Modal
         open={!!mode}
         onClose={closeForm}
@@ -474,6 +814,7 @@ export default function SubjectsPage() {
         </form>
       </Modal>
 
+      {/* Delete modal */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
