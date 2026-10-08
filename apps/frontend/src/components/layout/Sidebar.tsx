@@ -75,18 +75,6 @@ export default function Sidebar({ nav }: SidebarProps) {
         </button>
       )}
 
-      {/* CTA — DH only */}
-      {isDH && collapsed && (
-        <div className="px-2 py-3 border-b border-white/10">
-          <button
-            className="w-full bg-white text-[#5c1219] flex items-center justify-center h-9 hover:bg-white/90 transition-colors"
-            title="Create New Term"
-            aria-label="Create New Term"
-          >
-            <Icon name="add" />
-          </button>
-        </div>
-      )}
 
       {/* Main Nav */}
       <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2">
