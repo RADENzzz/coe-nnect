@@ -182,7 +182,6 @@ export class SchedulingService {
       );
     }
 
-    // ── FIX: resolveSectionId must succeed if a section code was provided ──
     const sectionId = await this.resolveSectionId(dto.section);
     if (dto.section && !sectionId) {
       throw new BadRequestException(
@@ -298,9 +297,7 @@ export class SchedulingService {
     // ── Pre-flight: room sufficiency check ──
     const sufficiency = this.analyzeRoomSufficiency(problem);
     if (!sufficiency.sufficient) {
-      this.logger.warn(
-        `Auto-generate blocked: ${sufficiency.hint}`,
-      );
+      this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
       return {
         success: false,
         message: sufficiency.hint,
@@ -347,16 +344,15 @@ export class SchedulingService {
       userId,
     );
     await this.persistUnscheduled(termId, result.unscheduled ?? []);
+
     return {
       success: true,
       scheduleCount: saved.length,
       solveTimeSeconds: result.solveTimeSeconds ?? null,
       warnings: validation.softWarnings,
-      unscheduled: result.unscheduled ?? [],   // ← NEW
+      unscheduled: result.unscheduled ?? [],
     };
   }
-
-  
 
   // ────────────────────────────────────────────
   // buildSolverProblem
@@ -392,9 +388,6 @@ export class SchedulingService {
     }
 
     // ── Determine the term's semester ──
-    // Only schedule subjects that belong to the active term's semester.
-    // Without this filter, the solver tries to schedule 1st + 2nd + summer
-    // subjects all at once — roughly doubling the problem size.
     const { data: termRow, error: termErr } = await db
       .from('term')
       .select('semester')
@@ -432,12 +425,27 @@ export class SchedulingService {
     const { data: subjects, error: subErr } = await db
       .from('subject')
       .select(
-        'subject_id, subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_id',
+        'subject_id, subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_id, source_dept',
       )
       .in('subject_id', subjectIds)
       .eq('is_active', true);
 
     if (subErr) throw new Error(`Failed to load subjects: ${subErr.message}`);
+
+    // ── Filter to CPE-owned subjects only ──
+    // External subjects (Math, GenEd, PE, EPIC, NSTP) have source_dept set
+    // and are scheduled by other colleges, not the CPE solver.
+    const cpeSubjects = (subjects ?? []).filter(
+      (s: any) => !s.source_dept,
+    );
+    const cpeSubjectIds = new Set(
+      cpeSubjects.map((s: any) => String(s.subject_id)),
+    );
+    const cpeProspectus = (prospectus ?? []).filter((p: any) =>
+      cpeSubjectIds.has(String(p.subject_id)),
+    );
+
+    const cpeSubjectIdList = Array.from(cpeSubjectIds);
 
     const { data: faculty, error: facErr } = await db
       .from('faculty')
@@ -460,7 +468,7 @@ export class SchedulingService {
       .from('faculty_qualification')
       .select('faculty_id, subject_id')
       .in('faculty_id', facultyIds)
-      .in('subject_id', subjectIds);
+      .in('subject_id', cpeSubjectIdList);
 
     const { data: preferences } = await db
       .from('faculty_preference')
@@ -480,11 +488,7 @@ export class SchedulingService {
       throw new BadRequestException('No active rooms available');
     }
 
-    
-
-    // ── NEW: existing schedule rows for this term ──
-    // These are used to lock the solver out of slots already taken by
-    // earlier plots (e.g. cross-dept faculty who already have EE classes).
+    // ── Existing schedule rows for this term ──
     const { data: existingScheduleRows, error: existErr } = await db
       .from('schedule')
       .select(
@@ -531,7 +535,7 @@ export class SchedulingService {
         programId: s.program_id ? String(s.program_id) : null,
         yearLevel: s.year_level ?? null,
       })),
-      subjects: (subjects ?? []).map((s) => ({
+      subjects: cpeSubjects.map((s: any) => ({
         subjectId: String(s.subject_id),
         subjectCode: s.subject_code,
         title: s.title,
@@ -541,7 +545,7 @@ export class SchedulingService {
         requiredRoomType: s.required_room_type ?? null,
         deptId: String(s.dept_id),
       })),
-      prospectus: (prospectus ?? []).map((p) => ({
+      prospectus: cpeProspectus.map((p: any) => ({
         prospectusId: String(p.prospectus_id),
         programId: String(p.program_id),
         subjectId: String(p.subject_id),
@@ -586,7 +590,6 @@ export class SchedulingService {
         labSplitHours: num('lab_split_hours', 3),
         visitingLecturerMaxHours: num('visiting_lecturer_max_hours', 24),
         defaultRequiredHours: num('default_required_hours', 18),
-        // ── NEW: configurable scheduling rules ──
         lectureMinutesPerUnit: num('lecture_minutes_per_unit', 30),
         lectureMinimumMinutes: num('lecture_minimum_minutes', 60),
         labMinutesPerUnit: num('lab_minutes_per_unit', 180),
@@ -611,8 +614,6 @@ export class SchedulingService {
       })),
     };
   }
-
-  
 
   // ────────────────────────────────────────────
   // generateTimeSlotGrid
@@ -684,6 +685,11 @@ export class SchedulingService {
       reason: string;
     }> = [];
 
+    const softForAuto = await this.getAutoGenerateSoftRules();
+    this.logger.log(
+      `Auto-generate soft rules: [${Array.from(softForAuto).join(', ')}]`,
+    );
+
     for (const block of schedule) {
       try {
         const context = await this.ruleContextBuilder.build({
@@ -691,7 +697,6 @@ export class SchedulingService {
           subjectId: block.subjectId,
           facultyId: block.facultyId,
           roomId: block.roomId,
-          // ── FIX: pass the section CODE, not the ID ──
           section: block.sectionCode,
           dayOfWeek: block.day,
           startTime: block.startTime,
@@ -699,15 +704,26 @@ export class SchedulingService {
           loadType: (block.loadType as any) ?? undefined,
         });
         const result = this.constraints.evaluate(context);
+
         if (!result.valid) {
           for (const c of result.hardConflicts) {
-            hardFailures.push({
-              ruleId: c.ruleId,
-              ruleName: c.ruleName,
-              reason: `[${block.subjectId} ${block.sectionCode} ${block.day} ${block.startTime}] ${c.reason}`,
-            });
+            const reason = `[${block.subjectId} ${block.sectionCode} ${block.day} ${block.startTime}] ${c.reason}`;
+            if (softForAuto.has(c.ruleId)) {
+              softWarnings.push({
+                ruleId: c.ruleId,
+                ruleName: c.ruleName,
+                reason,
+              });
+            } else {
+              hardFailures.push({
+                ruleId: c.ruleId,
+                ruleName: c.ruleName,
+                reason,
+              });
+            }
           }
         }
+
         for (const w of result.softWarnings) {
           softWarnings.push({
             ruleId: w.ruleId,
@@ -730,111 +746,6 @@ export class SchedulingService {
   // ────────────────────────────────────────────
   // persistDraftSchedule
   // ────────────────────────────────────────────
-    /**
-   * Persist the "couldn't be placed" list from the solver.
-   * Wipes prior entries for the term first (since each generate produces
-   * a fresh list), then inserts the current batch.
-   */
-  private async persistUnscheduled(
-    termId: string,
-    unscheduled: Array<{
-      sectionId: string;
-      subjectId: string;
-      kind: 'lecture' | 'lab';
-      sessionIndex: number;
-    }>,
-  ): Promise<void> {
-    const db = this.supabase.getAdminClient();
-
-    // Clear old entries for this term
-    const { error: clearErr } = await db
-      .from('schedule_unscheduled')
-      .delete()
-      .eq('term_id', termId);
-
-    if (clearErr) {
-      this.logger.warn(
-        `Failed to clear old unscheduled rows: ${clearErr.message}`,
-      );
-    }
-
-    if (unscheduled.length === 0) return;
-
-    const rows = unscheduled.map((u) => ({
-      term_id: termId,
-      section_id: u.sectionId,
-      subject_id: u.subjectId,
-      kind: u.kind,
-      session_index: u.sessionIndex ?? 0,
-      reason: 'Could not find a non-conflicting time slot',
-    }));
-
-    const { error } = await db.from('schedule_unscheduled').insert(rows);
-
-    if (error) {
-      this.logger.error(
-        `Failed to persist unscheduled rows: ${error.message}`,
-      );
-      // Non-fatal — don't throw. The schedule was persisted successfully.
-      return;
-    }
-
-    this.logger.log(
-      `Persisted ${rows.length} unscheduled block(s) for term=${termId}`,
-    );
-  }
-
-  /**
-   * Read the persisted unscheduled list for a term. Used by the frontend
-   * "Needs plotting" panel.
-   */
-  async getUnscheduled(termId: string): Promise<
-    Array<{
-      unscheduledId: string;
-      sectionId: string | null;
-      sectionCode: string;
-      subjectId: string;
-      subjectCode: string;
-      subjectTitle: string;
-      kind: 'lecture' | 'lab';
-      sessionIndex: number;
-      reason: string | null;
-    }>
-  > {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .from('schedule_unscheduled')
-      .select(
-        `
-        unscheduled_id,
-        section_id,
-        subject_id,
-        kind,
-        session_index,
-        reason,
-        section:section_id ( section_code ),
-        subject:subject_id ( subject_code, title )
-        `,
-      )
-      .eq('term_id', termId);
-
-    if (error) {
-      this.logger.error(`getUnscheduled failed: ${error.message}`);
-      return [];
-    }
-
-    return (data ?? []).map((r) => ({
-      unscheduledId: String(r.unscheduled_id),
-      sectionId: r.section_id ? String(r.section_id) : null,
-      sectionCode: (r as any).section?.section_code ?? '?',
-      subjectId: String(r.subject_id),
-      subjectCode: (r as any).subject?.subject_code ?? '?',
-      subjectTitle: (r as any).subject?.title ?? '',
-      kind: r.kind as 'lecture' | 'lab',
-      sessionIndex: r.session_index ?? 0,
-      reason: r.reason ?? null,
-    }));
-  }
   private async persistDraftSchedule(
     termId: string,
     deptId: string,
@@ -852,7 +763,8 @@ export class SchedulingService {
     userId: string,
   ): Promise<Schedule[]> {
     const db = this.supabase.getAdminClient();
-        const { error: clearErr } = await db
+
+    const { error: clearErr } = await db
       .from('schedule')
       .delete()
       .eq('term_id', termId)
@@ -868,6 +780,7 @@ export class SchedulingService {
         `Cleared prior auto-generated drafts for term=${termId}`,
       );
     }
+
     const sectionIds = Array.from(new Set(schedule.map((b) => b.sectionId)));
     const { data: sectionRows } = await this.supabase
       .getAdminClient()
@@ -938,16 +851,137 @@ export class SchedulingService {
     });
   }
 
-    /**
-   * Pre-solve sanity check: does the room inventory have enough capacity?
-   *
-   * Uses a rough room-hours/week model. If demand > supply for any room
-   * type, we refuse to solve and return a clear message.
-   *
-   * This is a WARNING level check — the solver does the real work. This
-   * just prevents an obvious 20-second failure when the answer is
-   * "add a lab room".
-   */
+  // ────────────────────────────────────────────
+  // persistUnscheduled
+  // ────────────────────────────────────────────
+  private async persistUnscheduled(
+    termId: string,
+    unscheduled: Array<{
+      sectionId: string;
+      subjectId: string;
+      kind: 'lecture' | 'lab';
+      sessionIndex: number;
+    }>,
+  ): Promise<void> {
+    const db = this.supabase.getAdminClient();
+
+    const { error: clearErr } = await db
+      .from('schedule_unscheduled')
+      .delete()
+      .eq('term_id', termId);
+
+    if (clearErr) {
+      this.logger.warn(
+        `Failed to clear old unscheduled rows: ${clearErr.message}`,
+      );
+    }
+
+    if (unscheduled.length === 0) return;
+
+    const rows = unscheduled.map((u) => ({
+      term_id: termId,
+      section_id: u.sectionId,
+      subject_id: u.subjectId,
+      kind: u.kind,
+      session_index: u.sessionIndex ?? 0,
+      reason: 'Could not find a non-conflicting time slot',
+    }));
+
+    const { error } = await db.from('schedule_unscheduled').insert(rows);
+
+    if (error) {
+      this.logger.error(
+        `Failed to persist unscheduled rows: ${error.message}`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Persisted ${rows.length} unscheduled block(s) for term=${termId}`,
+    );
+  }
+
+  // ────────────────────────────────────────────
+  // getUnscheduled
+  // ────────────────────────────────────────────
+  async getUnscheduled(termId: string): Promise<
+    Array<{
+      unscheduledId: string;
+      sectionId: string | null;
+      sectionCode: string;
+      subjectId: string;
+      subjectCode: string;
+      subjectTitle: string;
+      kind: 'lecture' | 'lab';
+      sessionIndex: number;
+      reason: string | null;
+    }>
+  > {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('schedule_unscheduled')
+      .select(
+        `
+        unscheduled_id,
+        section_id,
+        subject_id,
+        kind,
+        session_index,
+        reason,
+        section:section_id ( section_code ),
+        subject:subject_id ( subject_code, title )
+        `,
+      )
+      .eq('term_id', termId);
+
+    if (error) {
+      this.logger.error(`getUnscheduled failed: ${error.message}`);
+      return [];
+    }
+
+    return (data ?? []).map((r) => ({
+      unscheduledId: String(r.unscheduled_id),
+      sectionId: r.section_id ? String(r.section_id) : null,
+      sectionCode: (r as any).section?.section_code ?? '?',
+      subjectId: String(r.subject_id),
+      subjectCode: (r as any).subject?.subject_code ?? '?',
+      subjectTitle: (r as any).subject?.title ?? '',
+      kind: r.kind as 'lecture' | 'lab',
+      sessionIndex: r.session_index ?? 0,
+      reason: r.reason ?? null,
+    }));
+  }
+
+  // ────────────────────────────────────────────
+  // clearAutoDrafts
+  // ────────────────────────────────────────────
+  async clearAutoDrafts(termId: string): Promise<{ deleted: number }> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('schedule')
+      .delete()
+      .eq('term_id', termId)
+      .eq('status', 'draft')
+      .like('remarks', 'Auto-generated by solver%')
+      .select('schedule_id');
+
+    if (error) {
+      this.logger.error(`clearAutoDrafts failed: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to clear auto-generated drafts: ${error.message}`,
+      );
+    }
+
+    const deleted = data?.length ?? 0;
+    this.logger.log(
+      `Cleared ${deleted} auto-generated draft(s) for term=${termId}`,
+    );
+    return { deleted };
+  }
+
+  // ────────────────────────────────────────────
+  // analyzeRoomSufficiency
+  // ────────────────────────────────────────────
   private analyzeRoomSufficiency(problem: any): {
     sufficient: boolean;
     deficits: Array<{
@@ -959,17 +993,11 @@ export class SchedulingService {
     }>;
     hint: string;
   } {
-    // ── Compute demand per room type ──
-    // Only counts blocks that have an EXPLICIT required_room_type.
-    // Blocks with `null` room type can go in any room, so they don't
-    // contribute to a specific type's deficit — but they do consume
-    // *some* room. For a rough check we skip them.
-    const demandByType = new Map<string, number>(); // roomType → room-hours
+    const demandByType = new Map<string, number>();
 
     for (const subj of problem.subjects) {
       const blocks = this.computeBlocksForSufficiency(subj, problem.config);
 
-      // How many sections take this subject?
       const sectionsTaking = problem.sections.filter((sec: any) =>
         problem.prospectus.some(
           (p: any) =>
@@ -982,23 +1010,18 @@ export class SchedulingService {
       if (sectionsTaking === 0) continue;
 
       for (const block of blocks) {
-        // Which room type does this block need?
         let roomType: string | null = subj.requiredRoomType;
-        if (!roomType) {
-          // No specific requirement — skip for deficit analysis
-          continue;
-        }
+        if (!roomType) continue;
 
         const hours = (block.durationMinutes / 60) * sectionsTaking;
         demandByType.set(roomType, (demandByType.get(roomType) ?? 0) + hours);
       }
     }
 
-    // ── Compute supply per room type ──
     const startMin = this.timeToMinutes(problem.config.operatingHoursStart);
     const endMin = this.timeToMinutes(problem.config.operatingHoursEnd);
     const hoursPerDay = (endMin - startMin) / 60;
-    const operatingDays = 6; // Mon–Sat
+    const operatingDays = 6;
     const hoursPerWeekPerRoom = hoursPerDay * operatingDays;
 
     const supplyByType = new Map<string, { rooms: number; hours: number }>();
@@ -1009,7 +1032,6 @@ export class SchedulingService {
       supplyByType.set(room.roomType, entry);
     }
 
-    // ── Compare ──
     const deficits: Array<{
       roomType: string;
       neededHours: number;
@@ -1024,7 +1046,9 @@ export class SchedulingService {
 
       if (demandHours > availableHours) {
         const shortByHours = demandHours - availableHours;
-        const suggestedExtraRooms = Math.ceil(shortByHours / hoursPerWeekPerRoom);
+        const suggestedExtraRooms = Math.ceil(
+          shortByHours / hoursPerWeekPerRoom,
+        );
         deficits.push({
           roomType,
           neededHours: Math.round(demandHours * 10) / 10,
@@ -1050,15 +1074,14 @@ export class SchedulingService {
     return { sufficient, deficits, hint };
   }
 
-  /**
-   * Returns the blocks a subject needs (mirrors solver.compute_blocks).
-   * Used only for the room-sufficiency estimate.
-   */
   private computeBlocksForSufficiency(
     subject: any,
     config: any,
   ): Array<{ kind: 'lecture' | 'lab'; durationMinutes: number }> {
-    const blocks: Array<{ kind: 'lecture' | 'lab'; durationMinutes: number }> = [];
+    const blocks: Array<{
+      kind: 'lecture' | 'lab';
+      durationMinutes: number;
+    }> = [];
 
     if (subject.lectureUnits > 0) {
       blocks.push({
@@ -1081,30 +1104,6 @@ export class SchedulingService {
     return blocks;
   }
 
-    async clearAutoDrafts(termId: string): Promise<{ deleted: number }> {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .from('schedule')
-      .delete()
-      .eq('term_id', termId)
-      .eq('status', 'draft')
-      .like('remarks', 'Auto-generated by solver%')
-      .select('schedule_id');
-
-    if (error) {
-      this.logger.error(`clearAutoDrafts failed: ${error.message}`);
-      throw new BadRequestException(
-        `Failed to clear auto-generated drafts: ${error.message}`,
-      );
-    }
-
-    const deleted = data?.length ?? 0;
-    this.logger.log(
-      `Cleared ${deleted} auto-generated draft(s) for term=${termId}`,
-    );
-    return { deleted };
-  }
-
   // ════════════════════════════════════════════
   // Helpers
   // ════════════════════════════════════════════
@@ -1123,5 +1122,28 @@ export class SchedulingService {
       select: ['sectionId'],
     });
     return section?.sectionId ?? null;
+  }
+
+  private async getAutoGenerateSoftRules(): Promise<Set<string>> {
+    const { data } = await this.supabase
+      .getAdminClient()
+      .from('scheduling_setting')
+      .select('value')
+      .eq('setting_key', 'auto_generate_soft_rules')
+      .maybeSingle();
+
+    const raw = data?.value;
+
+    if (Array.isArray(raw)) return new Set(raw.map(String));
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return new Set(parsed.map(String));
+      } catch {
+        // Fall through
+      }
+    }
+
+    return new Set(['H-4', 'H-6', 'S-7', 'S-2']);
   }
 }
