@@ -52,6 +52,8 @@ export interface UnscheduledBlock {
   sessionIndex: number;
 }
 
+
+
 export interface RoomDeficit {
   roomType: string;
   neededHours: number;
@@ -80,6 +82,15 @@ export async function autoGenerateSchedule(
     { termId, deptId },
     { timeout: 120_000 }, // 2 min — CP-SAT can take up to 60s
   );
+  return data.data;
+}
+
+export async function clearAutoDrafts(
+  termId: string,
+): Promise<{ deleted: number }> {
+  const { data } = await api.delete('/v1/schedules/auto-drafts', {
+    params: { termId },
+  });
   return data.data;
 }
 

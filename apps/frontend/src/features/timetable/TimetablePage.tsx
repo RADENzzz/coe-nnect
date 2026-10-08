@@ -8,6 +8,7 @@ import {
   fetchSchedules,
   fetchActiveTerm,
   autoGenerateSchedule,
+  clearAutoDrafts,
   type RawSchedule,
   type UnscheduledBlock,
 } from '../../api/schedule.api';
@@ -816,7 +817,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 queryKey: ['schedules', activeTerm?.termId],
               });
             }}
-            onCancel={() => {
+            onCancel={async () => {
+              try {
+                await clearAutoDrafts(activeTerm!.termId);
+              } catch (err) {
+                console.error('Failed to clear drafts:', err);
+              }
               setAutoPreview(null);
               setAutoUnscheduled([]);
               queryClient.invalidateQueries({
