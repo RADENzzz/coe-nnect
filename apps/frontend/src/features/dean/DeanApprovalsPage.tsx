@@ -5,8 +5,10 @@ import {
   updateScheduleStatus,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { fetchSections } from '../../api/sections.api';
+import { fetchFaculty } from '../../api/faculty.api';
 import Icon from '../../components/ui/Icon';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge from '../../components/ui/StatusBadge';
@@ -21,9 +23,16 @@ const STATUS_LABELS: Record<
   published: { label: 'Published', tone: 'info' },
 };
 
+type TabFilter = 'review' | 'finalized' | 'all';
+type StatusFilter = 'all' | 'draft' | 'review' | 'finalized' | 'published';
+
 export default function DeanApprovalsPage() {
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<'review' | 'all'>('review');
+  const [tab, setTab] = useState<TabFilter>('review');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [sectionFilter, setSectionFilter] = useState('');
+  const [facultyFilter, setFacultyFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: activeTerm } = useQuery({
@@ -34,6 +43,18 @@ export default function DeanApprovalsPage() {
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ['schedules', activeTerm?.termId],
     queryFn: () => fetchSchedules(activeTerm?.termId),
+    enabled: !!activeTerm?.termId,
+  });
+
+  const { data: sections = [] } = useQuery({
+    queryKey: ['sections'],
+    queryFn: fetchSections,
+    enabled: !!activeTerm?.termId,
+  });
+
+  const { data: faculty = [] } = useQuery({
+    queryKey: ['faculty'],
+    queryFn: () => fetchFaculty(false),
     enabled: !!activeTerm?.termId,
   });
 
@@ -56,13 +77,53 @@ export default function DeanApprovalsPage() {
     },
   });
 
-  const displayed =
-    filter === 'review'
-      ? schedules.filter((s) => s.status === 'review')
-      : schedules;
+  // ── Tab filtering ──
+  const tabFiltered = useMemo(() => {
+    if (tab === 'review') return schedules.filter((s) => s.status === 'review');
+    if (tab === 'finalized')
+      return schedules.filter(
+        (s) => s.status === 'finalized' || s.status === 'published',
+      );
+    return schedules;
+  }, [schedules, tab]);
+
+  // ── Secondary filters ──
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return tabFiltered.filter((s) => {
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      if (sectionFilter && (s.section ?? '') !== sectionFilter) return false;
+      if (facultyFilter && String(s.facultyId ?? '') !== facultyFilter) {
+        return false;
+      }
+      if (q) {
+        const subjCode = (s.subject?.subjectCode ?? '').toLowerCase();
+        const subjTitle = (s.subject?.title ?? '').toLowerCase();
+        if (!subjCode.includes(q) && !subjTitle.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [tabFiltered, statusFilter, sectionFilter, facultyFilter, searchQuery]);
 
   const reviewCount = schedules.filter((s) => s.status === 'review').length;
+  const finalizedCount = schedules.filter(
+    (s) => s.status === 'finalized' || s.status === 'published',
+  ).length;
 
+  const hasAnyFilter =
+    !!searchQuery ||
+    statusFilter !== 'all' ||
+    !!sectionFilter ||
+    !!facultyFilter;
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setSectionFilter('');
+    setFacultyFilter('');
+  };
+
+  // ── Columns ──
   const columns: Column<RawSchedule>[] = [
     {
       key: 'subject',
@@ -78,6 +139,13 @@ export default function DeanApprovalsPage() {
       hideOnMobile: true,
       cellClassName: 'text-xs text-slate-400 truncate max-w-[160px]',
       render: (s) => s.subject?.title ?? '—',
+    },
+    {
+      key: 'section',
+      header: 'Section',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs text-slate-600 font-mono',
+      render: (s) => s.section ?? '—',
     },
     {
       key: 'faculty',
@@ -162,6 +230,7 @@ export default function DeanApprovalsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
@@ -185,23 +254,131 @@ export default function DeanApprovalsPage() {
         </div>
       )}
 
+      {/* Tabs */}
       <div className="flex gap-0 border-b border-slate-200">
-        {(['review', 'all'] as const).map((f) => (
+        {(
+          [
+            { id: 'review', label: `Pending Review (${reviewCount})` },
+            { id: 'finalized', label: `Finalized (${finalizedCount})` },
+            { id: 'all', label: `All (${schedules.length})` },
+          ] as const
+        ).map((t) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={`px-4 py-2.5 text-xs font-semibold transition-all border-b-2 -mb-px ${
-              filter === f
+              tab === t.id
                 ? 'border-[#5c1219] text-[#5c1219]'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            {f === 'review'
-              ? `Pending Review (${reviewCount})`
-              : `All Schedules (${schedules.length})`}
+            {t.label}
           </button>
         ))}
       </div>
+
+      {/* Filter panel */}
+      {activeTerm && (
+        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[220px]">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Search
+              </label>
+              <div className="relative">
+                <Icon
+                  name="search"
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Subject code or title…"
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div className="min-w-[140px]">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as StatusFilter)
+                }
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="all">All</option>
+                <option value="draft">Draft</option>
+                <option value="review">In Review</option>
+                <option value="finalized">Finalized</option>
+                <option value="published">Published</option>
+              </select>
+            </div>
+
+            <div className="min-w-[150px]">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Section
+              </label>
+              <select
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">All sections</option>
+                {sections
+                  .filter((s) => s.isActive)
+                  .map((s) => (
+                    <option key={s.sectionId} value={s.sectionCode}>
+                      {s.sectionCode}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Faculty
+              </label>
+              <select
+                value={facultyFilter}
+                onChange={(e) => setFacultyFilter(e.target.value)}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">All faculty</option>
+                {faculty
+                  .filter((f) => f.isActive)
+                  .map((f) => (
+                    <option key={f.facultyId} value={f.facultyId}>
+                      {f.lastName}, {f.firstName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {hasAnyFilter && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition flex items-center gap-1.5"
+              >
+                <Icon name="close" size={14} />
+                Clear all
+              </button>
+            )}
+
+            <div className="ml-auto text-xs text-on-surface-variant whitespace-nowrap">
+              Showing{' '}
+              <strong className="text-on-surface">{filtered.length}</strong> of{' '}
+              {tabFiltered.length}
+            </div>
+          </div>
+        </div>
+      )}
 
       {!activeTerm ? (
         <div className="bg-white border border-slate-200 p-10 text-center">
@@ -214,7 +391,7 @@ export default function DeanApprovalsPage() {
       ) : (
         <ResponsiveTable
           columns={columns}
-          rows={displayed}
+          rows={filtered}
           rowKey={(s) => s.scheduleId}
           rowTitle={(s) => s.subject?.subjectCode ?? 'Schedule'}
           rowSubtitle={(s) =>
@@ -225,11 +402,11 @@ export default function DeanApprovalsPage() {
           isLoading={isLoading}
           hasSourceRows={schedules.length > 0}
           emptyMessage={
-            filter === 'review'
+            tab === 'review'
               ? 'No pending approvals — all schedules are up to date.'
               : 'No schedules yet.'
           }
-          noMatchMessage="No schedules match this filter."
+          noMatchMessage="No schedules match your filters."
           getActions={getActions}
         />
       )}
