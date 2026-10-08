@@ -23,6 +23,7 @@ import AuditTrailPage from './features/audit-trail/AuditTrailPage';
 import FacultyWorkloadPage from './features/reports/FacultyWorkloadPage';
 import ReportsHubPage from './features/reports/ReportsHubPage';
 import ApprovalsReportPage from './features/reports/ApprovalsReportPage';
+import RoomSufficiencyPage from './features/reports/RoomSufficiencyPage';
 
 function App() {
   return (
@@ -44,6 +45,7 @@ function App() {
           <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
+          <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
         </Route>
       </Route>
 
@@ -61,6 +63,7 @@ function App() {
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
           <Route path="timetable" element={<TimetablePage readOnly />} />
+          <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
         </Route>
       </Route>
 
@@ -82,6 +85,7 @@ function App() {
           <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
+          <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
         </Route>
       </Route>
 
