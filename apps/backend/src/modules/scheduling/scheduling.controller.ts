@@ -89,6 +89,16 @@ export class SchedulingController {
     return { data };
   }
 
+  @Get('room-sufficiency')
+  @Roles('administrator', 'college_dean', 'department_head')
+  async roomSufficiency(
+    @Query('deptId') deptId?: string,
+    @Query('termId') termId?: string,
+  ) {
+    const data = await this.service.getRoomSufficiency(deptId, termId);
+    return { data };
+  }
+
   // ═══════════════════════════════════════════════════════════
   // PARAMETERIZED (:id) ROUTES — must come AFTER static routes
   // ═══════════════════════════════════════════════════════════

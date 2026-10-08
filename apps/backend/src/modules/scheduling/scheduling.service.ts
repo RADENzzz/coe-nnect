@@ -1124,6 +1124,147 @@ export class SchedulingService {
     return section?.sectionId ?? null;
   }
 
+    /**
+   * Public wrapper for the room sufficiency analysis.
+   *
+   * If `deptId` is provided, returns the analysis for that department.
+   * If omitted, returns one analysis per active department (college-wide view).
+   */
+  async getRoomSufficiency(deptId?: string, termId?: string): Promise<
+    Array<{
+      deptId: string;
+      deptCode: string;
+      deptName: string;
+      termId: string;
+      termLabel: string | null;
+      sufficient: boolean;
+      hint: string;
+      deficits: Array<{
+        roomType: string;
+        neededHours: number;
+        availableHours: number;
+        shortByHours: number;
+        suggestedExtraRooms: number;
+      }>;
+      totals: {
+        subjects: number;
+        sections: number;
+        blocks: number;
+        rooms: number;
+      };
+    }>
+  > {
+    const db = this.supabase.getAdminClient();
+
+    // ── Resolve term ──
+    let resolvedTermId = termId;
+    let resolvedTermLabel: string | null = null;
+
+    if (resolvedTermId) {
+      const { data } = await db
+        .from('term')
+        .select('term_id, term_name, school_year')
+        .eq('term_id', resolvedTermId)
+        .maybeSingle();
+      if (data) {
+        resolvedTermLabel = `${data.term_name} AY ${data.school_year}`;
+      }
+    } else {
+      const { data } = await db
+        .from('term')
+        .select('term_id, term_name, school_year')
+        .eq('is_active', true)
+        .maybeSingle();
+      if (data) {
+        resolvedTermId = String(data.term_id);
+        resolvedTermLabel = `${data.term_name} AY ${data.school_year}`;
+      }
+    }
+
+    if (!resolvedTermId) {
+      throw new BadRequestException('No active term available');
+    }
+
+    // ── Resolve departments ──
+    let depts: Array<{ dept_id: bigint | number; dept_code: string; dept_name: string }> = [];
+
+    if (deptId) {
+      const { data, error } = await db
+        .from('department')
+        .select('dept_id, dept_code, dept_name')
+        .eq('dept_id', deptId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (error || !data) {
+        throw new BadRequestException(`Department ${deptId} not found`);
+      }
+      depts = [data];
+    } else {
+      const { data, error } = await db
+        .from('department')
+        .select('dept_id, dept_code, dept_name')
+        .eq('is_active', true)
+        .order('dept_code');
+      if (error) {
+        throw new BadRequestException(
+          `Failed to load departments: ${error.message}`,
+        );
+      }
+      depts = data ?? [];
+    }
+
+    // ── Run analysis per department ──
+    const results = [];
+    for (const d of depts) {
+      try {
+        const problem = await this.buildSolverProblem(
+          resolvedTermId,
+          String(d.dept_id),
+        );
+        const analysis = this.analyzeRoomSufficiency(problem);
+
+        results.push({
+          deptId: String(d.dept_id),
+          deptCode: d.dept_code,
+          deptName: d.dept_name,
+          termId: resolvedTermId,
+          termLabel: resolvedTermLabel,
+          sufficient: analysis.sufficient,
+          hint: analysis.hint,
+          deficits: analysis.deficits,
+          totals: {
+            subjects: problem.subjects.length,
+            sections: problem.sections.length,
+            blocks: problem.subjects.reduce(
+              (sum: number, s: any) =>
+                sum + this.computeBlocksForSufficiency(s, problem.config).length,
+              0,
+            ),
+            rooms: problem.rooms.length,
+          },
+        });
+      } catch (err) {
+        // If a dept has no programs/sections yet, skip it gracefully
+        this.logger.warn(
+          `Room sufficiency for dept ${d.dept_id} failed: ${(err as Error).message}`,
+        );
+        results.push({
+          deptId: String(d.dept_id),
+          deptCode: d.dept_code,
+          deptName: d.dept_name,
+          termId: resolvedTermId,
+          termLabel: resolvedTermLabel,
+          sufficient: true,
+          hint: '',
+          deficits: [],
+          totals: { subjects: 0, sections: 0, blocks: 0, rooms: 0 },
+        });
+      }
+    }
+
+    return results;
+  }
+
   private async getAutoGenerateSoftRules(): Promise<Set<string>> {
     const { data } = await this.supabase
       .getAdminClient()
