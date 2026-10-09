@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,6 +13,7 @@ import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { SubjectRestriction } from './entities/subject-restriction.entity';
 import { CreateSubjectRestrictionDto } from './dto/create-subject-restriction.dto';
 import { UpdateSubjectRestrictionDto } from './dto/update-subject-restriction.dto';
+import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class SubjectsService {
@@ -21,6 +23,44 @@ export class SubjectsService {
     @InjectRepository(SubjectRestriction)
     private readonly restrictions: Repository<SubjectRestriction>,
   ) {}
+
+  // ────────────────────────────────────────────
+  // Cross-department protection
+  //
+  // Admin / Dean → any subject
+  // DH           → only subjects owned by own dept
+  // Others       → reject (fail-closed)
+  // ────────────────────────────────────────────
+  private async assertOwnership(
+    subjectId: string,
+    profile: User | undefined,
+  ): Promise<Subject> {
+    if (!profile) throw new ForbiddenException('Not authenticated');
+
+    const subject = await this.findOne(subjectId);
+
+    if (profile.role === 'administrator' || profile.role === 'college_dean') {
+      return subject;
+    }
+
+    if (profile.role !== 'department_head') {
+      throw new ForbiddenException(
+        'Only administrators, deans, and department heads can modify subjects.',
+      );
+    }
+
+    if (String(subject.deptId) !== String(profile.deptId)) {
+      throw new ForbiddenException(
+        'You can only modify subjects in your own department.',
+      );
+    }
+
+    return subject;
+  }
+
+  // ────────────────────────────────────────────
+  // Reads
+  // ────────────────────────────────────────────
 
   findAll(): Promise<Subject[]> {
     return this.repo.find({
@@ -39,7 +79,21 @@ export class SubjectsService {
     return found;
   }
 
-  async create(dto: CreateSubjectDto): Promise<Subject> {
+  // ────────────────────────────────────────────
+  // Writes
+  // ────────────────────────────────────────────
+
+  async create(dto: CreateSubjectDto, profile: User): Promise<Subject> {
+    // DHs can only create subjects in their own department.
+    if (profile.role === 'department_head') {
+      if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
+        throw new ForbiddenException(
+          'You can only create subjects in your own department.',
+        );
+      }
+      dto.deptId = String(profile.deptId);
+    }
+
     const existing = await this.repo.findOne({
       where: { subjectCode: dto.subjectCode },
     });
@@ -67,8 +121,23 @@ export class SubjectsService {
     return this.repo.save(entity);
   }
 
-  async update(id: string, dto: UpdateSubjectDto): Promise<Subject> {
-    const found = await this.findOne(id);
+  async update(
+    id: string,
+    dto: UpdateSubjectDto,
+    profile: User,
+  ): Promise<Subject> {
+    const found = await this.assertOwnership(id, profile);
+
+    // DHs cannot move subjects to a different department.
+    if (
+      profile.role === 'department_head' &&
+      dto.deptId !== undefined &&
+      String(dto.deptId) !== String(profile.deptId)
+    ) {
+      throw new ForbiddenException(
+        'You cannot move subjects to a different department.',
+      );
+    }
 
     if (dto.subjectCode !== undefined) found.subjectCode = dto.subjectCode;
     if (dto.title !== undefined) found.title = dto.title;
@@ -88,20 +157,24 @@ export class SubjectsService {
     return this.repo.save(found);
   }
 
-  async toggleActive(id: string): Promise<Subject> {
-    const found = await this.findOne(id);
+  async toggleActive(id: string, profile: User): Promise<Subject> {
+    const found = await this.assertOwnership(id, profile);
     found.isActive = !found.isActive;
     return this.repo.save(found);
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
-    const found = await this.findOne(id);
+  async remove(id: string, profile: User): Promise<{ success: boolean }> {
+    const found = await this.assertOwnership(id, profile);
     await this.repo.remove(found);
     return { success: true };
   }
-// ────────────────────────────────────────────
-// S-11 — Subject Restrictions
-// ────────────────────────────────────────────
+
+  // ────────────────────────────────────────────
+  // S-11 — Subject Restrictions
+  //
+  // Restrictions link two subjects. A DH can only create/update/delete a
+  // restriction if they own BOTH subjects. Admin/Dean can manage any.
+  // ────────────────────────────────────────────
 
   async findAllRestrictions(termId?: string): Promise<SubjectRestriction[]> {
     const qb = this.restrictions
@@ -116,7 +189,8 @@ export class SubjectsService {
 
   async createRestriction(
     dto: CreateSubjectRestrictionDto,
-    createdBy?: string,
+    createdBy: string | undefined,
+    profile: User,
   ): Promise<SubjectRestriction> {
     if (dto.subjectId1 === dto.subjectId2) {
       throw new BadRequestException(
@@ -124,63 +198,138 @@ export class SubjectsService {
       );
     }
 
-  // Both subjects must exist
-  const [a, b] = await Promise.all([
-    this.repo.findOne({ where: { subjectId: dto.subjectId1 } }),
-    this.repo.findOne({ where: { subjectId: dto.subjectId2 } }),
-  ]);
-  if (!a || !b) {
-    throw new NotFoundException('One or both subjects not found.');
-  }
+    const [a, b] = await Promise.all([
+      this.repo.findOne({ where: { subjectId: dto.subjectId1 } }),
+      this.repo.findOne({ where: { subjectId: dto.subjectId2 } }),
+    ]);
+    if (!a || !b) {
+      throw new NotFoundException('One or both subjects not found.');
+    }
 
-  // Reject duplicates in either direction (A-B and B-A are the same pair)
-  const existing = await this.restrictions
-    .createQueryBuilder('r')
-    .where(
-      `(r.subjectId1 = :a AND r.subjectId2 = :b)
-       OR (r.subjectId1 = :b AND r.subjectId2 = :a)`,
-      { a: dto.subjectId1, b: dto.subjectId2 },
-    )
-    .andWhere('r.isActive = true')
-    .getOne();
-  if (existing) {
-    throw new ConflictException(
-      'A restriction between these two subjects already exists.',
-    );
-  }
+    // Ownership check: a DH can only restrict subjects they own.
+    if (profile.role === 'department_head') {
+      const myDept = String(profile.deptId);
+      if (
+        String(a.deptId) !== myDept ||
+        String(b.deptId) !== myDept
+      ) {
+        throw new ForbiddenException(
+          'You can only create restrictions between subjects in your own department.',
+        );
+      }
+    } else if (
+      profile.role !== 'administrator' &&
+      profile.role !== 'college_dean'
+    ) {
+      throw new ForbiddenException(
+        'Only administrators, deans, and department heads can manage restrictions.',
+      );
+    }
 
-  const entity = this.restrictions.create({
-    subjectId1: dto.subjectId1,
-    subjectId2: dto.subjectId2,
-    termId: dto.termId ?? null,
-    warningMessage: dto.warningMessage ?? null,
-    createdBy: createdBy ?? null,
-    isActive: true,
-  });
-  return this.restrictions.save(entity);
+    const existing = await this.restrictions
+      .createQueryBuilder('r')
+      .where(
+        `(r.subjectId1 = :a AND r.subjectId2 = :b)
+         OR (r.subjectId1 = :b AND r.subjectId2 = :a)`,
+        { a: dto.subjectId1, b: dto.subjectId2 },
+      )
+      .andWhere('r.isActive = true')
+      .getOne();
+    if (existing) {
+      throw new ConflictException(
+        'A restriction between these two subjects already exists.',
+      );
+    }
+
+    const entity = this.restrictions.create({
+      subjectId1: dto.subjectId1,
+      subjectId2: dto.subjectId2,
+      termId: dto.termId ?? null,
+      warningMessage: dto.warningMessage ?? null,
+      createdBy: createdBy ?? null,
+      isActive: true,
+    });
+    return this.restrictions.save(entity);
   }
 
   async updateRestriction(
     id: string,
     dto: UpdateSubjectRestrictionDto,
+    profile: User,
   ): Promise<SubjectRestriction> {
     const found = await this.restrictions.findOne({
       where: { restrictionId: id },
     });
     if (!found) throw new NotFoundException('Restriction not found');
 
+    // Ownership check: DH can only update restrictions on their own subjects.
+    if (profile.role === 'department_head') {
+      const [a, b] = await Promise.all([
+        this.repo.findOne({ where: { subjectId: found.subjectId1 } }),
+        this.repo.findOne({ where: { subjectId: found.subjectId2 } }),
+      ]);
+      const myDept = String(profile.deptId);
+      if (
+        !a ||
+        !b ||
+        String(a.deptId) !== myDept ||
+        String(b.deptId) !== myDept
+      ) {
+        throw new ForbiddenException(
+          'You can only update restrictions on subjects in your own department.',
+        );
+      }
+    } else if (
+      profile.role !== 'administrator' &&
+      profile.role !== 'college_dean'
+    ) {
+      throw new ForbiddenException(
+        'Only administrators, deans, and department heads can manage restrictions.',
+      );
+    }
+
     if (dto.warningMessage !== undefined)
       found.warningMessage = dto.warningMessage ?? null;
     if (dto.isActive !== undefined) found.isActive = dto.isActive;
 
-  return this.restrictions.save(found);
+    return this.restrictions.save(found);
   }
 
-  async removeRestriction(id: string): Promise<{ success: boolean }> {
+  async removeRestriction(
+    id: string,
+    profile: User,
+  ): Promise<{ success: boolean }> {
     const found = await this.restrictions.findOne({
       where: { restrictionId: id },
     });
     if (!found) throw new NotFoundException('Restriction not found');
+
+    // Ownership check: DH can only remove restrictions on their own subjects.
+    if (profile.role === 'department_head') {
+      const [a, b] = await Promise.all([
+        this.repo.findOne({ where: { subjectId: found.subjectId1 } }),
+        this.repo.findOne({ where: { subjectId: found.subjectId2 } }),
+      ]);
+      const myDept = String(profile.deptId);
+      if (
+        !a ||
+        !b ||
+        String(a.deptId) !== myDept ||
+        String(b.deptId) !== myDept
+      ) {
+        throw new ForbiddenException(
+          'You can only remove restrictions on subjects in your own department.',
+        );
+      }
+    } else if (
+      profile.role !== 'administrator' &&
+      profile.role !== 'college_dean'
+    ) {
+      throw new ForbiddenException(
+        'Only administrators, deans, and department heads can manage restrictions.',
+      );
+    }
+
     await this.restrictions.remove(found);
     return { success: true };
   }
