@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -39,6 +39,11 @@ const TYPE_TONE: Record<RoomType, 'info' | 'warning' | 'purple' | 'success' | 'n
 export default function RoomsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
+
+  const isAdmin = profile?.role === 'administrator';
+  const isDH = profile?.role === 'department_head';
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<RoomRecord | null>(null);
@@ -66,6 +71,17 @@ export default function RoomsPage() {
     queryFn: fetchDepartments,
     enabled: !!user,
   });
+
+  // ── Foreign detection ──
+  // For DHs: null dept = shared room = read-only. Only own-dept rooms are writable.
+  const isForeign = useCallback(
+    (r: RoomRecord): boolean => {
+      if (!isDH) return false;
+      if (!r.deptId) return true; // shared
+      return String(r.deptId) !== myDeptId;
+    },
+    [isDH, myDeptId],
+  );
 
   const filteredRooms = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -141,7 +157,7 @@ export default function RoomsPage() {
       building: '',
       roomType: 'lecture_room',
       capacity: '',
-      deptId: '',
+      deptId: isDH && myDeptId ? myDeptId : '',
     });
     setError(null);
     setSuccess(null);
@@ -230,7 +246,22 @@ export default function RoomsPage() {
       header: 'Owner',
       cardVariant: 'mono',
       cellClassName: 'text-on-surface-variant text-xs font-mono',
-      render: (r) => deptName(r.deptId),
+      render: (r) => {
+        const foreign = isForeign(r);
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            {foreign && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
+                title="Shared or other department — read only"
+              />
+            )}
+            <span className={foreign ? 'text-slate-500' : ''}>
+              {deptName(r.deptId)}
+            </span>
+          </span>
+        );
+      },
     },
     {
       key: 'status',
@@ -246,22 +277,25 @@ export default function RoomsPage() {
     },
   ];
 
-  const getActions = (r: RoomRecord): RowAction[] => [
-    { label: 'Edit', icon: 'edit', onClick: () => openEdit(r) },
-    {
-      label: r.isActive ? 'Deactivate' : 'Activate',
-      icon: r.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => toggleMutation.mutate(r.roomId),
-      disabled: toggleMutation.isPending,
-    },
-    {
-      label: 'Delete',
-      icon: 'delete',
-      danger: true,
-      onClick: () => setDeleteTarget(r),
-      disabled: deleteMutation.isPending,
-    },
-  ];
+  const getActions = (r: RoomRecord): RowAction[] => {
+    if (isForeign(r)) return [];
+    return [
+      { label: 'Edit', icon: 'edit', onClick: () => openEdit(r) },
+      {
+        label: r.isActive ? 'Deactivate' : 'Activate',
+        icon: r.isActive ? 'toggle_off' : 'toggle_on',
+        onClick: () => toggleMutation.mutate(r.roomId),
+        disabled: toggleMutation.isPending,
+      },
+      {
+        label: 'Delete',
+        icon: 'delete',
+        danger: true,
+        onClick: () => setDeleteTarget(r),
+        disabled: deleteMutation.isPending,
+      },
+    ];
+  };
 
   return (
     <div className="space-y-6">
@@ -272,13 +306,15 @@ export default function RoomsPage() {
             {rooms.length} room(s) registered
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-        >
-          <Icon name="add" size={18} />
-          New Room
-        </button>
+        {isDH || isAdmin ? (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+          >
+            <Icon name="add" size={18} />
+            New Room
+          </button>
+        ) : null}
       </div>
 
       {error && (
@@ -289,6 +325,17 @@ export default function RoomsPage() {
       {success && (
         <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-green-700 text-sm">
           {success}
+        </div>
+      )}
+
+      {isDH && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Rooms marked with an{' '}
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
+            amber dot are shared or belong to another department and are read-only.
+          </span>
         </div>
       )}
 
@@ -442,11 +489,13 @@ export default function RoomsPage() {
                 name="deptId"
                 value={form.deptId}
                 onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+                disabled={isDH}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">— shared (any department) —</option>
                 {departments
                   .filter((d) => d.isActive)
+                  .filter((d) => !isDH || String(d.deptId) === myDeptId)
                   .map((d) => (
                     <option key={d.deptId} value={d.deptId}>
                       [{d.deptCode}] {d.deptName}
@@ -454,7 +503,9 @@ export default function RoomsPage() {
                   ))}
               </select>
               <p className="text-[10px] text-on-surface-variant mt-1">
-                Used by S-10 (room ownership warning).
+                {isDH
+                  ? 'Locked to your department.'
+                  : 'Used by S-10 (room ownership warning). Leave blank for shared.'}
               </p>
             </div>
           </div>
