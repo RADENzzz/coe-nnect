@@ -36,7 +36,6 @@ type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
 type SortDir = 'asc' | 'desc';
 
-// Debounce hook — keeps the search input snappy
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -49,6 +48,12 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 export default function SubjectsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
+
+  const isAdmin = profile?.role === 'administrator';
+  const isDean = profile?.role === 'college_dean';
+  const isDH = profile?.role === 'department_head';
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
   const [restrictionsOpen, setRestrictionsOpen] = useState(false);
   const [mode, setMode] = useState<Mode | null>(null);
@@ -84,7 +89,6 @@ export default function SubjectsPage() {
     [searchParams, setSearchParams],
   );
 
-  // Sync debounced search into URL
   useEffect(() => {
     if (debouncedSearch !== (searchParams.get('q') ?? '')) {
       setFilter('q', debouncedSearch);
@@ -131,7 +135,6 @@ export default function SubjectsPage() {
     enabled: !!user,
   });
 
-  // ── Dept counts (for filter dropdown labels) ──
   const deptCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const s of subjects) {
@@ -141,43 +144,46 @@ export default function SubjectsPage() {
     return counts;
   }, [subjects]);
 
+  // ── Ownership ──
+  const isForeign = useCallback(
+    (s: SubjectRecord): boolean => {
+      if (!isDH) return false;
+      return String(s.deptId ?? '') !== myDeptId;
+    },
+    [isDH, myDeptId],
+  );
+
   // ── Filtering + sorting ──
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
 
     let rows = subjects.filter((s) => {
-      // Search
       if (q) {
         const code = (s.subjectCode ?? '').toLowerCase();
         const title = (s.title ?? '').toLowerCase();
         if (!code.includes(q) && !title.includes(q)) return false;
       }
 
-      // Dept
       if (deptFilter && String(s.deptId ?? '') !== deptFilter) return false;
 
-      // Room type
       if (roomFilter === 'none') {
         if (s.requiredRoomType) return false;
       } else if (roomFilter) {
         if (s.requiredRoomType !== roomFilter) return false;
       }
 
-      // Component
       const lec = Number(s.lectureUnits ?? 0);
       const lab = Number(s.labUnits ?? 0);
       if (compFilter === 'lecture_only' && (lec === 0 || lab > 0)) return false;
       if (compFilter === 'lab_only' && (lab === 0 || lec > 0)) return false;
       if (compFilter === 'mixed' && (lec === 0 || lab === 0)) return false;
 
-      // Status
       if (statusFilter === 'active' && !s.isActive) return false;
       if (statusFilter === 'inactive' && s.isActive) return false;
 
       return true;
     });
 
-    // Sort
     const deptCodeFor = (id: string | null) => {
       if (!id) return '';
       const d = departments.find((x) => String(x.deptId) === String(id));
@@ -301,7 +307,7 @@ export default function SubjectsPage() {
       lectureUnits: '',
       labUnits: '',
       requiredRoomType: '',
-      deptId: '',
+      deptId: isDH && myDeptId ? myDeptId : '',
     });
     setError(null);
     setSuccess(null);
@@ -365,7 +371,6 @@ export default function SubjectsPage() {
     return d ? d.deptCode : `#${id}`;
   };
 
-  // ── Sortable header helper ──
   const sortIcon = (key: SortKey) => {
     if (sortKey !== key) return 'unfold_more';
     return sortDir === 'asc' ? 'expand_less' : 'expand_more';
@@ -422,7 +427,22 @@ export default function SubjectsPage() {
       header: <SortHeader label="Dept" sortKeyName="dept" />,
       cardVariant: 'meta',
       cellClassName: 'text-on-surface-variant text-xs font-mono',
-      render: (s) => deptName(s.deptId),
+      render: (s) => {
+        const foreign = isForeign(s);
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            {foreign && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
+                title="Other department — read only"
+              />
+            )}
+            <span className={foreign ? 'text-slate-500' : ''}>
+              {deptName(s.deptId)}
+            </span>
+          </span>
+        );
+      },
     },
     {
       key: 'roomType',
@@ -446,26 +466,34 @@ export default function SubjectsPage() {
     },
   ];
 
-  const getActions = (s: SubjectRecord): RowAction[] => [
-    { label: 'Edit', icon: 'edit', onClick: () => openEdit(s) },
-    {
-      label: s.isActive ? 'Deactivate' : 'Activate',
-      icon: s.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => toggleMutation.mutate(s.subjectId),
-      disabled: toggleMutation.isPending,
-    },
-    {
-      label: 'Delete',
-      icon: 'delete',
-      danger: true,
-      onClick: () => setDeleteTarget(s),
-      disabled: deleteMutation.isPending,
-    },
-  ];
+  /**
+   * Actions per row.
+   * Admin/Dean → full actions on every row.
+   * DH (own)   → full actions.
+   * DH (foreign) → no actions.
+   */
+  const getActions = (s: SubjectRecord): RowAction[] => {
+    if (isForeign(s)) return [];
+    return [
+      { label: 'Edit', icon: 'edit', onClick: () => openEdit(s) },
+      {
+        label: s.isActive ? 'Deactivate' : 'Activate',
+        icon: s.isActive ? 'toggle_off' : 'toggle_on',
+        onClick: () => toggleMutation.mutate(s.subjectId),
+        disabled: toggleMutation.isPending,
+      },
+      {
+        label: 'Delete',
+        icon: 'delete',
+        danger: true,
+        onClick: () => setDeleteTarget(s),
+        disabled: deleteMutation.isPending,
+      },
+    ];
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Subjects</h1>
@@ -474,24 +502,27 @@ export default function SubjectsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setRestrictionsOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant text-on-surface-variant text-sm font-semibold hover:bg-surface-container-low transition"
-          >
-            <Icon name="rule" size={18} />
-            Manage Restrictions
-          </button>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-          >
-            <Icon name="add" size={18} />
-            New Subject
-          </button>
+          {(isAdmin || isDH) && (
+            <button
+              onClick={() => setRestrictionsOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant text-on-surface-variant text-sm font-semibold hover:bg-surface-container-low transition"
+            >
+              <Icon name="rule" size={18} />
+              Manage Restrictions
+            </button>
+          )}
+          {isDH || isAdmin ? (
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+            >
+              <Icon name="add" size={18} />
+              New Subject
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {/* Info banner */}
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
         <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
         <div className="flex-1">
@@ -523,10 +554,20 @@ export default function SubjectsPage() {
         </div>
       )}
 
-      {/* ── Filter panel ── */}
+      {isDH && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Subjects marked with an{' '}
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
+            amber dot belong to another department and are read-only.
+          </span>
+        </div>
+      )}
+
+      {/* Filter panel (unchanged) */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
-          {/* Search */}
           <div className="flex-1 min-w-[240px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Search
@@ -557,7 +598,6 @@ export default function SubjectsPage() {
             </div>
           </div>
 
-          {/* Department */}
           <div className="min-w-[180px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Department
@@ -581,7 +621,6 @@ export default function SubjectsPage() {
             </select>
           </div>
 
-          {/* Room type */}
           <div className="min-w-[150px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Room Type
@@ -601,7 +640,6 @@ export default function SubjectsPage() {
             </select>
           </div>
 
-          {/* Component */}
           <div className="min-w-[140px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Component
@@ -618,7 +656,6 @@ export default function SubjectsPage() {
             </select>
           </div>
 
-          {/* Status */}
           <div className="min-w-[120px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Status
@@ -634,7 +671,6 @@ export default function SubjectsPage() {
             </select>
           </div>
 
-          {/* Clear */}
           {hasAnyFilter && (
             <button
               type="button"
@@ -653,7 +689,6 @@ export default function SubjectsPage() {
         </div>
       </div>
 
-      {/* Table */}
       <ResponsiveTable
         columns={columns}
         rows={filtered}
@@ -703,17 +738,24 @@ export default function SubjectsPage() {
                 required
                 value={form.deptId}
                 onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+                disabled={isDH}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">Select a department…</option>
                 {departments
                   .filter((d) => d.isActive)
+                  .filter((d) => !isDH || String(d.deptId) === myDeptId)
                   .map((d) => (
                     <option key={d.deptId} value={d.deptId}>
                       [{d.deptCode}] {d.deptName}
                     </option>
                   ))}
               </select>
+              {isDH && (
+                <p className="text-[10px] text-on-surface-variant mt-1">
+                  Locked to your department.
+                </p>
+              )}
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -814,7 +856,6 @@ export default function SubjectsPage() {
         </form>
       </Modal>
 
-      {/* Delete modal */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
