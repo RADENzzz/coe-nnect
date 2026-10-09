@@ -64,14 +64,19 @@ export class RoomsService {
   }
 
   async create(dto: CreateRoomDto, profile: User): Promise<Room> {
-    // DHs can only create rooms owned by their department.
+    // DHs may create:
+    //   • shared rooms (deptId = null / undefined)
+    //   • rooms owned by their own department
+    // DHs may NOT create rooms for other departments.
     if (profile.role === 'department_head') {
       if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
         throw new ForbiddenException(
-          'You can only create rooms owned by your own department.',
+          'You can only create rooms for your own department, or shared rooms.',
         );
       }
-      dto.deptId = String(profile.deptId);
+      // Explicitly DO NOT force deptId here.
+      // If dto.deptId is undefined/empty → shared room.
+      // If dto.deptId === profile.deptId → owned room.
     }
 
     const existing = await this.repo.findOne({
@@ -100,7 +105,8 @@ export class RoomsService {
   ): Promise<Room> {
     const found = await this.assertOwnership(id, profile);
 
-    // DHs cannot move rooms to a different department.
+    // DHs can convert an owned room to shared, but cannot assign
+    // an owned room to another department.
     if (
       profile.role === 'department_head' &&
       dto.deptId !== undefined &&
@@ -108,7 +114,7 @@ export class RoomsService {
       String(dto.deptId) !== String(profile.deptId)
     ) {
       throw new ForbiddenException(
-        'You cannot move rooms to a different department.',
+        'You cannot assign rooms to another department.',
       );
     }
 
