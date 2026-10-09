@@ -23,7 +23,6 @@ export default function MessageThread({
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);

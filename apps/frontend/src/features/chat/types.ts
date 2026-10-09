@@ -1,7 +1,3 @@
-/**
- * Local-only message type for the chat UI prototype.
- * Once the backend lands, this will be replaced by a server model.
- */
 export interface LocalMessage {
   id: string;
   senderId: string;
@@ -10,10 +6,6 @@ export interface LocalMessage {
   createdAt: string;
 }
 
-/**
- * A chat participant. For the prototype, this is derived from
- * the online presence list — you can only chat with someone online.
- */
 export interface ChatParticipant {
   user_id: string;
   username: string;

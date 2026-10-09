@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileDrawer from './MobileDrawer';
 import BottomNav from './BottomNav';
+import ChatWidget from '../../features/chat/ChatWidget';
 import { useAuthStore } from '../../store/auth.store';
 import { useUiStore } from '../../store/ui.store';
 import { getNavForRole } from '../../lib/constants/nav-config';
@@ -16,7 +17,6 @@ export default function AppShell() {
 
   const nav = getNavForRole(profile?.role);
 
-  // Auto-collapse on tablet widths (768–1023), expand on desktop
   useEffect(() => {
     const mqTablet = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
     const mqDesktop = window.matchMedia('(min-width: 1024px)');
@@ -27,7 +27,6 @@ export default function AppShell() {
       else if (mqDesktop.matches) set(false);
     };
 
-    // Apply once on mount
     handle();
 
     mqTablet.addEventListener('change', handle);
@@ -60,6 +59,10 @@ export default function AppShell() {
       </div>
 
       <BottomNav items={nav.bottom} />
+
+      {/* Chat widget — floating, mounted once per shell.
+          Admin and Dean shells are wrappers around AppShell, so they inherit it. */}
+      <ChatWidget />
     </div>
   );
 }

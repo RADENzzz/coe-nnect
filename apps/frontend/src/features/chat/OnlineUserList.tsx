@@ -14,9 +14,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 interface Props {
-  /** All online users, excluding self — caller filters */
   users: OnlineUser[];
-  /** Currently active conversation partner, if any */
   activeUserId: string | null;
   onPick: (userId: string) => void;
 }
