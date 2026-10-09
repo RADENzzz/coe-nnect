@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   updateSchedule,
@@ -19,14 +19,31 @@ const DAY_MAP_REVERSE: Record<Day, string> = {
   SUN: 'Sunday',
 };
 
+export interface SoftWarning {
+  ruleId: string;
+  ruleName: string;
+  reason: string;
+}
+
+export interface PendingMoveConfirmation {
+  entryId: string;
+  fromDay: string;
+  toDay: string;
+  fromTime: string;
+  toTime: string;
+  warnings: SoftWarning[];
+  /** Resolve with true to proceed, false to cancel */
+  resolve: (confirmed: boolean) => void;
+}
+
 interface UseMoveScheduleOptions {
   termId: string | undefined;
-  /** Full list of entries in the current view — needed to look up the entry being moved. */
   allEntries: ScheduleEntry[];
-  /** Called after a successful move. Useful for closing a modal. */
   onSuccess?: () => void;
-  /** Whether to skip the confirmation prompt for soft warnings. */
+  /** Skip the soft-warning confirmation entirely */
   confirmSoftWarnings?: boolean;
+  /** Called when the move fails for a reason other than soft warnings */
+  onError?: (message: string) => void;
 }
 
 export interface MoveResult {
@@ -39,8 +56,11 @@ export function useMoveSchedule({
   allEntries,
   onSuccess,
   confirmSoftWarnings = true,
+  onError,
 }: UseMoveScheduleOptions) {
   const queryClient = useQueryClient();
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<PendingMoveConfirmation | null>(null);
 
   const mutation = useMutation({
     mutationFn: (args: {
@@ -59,11 +79,11 @@ export function useMoveSchedule({
     },
     onError: (err: any) => {
       console.error('[Move] Failed:', err);
-      alert(
+      const message =
         err?.response?.data?.message ??
-          err?.message ??
-          'Failed to move schedule entry',
-      );
+        err?.message ??
+        'Failed to move schedule entry';
+      onError?.(message);
     },
   });
 
@@ -81,7 +101,7 @@ export function useMoveSchedule({
       const duration =
         timeToMinutes(existing.endTime) - timeToMinutes(existing.startTime);
       const newEnd = minutesToTime(startMin + duration);
-      const newDayOfWeek = DAY_MAP_REVERSE[newDay as Day] ?? 'Monday'
+      const newDayOfWeek = DAY_MAP_REVERSE[newDay as Day] ?? 'Monday';
 
       // ── Validate ──
       let validation: ValidateResult;
@@ -100,21 +120,38 @@ export function useMoveSchedule({
         });
       } catch (err) {
         console.error('[Move] validate failed:', err);
-        return { ok: false, reason: 'Failed to validate the move.' };
+        const msg = 'Failed to validate the move.';
+        onError?.(msg);
+        return { ok: false, reason: msg };
       }
 
       if (validation.hardConflicts.length > 0) {
         const lines = validation.hardConflicts
           .map((c) => `• ${c.ruleId}: ${c.reason}`)
           .join('\n');
-        return { ok: false, reason: `Move rejected:\n\n${lines}` };
+        const msg = `Move rejected:\n\n${lines}`;
+        onError?.(msg);
+        return { ok: false, reason: msg };
       }
 
+      // ── Soft warnings → delegate to caller's modal ──
       if (confirmSoftWarnings && validation.softWarnings.length > 0) {
-        const lines = validation.softWarnings
-          .map((w) => `• ${w.ruleId}: ${w.reason}`)
-          .join('\n');
-        if (!window.confirm(`Move has warnings:\n\n${lines}\n\nProceed?`)) {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          setPendingConfirmation({
+            entryId,
+            fromDay: existing.day,
+            toDay: newDay,
+            fromTime: existing.startTime,
+            toTime: newStartTime,
+            warnings: validation.softWarnings,
+            resolve: (c) => {
+              setPendingConfirmation(null);
+              resolve(c);
+            },
+          });
+        });
+
+        if (!confirmed) {
           return { ok: false, reason: 'Cancelled.' };
         }
       }
@@ -144,11 +181,13 @@ export function useMoveSchedule({
       onSuccess?.();
       return { ok: true };
     },
-    [allEntries, termId, mutation, queryClient, confirmSoftWarnings, onSuccess],
+    [allEntries, termId, mutation, queryClient, confirmSoftWarnings, onSuccess, onError],
   );
 
   return {
     moveEntry,
     isPending: mutation.isPending,
+    /** Non-null while we're waiting for the user to confirm a soft-warning move */
+    pendingConfirmation,
   };
 }

@@ -7,6 +7,7 @@ import {
 } from '../../../api/schedule.api';
 import type { ScheduleEntry, Day } from '../types';
 import Icon from '../../../components/ui/Icon';
+import Modal from '../../../components/ui/Modal';
 import clsx from 'clsx';
 import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
@@ -16,14 +17,12 @@ interface Props {
   onClose: () => void;
   onEdit?: (entry: ScheduleEntry) => void;
   termId: string;
-  /** Provided by TimetablePage — from the shared useMoveSchedule hook. */
   onMove?: (
     entryId: string,
     newDay: string,
     newStartTime: string,
   ) => Promise<{ ok: boolean; reason?: string }>;
   movePending: boolean;
-  /** When true, all write actions are hidden (Dean/Admin view-only mode). */
   readOnly?: boolean;
 }
 
@@ -60,17 +59,27 @@ export default function ScheduleDetailDrawer({
   const [remarksSaved, setRemarksSaved] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [unfinalizeOpen, setUnfinalizeOpen] = useState(false);
 
   useEffect(() => {
     setRemarks(entry?.remarks ?? '');
     setRemarksSaved(false);
     setError(null);
     setMoveOpen(false);
+    setDeleteOpen(false);
+    setUnfinalizeOpen(false);
   }, [entry?.id, entry?.remarks]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !moveOpen) onClose();
+      if (
+        e.key === 'Escape' &&
+        !moveOpen &&
+        !deleteOpen &&
+        !unfinalizeOpen
+      )
+        onClose();
     };
     if (entry) {
       document.addEventListener('keydown', onKey);
@@ -80,7 +89,7 @@ export default function ScheduleDetailDrawer({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [entry, onClose, moveOpen]);
+  }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen]);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(entry!.id),
@@ -90,6 +99,7 @@ export default function ScheduleDetailDrawer({
     },
     onError: (err: any) => {
       setError(err?.response?.data?.message ?? err?.message ?? 'Delete failed');
+      setDeleteOpen(false);
     },
   });
 
@@ -99,11 +109,13 @@ export default function ScheduleDetailDrawer({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
       setError(null);
+      setUnfinalizeOpen(false);
     },
     onError: (err: any) => {
       setError(
         err?.response?.data?.message ?? err?.message ?? 'Status update failed',
       );
+      setUnfinalizeOpen(false);
     },
   });
 
@@ -119,12 +131,13 @@ export default function ScheduleDetailDrawer({
     },
   });
 
-  const handleDelete = () => {
+  const handleDeleteClick = () => {
     if (!entry) return;
-    const confirmed = window.confirm(
-      `Delete "${entry.subjectCode}" (${entry.sectionCode || 'no section'})?\n\nThis action cannot be undone.`,
-    );
-    if (confirmed) deleteMutation.mutate();
+    setDeleteOpen(true);
+  };
+
+  const confirmDelete = () => {
+    deleteMutation.mutate();
   };
 
   const handleStatusChange = (newStatus: string) => {
@@ -135,13 +148,7 @@ export default function ScheduleDetailDrawer({
     if (!entry) return;
     const currentlyLocked = isLocked(entry.status);
     if (currentlyLocked) {
-      if (
-        window.confirm(
-          'Unfinalize this entry? It will be editable again and set back to Draft.',
-        )
-      ) {
-        statusMutation.mutate('draft');
-      }
+      setUnfinalizeOpen(true);
     } else {
       statusMutation.mutate('finalized');
     }
@@ -155,13 +162,11 @@ export default function ScheduleDetailDrawer({
   return (
     <>
       <div className="fixed inset-0 z-50">
-        {/* Backdrop */}
         <div
           className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-backdrop-in"
           onClick={onClose}
         />
 
-        {/* Panel: bottom sheet on mobile, right drawer on md+ */}
         <aside
           className={clsx(
             'absolute bg-surface-container-lowest shadow-2xl border-surface-variant flex flex-col',
@@ -173,12 +178,10 @@ export default function ScheduleDetailDrawer({
           aria-modal="true"
           aria-label="Class details"
         >
-          {/* Mobile drag handle */}
           <div className="md:hidden flex justify-center pt-2 pb-1">
             <span className="w-10 h-1 bg-slate-300 rounded-full" />
           </div>
 
-          {/* Header */}
           <header className="flex items-center justify-between px-5 py-4 border-b border-surface-variant">
             <div>
               <h2 className="text-lg font-bold text-primary">Class Details</h2>
@@ -209,16 +212,13 @@ export default function ScheduleDetailDrawer({
             </div>
           )}
 
-          {/* Inline error banner */}
           {error && (
             <div className="px-5 py-3 bg-red-50 border-b border-red-200 text-xs text-red-700 whitespace-pre-wrap">
               {error}
             </div>
           )}
 
-          {/* Body */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5 overscroll-contain">
-            {/* Subject title */}
             <div>
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="text-xs font-semibold text-primary uppercase tracking-wider">
@@ -241,7 +241,6 @@ export default function ScheduleDetailDrawer({
               </h3>
             </div>
 
-            {/* Info grid */}
             <div className="space-y-3 text-sm pt-3 border-t border-surface-variant">
               <DetailRow
                 icon="groups"
@@ -262,11 +261,7 @@ export default function ScheduleDetailDrawer({
                     : '—'
                 }
               />
-              <DetailRow
-                icon="calendar_today"
-                label="Day"
-                value={entry.day}
-              />
+              <DetailRow icon="calendar_today" label="Day" value={entry.day} />
               <DetailRow
                 icon="schedule"
                 label="Time"
@@ -274,7 +269,6 @@ export default function ScheduleDetailDrawer({
               />
             </div>
 
-            {/* Move action — hidden when locked, read-only, or no handler */}
             {!locked && writable && onMove && (
               <div className="pt-3 border-t border-surface-variant">
                 <button
@@ -306,7 +300,6 @@ export default function ScheduleDetailDrawer({
               </div>
             )}
 
-            {/* Status + lock — hidden in read-only mode */}
             {writable && (
               <div className="pt-3 border-t border-surface-variant">
                 <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
@@ -351,7 +344,6 @@ export default function ScheduleDetailDrawer({
               </div>
             )}
 
-            {/* Remarks */}
             <div className="pt-3 border-t border-surface-variant">
               <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
                 Remarks{' '}
@@ -396,11 +388,10 @@ export default function ScheduleDetailDrawer({
             </div>
           </div>
 
-          {/* Footer — buttons hidden in read-only mode */}
           {writable && (
             <footer className="border-t border-surface-variant p-4 flex items-center gap-3 bg-surface-container-low pb-safe">
               <button
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 disabled={deleteMutation.isPending || locked}
                 title={locked ? 'Unfinalize first to delete' : 'Delete entry'}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-50"
@@ -422,7 +413,6 @@ export default function ScheduleDetailDrawer({
             </footer>
           )}
 
-          {/* Read-only footer — just a Close button so the drawer has a nice bottom edge */}
           {!writable && (
             <footer className="border-t border-surface-variant p-4 flex items-center justify-end bg-surface-container-low pb-safe">
               <button
@@ -436,7 +426,6 @@ export default function ScheduleDetailDrawer({
         </aside>
       </div>
 
-      {/* Move sheet — only mounted when a handler is provided */}
       {onMove && (
         <MoveScheduleSheet
           open={moveOpen}
@@ -446,6 +435,70 @@ export default function ScheduleDetailDrawer({
           isPending={movePending}
         />
       )}
+
+      {/* Delete confirmation — replaces window.confirm */}
+      <Modal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete entry?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>"{entry.subjectCode}"</strong> (
+          {entry.sectionCode || 'no section'})? This action cannot be undone.
+        </p>
+      </Modal>
+
+      {/* Unfinalize confirmation — replaces window.confirm */}
+      <Modal
+        open={unfinalizeOpen}
+        onClose={() => setUnfinalizeOpen(false)}
+        title="Unfinalize entry?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setUnfinalizeOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => statusMutation.mutate('draft')}
+              disabled={statusMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              {statusMutation.isPending ? 'Unfinalizing…' : 'Unfinalize'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Unfinalize this entry? It will be editable again and set back to{' '}
+          <strong>Draft</strong>.
+        </p>
+      </Modal>
     </>
   );
 }

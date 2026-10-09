@@ -23,6 +23,7 @@ import LoadingState from '../../components/feedback/LoadingState';
 import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
 import Icon from '../../components/ui/Icon';
+import Modal from '../../components/ui/Modal';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 import { colorForSubject } from './utils/color.util';
@@ -30,6 +31,7 @@ import StackPicker from './components/StackPicker';
 import ExportToolbar from './export/ExportToolbar';
 import type { GridDensity } from './components/GridMetricsContext';
 import { useMoveSchedule } from './hooks/useMoveSchedule';
+import MoveScheduleConfirmModal from './components/MoveScheduleConfirmModal';
 import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
 import { fetchAllProspectus } from '../../api/prospectus.api';
 
@@ -74,9 +76,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   };
 }
 
-// Primary view mode: what "lens" are we looking through?
 type ViewMode = 'master' | 'byDepartment' | 'byRoom' | 'byFaculty';
-// Secondary refinement (only for byDepartment):
 type SubMode = 'all' | 'bySection' | 'byFaculty';
 
 const QUERY_VIEW_MAP: Record<string, ViewMode> = {
@@ -104,6 +104,13 @@ interface Props {
   readOnly?: boolean;
 }
 
+/** Generic info/error alert rendered as a Modal instead of window.alert. */
+interface AlertState {
+  title: string;
+  body: string;
+  tone: 'error' | 'info';
+}
+
 export default function TimetablePage({ readOnly = false }: Props) {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
@@ -117,13 +124,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
 
-  // ── Nested view filter state ──
   const [viewMode, setViewMode] = useState<ViewMode>('master');
-  const [viewDeptId, setViewDeptId] = useState('');       // for byDepartment
-  const [subMode, setSubMode] = useState<SubMode>('all'); // for byDepartment
-  const [subTargetId, setSubTargetId] = useState('');     // section code or facultyId
-  const [roomTargetId, setRoomTargetId] = useState('');   // for byRoom
-  const [facultyTargetId, setFacultyTargetId] = useState(''); // for byFaculty
+  const [viewDeptId, setViewDeptId] = useState('');
+  const [subMode, setSubMode] = useState<SubMode>('all');
+  const [subTargetId, setSubTargetId] = useState('');
+  const [roomTargetId, setRoomTargetId] = useState('');
+  const [facultyTargetId, setFacultyTargetId] = useState('');
   const [onlyConflicts, setOnlyConflicts] = useState(false);
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
@@ -133,6 +139,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoPreview, setAutoPreview] = useState<ScheduleEntry[] | null>(null);
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
 
+  // ── Alert modal (replaces window.alert) ──
+  const [alertState, setAlertState] = useState<AlertState | null>(null);
+
   const { data: prospectus = [] } = useQuery({
     queryKey: ['prospectus-all'],
     queryFn: fetchAllProspectus,
@@ -140,7 +149,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── ?view= deep link ──
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialViewApplied, setInitialViewApplied] = useState(false);
   useEffect(() => {
@@ -167,7 +175,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     return () => mq.removeEventListener('change', handle);
   }, [layoutTouched]);
 
-  // ── Default DH to their department ──
   const [defaultedToDept, setDefaultedToDept] = useState(false);
   useEffect(() => {
     if (defaultedToDept) return;
@@ -179,7 +186,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     setDefaultedToDept(true);
   }, [profile, isDepartmentHead, myDeptId, defaultedToDept]);
 
-  // ── Queries ──
   const {
     data: activeTerm,
     isLoading: termLoading,
@@ -243,7 +249,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const allEntries = useMemo(() => (schedules ?? []).map(toEntry), [schedules]);
 
-  // ── Filtered entries ──
   const entries = useMemo(() => {
     let filtered = allEntries;
 
@@ -282,9 +287,15 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [allEntries],
   );
 
-  const { moveEntry: handleMove, isPending: movePending } = useMoveSchedule({
+  const {
+    moveEntry: handleMove,
+    isPending: movePending,
+    pendingConfirmation,
+  } = useMoveSchedule({
     termId: activeTerm?.termId,
     allEntries,
+    onError: (msg) =>
+      setAlertState({ title: 'Move failed', body: msg, tone: 'error' }),
   });
 
   const handleClick = useCallback(
@@ -324,7 +335,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
             (d) =>
               `• ${d.roomType}: need ${d.neededHours}h, have ${d.availableHours}h (short by ${d.shortByHours}h → add ${d.suggestedExtraRooms} room${d.suggestedExtraRooms === 1 ? '' : 's'})`,
           );
-          alert(`${result.message}\n\n${lines.join('\n')}`);
+          setAlertState({
+            title: 'Not enough rooms',
+            body: `${result.message}\n\n${lines.join('\n')}`,
+            tone: 'error',
+          });
           return;
         }
 
@@ -332,9 +347,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
           ?.slice(0, 5)
           .map((f) => `• ${f.ruleId} ${f.reason}`)
           .join('\n');
-        alert(
-          `${result.message ?? 'Auto-generation failed'}${detail ? `\n\n${detail}` : ''}`,
-        );
+        setAlertState({
+          title: 'Auto-generation failed',
+          body: `${result.message ?? 'Unknown error'}${detail ? `\n\n${detail}` : ''}`,
+          tone: 'error',
+        });
         return;
       }
 
@@ -345,7 +362,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
       setAutoPreview(fresh.map(toEntry));
       setAutoUnscheduled(result.unscheduled ?? []);
     } catch (err) {
-      alert(`Auto-generate failed: ${(err as Error).message}`);
+      setAlertState({
+        title: 'Auto-generate failed',
+        body: (err as Error).message,
+        tone: 'error',
+      });
     } finally {
       setAutoGenerating(false);
     }
@@ -354,7 +375,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const isLoading = termLoading || schedulesLoading;
   const error = termError || schedulesError;
 
-  // ── Options for dropdowns ──
   const deptOptions = useMemo(
     () =>
       departments
@@ -366,11 +386,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [departments],
   );
 
-  // Sections filtered to the selected dept (for byDepartment + bySection)
   const sectionsForDept = useMemo(() => {
     if (!viewDeptId) return sections.filter((s) => s.isActive);
-    // Match by program's deptId, since section has program_id not dept_id
-    // We rely on the loaded `prospectus` (or just show all if we can't filter)
     return sections.filter((s) => s.isActive);
   }, [sections, viewDeptId]);
 
@@ -405,7 +422,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [rooms],
   );
 
-  // ── Labels ──
   const viewModeLabel: Record<ViewMode, string> = {
     master: 'Master View',
     byDepartment: 'By Department',
@@ -428,7 +444,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     setFacultyTargetId('');
   };
 
-  // ── Export scope ──
   const exportScope = useMemo(() => {
     const termSlug = activeTerm
       ? `${activeTerm.termName}-AY${activeTerm.schoolYear}`
@@ -558,7 +573,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
       {/* Filter panel */}
       {activeTerm && (
         <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
-          {/* Row 1: primary view + dept/room/faculty target */}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[150px]">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -662,7 +676,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             )}
           </div>
 
-          {/* Row 2: secondary refinement (only for byDepartment) */}
           {viewMode === 'byDepartment' && viewDeptId && (
             <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-surface-variant">
               <div className="flex-1 min-w-[150px]">
@@ -726,7 +739,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             </div>
           )}
 
-          {/* Row 3: layout + density + conflict filter */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-surface-variant">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
@@ -907,7 +919,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </>
       )}
 
-      {/* Modal */}
+      {/* Modals */}
       {writable && activeTerm && (
         <PlotSubjectModal
           open={plotOpen}
@@ -970,6 +982,30 @@ export default function TimetablePage({ readOnly = false }: Props) {
         onClose={() => setStackOpen(null)}
         onPick={handlePickFromStack}
       />
+
+      {/* Soft-warning confirmation for moves — replaces window.confirm */}
+      <MoveScheduleConfirmModal pending={pendingConfirmation} />
+
+      {/* Generic alert modal — replaces window.alert */}
+      <Modal
+        open={!!alertState}
+        onClose={() => setAlertState(null)}
+        title={alertState?.title ?? ''}
+        size="md"
+        footer={
+          <button
+            type="button"
+            onClick={() => setAlertState(null)}
+            className="px-5 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+          >
+            OK
+          </button>
+        }
+      >
+        <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans max-h-80 overflow-y-auto">
+          {alertState?.body}
+        </pre>
+      </Modal>
 
       {autoPreview && (
         <div className="fixed inset-0 z-50 bg-surface-container-lowest">
@@ -1037,9 +1073,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
                     <button
                       type="button"
                       onClick={() =>
-                        alert(
-                          `Plot manually: ${u.subjectCode} for ${u.sectionCode}`,
-                        )
+                        setAlertState({
+                          title: 'Plot manually',
+                          body: `Plot manually: ${u.subjectCode} for ${u.sectionCode}\n\nOpen the Plot Subject modal, pick this subject, and choose a slot. The scheduler couldn't find one for it.`,
+                          tone: 'info',
+                        })
                       }
                       className="text-[11px] font-semibold text-primary hover:underline"
                     >
