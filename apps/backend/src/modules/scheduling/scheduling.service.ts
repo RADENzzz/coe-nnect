@@ -129,11 +129,12 @@ export class SchedulingService {
     };
   }
 
-  async updateRemarks(id: string, remarks: string | null): Promise<Schedule> {
-    const found = await this.scheduleRepo.findOne({
-      where: { scheduleId: id },
-    });
-    if (!found) throw new NotFoundException('Schedule entry not found');
+  async updateRemarks(
+    id: string,
+    remarks: string | null,
+    user: any,
+  ): Promise<Schedule> {
+    const found = await this.assertOwnership(id, user);
     found.remarks = remarks;
     return this.scheduleRepo.save(found);
   }
@@ -142,148 +143,161 @@ export class SchedulingService {
   // Mutations
   // ════════════════════════════════════════════
 
-  async plot(dto: PlotSubjectDto): Promise<Schedule> {
-    if (!dto.facultyId) {
-      throw new BadRequestException('facultyId is required to plot a subject.');
-    }
-
-    const startMin = this.timeToMinutes(dto.startTime);
-    const endMin = this.timeToMinutes(dto.endTime);
-
-    if (endMin <= startMin) {
-      throw new BadRequestException('H-7: End time must be after start time.');
-    }
-    if (startMin < 7 * 60) {
-      throw new BadRequestException('H-8: Class cannot start before 7:00 AM.');
-    }
-    if (endMin > 19 * 60) {
-      throw new BadRequestException('H-8: Class cannot end after 7:00 PM.');
-    }
-
-    const context = await this.ruleContextBuilder.build({
-      termId: dto.termId,
-      subjectId: dto.subjectId,
-      facultyId: dto.facultyId,
-      roomId: dto.roomId,
-      section: dto.section,
-      dayOfWeek: dto.dayOfWeek,
-      startTime: dto.startTime,
-      endTime: dto.endTime,
-      loadType: dto.loadType,
-    });
-
-    const engineResult = this.constraints.evaluate(context);
-
-    if (!engineResult.valid) {
-      const reasons = engineResult.hardConflicts
-        .map((c) => `${c.ruleId}: ${c.reason}`)
-        .join('\n');
-      throw new BadRequestException(
-        `Cannot plot — hard conflicts detected:\n${reasons}`,
-      );
-    }
-
-    const sectionId = await this.resolveSectionId(dto.section);
-    if (dto.section && !sectionId) {
-      throw new BadRequestException(
-        `Section "${dto.section}" not found. It may have been deleted or renamed.`,
-      );
-    }
-
-    // Look up the subject's owning department for the ownership check.
-    const { data: subjectRow } = await this.supabase
-      .getAdminClient()
-      .from('subject')
-      .select('dept_id')
-      .eq('subject_id', dto.subjectId)
-      .maybeSingle();
-
-    const deptId = subjectRow?.dept_id ? String(subjectRow.dept_id) : null;
-
-    const entry = this.scheduleRepo.create({
-      termId: dto.termId,
-      subjectId: dto.subjectId,
-      facultyId: dto.facultyId ?? null,
-      roomId: dto.roomId ?? null,
-      timeslotId: null,
-      section: dto.section ?? null,
-      sectionId,
-      deptId,   // ← NEW
-      loadType: dto.loadType ?? null,
-      dayOfWeek: dto.dayOfWeek as any,
-      startTime:
-        dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
-      endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
-      status: 'draft',
-    });
-    return this.scheduleRepo.save(entry);
+  async plot(dto: PlotSubjectDto, user?: any): Promise<Schedule> {
+  if (!dto.facultyId) {
+    throw new BadRequestException('facultyId is required to plot a subject.');
   }
 
-  async update(id: string, dto: UpdateScheduleDto): Promise<Schedule> {
-    const found = await this.scheduleRepo.findOne({
-      where: { scheduleId: id },
-    });
-    if (!found) throw new NotFoundException('Schedule entry not found');
+  const startMin = this.timeToMinutes(dto.startTime);
+  const endMin = this.timeToMinutes(dto.endTime);
 
-    if (found.status === 'finalized' || found.status === 'published') {
-      throw new BadRequestException(
-        'This schedule entry is locked. Unfinalize it before making changes.',
+  if (endMin <= startMin) {
+    throw new BadRequestException('H-7: End time must be after start time.');
+  }
+  if (startMin < 7 * 60) {
+    throw new BadRequestException('H-8: Class cannot start before 7:00 AM.');
+  }
+  if (endMin > 19 * 60) {
+    throw new BadRequestException('H-8: Class cannot end after 7:00 PM.');
+  }
+
+  // ── Ownership check: fetch subject's dept first ──
+  const { data: subjectRow, error: subjErr } = await this.supabase
+    .getAdminClient()
+    .from('subject')
+    .select('dept_id')
+    .eq('subject_id', dto.subjectId)
+    .maybeSingle();
+
+  if (subjErr) {
+    this.logger.warn(`plot: subject lookup failed: ${subjErr.message}`);
+  }
+
+  const subjectDeptId = subjectRow?.dept_id
+    ? String(subjectRow.dept_id)
+    : null;
+
+  if (user && user.role === 'department_head') {
+    const myDept = user.deptId != null ? String(user.deptId) : null;
+    if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
+      throw new ForbiddenException(
+        'You can only plot subjects that belong to your own department.',
       );
     }
+  }
 
-    const normalizeTime = (t?: string) => {
-      if (!t) return undefined;
-      if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
-      return t;
-    };
+  const context = await this.ruleContextBuilder.build({
+    termId: dto.termId,
+    subjectId: dto.subjectId,
+    facultyId: dto.facultyId,
+    roomId: dto.roomId,
+    section: dto.section,
+    dayOfWeek: dto.dayOfWeek,
+    startTime: dto.startTime,
+    endTime: dto.endTime,
+    loadType: dto.loadType,
+  });
 
-    const newStart = normalizeTime(dto.startTime) ?? found.startTime;
-    const newEnd = normalizeTime(dto.endTime) ?? found.endTime;
+  const engineResult = this.constraints.evaluate(context);
 
-    if (newStart && newEnd) {
-      const startMin = this.timeToMinutes(newStart);
-      const endMin = this.timeToMinutes(newEnd);
-      if (endMin <= startMin) {
-        throw new BadRequestException('endTime must be after startTime');
-      }
-    }
+  if (!engineResult.valid) {
+    const reasons = engineResult.hardConflicts
+      .map((c) => `${c.ruleId}: ${c.reason}`)
+      .join('\n');
+    throw new BadRequestException(
+      `Cannot plot — hard conflicts detected:\n${reasons}`,
+    );
+  }
 
-    if (dto.dayOfWeek !== undefined) {
-      found.dayOfWeek = dto.dayOfWeek as DayOfWeek;
-    }
-    if (dto.startTime !== undefined) {
-      found.startTime = normalizeTime(dto.startTime) ?? null;
-    }
-    if (dto.endTime !== undefined) {
-      found.endTime = normalizeTime(dto.endTime) ?? null;
-    }
-    if (dto.roomId !== undefined) found.roomId = dto.roomId;
-    if (dto.facultyId !== undefined) found.facultyId = dto.facultyId;
-    if (dto.section !== undefined) {
-      found.section = dto.section ?? null;
-      found.sectionId = await this.resolveSectionId(dto.section);
-    }
+  const sectionId = await this.resolveSectionId(dto.section);
+  if (dto.section && !sectionId) {
+    throw new BadRequestException(
+      `Section "${dto.section}" not found. It may have been deleted or renamed.`,
+    );
+  }
 
-    return this.scheduleRepo.save(found);
+  const entry = this.scheduleRepo.create({
+    termId: dto.termId,
+    subjectId: dto.subjectId,
+    facultyId: dto.facultyId ?? null,
+    roomId: dto.roomId ?? null,
+    timeslotId: null,
+    section: dto.section ?? null,
+    sectionId,
+    deptId: subjectDeptId,
+    loadType: dto.loadType ?? null,
+    dayOfWeek: dto.dayOfWeek as any,
+    startTime:
+      dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
+    endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
+    status: 'draft',
+  });
+  return this.scheduleRepo.save(entry);
+  }
+
+  async update(
+  id: string,
+  dto: UpdateScheduleDto,
+  user: any,
+): Promise<Schedule> {
+  const found = await this.assertOwnership(id, user);
+
+  if (found.status === 'finalized' || found.status === 'published') {
+    throw new BadRequestException(
+      'This schedule entry is locked. Unfinalize it before making changes.',
+    );
+  }
+
+  const normalizeTime = (t?: string) => {
+    if (!t) return undefined;
+    if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+    return t;
+  };
+
+  const newStart = normalizeTime(dto.startTime) ?? found.startTime;
+  const newEnd = normalizeTime(dto.endTime) ?? found.endTime;
+
+  if (newStart && newEnd) {
+    const startMin = this.timeToMinutes(newStart);
+    const endMin = this.timeToMinutes(newEnd);
+    if (endMin <= startMin) {
+      throw new BadRequestException('endTime must be after startTime');
+    }
+  }
+
+  if (dto.dayOfWeek !== undefined) {
+    found.dayOfWeek = dto.dayOfWeek as DayOfWeek;
+  }
+  if (dto.startTime !== undefined) {
+    found.startTime = normalizeTime(dto.startTime) ?? null;
+  }
+  if (dto.endTime !== undefined) {
+    found.endTime = normalizeTime(dto.endTime) ?? null;
+  }
+  if (dto.roomId !== undefined) found.roomId = dto.roomId;
+  if (dto.facultyId !== undefined) found.facultyId = dto.facultyId;
+  if (dto.section !== undefined) {
+    found.section = dto.section ?? null;
+    found.sectionId = await this.resolveSectionId(dto.section);
+  }
+
+  return this.scheduleRepo.save(found);
   }
 
   async updateStatus(
-    id: string,
-    status: Schedule['status'],
-  ): Promise<Schedule> {
-    const found = await this.scheduleRepo.findOne({
-      where: { scheduleId: id },
-    });
-    if (!found) throw new NotFoundException();
-    found.status = status;
-    return this.scheduleRepo.save(found);
+  id: string,
+  status: Schedule['status'],
+  user: any,
+): Promise<Schedule> {
+  const found = await this.assertOwnership(id, user);
+  found.status = status;
+  return this.scheduleRepo.save(found);
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
-    const found = await this.scheduleRepo.findOne({
-      where: { scheduleId: id },
-    });
-    if (!found) throw new NotFoundException('Schedule entry not found');
+
+
+  async remove(id: string, user: any): Promise<{ success: boolean }> {
+    const found = await this.assertOwnership(id, user);
 
     if (found.status === 'finalized' || found.status === 'published') {
       throw new BadRequestException(
@@ -294,6 +308,8 @@ export class SchedulingService {
     await this.scheduleRepo.delete(id);
     return { success: true };
   }
+
+  
 
   // ════════════════════════════════════════════
   // AUTOSOLVER
@@ -1315,30 +1331,39 @@ export class SchedulingService {
 
     return new Set(['H-4', 'H-6', 'S-7', 'S-2']);
   }
-  private async assertOwnership(
-    scheduleId: string,
-    user: any,
-  ): Promise<Schedule> {
-    const found = await this.scheduleRepo.findOne({
-      where: { scheduleId },
-    });
-    if (!found) throw new NotFoundException('Schedule entry not found');
+private async assertOwnership(
+  scheduleId: string,
+  user: any,
+): Promise<Schedule> {
+  if (!user) {
+    throw new ForbiddenException('Not authenticated');
+  }
 
-    // Admins bypass
-    if (user.role === 'administrator' || user.role === 'college_dean') {
-      return found;
-    }
+  const found = await this.scheduleRepo.findOne({
+    where: { scheduleId },
+  });
+  if (!found) throw new NotFoundException('Schedule entry not found');
 
-    // DH: only own dept
-    if (user.role === 'department_head') {
-      const userDeptId = user.dept_id ? String(user.dept_id) : null;
-      if (!userDeptId || String(found.deptId) !== userDeptId) {
-        throw new ForbiddenException(
-          'You cannot edit schedules from other departments.',
-        );
-      }
-    }
-
+  // Admin and Dean bypass
+  if (user.role === 'administrator' || user.role === 'college_dean') {
     return found;
   }
+
+  // DH: only own dept
+  if (user.role === 'department_head') {
+    // `user` is the TypeORM User entity, so its column is camelCase `deptId`.
+    const userDeptId = user.deptId != null ? String(user.deptId) : null;
+    if (!userDeptId || String(found.deptId) !== userDeptId) {
+      throw new ForbiddenException(
+        'You cannot edit schedules from other departments.',
+      );
+    }
+    return found;
+  }
+
+  // Any other role → fail closed
+  throw new ForbiddenException(
+    'You do not have permission to modify schedules.',
+  );
+}
 }

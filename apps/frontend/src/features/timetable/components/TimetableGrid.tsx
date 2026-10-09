@@ -33,6 +33,8 @@ interface Props {
     newStartTime: string,
   ) => void | Promise<unknown>;
   onEntryClick?: (entry: ScheduleEntry) => void;
+  /** IDs of entries the current user cannot drag (foreign dept, etc.). */
+  readOnlyEntryIds?: Set<string>;
 }
 
 /** Get the index in DAYS array for today, or -1 if today isn't a grid day. */
@@ -115,6 +117,7 @@ export default function TimetableGrid({
   fitToContainer = true,
   onEntryMove,
   onEntryClick,
+  readOnlyEntryIds,
 }: Props) {
   const [containerRef, containerWidth] = useMeasuredWidth<HTMLDivElement>();
   const effectiveDensity: GridDensity = fitToContainer ? 'fit' : density;
@@ -124,12 +127,13 @@ export default function TimetableGrid({
       density={effectiveDensity}
       containerWidth={containerWidth}
     >
-      <GridBody
-        containerRef={containerRef}
-        entries={entries}
-        onEntryMove={onEntryMove}
-        onEntryClick={onEntryClick}
-      />
+    <GridBody
+      containerRef={containerRef}
+      entries={entries}
+      onEntryMove={onEntryMove}
+      onEntryClick={onEntryClick}
+      readOnlyEntryIds={readOnlyEntryIds}
+    />
     </GridMetricsProvider>
   );
 }
@@ -139,6 +143,7 @@ interface GridBodyProps {
   entries: ScheduleEntry[];
   onEntryMove?: Props['onEntryMove'];
   onEntryClick?: Props['onEntryClick'];
+  readOnlyEntryIds?: Set<string>;
 }
 
 function GridBody({
@@ -146,6 +151,7 @@ function GridBody({
   entries,
   onEntryMove,
   onEntryClick,
+  readOnlyEntryIds,
 }: GridBodyProps) {
   const metrics = useGridMetrics();
   const isDesktopLike = useIsDesktopLike();
@@ -409,6 +415,7 @@ function GridBody({
                   const locked =
                     entry.status === 'finalized' ||
                     entry.status === 'published';
+                  const isForeign = readOnlyEntryIds?.has(entry.id) ?? false;
 
                   return (
                     <ClassBlock
@@ -420,7 +427,8 @@ function GridBody({
                       overlapCount={overlapCount}
                       onClick={onEntryClick}
                       isDragging={draggingId === entry.id}
-                      disabled={locked || !isDesktopLike}
+                      disabled={locked || !isDesktopLike || isForeign}
+                      isForeign={isForeign}
                     />
                   );
                 })}

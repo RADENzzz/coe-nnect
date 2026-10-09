@@ -15,6 +15,8 @@ interface Props {
   onClick?: (entry: ScheduleEntry) => void;
   isDragging?: boolean;
   disabled?: boolean;
+  /** Mark as foreign — dashed border, no drag cursor. */
+  isForeign?: boolean;
 }
 
 function ClassBlockBase({
@@ -26,6 +28,7 @@ function ClassBlockBase({
   onClick,
   isDragging,
   disabled = false,
+  isForeign = false,
 }: Props) {
   const metrics = useGridMetrics();
 
@@ -92,11 +95,12 @@ function ClassBlockBase({
         'rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white',
-        locked ? 'cursor-pointer' : 'cursor-grab',
+        locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
-        entry.hasConflict && 'ring-2 ring-red-500 animate-pulse',
-        entry.hasWarning && !entry.hasConflict && 'ring-2 ring-amber-400',
+          entry.hasConflict && 'ring-2 ring-red-500 animate-pulse',
+          entry.hasWarning && !entry.hasConflict && 'ring-2 ring-amber-400',
+          isForeign && !entry.hasConflict && !entry.hasWarning && 'ring-2 ring-slate-300 ring-offset-1',
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
@@ -109,6 +113,16 @@ function ClassBlockBase({
         </span>
       )}
 
+      {/* NEW: foreign read-only indicator */}
+      {isForeign && !locked && (
+        <span
+          className="absolute top-0.5 left-1 bg-black/40 text-white rounded px-1 py-px leading-none pointer-events-none flex items-center"
+          title="Read-only — other department"
+        >
+          <Icon name="visibility" size={9} />
+        </span>
+      )}
+
       {overlapCount > 1 && (
         <span className="absolute top-0.5 right-1 bg-black/70 text-white text-[9px] font-bold rounded px-1 py-px leading-none pointer-events-none">
           +{overlapCount - 1}
@@ -116,7 +130,7 @@ function ClassBlockBase({
       )}
 
       {/* Line 1: subject code + section */}
-      <div className={clsx('font-bold truncate', locked ? 'pl-4' : 'pr-4')}>
+      <div className={clsx('font-bold truncate', locked || isForeign ? 'pl-4' : 'pr-4')}>
         {entry.subjectCode}
         {entry.sectionCode && showSecondary && (
           <span className="font-normal opacity-90 ml-1">

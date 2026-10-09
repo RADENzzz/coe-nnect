@@ -249,6 +249,20 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const allEntries = useMemo(() => (schedules ?? []).map(toEntry), [schedules]);
 
+  // Foreign entries (DHs can't drag blocks from other departments)
+  const foreignEntryIds = useMemo(() => {
+    if (!isDepartmentHead || !myDeptId) return new Set<string>();
+    return new Set(
+      allEntries
+        .filter((e) => {
+          // Entry has no deptId → treat as foreign (defensive)
+          if (!e.deptId) return true;
+          return String(e.deptId) !== myDeptId;
+        })
+        .map((e) => e.id),
+    );
+  }, [allEntries, isDepartmentHead, myDeptId]);
+
   const entries = useMemo(() => {
     let filtered = allEntries;
 
@@ -907,13 +921,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
             {layoutMode === 'agenda' ? (
               <AgendaView entries={entries} onEntryClick={handleClick} />
             ) : (
-              <TimetableGrid
-                entries={entries}
-                density={gridDensity}
-                fitToContainer
-                onEntryMove={writable ? handleMove : undefined}
-                onEntryClick={handleClick}
-              />
+            <TimetableGrid
+              entries={entries}
+              density={gridDensity}
+              fitToContainer
+              onEntryMove={writable ? handleMove : undefined}
+              onEntryClick={handleClick}
+              readOnlyEntryIds={foreignEntryIds}
+            />
             )}
           </div>
         </>

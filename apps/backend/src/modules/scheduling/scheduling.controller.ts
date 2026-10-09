@@ -51,9 +51,10 @@ export class SchedulingController {
   }
 
   @Auditable({ action: 'schedule.create', source: 'Scheduling' })
+  @Roles('administrator', 'department_head')
   @Post('plot')
-  async plot(@Body() dto: PlotSubjectDto) {
-    const data = await this.service.plot(dto);
+  async plot(@Body() dto: PlotSubjectDto, @Req() req: any) {
+    const data = await this.service.plot(dto, req.profile);
     return { data };
   }
 
@@ -78,7 +79,7 @@ export class SchedulingController {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // LIST ROUTE
+  // LIST ROUTES
   // ═══════════════════════════════════════════════════════════
 
   @Get()
@@ -104,32 +105,47 @@ export class SchedulingController {
   // ═══════════════════════════════════════════════════════════
 
   @Auditable({ action: 'schedule.update', source: 'Scheduling' })
+  @Roles('administrator', 'department_head')
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateScheduleDto) {
-    const data = await this.service.update(id, dto);
-    return { data };
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateScheduleDto,
+    @Req() req: any,
+  ) {
+    return { data: await this.service.update(id, dto, req.profile) };
   }
 
   @Auditable({ action: 'schedule.status_change', source: 'Scheduling' })
   @Roles('administrator', 'department_head')
   @Patch(':id/status')
-  async updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
-    const data = await this.service.updateStatus(id, dto.status);
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateStatusDto,
+    @Req() req: any,
+  ) {
+    const data = await this.service.updateStatus(id, dto.status, req.profile);
     return { data };
   }
 
+  @Roles('administrator', 'department_head')
   @Patch(':id/remarks')
   async updateRemarks(
     @Param('id') id: string,
     @Body() dto: UpdateRemarksDto,
+    @Req() req: any,
   ) {
-    const data = await this.service.updateRemarks(id, dto.remarks ?? null);
+    const data = await this.service.updateRemarks(
+      id,
+      dto.remarks ?? null,
+      req.profile,
+    );
     return { data };
   }
 
   @Auditable({ action: 'schedule.delete', source: 'Scheduling' })
+  @Roles('administrator', 'department_head')
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  async remove(@Param('id') id: string, @Req() req: any) {
+    return this.service.remove(id, req.profile);
   }
 }
