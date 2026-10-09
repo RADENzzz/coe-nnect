@@ -55,6 +55,7 @@ export default function RoomsPage() {
     roomType: 'lecture_room' as RoomType,
     capacity: '',
     deptId: '',
+    isShared: false,
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all');
@@ -145,6 +146,7 @@ export default function RoomsPage() {
       roomType: 'lecture_room',
       capacity: '',
       deptId: '',
+      isShared: false,
     });
     setError(null);
   };
@@ -157,7 +159,9 @@ export default function RoomsPage() {
       building: '',
       roomType: 'lecture_room',
       capacity: '',
+      // Default for DHs: create owned rooms in their dept
       deptId: isDH && myDeptId ? myDeptId : '',
+      isShared: false,
     });
     setError(null);
     setSuccess(null);
@@ -172,6 +176,7 @@ export default function RoomsPage() {
       roomType: r.roomType,
       capacity: r.capacity != null ? String(r.capacity) : '',
       deptId: r.deptId ?? '',
+      isShared: r.deptId == null, // null dept = shared
     });
     setError(null);
     setSuccess(null);
@@ -181,6 +186,17 @@ export default function RoomsPage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSharedToggle = (checked: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      isShared: checked,
+      // When shared, clear deptId. When unshared, default to DH's dept if available.
+      deptId: checked
+        ? ''
+        : prev.deptId || (isDH && myDeptId ? myDeptId : ''),
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -193,7 +209,9 @@ export default function RoomsPage() {
       building: form.building.trim(),
       roomType: form.roomType,
       capacity: form.capacity ? Number(form.capacity) : undefined,
-      deptId: form.deptId || undefined,
+      // Shared → omit deptId entirely (becomes null server-side)
+      // Owned → send deptId
+      deptId: form.isShared ? null : form.deptId || undefined,
     };
 
     if (mode === 'create') {
@@ -481,32 +499,60 @@ export default function RoomsPage() {
                 Used by S-8 (cohort overflow warning).
               </p>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Department
+
+            {/* ── Ownership ── */}
+            <div className="md:col-span-2 border-t border-surface-variant pt-4 mt-1">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
+                Ownership
               </label>
-              <select
-                name="deptId"
-                value={form.deptId}
-                onChange={handleChange}
-                disabled={isDH}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <option value="">— shared (any department) —</option>
-                {departments
-                  .filter((d) => d.isActive)
-                  .filter((d) => !isDH || String(d.deptId) === myDeptId)
-                  .map((d) => (
-                    <option key={d.deptId} value={d.deptId}>
-                      [{d.deptCode}] {d.deptName}
-                    </option>
-                  ))}
-              </select>
-              <p className="text-[10px] text-on-surface-variant mt-1">
-                {isDH
-                  ? 'Locked to your department.'
-                  : 'Used by S-10 (room ownership warning). Leave blank for shared.'}
-              </p>
+
+              <label className="flex items-start gap-2 cursor-pointer select-none mb-3">
+                <input
+                  type="checkbox"
+                  checked={form.isShared}
+                  onChange={(e) => handleSharedToggle(e.target.checked)}
+                  className="mt-0.5 accent-[#5c1219]"
+                />
+                <div>
+                  <span className="text-sm font-medium text-on-surface">
+                    Shared room
+                  </span>
+                  <p className="text-[11px] text-on-surface-variant mt-0.5">
+                    Available to all departments. DHs cannot edit shared rooms
+                    after creation.
+                  </p>
+                </div>
+              </label>
+
+              {!form.isShared && (
+                <div>
+                  <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Owned by
+                  </label>
+                  <select
+                    name="deptId"
+                    value={form.deptId}
+                    onChange={handleChange}
+                    disabled={isDH}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {!isDH && <option value="">— select department —</option>}
+                    {departments
+                      .filter((d) => d.isActive)
+                      .filter((d) => !isDH || String(d.deptId) === myDeptId)
+                      .map((d) => (
+                        <option key={d.deptId} value={d.deptId}>
+                          [{d.deptCode}] {d.deptName}
+                        </option>
+                      ))}
+                  </select>
+                  {isDH && (
+                    <p className="text-[10px] text-on-surface-variant mt-1">
+                      Locked to your department.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

@@ -22,9 +22,8 @@ export interface CreateRoomInput {
   building: string;
   roomType: RoomType;
   capacity?: number;
-  deptId?: string;
+  deptId?: string | null;   // null = shared
 }
-
 export async function fetchRooms(
   includeInactive: boolean = false,
 ): Promise<RoomRecord[]> {
