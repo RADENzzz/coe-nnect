@@ -5,12 +5,14 @@ import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import { useAuthStore } from '../../store/auth.store';
+import { useOnlineUsers } from '../../hooks/use-online-users';
 import { fetchSchedules, fetchActiveTerm, type RawSchedule } from '../../api/schedule.api';
 import {
   fetchFacultyRequests,
   type FacultyRequest,
 } from '../../api/faculty-requests.api';
 import { fetchDepartments } from '../../api/departments.api';
+import { fetchUsers } from '../../api/users.api';
 import { timeToMinutes } from '../timetable/utils/time.util';
 
 // ─────────────────────────────────────────────
@@ -73,6 +75,11 @@ function relativeTime(iso: string | null | undefined): string {
   });
 }
 
+function initials(username: string): string {
+  if (!username) return '—';
+  return username.slice(0, 2).toUpperCase();
+}
+
 // ─────────────────────────────────────────────
 // Quick Action Button
 // ─────────────────────────────────────────────
@@ -103,7 +110,7 @@ function QuickAction({
 }
 
 // ─────────────────────────────────────────────
-// Summary Card (now clickable)
+// Summary Card
 // ─────────────────────────────────────────────
 
 function SummaryCard({
@@ -361,9 +368,28 @@ export default function DashboardPage() {
     queryFn: fetchDepartments,
   });
 
+  const { data: users = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
+  });
+
+  const { onlineUsers, isConnected } = useOnlineUsers();
+
   const deptCode = (id: string) =>
     departments.find((d) => String(d.deptId) === String(id))?.deptCode ??
     `#${id}`;
+
+  // ── Online DHs (excluding self) ──
+  const onlineUserIds = new Set(onlineUsers.map((u) => u.user_id));
+  const otherDeptHeads = users.filter(
+    (u) =>
+      u.role === 'department_head' &&
+      u.isActive &&
+      u.userId !== profile?.user_id,
+  );
+  const onlineOtherDHs = otherDeptHeads.filter((u) =>
+    onlineUserIds.has(u.userId),
+  ).length;
 
   // ── Filter to my dept ──
   const mySchedules = schedules.filter(
@@ -398,7 +424,6 @@ export default function DashboardPage() {
 
   const isLoading = schedLoading || reqLoading;
 
-  // ── Recent activity (newest 5 requests involving my dept) ──
   const recentActivity = [...myRequests]
     .sort(
       (a, b) =>
@@ -407,7 +432,6 @@ export default function DashboardPage() {
     )
     .slice(0, 5);
 
-  // ── Value display ──
   const schedulesValue = isLoading ? '—' : String(totalSchedules);
   const tasksValue = isLoading ? '—' : String(pendingIncoming.length);
   const completionValue = isLoading ? '—' : `${completionRate}%`;
@@ -604,10 +628,81 @@ export default function DashboardPage() {
       </div>
 
       {/* ─────────────────────────────────────
+          Other Department Heads Online
+         ───────────────────────────────────── */}
+      <div className="mt-6 bg-white border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${
+                isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+              }`}
+            />
+            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              Other Department Heads
+            </h3>
+          </div>
+          <span className="text-xs text-slate-400">
+            {onlineOtherDHs} of {otherDeptHeads.length} online
+          </span>
+        </div>
+
+        {otherDeptHeads.length === 0 ? (
+          <div className="py-12 text-center text-sm text-slate-400">
+            No other department heads configured.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-slate-100">
+            {otherDeptHeads.map((head) => {
+              const isOnline = onlineUserIds.has(head.userId);
+              const dept = departments.find(
+                (d) => String(d.deptId) === String(head.deptId),
+              );
+              return (
+                <div
+                  key={head.userId}
+                  className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="relative shrink-0">
+                    <div className="w-9 h-9 bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                      {initials(head.username)}
+                    </div>
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
+                        isOnline ? 'bg-emerald-500' : 'bg-slate-300'
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 truncate">
+                      {head.username}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {dept
+                        ? `[${dept.deptCode}] ${dept.deptName}`
+                        : 'No department'}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-0.5 shrink-0 ${
+                      isOnline
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-slate-50 text-slate-500 border-slate-200'
+                    }`}
+                  >
+                    {isOnline ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ─────────────────────────────────────
           Breakdown Modals
          ───────────────────────────────────── */}
 
-      {/* Schedules Breakdown */}
       <Modal
         open={breakdown === 'schedules'}
         onClose={() => setBreakdown(null)}
@@ -636,7 +731,6 @@ export default function DashboardPage() {
         )}
       </Modal>
 
-      {/* Tasks Breakdown */}
       <Modal
         open={breakdown === 'tasks'}
         onClose={() => setBreakdown(null)}
@@ -674,7 +768,6 @@ export default function DashboardPage() {
         )}
       </Modal>
 
-      {/* Completion Breakdown */}
       <Modal
         open={breakdown === 'completion'}
         onClose={() => setBreakdown(null)}
@@ -686,7 +779,6 @@ export default function DashboardPage() {
           <BreakdownEmpty message="No schedule entries to summarize." />
         ) : (
           <div className="space-y-4">
-            {/* Big number */}
             <div className="text-center py-4">
               <div className="text-5xl font-extrabold text-[#5c1219]">
                 {completionRate}%
@@ -696,7 +788,6 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            {/* Progress bar */}
             <div className="w-full bg-slate-100 h-2 overflow-hidden">
               <div
                 className="bg-[#5c1219] h-2 transition-all duration-500"
@@ -704,7 +795,6 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* Breakdown by status */}
             <div className="pt-2 space-y-2">
               <StatusRow
                 label="Draft"
