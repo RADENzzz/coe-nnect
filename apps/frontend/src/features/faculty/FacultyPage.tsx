@@ -40,6 +40,7 @@ const CLASS_TONE: Record<FacultyClass, 'info' | 'warning' | 'purple' | 'neutral'
 export default function FacultyPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<FacultyRecord | null>(null);
@@ -64,6 +65,21 @@ export default function FacultyPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [deleteTarget, setDeleteTarget] = useState<FacultyRecord | null>(null);
+
+  // ── Auth-derived flags ──
+  const isAdmin = profile?.role === 'administrator';
+  const isDean = profile?.role === 'college_dean';
+  const isDH = profile?.role === 'department_head';
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
+
+  /**
+   * A row is "foreign" for a DH when it belongs to another department.
+   * Admin/Dean never see foreign rows — everything is editable.
+   */
+  const isForeign = (f: FacultyRecord): boolean => {
+    if (!isDH) return false;
+    return String(f.deptId ?? '') !== myDeptId;
+  };
 
   const { data: faculty = [], isLoading } = useQuery({
     queryKey: ['faculty', { includeInactive: true }],
@@ -170,7 +186,8 @@ export default function FacultyPage() {
       contact: '',
       wmsuId: '',
       employeeId: '',
-      deptId: '',
+      // DHs always create in their own department — pre-fill and it's locked below
+      deptId: isDH && myDeptId ? myDeptId : '',
       designationId: '',
       classification: 'regular',
       requiredHours: '',
@@ -264,7 +281,22 @@ export default function FacultyPage() {
       header: 'Dept',
       cardVariant: 'meta',
       cellClassName: 'text-on-surface-variant text-xs',
-      render: (f) => deptName(f.deptId),
+      render: (f) => {
+        const foreign = isForeign(f);
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            {foreign && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
+                title="Other department — read only"
+              />
+            )}
+            <span className={foreign ? 'text-slate-500' : ''}>
+              {deptName(f.deptId)}
+            </span>
+          </span>
+        );
+      },
     },
     {
       key: 'classification',
@@ -307,42 +339,60 @@ export default function FacultyPage() {
     },
   ];
 
-  const getActions = (f: FacultyRecord): RowAction[] => [
-    {
-      label: 'Edit',
-      icon: 'edit',
-      onClick: () => openEdit(f),
-    },
-    {
-      label: 'Qualifications',
-      icon: 'school',
-      onClick: () => {
-        setQualFaculty(f);
-        setQualOpen(true);
+  /**
+   * Actions per row.
+   *
+   * Admin / Dean  → full actions on every row.
+   * DH (own)      → full actions.
+   * DH (foreign)  → NO actions. Row is read-only.
+   */
+  const getActions = (f: FacultyRecord): RowAction[] => {
+    if (isForeign(f)) {
+      return []; // read-only
+    }
+    return [
+      {
+        label: 'Edit',
+        icon: 'edit',
+        onClick: () => openEdit(f),
       },
-    },
-    {
-      label: 'Preferences',
-      icon: 'event_available',
-      onClick: () => {
-        setPrefsFaculty(f);
-        setPrefsOpen(true);
+      {
+        label: 'Qualifications',
+        icon: 'school',
+        onClick: () => {
+          setQualFaculty(f);
+          setQualOpen(true);
+        },
       },
-    },
-    {
-      label: f.isActive ? 'Deactivate' : 'Activate',
-      icon: f.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => toggleMutation.mutate(f.facultyId),
-      disabled: toggleMutation.isPending,
-    },
-    {
-      label: 'Delete',
-      icon: 'delete',
-      danger: true,
-      onClick: () => setDeleteTarget(f),
-      disabled: deleteMutation.isPending,
-    },
-  ];
+      {
+        label: 'Preferences',
+        icon: 'event_available',
+        onClick: () => {
+          setPrefsFaculty(f);
+          setPrefsOpen(true);
+        },
+      },
+      {
+        label: f.isActive ? 'Deactivate' : 'Activate',
+        icon: f.isActive ? 'toggle_off' : 'toggle_on',
+        onClick: () => toggleMutation.mutate(f.facultyId),
+        disabled: toggleMutation.isPending,
+      },
+      // Hard delete is admin-only (matches backend @Roles('administrator')).
+      // Show it only to admins.
+      ...(isAdmin
+        ? [
+            {
+              label: 'Delete',
+              icon: 'delete',
+              danger: true,
+              onClick: () => setDeleteTarget(f),
+              disabled: deleteMutation.isPending,
+            } as RowAction,
+          ]
+        : []),
+    ];
+  };
 
   return (
     <div className="space-y-6">
@@ -431,6 +481,19 @@ export default function FacultyPage() {
           of {faculty.length}
         </div>
       </div>
+
+      {/* Read-only hint for DHs */}
+      {isDH && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Faculty marked with an{' '}
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
+            amber dot belong to another department and are read-only.
+            Contact the owning department head or an administrator to change them.
+          </span>
+        </div>
+      )}
 
       {/* Table / Cards */}
       <ResponsiveTable
@@ -541,17 +604,25 @@ export default function FacultyPage() {
                 name="deptId"
                 value={form.deptId}
                 onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+                disabled={isDH}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">— none —</option>
+                {/* DHs only see their own department as an option */}
                 {departments
                   .filter((d) => d.isActive)
+                  .filter((d) => !isDH || String(d.deptId) === myDeptId)
                   .map((d) => (
                     <option key={d.deptId} value={d.deptId}>
                       [{d.deptCode}] {d.deptName}
                     </option>
                   ))}
               </select>
+              {isDH && (
+                <p className="text-[10px] text-on-surface-variant mt-1">
+                  Locked to your department.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
