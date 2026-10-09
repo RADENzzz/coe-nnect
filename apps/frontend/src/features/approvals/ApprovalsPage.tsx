@@ -23,6 +23,7 @@ import SearchableSelect, {
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import type { RowAction } from '../../components/ui/RowActionMenu';
+import { fetchFaculty } from '../../api/faculty.api';
 
 type FilterTab = 'all' | FacultyRequestStatus;
 
@@ -41,7 +42,7 @@ export default function ApprovalsPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
-
+  
   const [filter, setFilter] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [scopeFilter, setScopeFilter] = useState<
@@ -107,7 +108,7 @@ export default function ApprovalsPage() {
   // Faculty — always loaded while form is open (for filtering by target dept)
   const { data: facultyList = [] } = useQuery({
     queryKey: ['faculty'],
-    queryFn: () => import('../../api/faculty.api').then((m) => m.fetchFaculty(false)),
+    queryFn: () => fetchFaculty(false),
     enabled: !!user && showForm,
     staleTime: 5 * 60 * 1000,
   });
