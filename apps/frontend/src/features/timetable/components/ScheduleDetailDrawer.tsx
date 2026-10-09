@@ -11,6 +11,7 @@ import Modal from '../../../components/ui/Modal';
 import clsx from 'clsx';
 import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
+import { useAuthStore } from '../../../store/auth.store';
 
 interface Props {
   entry: ScheduleEntry | null;
@@ -55,6 +56,7 @@ export default function ScheduleDetailDrawer({
   readOnly = false,
 }: Props) {
   const queryClient = useQueryClient();
+  const profile = useAuthStore((s) => s.profile);
   const [remarks, setRemarks] = useState('');
   const [remarksSaved, setRemarksSaved] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -156,8 +158,18 @@ export default function ScheduleDetailDrawer({
 
   if (!entry) return null;
 
+  // ── Foreign-entry detection ──
+  // A DH viewing a schedule entry whose subject belongs to another department
+  // must see the drawer in read-only mode, regardless of the `readOnly` prop.
+  const isDH = profile?.role === 'department_head';
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
+  const isForeignEntry =
+    isDH &&
+    !!entry.deptId &&
+    String(entry.deptId) !== myDeptId;
+
   const locked = isLocked(entry.status);
-  const writable = !readOnly;
+  const writable = !readOnly && !isForeignEntry;
 
   return (
     <>
@@ -188,6 +200,8 @@ export default function ScheduleDetailDrawer({
               <p className="text-xs text-on-surface-variant">
                 {readOnly
                   ? 'View only'
+                  : isForeignEntry
+                  ? 'Read-only — belongs to another department'
                   : locked
                   ? 'Locked entry — read-only'
                   : 'View, edit, or delete this entry'}
@@ -201,6 +215,17 @@ export default function ScheduleDetailDrawer({
               <Icon name="close" />
             </button>
           </header>
+
+          {/* Foreign-entry banner */}
+          {isForeignEntry && (
+            <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-xs text-amber-900">
+              <Icon name="lock" size={16} className="shrink-0" />
+              <span>
+                This class belongs to another department. Contact the owning
+                department head or an administrator to make changes.
+              </span>
+            </div>
+          )}
 
           {locked && writable && (
             <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-xs text-blue-900">
@@ -347,7 +372,7 @@ export default function ScheduleDetailDrawer({
             <div className="pt-3 border-t border-surface-variant">
               <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
                 Remarks{' '}
-                {(locked || readOnly) && (
+                {(locked || readOnly || isForeignEntry) && (
                   <span className="text-blue-700">(read-only)</span>
                 )}
               </label>
@@ -357,7 +382,7 @@ export default function ScheduleDetailDrawer({
                 placeholder="e.g. Room under maintenance; reschedule pending"
                 rows={3}
                 maxLength={1000}
-                disabled={locked || readOnly}
+                disabled={locked || readOnly || isForeignEntry}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none disabled:opacity-60 disabled:cursor-not-allowed"
               />
               <div className="flex items-center justify-between mt-2">
@@ -426,7 +451,7 @@ export default function ScheduleDetailDrawer({
         </aside>
       </div>
 
-      {onMove && (
+      {onMove && writable && (
         <MoveScheduleSheet
           open={moveOpen}
           entry={entry}
@@ -436,7 +461,7 @@ export default function ScheduleDetailDrawer({
         />
       )}
 
-      {/* Delete confirmation — replaces window.confirm */}
+      {/* Delete confirmation */}
       <Modal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -468,7 +493,7 @@ export default function ScheduleDetailDrawer({
         </p>
       </Modal>
 
-      {/* Unfinalize confirmation — replaces window.confirm */}
+      {/* Unfinalize confirmation */}
       <Modal
         open={unfinalizeOpen}
         onClose={() => setUnfinalizeOpen(false)}
