@@ -73,12 +73,13 @@ export default function RoomsPage() {
     enabled: !!user,
   });
 
-  // ── Foreign detection ──
-  // For DHs: null dept = shared room = read-only. Only own-dept rooms are writable.
+  // ── Foreign detection (rule B) ──
+  // A DH can edit own-dept rooms AND shared rooms.
+  // Only another dept's *exclusive* room is off-limits.
   const isForeign = useCallback(
     (r: RoomRecord): boolean => {
       if (!isDH) return false;
-      if (!r.deptId) return true; // shared
+      if (!r.deptId) return false; // shared → editable
       return String(r.deptId) !== myDeptId;
     },
     [isDH, myDeptId],
@@ -159,7 +160,6 @@ export default function RoomsPage() {
       building: '',
       roomType: 'lecture_room',
       capacity: '',
-      // Default for DHs: create owned rooms in their dept
       deptId: isDH && myDeptId ? myDeptId : '',
       isShared: false,
     });
@@ -176,7 +176,7 @@ export default function RoomsPage() {
       roomType: r.roomType,
       capacity: r.capacity != null ? String(r.capacity) : '',
       deptId: r.deptId ?? '',
-      isShared: r.deptId == null, // null dept = shared
+      isShared: r.deptId == null,
     });
     setError(null);
     setSuccess(null);
@@ -192,7 +192,6 @@ export default function RoomsPage() {
     setForm((prev) => ({
       ...prev,
       isShared: checked,
-      // When shared, clear deptId. When unshared, default to DH's dept if available.
       deptId: checked
         ? ''
         : prev.deptId || (isDH && myDeptId ? myDeptId : ''),
@@ -209,8 +208,6 @@ export default function RoomsPage() {
       building: form.building.trim(),
       roomType: form.roomType,
       capacity: form.capacity ? Number(form.capacity) : undefined,
-      // Shared → omit deptId entirely (becomes null server-side)
-      // Owned → send deptId
       deptId: form.isShared ? null : form.deptId || undefined,
     };
 
@@ -271,7 +268,7 @@ export default function RoomsPage() {
             {foreign && (
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
-                title="Shared or other department — read only"
+                title="Another department's room — read only"
               />
             )}
             <span className={foreign ? 'text-slate-500' : ''}>
@@ -347,12 +344,13 @@ export default function RoomsPage() {
       )}
 
       {isDH && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs">
           <Icon name="info" size={16} className="mt-0.5 shrink-0" />
           <span>
+            You can manage shared rooms and rooms owned by your department.
             Rooms marked with an{' '}
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
-            amber dot are shared or belong to another department and are read-only.
+            amber dot belong to another department and are read-only.
           </span>
         </div>
       )}
@@ -499,8 +497,6 @@ export default function RoomsPage() {
                 Used by S-8 (cohort overflow warning).
               </p>
             </div>
-
-            {/* ── Ownership ── */}
             <div className="md:col-span-2 border-t border-surface-variant pt-4 mt-1">
               <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
                 Ownership
@@ -518,8 +514,7 @@ export default function RoomsPage() {
                     Shared room
                   </span>
                   <p className="text-[11px] text-on-surface-variant mt-0.5">
-                    Available to all departments. DHs cannot edit shared rooms
-                    after creation.
+                    Available to all departments. Any DH can manage it.
                   </p>
                 </div>
               </label>

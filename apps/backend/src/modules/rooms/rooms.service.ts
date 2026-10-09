@@ -18,6 +18,15 @@ export class RoomsService {
     private readonly repo: Repository<Room>,
   ) {}
 
+  /**
+   * Ownership rule (B):
+   *   Admin / Dean  → full access to any room
+   *   DH            → may edit rooms that are either:
+   *                     • owned by their own department, OR
+   *                     • shared (dept_id IS NULL)
+   *                   but NOT another department's exclusive room.
+   *   others        → reject (fail-closed)
+   */
   private async assertOwnership(
     roomId: string,
     profile: User | undefined,
@@ -36,14 +45,16 @@ export class RoomsService {
       );
     }
 
-    // Null dept_id = shared room. DHs may NOT mutate shared rooms.
-    if (!room.deptId || String(room.deptId) !== String(profile.deptId)) {
-      throw new ForbiddenException(
-        'You can only modify rooms owned by your own department.',
-      );
-    }
+    // Shared room → any DH can edit
+    if (!room.deptId) return room;
 
-    return room;
+    // Owned room → must be the DH's own department
+    if (String(room.deptId) === String(profile.deptId)) return room;
+
+    // Otherwise → reject
+    throw new ForbiddenException(
+      "You can only modify rooms owned by your department, or shared rooms.",
+    );
   }
 
   findAll(): Promise<Room[]> {
@@ -65,18 +76,15 @@ export class RoomsService {
 
   async create(dto: CreateRoomDto, profile: User): Promise<Room> {
     // DHs may create:
-    //   • shared rooms (deptId = null / undefined)
+    //   • shared rooms (deptId omitted / null)
     //   • rooms owned by their own department
-    // DHs may NOT create rooms for other departments.
+    // DHs may NOT create rooms for another department.
     if (profile.role === 'department_head') {
       if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
         throw new ForbiddenException(
           'You can only create rooms for your own department, or shared rooms.',
         );
       }
-      // Explicitly DO NOT force deptId here.
-      // If dto.deptId is undefined/empty → shared room.
-      // If dto.deptId === profile.deptId → owned room.
     }
 
     const existing = await this.repo.findOne({
@@ -105,8 +113,9 @@ export class RoomsService {
   ): Promise<Room> {
     const found = await this.assertOwnership(id, profile);
 
-    // DHs can convert an owned room to shared, but cannot assign
-    // an owned room to another department.
+    // DHs may convert their own room → shared (deptId = null),
+    // or leave it alone. They may NOT assign an owned room to
+    // another department.
     if (
       profile.role === 'department_head' &&
       dto.deptId !== undefined &&
