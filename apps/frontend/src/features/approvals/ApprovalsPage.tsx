@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -13,8 +13,13 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchActiveTerm } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
+import { fetchPrograms } from '../../api/programs.api';
+import { fetchAllProspectus } from '../../api/prospectus.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import SearchableSelect, {
+  type SearchableOption,
+} from '../../components/ui/SearchableSelect';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import type { RowAction } from '../../components/ui/RowActionMenu';
@@ -39,7 +44,9 @@ export default function ApprovalsPage() {
 
   const [filter, setFilter] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'waiting-on-me' | 'waiting-on-them'>('all');
+  const [scopeFilter, setScopeFilter] = useState<
+    'all' | 'waiting-on-me' | 'waiting-on-them'
+  >('all');
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -52,12 +59,31 @@ export default function ApprovalsPage() {
 
   const [cancelTarget, setCancelTarget] = useState<FacultyRequest | null>(null);
 
-  const [form, setForm] = useState({
-    targetDeptId: '',
-    facultyId: '',
-    subjectId: '',
-    reason: '',
-  });
+  // ── Form state ──
+  const [targetDeptId, setTargetDeptId] = useState('');
+  const [facultyMode, setFacultyMode] = useState<'any' | 'specific'>('any');
+  const [specificFacultyId, setSpecificFacultyId] = useState('');
+  const [subjectSource, setSubjectSource] = useState<'prospectus' | 'all'>(
+    'prospectus',
+  );
+  const [selectedYear, setSelectedYear] = useState<string>('1');
+  const [subjectId, setSubjectId] = useState('');
+  const [reason, setReason] = useState('');
+
+  const resetForm = useCallback(() => {
+    setTargetDeptId('');
+    setFacultyMode('any');
+    setSpecificFacultyId('');
+    setSubjectSource('prospectus');
+    setSelectedYear('1');
+    setSubjectId('');
+    setReason('');
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!showForm) resetForm();
+  }, [showForm, resetForm]);
 
   // ── Queries ──
   const { data: requests = [], isLoading } = useQuery({
@@ -78,6 +104,15 @@ export default function ApprovalsPage() {
     enabled: !!user,
   });
 
+  // Faculty — always loaded while form is open (for filtering by target dept)
+  const { data: facultyList = [] } = useQuery({
+    queryKey: ['faculty'],
+    queryFn: () => import('../../api/faculty.api').then((m) => m.fetchFaculty(false)),
+    enabled: !!user && showForm,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Subjects — always loaded while form is open
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
@@ -85,12 +120,109 @@ export default function ApprovalsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Programs — needed to scope the prospectus to the REQUESTING dept
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: fetchPrograms,
+    enabled: !!user && showForm,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Prospectus — for the "from prospectus" subject source
+  const { data: prospectus = [] } = useQuery({
+    queryKey: ['prospectus-all'],
+    queryFn: fetchAllProspectus,
+    enabled: !!user && showForm,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // ── Derived: programs belonging to MY requesting department ──
+  const myProgramIds = useMemo(() => {
+    if (!myDeptId) return [];
+    return programs
+      .filter((p) => String(p.deptId) === myDeptId)
+      .map((p) => String(p.programId));
+  }, [programs, myDeptId]);
+
+  // ── Derived: prospectus entries scoped to my department's programs ──
+  const myProspectus = useMemo(() => {
+    if (myProgramIds.length === 0) return [];
+    return prospectus.filter((p) =>
+      myProgramIds.includes(String(p.programId)),
+    );
+  }, [prospectus, myProgramIds]);
+
+  // ── Derived: distinct year levels in my prospectus ──
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const p of myProspectus) {
+      if (p.yearLevel >= 1 && p.yearLevel <= 5) years.add(p.yearLevel);
+    }
+    return Array.from(years).sort((a, b) => a - b);
+  }, [myProspectus]);
+
+  // ── Derived: faculty filtered to the target department ──
+  const facultyInTargetDept = useMemo(() => {
+    if (!targetDeptId) return [];
+    return facultyList.filter(
+      (f) => String(f.deptId) === String(targetDeptId),
+    );
+  }, [facultyList, targetDeptId]);
+
+  // ── Derived: subjects, based on subject source ──
+  const availableSubjects = useMemo(() => {
+    if (subjectSource === 'all') {
+      // Option C: all active subjects, searchable
+      return subjects.filter((s) => s.isActive);
+    }
+    // From prospectus: filter to my department's programs + selected year
+    if (!selectedYear) return [];
+    const subjectIdsForYear = new Set(
+      myProspectus
+        .filter((p) => String(p.yearLevel) === selectedYear)
+        .map((p) => String(p.subjectId)),
+    );
+    return subjects.filter(
+      (s) => s.isActive && subjectIdsForYear.has(String(s.subjectId)),
+    );
+  }, [subjectSource, subjects, myProspectus, selectedYear]);
+
+  // ── Option builders ──
+  const facultyOptions = useMemo<SearchableOption[]>(
+    () =>
+      facultyInTargetDept.map((f) => ({
+        value: f.facultyId,
+        label: `${f.lastName}, ${f.firstName}`,
+        meta: f.wmsuId ? `WMSU ID: ${f.wmsuId}` : undefined,
+      })),
+    [facultyInTargetDept],
+  );
+
+  const subjectOptions = useMemo<SearchableOption[]>(
+    () =>
+      availableSubjects.map((s) => ({
+        value: s.subjectId,
+        label: `[${s.subjectCode}] ${s.title}`,
+        meta: `${s.lectureUnits}L + ${s.labUnits}Lab`,
+      })),
+    [availableSubjects],
+  );
+
+  // ── Reset dependent fields when upstream choices change ──
+  useEffect(() => {
+    setSpecificFacultyId('');
+  }, [targetDeptId]);
+
+  useEffect(() => {
+    setSubjectId('');
+  }, [subjectSource, selectedYear]);
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createFacultyRequest,
     onSuccess: () => {
       setSuccess('Request submitted for approval.');
-      setForm({ targetDeptId: '', facultyId: '', subjectId: '', reason: '' });
+      resetForm();
       setShowForm(false);
       qc.invalidateQueries({ queryKey: ['faculty-requests'] });
     },
@@ -164,14 +296,9 @@ export default function ApprovalsPage() {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return requests.filter((r) => {
-      // Tab
       if (filter !== 'all' && r.status !== filter) return false;
-
-      // Scope
       if (scopeFilter === 'waiting-on-me' && !canRespondTo(r)) return false;
       if (scopeFilter === 'waiting-on-them' && !canCancel(r)) return false;
-
-      // Search
       if (q) {
         const haystack = [
           r.requestId,
@@ -184,7 +311,6 @@ export default function ApprovalsPage() {
           .toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-
       return true;
     });
   }, [requests, filter, searchQuery, scopeFilter, canRespondTo, canCancel]);
@@ -203,29 +329,39 @@ export default function ApprovalsPage() {
     };
   }, [requests, canRespondTo, canCancel]);
 
-  // ── Handlers ──
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
+  // ── Submit handler ──
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
     if (!activeTerm) {
       setError('No active term. Cannot create requests.');
       return;
     }
+    if (!targetDeptId) {
+      setError('Please select a target department.');
+      return;
+    }
+    if (!subjectId) {
+      setError('Please select a subject.');
+      return;
+    }
+    if (facultyMode === 'specific' && !specificFacultyId) {
+      setError('Please select a specific faculty member.');
+      return;
+    }
+    if (!reason.trim()) {
+      setError('Please provide a reason.');
+      return;
+    }
+
     createMutation.mutate({
-      targetDeptId: form.targetDeptId,
-      facultyId: form.facultyId || undefined,
-      subjectId: form.subjectId,
+      targetDeptId,
+      facultyId: facultyMode === 'specific' ? specificFacultyId : undefined,
+      subjectId,
       termId: activeTerm.termId,
-      reason: form.reason,
+      reason: reason.trim(),
     });
   };
 
@@ -278,9 +414,7 @@ export default function ApprovalsPage() {
         r.facultyId ? (
           <span className="font-mono text-xs">#{r.facultyId}</span>
         ) : (
-          <span className="text-on-surface-variant text-xs italic">
-            any
-          </span>
+          <span className="text-on-surface-variant text-xs italic">any</span>
         ),
     },
     {
@@ -476,7 +610,6 @@ export default function ApprovalsPage() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-2 border-b border-surface-variant overflow-x-auto">
           {(
             ['all', 'pending', 'approved', 'rejected', 'cancelled'] as FilterTab[]
@@ -525,24 +658,29 @@ export default function ApprovalsPage() {
         getActions={getActions}
       />
 
-      {/* New request modal */}
+      {/* ─── Create Request Modal (with cascading filters) ─── */}
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
         title="Create Cross-Department Request"
+        description="Ask another department to provide a faculty member for a specific subject."
         size="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* ── Section 1: Who do you need? ── */}
+          <section className="space-y-3">
+            <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-surface-variant pb-1.5">
+              Who do you need?
+            </h3>
+
             <div>
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Target Department *
               </label>
               <select
-                name="targetDeptId"
                 required
-                value={form.targetDeptId}
-                onChange={handleChange}
+                value={targetDeptId}
+                onChange={(e) => setTargetDeptId(e.target.value)}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               >
                 <option value="">Select a department…</option>
@@ -559,53 +697,165 @@ export default function ApprovalsPage() {
                   ))}
               </select>
             </div>
+
+            {targetDeptId && (
+              <div>
+                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Faculty Preference
+                </label>
+
+                <div className="flex flex-col gap-2 mb-2">
+                  <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
+                    <input
+                      type="radio"
+                      name="facultyMode"
+                      checked={facultyMode === 'any'}
+                      onChange={() => setFacultyMode('any')}
+                      className="accent-[#5c1219]"
+                    />
+                    Any available faculty
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
+                    <input
+                      type="radio"
+                      name="facultyMode"
+                      checked={facultyMode === 'specific'}
+                      onChange={() => setFacultyMode('specific')}
+                      className="accent-[#5c1219]"
+                    />
+                    Specific faculty member
+                  </label>
+                </div>
+
+                {facultyMode === 'specific' && (
+                  <SearchableSelect
+                    value={specificFacultyId}
+                    onChange={setSpecificFacultyId}
+                    options={facultyOptions}
+                    placeholder={`Search ${
+                      departments.find(
+                        (d) => String(d.deptId) === targetDeptId,
+                      )?.deptCode ?? ''
+                    } faculty…`}
+                    emptyMessage={
+                      facultyInTargetDept.length === 0
+                        ? 'No faculty in this department'
+                        : 'No faculty match your search'
+                    }
+                  />
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ── Section 2: What do they need to teach? ── */}
+          <section className="space-y-3">
+            <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-surface-variant pb-1.5">
+              What do they need to teach?
+            </h3>
+
             <div>
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Preferred Faculty ID (optional)
+                Subject Source
               </label>
-              <input
-                type="text"
-                name="facultyId"
-                value={form.facultyId}
-                onChange={handleChange}
-                placeholder="Leave blank for any available"
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-              />
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
+                  <input
+                    type="radio"
+                    name="subjectSource"
+                    checked={subjectSource === 'prospectus'}
+                    onChange={() => setSubjectSource('prospectus')}
+                    className="accent-[#5c1219]"
+                  />
+                  From Prospectus — subjects in my department's curriculum
+                </label>
+                <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
+                  <input
+                    type="radio"
+                    name="subjectSource"
+                    checked={subjectSource === 'all'}
+                    onChange={() => setSubjectSource('all')}
+                    className="accent-[#5c1219]"
+                  />
+                  All Subjects — search all active subjects
+                </label>
+              </div>
             </div>
-            <div className="md:col-span-2">
+
+            {subjectSource === 'prospectus' && (
+              <div>
+                <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Year Level *
+                </label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+                >
+                  {availableYears.length === 0 && (
+                    <option value="">No year levels available</option>
+                  )}
+                  {availableYears.map((y) => (
+                    <option key={y} value={String(y)}>
+                      {y}
+                      {y === 1
+                        ? 'st'
+                        : y === 2
+                        ? 'nd'
+                        : y === 3
+                        ? 'rd'
+                        : 'th'}{' '}
+                      Year
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Subject *
               </label>
-              <select
-                name="subjectId"
-                required
-                value={form.subjectId}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">Select a subject…</option>
-                {subjects.map((s) => (
-                  <option key={s.subjectId} value={s.subjectId}>
-                    [{s.subjectCode}] {s.title}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={subjectId}
+                onChange={setSubjectId}
+                options={subjectOptions}
+                placeholder="Search subject…"
+                emptyMessage={
+                  subjectSource === 'prospectus'
+                    ? availableSubjects.length === 0
+                      ? 'No subjects for this year in your prospectus'
+                      : 'No subjects match your search'
+                    : 'No subjects match your search'
+                }
+              />
             </div>
-            <div className="md:col-span-2">
+          </section>
+
+          {/* ── Section 3: Reason ── */}
+          <section className="space-y-3">
+            <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-surface-variant pb-1.5">
+              Why do you need this?
+            </h3>
+
+            <div>
               <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Reason *
               </label>
               <textarea
-                name="reason"
                 required
                 rows={3}
-                value={form.reason}
-                onChange={handleChange}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
                 placeholder="e.g. Need a qualified instructor for this subject; our department is at capacity."
+                maxLength={500}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary resize-none"
               />
+              <p className="text-[11px] text-on-surface-variant mt-1 text-right">
+                {reason.length}/500
+              </p>
             </div>
-          </div>
+          </section>
 
           <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
             <button
