@@ -15,6 +15,7 @@ import {
   generateSlotBoundaries,
   formatTime,
 } from '../timetable/utils/time.util';
+import { useAuthStore } from '../../store/auth.store';
 
 const DAYS = [
   'Monday',
@@ -104,6 +105,8 @@ export default function PlotSubjectModal({
   departments = [],
 }: Props) {
   const queryClient = useQueryClient();
+  const profile = useAuthStore((s) => s.profile);
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : '';
   const isEditMode = !!editing;
 
   const { data: sections = [] } = useQuery({
@@ -184,14 +187,19 @@ export default function PlotSubjectModal({
     );
   }, [faculty, departments]);
 
-  // Prefill / reset when the modal opens or the editing target changes
+    // Prefill / reset when the modal opens or the editing target changes
   useEffect(() => {
+    // Default filter: DHs see their own department pre-selected.
+    // Admin/Dean start with "All departments".
+    const defaultDept =
+      profile?.role === 'department_head' && myDeptId ? myDeptId : '';
+
     if (!open) {
       setForm(EMPTY_FORM);
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
-      setFilterDept('');
+      setFilterDept(defaultDept);
       setFilterYear('');
       setFilterSem('');
       return;
@@ -213,13 +221,20 @@ export default function PlotSubjectModal({
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
+      setFilterDept(defaultDept);
+      setFilterYear('');
+      setFilterSem('');
     } else {
       setForm(EMPTY_FORM);
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
+      setFilterDept(defaultDept);
+      setFilterYear('');
+      setFilterSem('');
     }
-  }, [open, editing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing, myDeptId, profile?.role]);
 
   // Auto-correct load type when the subject changes
   useEffect(() => {
@@ -435,12 +450,14 @@ export default function PlotSubjectModal({
                   </button>
                 )}
               </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <select
                   value={filterDept}
                   onChange={(e) => setFilterDept(e.target.value)}
                   className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
                 >
+                  
                   <option value="">All departments</option>
                   {departments.map((d) => (
                     <option key={d.deptId} value={d.deptId}>
