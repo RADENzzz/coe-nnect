@@ -104,10 +104,16 @@ interface Props {
   readOnly?: boolean;
 }
 
-/** Generic info/error alert rendered as a Modal instead of window.alert. */
+interface AlertItem {
+  ruleId?: string;
+  message: string;
+  tone?: 'error' | 'warning' | 'info';
+}
+
 interface AlertState {
   title: string;
-  body: string;
+  subtitle?: string;
+  items: AlertItem[];
   tone: 'error' | 'info';
 }
 
@@ -139,7 +145,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoPreview, setAutoPreview] = useState<ScheduleEntry[] | null>(null);
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
 
-  // ── Alert modal (replaces window.alert) ──
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
   const { data: prospectus = [] } = useQuery({
@@ -249,13 +254,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const allEntries = useMemo(() => (schedules ?? []).map(toEntry), [schedules]);
 
-  // Foreign entries (DHs can't drag blocks from other departments)
   const foreignEntryIds = useMemo(() => {
     if (!isDepartmentHead || !myDeptId) return new Set<string>();
     return new Set(
       allEntries
         .filter((e) => {
-          // Entry has no deptId → treat as foreign (defensive)
           if (!e.deptId) return true;
           return String(e.deptId) !== myDeptId;
         })
@@ -309,7 +312,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     termId: activeTerm?.termId,
     allEntries,
     onError: (msg) =>
-      setAlertState({ title: 'Move failed', body: msg, tone: 'error' }),
+      setAlertState({
+        title: 'Move failed',
+        tone: 'error',
+        items: [{ message: msg, tone: 'error' }],
+      }),
   });
 
   const handleClick = useCallback(
@@ -345,26 +352,28 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
       if (!result.success) {
         if (result.roomDeficits && result.roomDeficits.length > 0) {
-          const lines = result.roomDeficits.map(
-            (d) =>
-              `• ${d.roomType}: need ${d.neededHours}h, have ${d.availableHours}h (short by ${d.shortByHours}h → add ${d.suggestedExtraRooms} room${d.suggestedExtraRooms === 1 ? '' : 's'})`,
-          );
           setAlertState({
             title: 'Not enough rooms',
-            body: `${result.message}\n\n${lines.join('\n')}`,
+            subtitle: result.message,
             tone: 'error',
+            items: result.roomDeficits.map((d) => ({
+              ruleId: d.roomType,
+              message: `Need ${d.neededHours}h, have ${d.availableHours}h (short by ${d.shortByHours}h) — add ${d.suggestedExtraRooms} more room${d.suggestedExtraRooms === 1 ? '' : 's'}`,
+              tone: 'error' as const,
+            })),
           });
           return;
         }
 
-        const detail = result.failures
-          ?.slice(0, 5)
-          .map((f) => `• ${f.ruleId} ${f.reason}`)
-          .join('\n');
         setAlertState({
           title: 'Auto-generation failed',
-          body: `${result.message ?? 'Unknown error'}${detail ? `\n\n${detail}` : ''}`,
+          subtitle: result.message ?? 'Unknown error',
           tone: 'error',
+          items: (result.failures ?? []).slice(0, 20).map((f) => ({
+            ruleId: f.ruleId,
+            message: f.reason,
+            tone: 'error' as const,
+          })),
         });
         return;
       }
@@ -378,8 +387,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
     } catch (err) {
       setAlertState({
         title: 'Auto-generate failed',
-        body: (err as Error).message,
         tone: 'error',
+        items: [{ message: (err as Error).message, tone: 'error' }],
       });
     } finally {
       setAutoGenerating(false);
@@ -435,13 +444,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         })),
     [rooms],
   );
-
-  const viewModeLabel: Record<ViewMode, string> = {
-    master: 'Master View',
-    byDepartment: 'By Department',
-    byRoom: 'By Room',
-    byFaculty: 'By Faculty',
-  };
 
   const hasAnyFilter =
     viewMode !== 'master' &&
@@ -921,14 +923,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
             {layoutMode === 'agenda' ? (
               <AgendaView entries={entries} onEntryClick={handleClick} />
             ) : (
-            <TimetableGrid
-              entries={entries}
-              density={gridDensity}
-              fitToContainer
-              onEntryMove={writable ? handleMove : undefined}
-              onEntryClick={handleClick}
-              readOnlyEntryIds={foreignEntryIds}
-            />
+              <TimetableGrid
+                entries={entries}
+                density={gridDensity}
+                fitToContainer
+                onEntryMove={writable ? handleMove : undefined}
+                onEntryClick={handleClick}
+                readOnlyEntryIds={foreignEntryIds}
+              />
             )}
           </div>
         </>
@@ -998,10 +1000,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
         onPick={handlePickFromStack}
       />
 
-      {/* Soft-warning confirmation for moves — replaces window.confirm */}
       <MoveScheduleConfirmModal pending={pendingConfirmation} />
 
-      {/* Generic alert modal — replaces window.alert */}
+      {/* Generic alert modal — structured items */}
       <Modal
         open={!!alertState}
         onClose={() => setAlertState(null)}
@@ -1017,9 +1018,68 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </button>
         }
       >
-        <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans max-h-80 overflow-y-auto">
-          {alertState?.body}
-        </pre>
+        {alertState && (
+          <div className="space-y-3">
+            <div
+              className={`flex items-start gap-2 p-3 border ${
+                alertState.tone === 'error'
+                  ? 'bg-red-50 border-red-200 text-red-800'
+                  : 'bg-blue-50 border-blue-200 text-blue-800'
+              }`}
+            >
+              <Icon
+                name={alertState.tone === 'error' ? 'error' : 'info'}
+                filled
+                size={18}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="text-sm">
+                {alertState.subtitle ? (
+                  <p className="font-medium">{alertState.subtitle}</p>
+                ) : (
+                  <p className="font-medium">
+                    {alertState.items.length} item
+                    {alertState.items.length === 1 ? '' : 's'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {alertState.items.length > 0 && (
+              <ul className="space-y-2 max-h-80 overflow-y-auto">
+                {alertState.items.map((item, i) => (
+                  <li
+                    key={`${item.ruleId ?? 'item'}-${i}`}
+                    className={`flex items-start gap-2 p-2.5 border text-xs ${
+                      item.tone === 'error'
+                        ? 'bg-red-50/50 border-red-100'
+                        : item.tone === 'warning'
+                        ? 'bg-amber-50/50 border-amber-100'
+                        : 'bg-slate-50 border-slate-100'
+                    }`}
+                  >
+                    {item.ruleId && (
+                      <span
+                        className={`font-mono font-bold shrink-0 px-1.5 py-0.5 text-[10px] ${
+                          item.tone === 'error'
+                            ? 'bg-red-100 text-red-800'
+                            : item.tone === 'warning'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {item.ruleId}
+                      </span>
+                    )}
+                    <span className="text-slate-700 leading-relaxed">
+                      {item.message}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </Modal>
 
       {autoPreview && (
@@ -1090,8 +1150,15 @@ export default function TimetablePage({ readOnly = false }: Props) {
                       onClick={() =>
                         setAlertState({
                           title: 'Plot manually',
-                          body: `Plot manually: ${u.subjectCode} for ${u.sectionCode}\n\nOpen the Plot Subject modal, pick this subject, and choose a slot. The scheduler couldn't find one for it.`,
+                          subtitle: `${u.subjectCode} · ${u.sectionCode}`,
                           tone: 'info',
+                          items: [
+                            {
+                              message:
+                                "Open the Plot Subject modal, pick this subject, and choose a slot. The scheduler couldn't find one for it.",
+                              tone: 'info',
+                            },
+                          ],
                         })
                       }
                       className="text-[11px] font-semibold text-primary hover:underline"
