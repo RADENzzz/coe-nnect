@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { FacultyService } from './faculty.service';
@@ -27,9 +28,7 @@ export class FacultyController {
 
   // ─────────────────────────────────────────────
   // IMPORTANT: static / nested routes MUST come
-  // before `@Get(':id')` and `@Patch(':id')`, or
-  // Nest will match them as `:id` and TypeORM
-  // will try to parse a bigint.
+  // before `@Get(':id')` and `@Patch(':id')`.
   // ─────────────────────────────────────────────
 
   @Get()
@@ -41,7 +40,7 @@ export class FacultyController {
     return { data };
   }
 
-  // ── Qualifications (must come before `:id`) ──
+  // ── Qualifications ──
 
   @Get(':id/qualifications')
   async findQualifications(@Param('id') id: string) {
@@ -53,8 +52,9 @@ export class FacultyController {
   async addQualification(
     @Param('id') id: string,
     @Body() dto: CreateQualificationDto,
+    @Req() req: any,
   ) {
-    return { data: await this.faculty.addQualification(id, dto) };
+    return { data: await this.faculty.addQualification(id, dto, req.profile) };
   }
 
   @Roles('administrator', 'department_head')
@@ -63,9 +63,10 @@ export class FacultyController {
     @Param('id') id: string,
     @Param('qualId') qualId: string,
     @Body() dto: UpdateQualificationDto,
+    @Req() req: any,
   ) {
     return {
-      data: await this.faculty.updateQualification(id, qualId, dto),
+      data: await this.faculty.updateQualification(id, qualId, dto, req.profile),
     };
   }
 
@@ -74,11 +75,12 @@ export class FacultyController {
   async removeQualification(
     @Param('id') id: string,
     @Param('qualId') qualId: string,
+    @Req() req: any,
   ) {
-    return this.faculty.removeQualification(id, qualId);
+    return this.faculty.removeQualification(id, qualId, req.profile);
   }
 
-  // ── Preferences (must come before `:id`)
+  // ── Preferences ──
 
   @Get(':id/preferences')
   async findPreferences(@Param('id') id: string) {
@@ -90,8 +92,9 @@ export class FacultyController {
   async addPreference(
     @Param('id') id: string,
     @Body() dto: CreateFacultyPreferenceDto,
+    @Req() req: any,
   ) {
-    return { data: await this.faculty.addPreference(id, dto) };
+    return { data: await this.faculty.addPreference(id, dto, req.profile) };
   }
 
   @Roles('administrator', 'department_head')
@@ -100,9 +103,15 @@ export class FacultyController {
     @Param('id') id: string,
     @Param('preferenceId') preferenceId: string,
     @Body() dto: UpdateFacultyPreferenceDto,
+    @Req() req: any,
   ) {
     return {
-      data: await this.faculty.updatePreference(id, preferenceId, dto),
+      data: await this.faculty.updatePreference(
+        id,
+        preferenceId,
+        dto,
+        req.profile,
+      ),
     };
   }
 
@@ -111,8 +120,9 @@ export class FacultyController {
   async removePreference(
     @Param('id') id: string,
     @Param('preferenceId') preferenceId: string,
+    @Req() req: any,
   ) {
-    return this.faculty.removePreference(id, preferenceId);
+    return this.faculty.removePreference(id, preferenceId, req.profile);
   }
 
   // ── Generic :id routes ──
@@ -124,25 +134,34 @@ export class FacultyController {
 
   @Roles('administrator', 'department_head')
   @Post()
-  async create(@Body() dto: CreateFacultyDto) {
-    return { data: await this.faculty.create(dto) };
+  async create(@Body() dto: CreateFacultyDto, @Req() req: any) {
+    return { data: await this.faculty.create(dto, req.profile) };
   }
 
   @Roles('administrator', 'department_head')
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateFacultyDto) {
-    return { data: await this.faculty.update(id, dto) };
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateFacultyDto,
+    @Req() req: any,
+  ) {
+    return { data: await this.faculty.update(id, dto, req.profile) };
   }
 
   @Roles('administrator', 'department_head')
   @Patch(':id/toggle-active')
-  async toggleActive(@Param('id') id: string) {
-    return { data: await this.faculty.toggleActive(id) };
+  async toggleActive(@Param('id') id: string, @Req() req: any) {
+    return { data: await this.faculty.toggleActive(id, req.profile) };
   }
 
+  // ⚠️ NOTE: `@Delete(':id')` still restricted to administrator only.
+  // If you want DHs to delete faculty in their own dept, change this to:
+  //   @Roles('administrator', 'department_head')
+  // The service-side assertOwnership already enforces dept ownership,
+  // so widening the role list is safe if you want it.
   @Roles('administrator')
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return this.faculty.remove(id);
+  async remove(@Param('id') id: string, @Req() req: any) {
+    return this.faculty.remove(id, req.profile);
   }
 }

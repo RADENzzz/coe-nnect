@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -13,18 +14,13 @@ import { CreateFacultyDto } from './dto/create-faculty.dto';
 import { UpdateFacultyDto } from './dto/update-faculty.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 import { UpdateQualificationDto } from './dto/update-qualification.dto';
-import { FacultyPreference } from './entities/faculty-preference.entity';       
-import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto'; 
-import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto'; 
-
+import { FacultyPreference } from './entities/faculty-preference.entity';
+import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto';
+import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto';
+import { User } from '../users/entities/user.entity';
 
 // ────────────────────────────────────────────
 // day_of_week mapping
-//
-// The Postgres `day_of_week` enum uses full names
-// ("Monday", "Tuesday", ...), but the frontend `Day` type
-// uses 3-letter abbreviations ("MON", "TUE", ...).
-// Map between them at the API boundary.
 // ────────────────────────────────────────────
 
 const ABBR_TO_FULL: Record<string, string> = {
@@ -55,6 +51,9 @@ function fullToAbbr(full: string): string {
   return FULL_TO_ABBR[full] ?? full;
 }
 
+function normalizeTime(t: string): string {
+  return t.length === 5 ? `${t}:00` : t;
+}
 
 @Injectable()
 export class FacultyService {
@@ -68,6 +67,44 @@ export class FacultyService {
     @InjectRepository(Subject)
     private readonly subjects: Repository<Subject>,
   ) {}
+
+  // ────────────────────────────────────────────
+  // Cross-department protection
+  //
+  // Admin and Dean can modify any faculty anywhere.
+  // DH can only modify faculty that belong to their own department.
+  // Anyone else: hard reject (fail-closed).
+  //
+  // Returns the faculty row so callers don't need a second findOne.
+  // ────────────────────────────────────────────
+  private async assertOwnership(
+    facultyId: string,
+    profile: User | undefined,
+  ): Promise<Faculty> {
+    if (!profile) {
+      throw new ForbiddenException('Not authenticated');
+    }
+
+    const faculty = await this.findOne(facultyId);
+
+    if (profile.role === 'administrator' || profile.role === 'college_dean') {
+      return faculty; // full access
+    }
+
+    if (profile.role !== 'department_head') {
+      throw new ForbiddenException(
+        'Only administrators, deans, and department heads can modify faculty.',
+      );
+    }
+
+    if (String(faculty.deptId) !== String(profile.deptId)) {
+      throw new ForbiddenException(
+        'You can only modify faculty in your own department.',
+      );
+    }
+
+    return faculty;
+  }
 
   findAll(): Promise<Faculty[]> {
     return this.repo.find({
@@ -88,7 +125,17 @@ export class FacultyService {
     return found;
   }
 
-  async create(dto: CreateFacultyDto): Promise<Faculty> {
+  async create(dto: CreateFacultyDto, profile: User): Promise<Faculty> {
+    // DHs can only create faculty in their own department. Force the dept.
+    if (profile.role === 'department_head') {
+      if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
+        throw new ForbiddenException(
+          'You can only create faculty in your own department.',
+        );
+      }
+      dto.deptId = profile.deptId as any;
+    }
+
     const entity = this.repo.create({
       firstName: dto.firstName,
       lastName: dto.lastName,
@@ -104,8 +151,23 @@ export class FacultyService {
     return this.repo.save(entity);
   }
 
-  async update(id: string, dto: UpdateFacultyDto): Promise<Faculty> {
-    const found = await this.findOne(id);
+  async update(
+    id: string,
+    dto: UpdateFacultyDto,
+    profile: User,
+  ): Promise<Faculty> {
+    const found = await this.assertOwnership(id, profile);
+
+    // DHs cannot move faculty to a different department.
+    if (
+      profile.role === 'department_head' &&
+      dto.deptId !== undefined &&
+      String(dto.deptId) !== String(profile.deptId)
+    ) {
+      throw new ForbiddenException(
+        'You cannot move faculty to a different department.',
+      );
+    }
 
     if (dto.firstName !== undefined) found.firstName = dto.firstName;
     if (dto.lastName !== undefined) found.lastName = dto.lastName;
@@ -124,24 +186,23 @@ export class FacultyService {
     return this.repo.save(found);
   }
 
-  async toggleActive(id: string): Promise<Faculty> {
-    const found = await this.findOne(id);
+  async toggleActive(id: string, profile: User): Promise<Faculty> {
+    const found = await this.assertOwnership(id, profile);
     found.isActive = !found.isActive;
     return this.repo.save(found);
   }
 
-  async remove(id: string): Promise<{ success: boolean }> {
-    const found = await this.findOne(id);
+  async remove(id: string, profile: User): Promise<{ success: boolean }> {
+    const found = await this.assertOwnership(id, profile);
     await this.repo.remove(found);
     return { success: true };
   }
 
   // ────────────────────────────────────────────
-  // Faculty Qualification CRUD (FR 3.1.8 – 3.1.10)
+  // Faculty Qualification CRUD
   // ────────────────────────────────────────────
 
   async findQualifications(facultyId: string): Promise<FacultyQualification[]> {
-    // Confirm faculty exists (throws 404 if not)
     await this.findOne(facultyId);
     return this.quals.find({
       where: { facultyId },
@@ -153,8 +214,9 @@ export class FacultyService {
   async addQualification(
     facultyId: string,
     dto: CreateQualificationDto,
+    profile: User,
   ): Promise<FacultyQualification> {
-    await this.findOne(facultyId);
+    await this.assertOwnership(facultyId, profile);
 
     const subject = await this.subjects.findOne({
       where: { subjectId: dto.subjectId },
@@ -163,7 +225,6 @@ export class FacultyService {
       throw new BadRequestException('Subject not found.');
     }
 
-    // Duplicate check — the DB has no unique constraint so we enforce here
     const existing = await this.quals.findOne({
       where: { facultyId, subjectId: dto.subjectId },
     });
@@ -189,8 +250,9 @@ export class FacultyService {
     facultyId: string,
     qualId: string,
     dto: UpdateQualificationDto,
+    profile: User,
   ): Promise<FacultyQualification> {
-    await this.findOne(facultyId);
+    await this.assertOwnership(facultyId, profile);
 
     const found = await this.quals.findOne({
       where: { qualId, facultyId },
@@ -204,7 +266,6 @@ export class FacultyService {
       if (!subject) {
         throw new BadRequestException('Subject not found.');
       }
-      // Duplicate check on the new subject
       const clash = await this.quals.findOne({
         where: { facultyId, subjectId: dto.subjectId },
       });
@@ -230,8 +291,9 @@ export class FacultyService {
   async removeQualification(
     facultyId: string,
     qualId: string,
+    profile: User,
   ): Promise<{ success: boolean }> {
-    await this.findOne(facultyId);
+    await this.assertOwnership(facultyId, profile);
     const found = await this.quals.findOne({
       where: { qualId, facultyId },
     });
@@ -241,7 +303,7 @@ export class FacultyService {
   }
 
   // ────────────────────────────────────────────
-  // Faculty Preference CRUD (FR 3.1.6 – 3.1.7)   ← NEW SECTION
+  // Faculty Preference CRUD
   // ────────────────────────────────────────────
 
   async findPreferences(facultyId: string): Promise<FacultyPreference[]> {
@@ -250,7 +312,6 @@ export class FacultyService {
       where: { facultyId },
       order: { preferenceId: 'ASC' },
     });
-    // Convert DB full names back to the frontend's 3-letter abbreviations
     return rows.map((r) => ({
       ...r,
       preferredDay: fullToAbbr(r.preferredDay) as any,
@@ -260,10 +321,10 @@ export class FacultyService {
   async addPreference(
     facultyId: string,
     dto: CreateFacultyPreferenceDto,
+    profile: User,
   ): Promise<FacultyPreference> {
-    await this.findOne(facultyId);
+    await this.assertOwnership(facultyId, profile);
 
-    // Sanity: start < end
     const start = normalizeTime(dto.preferredStartTime);
     const end = normalizeTime(dto.preferredEndTime);
     if (start >= end) {
@@ -272,7 +333,6 @@ export class FacultyService {
       );
     }
 
-    // Duplicate check: same faculty + same day + same window
     const existing = await this.prefs.findOne({
       where: {
         facultyId,
@@ -304,8 +364,10 @@ export class FacultyService {
     facultyId: string,
     preferenceId: string,
     dto: UpdateFacultyPreferenceDto,
+    profile: User,
   ): Promise<FacultyPreference> {
-    await this.findOne(facultyId);
+    await this.assertOwnership(facultyId, profile);
+
     const found = await this.prefs.findOne({
       where: { preferenceId, facultyId },
     });
@@ -340,8 +402,10 @@ export class FacultyService {
   async removePreference(
     facultyId: string,
     preferenceId: string,
+    profile: User,
   ): Promise<{ success: boolean }> {
-    await this.findOne(facultyId);
+    await this.assertOwnership(facultyId, profile);
+
     const found = await this.prefs.findOne({
       where: { preferenceId, facultyId },
     });
@@ -350,9 +414,3 @@ export class FacultyService {
     return { success: true };
   }
 }
-
-// Helper — normalize "HH:MM" → "HH:MM:00" for consistent string comparison  ← NEW
-function normalizeTime(t: string): string {
-  return t.length === 5 ? `${t}:00` : t;
-}
-
