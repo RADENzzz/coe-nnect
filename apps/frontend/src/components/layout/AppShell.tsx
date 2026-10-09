@@ -62,7 +62,7 @@ export default function AppShell() {
 
       {/* Chat widget — floating, mounted once per shell.
           Admin and Dean shells are wrappers around AppShell, so they inherit it. */}
-      <ChatWidget />
+      {profile?.role !== 'viewer' && <ChatWidget />}
     </div>
   );
 }
