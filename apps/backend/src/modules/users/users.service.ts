@@ -25,6 +25,29 @@ export class UsersService {
     return this.userRepo.find({ order: { createdAt: 'DESC' } });
   }
 
+    /**
+   * Presence-safe directory for non-admin roles (Dean, DH).
+   * Returns ONLY the fields those dashboards need:
+   *   - user_id, username, role, dept_id, is_active
+   * Excludes email, employee IDs, WMSU IDs, faculty_id — no PII leak.
+   * Uses snake_case to match the presence payload from Supabase Realtime.
+   */
+  async findDirectory() {
+    const users = await this.userRepo.find({
+      where: { isActive: true },
+      select: ['userId', 'username', 'role', 'deptId'],
+      order: { username: 'ASC' },
+    });
+
+    return users.map((u) => ({
+      user_id: u.userId,
+      username: u.username,
+      role: u.role,
+      dept_id: u.deptId,
+      is_active: true,
+    }));
+  }
+
   async findOne(userId: string): Promise<User> {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new NotFoundException('User not found');

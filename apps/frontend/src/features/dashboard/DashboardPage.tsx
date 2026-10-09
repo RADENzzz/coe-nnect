@@ -12,7 +12,7 @@ import {
   type FacultyRequest,
 } from '../../api/faculty-requests.api';
 import { fetchDepartments } from '../../api/departments.api';
-import { fetchUsers } from '../../api/users.api';
+import { fetchUserDirectory } from '../../api/users.api';
 import { timeToMinutes } from '../timetable/utils/time.util';
 
 // ─────────────────────────────────────────────
@@ -368,9 +368,9 @@ export default function DashboardPage() {
     queryFn: fetchDepartments,
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: fetchUsers,
+  const { data: directory = [] } = useQuery({
+    queryKey: ['users', 'directory'],
+    queryFn: fetchUserDirectory,
   });
 
   const { onlineUsers, isConnected } = useOnlineUsers();
@@ -381,14 +381,14 @@ export default function DashboardPage() {
 
   // ── Online DHs (excluding self) ──
   const onlineUserIds = new Set(onlineUsers.map((u) => u.user_id));
-  const otherDeptHeads = users.filter(
+  const otherDeptHeads = directory.filter(
     (u) =>
       u.role === 'department_head' &&
-      u.isActive &&
-      u.userId !== profile?.user_id,
+      u.is_active &&
+      u.user_id !== profile?.user_id,
   );
   const onlineOtherDHs = otherDeptHeads.filter((u) =>
-    onlineUserIds.has(u.userId),
+    onlineUserIds.has(u.user_id),
   ).length;
 
   // ── Filter to my dept ──
@@ -654,13 +654,13 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-slate-100">
             {otherDeptHeads.map((head) => {
-              const isOnline = onlineUserIds.has(head.userId);
-              const dept = departments.find(
-                (d) => String(d.deptId) === String(head.deptId),
-              );
+            const isOnline = onlineUserIds.has(head.user_id);
+            const dept = departments.find(
+              (d) => String(d.deptId) === String(head.dept_id),
+            );
               return (
                 <div
-                  key={head.userId}
+                  key={head.user_id}
                   className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                 >
                   <div className="relative shrink-0">

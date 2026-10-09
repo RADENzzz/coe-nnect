@@ -22,6 +22,18 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 export class UsersController {
   constructor(private service: UsersService) {}
 
+  /**
+   * Presence-safe directory for Dean + DH dashboards.
+   * Overrides the class-level @Roles('administrator') with a wider set.
+   * MUST be declared before @Get(':id'), or Nest matches 'directory' as :id.
+   */
+  @Get('directory')
+  @Roles('administrator', 'college_dean', 'department_head')
+  async findDirectory() {
+    const data = await this.service.findDirectory();
+    return { data };
+  }
+
   @Get()
   async findAll() {
     const data = await this.service.findAll();

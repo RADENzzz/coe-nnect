@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchSchedules, fetchActiveTerm } from '../../api/schedule.api';
-import { fetchUsers } from '../../api/users.api';
+import { fetchUserDirectory } from '../../api/users.api';
 import Icon from '../../components/ui/Icon';
 import { useAuthStore } from '../../store/auth.store';
 import { useOnlineUsers } from '../../hooks/use-online-users';
@@ -58,9 +58,9 @@ export default function DeanDashboardPage() {
     queryFn: fetchDepartments,
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: fetchUsers,
+  const { data: directory = [] } = useQuery({
+    queryKey: ['users', 'directory'],
+    queryFn: fetchUserDirectory,
   });
 
   const { data: activeTerm } = useQuery({
@@ -81,26 +81,22 @@ export default function DeanDashboardPage() {
   const finalizedSchedules = schedules.filter(
     (s) => s.status === 'finalized' || s.status === 'published',
   );
-  const deptHeads = users.filter(
-    (u) => u.role === 'department_head' && u.isActive,
+
+  // Directory is a minimal projection: user_id, username, role, dept_id, is_active
+  const deptHeads = directory.filter(
+    (u) => u.role === 'department_head' && u.is_active,
   );
 
-  // Map for quick online lookup
   const onlineUserIds = new Set(onlineUsers.map((u) => u.user_id));
 
-  // Depts with their assigned DH (if any)
   const deptsWithHeads = activeDepts.map((dept) => {
     const head = deptHeads.find(
-      (u) => String(u.deptId) === String(dept.deptId),
+      (u) => String(u.dept_id) === String(dept.deptId),
     );
-    const headProfile = head
-      ? onlineUsers.find((u) => u.user_id === head.userId)
-      : undefined;
     return {
       dept,
       head,
-      isOnline: head ? onlineUserIds.has(head.userId) : false,
-      headProfile,
+      isOnline: head ? onlineUserIds.has(head.user_id) : false,
     };
   });
 
@@ -184,7 +180,6 @@ export default function DeanDashboardPage() {
                   className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    {/* Online dot */}
                     <span
                       className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${
                         isOnline
@@ -293,13 +288,13 @@ export default function DeanDashboardPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-slate-100">
             {deptHeads.map((head) => {
-              const isOnline = onlineUserIds.has(head.userId);
+              const isOnline = onlineUserIds.has(head.user_id);
               const dept = departments.find(
-                (d) => String(d.deptId) === String(head.deptId),
+                (d) => String(d.deptId) === String(head.dept_id),
               );
               return (
                 <div
-                  key={head.userId}
+                  key={head.user_id}
                   className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                 >
                   <div className="relative shrink-0">
@@ -315,7 +310,7 @@ export default function DeanDashboardPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-900 truncate">
                       {head.username}
-                      {head.userId === profile?.user_id && (
+                      {head.user_id === profile?.user_id && (
                         <span className="ml-1.5 text-[10px] font-normal text-slate-500">
                           (you)
                         </span>

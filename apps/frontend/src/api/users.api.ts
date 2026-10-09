@@ -16,6 +16,19 @@ export interface UserRecord {
   updatedAt: string;
 }
 
+/**
+ * Minimal, presence-safe projection returned by GET /v1/users/directory.
+ * Accessible to administrator, college_dean, and department_head.
+ * Uses snake_case to match the presence payload from Supabase Realtime.
+ */
+export interface UserDirectoryRecord {
+  user_id: string;
+  username: string;
+  role: UserRole;
+  dept_id: number | null;
+  is_active: boolean;
+}
+
 export interface CreateUserInput {
   email: string;
   password: string;
@@ -27,6 +40,11 @@ export interface CreateUserInput {
 
 export async function fetchUsers(): Promise<UserRecord[]> {
   const { data } = await api.get('/v1/users');
+  return data.data;
+}
+
+export async function fetchUserDirectory(): Promise<UserDirectoryRecord[]> {
+  const { data } = await api.get('/v1/users/directory');
   return data.data;
 }
 
