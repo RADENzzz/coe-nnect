@@ -470,6 +470,13 @@ const USERS = [
   { email: 'head.cpe@wmsu.edu.ph', username: 'head.cpe', role: 'department_head', dept_code: 'BSCPE', wmsu_id: 'WMSU-005' },
   { email: 'head.ee@wmsu.edu.ph',  username: 'head.ee',  role: 'department_head', dept_code: 'EE',    wmsu_id: 'WMSU-010' },
   { email: 'head.me@wmsu.edu.ph',  username: 'head.me',  role: 'department_head', dept_code: 'ME',    wmsu_id: 'WMSU-012' },
+  {
+  email: 'dean@wmsu.edu.ph',
+  username: 'dean',
+  role: 'college_dean',
+  dept_code: null,
+  wmsu_id: null,
+},
 ];
 
 // ── Term ──
