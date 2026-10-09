@@ -20,11 +20,10 @@ import ChatHeaderSwitcher from './ChatHeaderSwitcher';
 import type { OnlineUser } from '../../hooks/use-online-users';
 
 interface Props {
-  onMinimize: () => void;
   onClose: () => void;
 }
 
-export default function ChatDrawer({ onMinimize, onClose }: Props) {
+export default function ChatDrawer({ onClose }: Props) {
   const profile = useAuthStore((s) => s.profile);
   const { onlineUsers } = useOnlineUsers();
 
@@ -49,8 +48,7 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
   const sendMessage = useSendMessage(activeConversationId);
   const markRead = useMarkRead();
 
-  // ── Pick the most recently active conversation on mount ──
-  // Sort by lastMessage.createdAt DESC (falls back to array order).
+  // Auto-select the most recently active conversation on mount
   useEffect(() => {
     if (activeConversationId || conversations.length === 0) return;
     const sorted = [...conversations].sort((a, b) => {
@@ -65,7 +63,7 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
     setActiveConversationId(sorted[0].conversationId);
   }, [conversations, activeConversationId]);
 
-  // ── Auto-mark read when opening ──
+  // Auto-mark read when opening
   useEffect(() => {
     if (!activeConversationId) return;
     const conv = conversations.find(
@@ -77,7 +75,6 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId, conversations]);
 
-  // ── Derived ──
   const activeConversation = useMemo(
     () =>
       conversations.find((c) => c.conversationId === activeConversationId) ??
@@ -96,7 +93,6 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
     ? onlineIds.has(activeOtherUser.userId)
     : false;
 
-  // ── Online directory (for the switcher dropdown) ──
   const directoryOnline: OnlineUser[] = useMemo(() => {
     if (!profile) return [];
     const roleOrder: Record<string, number> = {
@@ -127,7 +123,6 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
       });
   }, [eligibleUsers, onlineUsers, onlineIds, profile]);
 
-  // ── Handlers ──
   const handlePickConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
   };
@@ -160,13 +155,13 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
     <div
       style={{
         position: 'fixed',
-        right: 12,
+        right: 0,
         bottom: 'calc(72px + env(safe-area-inset-bottom))',
         zIndex: 40,
       }}
       className="
-        md:!right-6 md:!bottom-6
-        bg-white border border-slate-200 shadow-card
+        md:!bottom-6
+        bg-white border border-slate-200 border-r-0 shadow-card
         flex flex-col
         w-[calc(100vw-1.5rem)] sm:w-[420px] md:w-[440px]
         h-[70vh] sm:h-[560px] md:h-[600px]
@@ -187,14 +182,6 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
           </p>
         </div>
         <button
-          onClick={onMinimize}
-          className="w-7 h-7 flex items-center justify-center hover:bg-white/10 transition-colors"
-          aria-label="Minimize"
-          title="Minimize"
-        >
-          <Icon name="remove" size={16} />
-        </button>
-        <button
           onClick={onClose}
           className="w-7 h-7 flex items-center justify-center hover:bg-white/10 transition-colors"
           aria-label="Close"
@@ -204,7 +191,7 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
         </button>
       </div>
 
-      {/* Header switcher — always visible */}
+      {/* Header switcher */}
       <ChatHeaderSwitcher
         activeConversation={activeConversation}
         activeIsOnline={activeIsOnline}
@@ -215,7 +202,7 @@ export default function ChatDrawer({ onMinimize, onClose }: Props) {
         totalUnread={totalUnread}
       />
 
-      {/* Body — thread or empty state, full width */}
+      {/* Body */}
       <div className="flex-1 flex flex-col min-h-0 bg-white">
         {activeOtherUser ? (
           <>

@@ -248,6 +248,21 @@
     box-shadow: none !important;
   }
 
+  @keyframes chat-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-chat-in {
+  animation: chat-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
 }
 
 /* ============================================
