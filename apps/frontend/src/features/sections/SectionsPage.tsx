@@ -19,22 +19,14 @@ import { ActiveBadge } from '../../components/ui/StatusBadge';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useState(() => {
-    const t = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(t);
-  });
-  return debounced;
-}
-
 export default function SectionsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
+  const isAdmin = profile?.role === 'administrator';
   const isDH = profile?.role === 'department_head';
-  const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Section | null>(null);
@@ -55,7 +47,6 @@ export default function SectionsPage() {
     () => searchParams.get('q') ?? '',
   );
 
-  // Simple debounce with useEffect
   const [debouncedSearch, setDebouncedSearch] = useState(searchInput);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 200);
@@ -98,6 +89,21 @@ export default function SectionsPage() {
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
+
+  // ── Foreign detection: DHs can only modify sections whose program
+  //    belongs to their own department. ──
+  const isForeign = useCallback(
+    (s: Section): boolean => {
+      if (!isDH) return false;
+      if (!s.programId) return true; // orphaned section — read-only for DHs
+      const program = programs.find(
+        (p) => String(p.programId) === String(s.programId),
+      );
+      if (!program) return true;
+      return String(program.deptId) !== myDeptId;
+    },
+    [isDH, myDeptId, programs],
+  );
 
   // ── Filtered list ──
   const filteredSections = useMemo(() => {
@@ -233,6 +239,14 @@ export default function SectionsPage() {
     return p ? p.programCode : `#${id}`;
   };
 
+  // Programs a DH is allowed to assign to a section
+  const selectablePrograms = useMemo(() => {
+    if (!isDH) return programs.filter((p) => p.isActive);
+    return programs.filter(
+      (p) => p.isActive && String(p.deptId) === myDeptId,
+    );
+  }, [programs, isDH, myDeptId]);
+
   // ── Columns ──
   const columns: Column<Section>[] = [
     {
@@ -247,7 +261,22 @@ export default function SectionsPage() {
       header: 'Program',
       cardVariant: 'meta',
       cellClassName: 'text-xs font-mono text-on-surface-variant',
-      render: (s) => programLabel(s.programId),
+      render: (s) => {
+        const foreign = isForeign(s);
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            {foreign && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
+                title="Other department — read only"
+              />
+            )}
+            <span className={foreign ? 'text-slate-500' : ''}>
+              {programLabel(s.programId)}
+            </span>
+          </span>
+        );
+      },
     },
     {
       key: 'yearLevel',
@@ -278,26 +307,28 @@ export default function SectionsPage() {
     },
   ];
 
-  const getActions = (s: Section): RowAction[] => [
-    { label: 'Edit', icon: 'edit', onClick: () => openEdit(s) },
-    {
-      label: s.isActive ? 'Deactivate' : 'Activate',
-      icon: s.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => toggleMutation.mutate(s.sectionId),
-      disabled: toggleMutation.isPending,
-    },
-    {
-      label: 'Delete',
-      icon: 'delete',
-      danger: true,
-      onClick: () => setDeleteTarget(s),
-      disabled: deleteMutation.isPending,
-    },
-  ];
+  const getActions = (s: Section): RowAction[] => {
+    if (isForeign(s)) return [];
+    return [
+      { label: 'Edit', icon: 'edit', onClick: () => openEdit(s) },
+      {
+        label: s.isActive ? 'Deactivate' : 'Activate',
+        icon: s.isActive ? 'toggle_off' : 'toggle_on',
+        onClick: () => toggleMutation.mutate(s.sectionId),
+        disabled: toggleMutation.isPending,
+      },
+      {
+        label: 'Delete',
+        icon: 'delete',
+        danger: true,
+        onClick: () => setDeleteTarget(s),
+        disabled: deleteMutation.isPending,
+      },
+    ];
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Sections</h1>
@@ -305,13 +336,15 @@ export default function SectionsPage() {
             {sections.length} section(s) registered
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-        >
-          <Icon name="add" size={18} />
-          New Section
-        </button>
+        {isDH || isAdmin ? (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+          >
+            <Icon name="add" size={18} />
+            New Section
+          </button>
+        ) : null}
       </div>
 
       {error && (
@@ -322,6 +355,17 @@ export default function SectionsPage() {
       {success && (
         <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-green-700 text-sm">
           {success}
+        </div>
+      )}
+
+      {isDH && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Sections marked with an{' '}
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
+            amber dot belong to programs outside your department and are read-only.
+          </span>
         </div>
       )}
 
@@ -441,7 +485,6 @@ export default function SectionsPage() {
         getActions={getActions}
       />
 
-      {/* Create / Edit modal */}
       <Modal
         open={showForm}
         onClose={closeForm}
@@ -477,14 +520,17 @@ export default function SectionsPage() {
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               >
                 <option value="">Select program…</option>
-                {programs
-                  .filter((p) => p.isActive)
-                  .map((p) => (
-                    <option key={p.programId} value={p.programId}>
-                      [{p.programCode}] {p.programName}
-                    </option>
-                  ))}
+                {selectablePrograms.map((p) => (
+                  <option key={p.programId} value={p.programId}>
+                    [{p.programCode}] {p.programName}
+                  </option>
+                ))}
               </select>
+              {isDH && (
+                <p className="text-[10px] text-on-surface-variant mt-1">
+                  Only your department's programs are listed.
+                </p>
+              )}
             </div>
 
             <div>
