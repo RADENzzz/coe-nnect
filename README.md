@@ -453,7 +453,7 @@ CoE-NNECT/
 * [x] Print timetable
 * [x] Audit trail UI
 * [x] Reports (workload summary, department summary, college-wide)
-
+* [x] Chat system
 ### In Progress / Planned
 
 * [ ] Notification infrastructure
