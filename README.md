@@ -458,6 +458,7 @@ CoE-NNECT/
 
 ### In Progress / Planned
 
+* [ ] Prospectus Reader (Automation)
 * [ ] Notification infrastructure
 * [ ] Minor subject schedule import
 * [ ] Faculty time preference UI
