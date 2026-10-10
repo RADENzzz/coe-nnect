@@ -452,6 +452,7 @@ CoE-NNECT/
 * [x] PDF / Excel export
 * [x] Print timetable
 * [x] Audit trail UI
+* [x] Reports (workload summary, department summary, college-wide)
 
 ### In Progress / Planned
 
@@ -460,7 +461,6 @@ CoE-NNECT/
 * [ ] Faculty time preference UI
 * [ ] Teacher submission workflow
 * [ ] IDP integration
-* [ ] Reports (workload summary, department summary, college-wide)
 * [ ] Production deployment hardening
 
 ---
