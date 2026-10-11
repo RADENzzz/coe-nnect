@@ -13,6 +13,7 @@ import {
 } from '../../api/system-config.api';
 import Icon from '../../components/ui/Icon';
 import TermsPanel from './components/TermsPanel';
+import Modal from '../../components/ui/Modal';
 
 // ────────────────────────────────────────────
 // Field metadata — how each setting is grouped and rendered
@@ -370,15 +371,21 @@ export default function SystemConfigPage() {
             </section>
           ))}
         </div>
+        
       )}
+
+      
 
       <DesignationsPanel
         designations={designations}
         isAdmin={isAdmin}
         onChanged={() => qc.invalidateQueries({ queryKey: ['designations'] })}
       />
+      
     </div>
+    
   );
+  
 }
 
 // ────────────────────────────────────────────
@@ -396,6 +403,7 @@ function DesignationsPanel({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', hours: '' });
+  const [deleteTarget, setDeleteTarget] = useState<Designation | null>(null);
 
   const createMutation = useMutation({
     mutationFn: createDesignation,
@@ -428,144 +436,176 @@ function DesignationsPanel({
   };
 
   return (
-    <section className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-      <header className="flex items-start gap-3 px-5 py-4 border-b border-surface-variant bg-surface-container-low">
-        <Icon name="badge" size={20} className="text-primary mt-0.5 shrink-0" />
-        <div>
-          <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider">
-            Designations & Release Time
-          </h2>
-          <p className="text-xs text-on-surface-variant mt-1">
-            Administrative designations grant release time that reduces
-            required weekly teaching hours. Release time is granted in
-            multiples of 3 hours.
+    <>
+      <section className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+        <header className="flex items-start gap-3 px-5 py-4 border-b border-surface-variant bg-surface-container-low">
+          <Icon name="badge" size={20} className="text-primary mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-sm font-bold text-on-surface uppercase tracking-wider">
+              Designations & Release Time
+            </h2>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Administrative designations grant release time that reduces
+              required weekly teaching hours. Release time is granted in
+              multiples of 3 hours.
+            </p>
+          </div>
+        </header>
+
+        <div className="p-5 space-y-4">
+          {error && (
+            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
+
+          {isAdmin && (
+            <form
+              onSubmit={handleAdd}
+              className="flex flex-wrap items-end gap-3 p-4 rounded-lg border border-surface-variant bg-surface-container-low"
+            >
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Designation Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, name: e.target.value }))
+                  }
+                  placeholder="e.g. Program Coordinator"
+                  className="w-full bg-surface-container-lowest border border-surface-variant rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="w-40">
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Release (hrs)
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={0}
+                  step={3}
+                  value={form.hours}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, hours: e.target.value }))
+                  }
+                  placeholder="e.g. 3"
+                  className="w-full bg-surface-container-lowest border border-surface-variant rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+              >
+                <Icon name="add" size={16} />
+                {createMutation.isPending ? 'Adding…' : 'Add'}
+              </button>
+            </form>
+          )}
+
+          <div className="rounded-lg border border-surface-variant overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider bg-surface-container-low">
+                  <th className="text-left px-4 py-2.5">Designation</th>
+                  <th className="text-left px-4 py-2.5">Release Time</th>
+                  <th className="text-left px-4 py-2.5">Required Weekly Hours</th>
+                  {isAdmin && <th className="text-right px-4 py-2.5">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {designations.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={isAdmin ? 4 : 3}
+                      className="px-4 py-8 text-center text-on-surface-variant"
+                    >
+                      No designations configured.
+                    </td>
+                  </tr>
+                ) : (
+                  designations.map((d) => {
+                    const required = 18 - Number(d.releaseHours);
+                    return (
+                      <tr
+                        key={d.designationId}
+                        className="border-b border-white/5 hover:bg-surface-container-low"
+                      >
+                        <td className="px-4 py-3 font-medium text-on-surface">
+                          {d.designationName}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-on-surface-variant">
+                          {Number(d.releaseHours)} hrs
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-on-surface-variant">
+                          {required} hrs / week
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => setDeleteTarget(d)}
+                              disabled={deleteMutation.isPending}
+                              className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-on-surface-variant">
+            Required weekly hours = 18 baseline − release time. Faculty with
+            designations are flagged as overloaded once they exceed this figure.
           </p>
         </div>
-      </header>
+      </section>
 
-      <div className="p-5 space-y-4">
-        {error && (
-          <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-            {error}
-          </div>
-        )}
-
-        {isAdmin && (
-          <form
-            onSubmit={handleAdd}
-            className="flex flex-wrap items-end gap-3 p-4 rounded-lg border border-surface-variant bg-surface-container-low"
-          >
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Designation Name
-              </label>
-              <input
-                type="text"
-                required
-                value={form.name}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, name: e.target.value }))
-                }
-                placeholder="e.g. Program Coordinator"
-                className="w-full bg-surface-container-lowest border border-surface-variant rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="w-40">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Release (hrs)
-              </label>
-              <input
-                type="number"
-                required
-                min={0}
-                step={3}
-                value={form.hours}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, hours: e.target.value }))
-                }
-                placeholder="e.g. 3"
-                className="w-full bg-surface-container-lowest border border-surface-variant rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
+      {/* Delete designation modal */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete designation?"
+        size="sm"
+        footer={
+          <>
             <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
             >
-              <Icon name="add" size={16} />
-              {createMutation.isPending ? 'Adding…' : 'Add'}
+              Cancel
             </button>
-          </form>
-        )}
-
-        <div className="rounded-lg border border-surface-variant overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider bg-surface-container-low">
-                <th className="text-left px-4 py-2.5">Designation</th>
-                <th className="text-left px-4 py-2.5">Release Time</th>
-                <th className="text-left px-4 py-2.5">Required Weekly Hours</th>
-                {isAdmin && <th className="text-right px-4 py-2.5">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {designations.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={isAdmin ? 4 : 3}
-                    className="px-4 py-8 text-center text-on-surface-variant"
-                  >
-                    No designations configured.
-                  </td>
-                </tr>
-              ) : (
-                designations.map((d) => {
-                  const required = 18 - Number(d.releaseHours);
-                  return (
-                    <tr
-                      key={d.designationId}
-                      className="border-b border-white/5 hover:bg-surface-container-low"
-                    >
-                      <td className="px-4 py-3 font-medium text-on-surface">
-                        {d.designationName}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-on-surface-variant">
-                        {Number(d.releaseHours)} hrs
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-on-surface-variant">
-                        {required} hrs / week
-                      </td>
-                      {isAdmin && (
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Delete designation "${d.designationName}"?`,
-                                )
-                              ) {
-                                deleteMutation.mutate(d.designationId);
-                              }
-                            }}
-                            disabled={deleteMutation.isPending}
-                            className="text-xs px-3 py-1 rounded-lg border border-red-300 text-red-700 hover:bg-red-100 transition"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[11px] text-on-surface-variant">
-          Required weekly hours = 18 baseline − release time. Faculty with
-          designations are flagged as overloaded once they exceed this figure.
+            <button
+              type="button"
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteMutation.mutate(deleteTarget.designationId);
+                  setDeleteTarget(null);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete <strong>"{deleteTarget?.designationName}"</strong>? Any
+          faculty member with this designation will have their release time
+          removed. This cannot be undone.
         </p>
-      </div>
-    </section>
+      </Modal>
+    </>
   );
 }

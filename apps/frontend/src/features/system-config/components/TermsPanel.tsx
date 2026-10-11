@@ -47,6 +47,7 @@ export default function TermsPanel({ isAdmin }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Term | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<Term | null>(null);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['terms'] });
@@ -115,6 +116,7 @@ export default function TermsPanel({ isAdmin }: Props) {
   const deactivateMutation = useMutation({
     mutationFn: deactivateTerm,
     onSuccess: (t) => {
+      setDeactivateTarget(null);   // ← NEW
       setSuccess(
         `Term "${t.termName}" deactivated. No term is currently active.`,
       );
@@ -261,23 +263,15 @@ export default function TermsPanel({ isAdmin }: Props) {
 
                 {isAdmin && (
                   <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                    {t.isActive ? (
-                      <button
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Deactivate "${t.termName} · AY ${t.schoolYear}"?\n\nSchedules for this term will remain in the database, but the Timetable won't display anything until a term is reactivated.`,
-                            )
-                          ) {
-                            deactivateMutation.mutate(t.termId);
-                          }
-                        }}
-                        disabled={deactivateMutation.isPending}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-50"
-                      >
-                        {deactivateMutation.isPending ? '…' : 'Deactivate'}
-                      </button>
-                    ) : (
+                      {t.isActive ? (
+                        <button
+                          onClick={() => setDeactivateTarget(t)}
+                          disabled={deactivateMutation.isPending}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-50"
+                        >
+                          {deactivateMutation.isPending ? '…' : 'Deactivate'}
+                        </button>
+                      ) : (
                       <>
                         <button
                           onClick={() => activateMutation.mutate(t.termId)}
@@ -418,6 +412,49 @@ export default function TermsPanel({ isAdmin }: Props) {
         </div>
       </Modal>
 
+      {/* Deactivate confirmation */}
+      <Modal
+        open={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        title="Deactivate term?"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDeactivateTarget(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (deactivateTarget) {
+                  deactivateMutation.mutate(deactivateTarget.termId);
+                }
+              }}
+              disabled={deactivateMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              {deactivateMutation.isPending ? 'Deactivating…' : 'Deactivate'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Deactivate{' '}
+          <strong>
+            "{deactivateTarget?.termName} — AY {deactivateTarget?.schoolYear}"
+          </strong>
+          ?
+        </p>
+        <p className="text-sm text-slate-500 mt-2">
+          Schedules for this term will remain in the database, but the
+          Timetable won't display anything until a term is reactivated.
+        </p>
+      </Modal>
+
       {/* Delete confirmation */}
       <Modal
         open={!!deleteTarget}
@@ -435,9 +472,11 @@ export default function TermsPanel({ isAdmin }: Props) {
             </button>
             <button
               type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.termId)
-              }
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteMutation.mutate(deleteTarget.termId);
+                }
+              }}
               disabled={deleteMutation.isPending}
               className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
             >
