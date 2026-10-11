@@ -37,6 +37,23 @@ export class Prospectus {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // ── Multi-session scheduling (Phase 2) ──
+  @Column({ name: 'lecture_sessions_per_week', type: 'smallint', default: 1 })
+  lectureSessionsPerWeek: number;
+
+  @Column({
+    name: 'lecture_minutes_per_session',
+    type: 'smallint',
+    default: 90,
+  })
+  lectureMinutesPerSession: number;
+
+  @Column({ name: 'lab_sessions_per_week', type: 'smallint', default: 1 })
+  labSessionsPerWeek: number;
+
+  @Column({ name: 'lab_minutes_per_session', type: 'smallint', default: 180 })
+  labMinutesPerSession: number;
+
   @ManyToOne(() => Program) @JoinColumn({ name: 'program_id' })
   program: Program;
 
