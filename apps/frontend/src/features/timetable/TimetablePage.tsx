@@ -49,6 +49,111 @@ const DAY_MAP: Record<string, Day> = {
   Sunday: 'SUN',
 };
 
+/**
+ * Returns the loading message + progress (0-100) based on how long the
+ * auto-generate has been running. Progress is a soft estimate — the solver
+ * typically takes 5-15s, so we use a curve that fills up quickly at first
+ * then asymptotically approaches 95%.
+ */
+function getGenerationProgressMessage(elapsedMs: number): {
+  label: string;
+  progress: number;
+} {
+  const sec = elapsedMs / 1000;
+
+  // Soft progress curve: reaches ~80% at 10s, ~95% at 20s, never 100
+  // Formula: 100 * (1 - exp(-sec / 6))
+  const raw = 1 - Math.exp(-sec / 6);
+  const progress = Math.min(95, Math.round(raw * 100));
+
+  let label: string;
+  if (sec < 2) {
+    label = 'Starting solver…';
+  } else if (sec < 5) {
+    label = 'Analyzing constraints…';
+  } else if (sec < 10) {
+    label = 'Solving schedule…';
+  } else if (sec < 20) {
+    label = 'Placing classes…';
+  } else if (sec < 40) {
+    label = 'Almost done…';
+  } else {
+    label = 'Taking longer than expected…';
+  }
+
+  return { label, progress };
+}
+
+interface AutoGenerateButtonProps {
+  isGenerating: boolean;
+  isServerSide: boolean;
+  elapsedMs: number;
+  onClick: () => void;
+}
+
+function AutoGenerateButton({
+  isGenerating,
+  isServerSide,
+  elapsedMs,
+  onClick,
+}: AutoGenerateButtonProps) {
+const { label, progress } = isServerSide
+  ? { label: 'Other user generating…', progress: 60 }
+  : getGenerationProgressMessage(elapsedMs);
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={isGenerating}
+      aria-busy={isGenerating}
+      aria-live="polite"
+      className={[
+        // FIXED dimensions — same for idle and loading
+        'relative inline-flex items-center justify-center gap-2',
+        'px-3 w-[240px] h-[38px]',                 // ← w (fixed), not min-w
+        'text-sm font-semibold rounded-lg transition',
+        'overflow-hidden',
+        isGenerating
+          ? 'bg-primary/5 border border-primary text-primary cursor-not-allowed'
+          : 'border border-primary text-primary hover:bg-primary/5',
+      ].join(' ')}
+    >
+      {/* Loading background bar */}
+      {isGenerating && (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 bg-primary/15 transition-[width] duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      )}
+
+      {/* Idle content */}
+      {!isGenerating && (
+        <>
+          <Icon name="auto_awesome" size={16} className="relative z-10 shrink-0" />
+          <span className="relative z-10">Auto-Generate</span>
+        </>
+      )}
+
+      {/* Generating content — must fit inside w-[240px] */}
+      {isGenerating && (
+        <>
+          <span
+            className="w-3.5 h-3.5 border-2 border-primary/40 border-t-primary rounded-full animate-spin relative z-10 shrink-0"
+            aria-hidden
+          />
+          <span className="relative z-10 tabular-nums truncate min-w-0">
+            {label}
+          </span>
+          <span className="relative z-10 tabular-nums text-xs opacity-70 shrink-0">
+            {progress}%
+          </span>
+        </>
+      )}
+    </button>
+  );
+}
+
 function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
@@ -110,6 +215,7 @@ function defaultDensityForViewport(): GridDensity {
   return 'compact';
 }
 
+
 interface Props {
   readOnly?: boolean;
 }
@@ -157,6 +263,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [serverSideGenerating, setServerSideGenerating] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
 
+  const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
+
   // ── Warn before leaving if a generate is running or preview is open ──
   useEffect(() => {
     if (!autoPreview && !autoGenerating) return;
@@ -169,6 +277,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [autoPreview, autoGenerating]);
+
+    // ── Tick every 500ms while a generation is running ──
+  useEffect(() => {
+    if (!autoGenerating) {
+      setGenerationElapsedMs(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    setGenerationElapsedMs(0);
+
+    const interval = setInterval(() => {
+      setGenerationElapsedMs(Date.now() - startedAt);
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [autoGenerating]);
 
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
@@ -719,23 +844,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
           )}
 
           {writable && activeTerm && isDepartmentHead && (
-            <button
+            <AutoGenerateButton
+              isGenerating={isGenerating}
+              isServerSide={serverSideGenerating && !autoGenerating}
+              elapsedMs={generationElapsedMs}
               onClick={handleAutoGenerate}
-              disabled={isGenerating}
-              className="flex items-center gap-2 px-4 py-2 border border-primary text-primary text-sm font-semibold rounded-lg hover:bg-primary/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <Icon name="auto_awesome" size={16} />
-                  Auto-Generate
-                </>
-              )}
-            </button>
+            />
           )}
 
           {writable && activeTerm && (
