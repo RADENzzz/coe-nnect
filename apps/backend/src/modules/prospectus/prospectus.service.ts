@@ -167,6 +167,11 @@ export class ProspectusService {
       yearLevel: dto.yearLevel,
       semester: dto.semester,
       isActive: true,
+      // ── Multi-session scheduling (Phase 2) ──
+      lectureSessionsPerWeek: dto.lectureSessionsPerWeek ?? 1,
+      lectureMinutesPerSession: dto.lectureMinutesPerSession ?? 90,
+      labSessionsPerWeek: dto.labSessionsPerWeek ?? 1,
+      labMinutesPerSession: dto.labMinutesPerSession ?? 180,
     });
 
     const saved = await this.repo.save(entity);
@@ -214,6 +219,16 @@ export class ProspectusService {
     if (dto.yearLevel !== undefined) found.yearLevel = dto.yearLevel;
     if (dto.semester !== undefined) found.semester = dto.semester;
     if (dto.isActive !== undefined) found.isActive = dto.isActive;
+
+    // ── Multi-session scheduling (Phase 2) ──
+    if (dto.lectureSessionsPerWeek !== undefined)
+      found.lectureSessionsPerWeek = dto.lectureSessionsPerWeek;
+    if (dto.lectureMinutesPerSession !== undefined)
+      found.lectureMinutesPerSession = dto.lectureMinutesPerSession;
+    if (dto.labSessionsPerWeek !== undefined)
+      found.labSessionsPerWeek = dto.labSessionsPerWeek;
+    if (dto.labMinutesPerSession !== undefined)
+      found.labMinutesPerSession = dto.labMinutesPerSession;
 
     await this.repo.save(found);
     return this.findOne(id);
