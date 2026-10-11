@@ -309,6 +309,86 @@ export class SchedulingService {
     return { success: true };
   }
 
+  // ════════════════════════════════════════════
+  // FLAG SYSTEM
+  // ════════════════════════════════════════════
+
+  /**
+   * Flag a schedule entry with a reason.
+   * Only DH (own dept), Dean, or Admin may flag.
+   * Re-flagging overwrites the previous flag.
+   */
+  async flagSchedule(
+    id: string,
+    reason: string,
+    user: any,
+  ): Promise<Schedule> {
+    const found = await this.assertOwnership(id, user);
+
+    found.flagged = true;
+    found.flaggedBy = user.userId ?? user.id ?? null;
+    found.flaggedAt = new Date();
+    found.flagReason = reason;
+
+    this.logger.log(
+      `Schedule ${id} flagged by ${found.flaggedBy}: ${reason}`,
+    );
+    return this.scheduleRepo.save(found);
+  }
+
+  /**
+   * Clear a flag.
+   * Only the original flagger, a Dean, or an Admin may clear.
+   * A DH can also clear any flag on their own department's entries.
+   */
+  async unflagSchedule(id: string, user: any): Promise<Schedule> {
+    const found = await this.assertOwnership(id, user);
+
+    // Additional: only flagger, admin, or dean can clear
+    const isAdmin = user.role === 'administrator';
+    const isDean = user.role === 'college_dean';
+    const isFlagger =
+      found.flaggedBy &&
+      String(found.flaggedBy) === String(user.userId ?? user.id);
+
+    if (!isAdmin && !isDean && !isFlagger) {
+      throw new ForbiddenException(
+        'Only the person who flagged this entry, a Dean, or an Administrator can clear the flag.',
+      );
+    }
+
+    found.flagged = false;
+    found.flaggedBy = null;
+    found.flaggedAt = null;
+    found.flagReason = null;
+
+    this.logger.log(`Schedule ${id} unflagged by ${user.userId ?? user.id}`);
+    return this.scheduleRepo.save(found);
+  }
+
+  /**
+   * List all flagged entries for a term.
+   * Scoped by role:
+   *   - DH: only own department
+   *   - Dean / Admin: all departments
+   */
+  async findFlagged(termId: string, user: any): Promise<Schedule[]> {
+    const qb = this.scheduleRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.subject', 'subject')
+      .leftJoinAndSelect('s.faculty', 'faculty')
+      .leftJoinAndSelect('s.room', 'room')
+      .where('s.term_id = :termId', { termId })
+      .andWhere('s.flagged = true')
+      .orderBy('s.flagged_at', 'DESC');
+
+    if (user?.role === 'department_head' && user.deptId != null) {
+      qb.andWhere('s.dept_id = :deptId', { deptId: String(user.deptId) });
+    }
+
+    return qb.getMany();
+  }
+
   
 
   // ════════════════════════════════════════════
