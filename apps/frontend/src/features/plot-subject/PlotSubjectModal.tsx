@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   plotSubject,
+  plotMulti,
   updateSchedule,
   validatePlot,
   type PlotSubjectPayload,
@@ -26,6 +27,15 @@ const DAYS = [
   'Saturday',
 ] as const;
 
+const DAY_ABBR: Record<string, string> = {
+  Monday: 'Mon',
+  Tuesday: 'Tue',
+  Wednesday: 'Wed',
+  Thursday: 'Thu',
+  Friday: 'Fri',
+  Saturday: 'Sat',
+};
+
 const TIME_OPTIONS = generateSlotBoundaries();
 
 const DAY_ABBR_TO_FULL: Record<string, string> = {
@@ -46,7 +56,6 @@ interface SubjectOption {
   labUnits: number;
   deptId?: string;
   prospectusYears?: Array<{ yearLevel: number; semester: string }>;
-  // ── Multi-session limits (Phase 2) ──
   lectureSessionsPerWeek?: number;
   labSessionsPerWeek?: number;
 }
@@ -79,7 +88,6 @@ interface Props {
   rooms: RoomOption[];
   editing?: ScheduleEntry | null;
   departments?: DepartmentOption[];
-  /** Existing plotted entries for the term — used for session-limit enforcement. */
   existingCounts?: Array<{
     scheduleId: string;
     section: string | null;
@@ -87,6 +95,8 @@ interface Props {
     loadType: 'lecture' | 'laboratory' | 'other';
   }>;
 }
+
+type PlotMode = 'single' | 'multi';
 
 const EMPTY_FORM = {
   subjectId: '',
@@ -98,6 +108,14 @@ const EMPTY_FORM = {
   endTime: '09:30',
   loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
 };
+
+/** Per-day time slot for multi-session mode. */
+interface MultiDayRow {
+  day: (typeof DAYS)[number];
+  enabled: boolean;
+  startTime: string;
+  endTime: string;
+}
 
 export default function PlotSubjectModal({
   open,
@@ -122,6 +140,16 @@ export default function PlotSubjectModal({
   });
 
   const [form, setForm] = useState(EMPTY_FORM);
+  const [mode, setMode] = useState<PlotMode>('single');
+  const [multiDays, setMultiDays] = useState<MultiDayRow[]>(() =>
+    DAYS.map((day) => ({
+      day,
+      enabled: false,
+      startTime: '08:00',
+      endTime: '09:30',
+    })),
+  );
+
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -192,6 +220,15 @@ export default function PlotSubjectModal({
 
     if (!open) {
       setForm(EMPTY_FORM);
+      setMode('single');
+      setMultiDays(
+        DAYS.map((day) => ({
+          day,
+          enabled: false,
+          startTime: '08:00',
+          endTime: '09:30',
+        })),
+      );
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
@@ -201,6 +238,7 @@ export default function PlotSubjectModal({
       return;
     }
     if (editing) {
+      setMode('single');
       setForm({
         subjectId: editing.subjectId,
         section: editing.sectionCode ?? '',
@@ -222,6 +260,15 @@ export default function PlotSubjectModal({
       setFilterSem('');
     } else {
       setForm(EMPTY_FORM);
+      setMode('single');
+      setMultiDays(
+        DAYS.map((day) => ({
+          day,
+          enabled: false,
+          startTime: '08:00',
+          endTime: '09:30',
+        })),
+      );
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
@@ -253,7 +300,7 @@ export default function PlotSubjectModal({
     }
   }, [form.startTime, form.endTime]);
 
-  // ── Session-limit enforcement (Phase 2) ──
+  // ── Session-limit enforcement ──
   const sessionStatus = useMemo(() => {
     if (!form.subjectId || !form.section) {
       return {
@@ -261,12 +308,19 @@ export default function PlotSubjectModal({
         limit: null as number | null,
         exceeded: false,
         message: null as string | null,
+        remaining: 0,
       };
     }
 
     const subject = subjects.find((s) => s.subjectId === form.subjectId);
     if (!subject) {
-      return { current: 0, limit: null, exceeded: false, message: null };
+      return {
+        current: 0,
+        limit: null,
+        exceeded: false,
+        message: null,
+        remaining: 0,
+      };
     }
 
     const loadType = form.loadType;
@@ -278,7 +332,13 @@ export default function PlotSubjectModal({
     }
 
     if (limit == null) {
-      return { current: 0, limit: null, exceeded: false, message: null };
+      return {
+        current: 0,
+        limit: null,
+        exceeded: false,
+        message: null,
+        remaining: 0,
+      };
     }
 
     const current = existingCounts.filter(
@@ -289,12 +349,13 @@ export default function PlotSubjectModal({
         e.scheduleId !== editing?.id,
     ).length;
 
+    const remaining = Math.max(0, limit - current);
     const exceeded = current >= limit;
     const message = exceeded
       ? `This section already has ${current} of ${limit} ${loadType} session${limit === 1 ? '' : 's'} plotted for ${subject.subjectCode}. The prospectus allows a maximum of ${limit}.`
       : null;
 
-    return { current, limit, exceeded, message };
+    return { current, limit, exceeded, message, remaining };
   }, [
     form.subjectId,
     form.section,
@@ -304,8 +365,37 @@ export default function PlotSubjectModal({
     editing?.id,
   ]);
 
-  // Debounced live validation
+  // ── Multi-day selection helpers ──
+  const enabledDays = multiDays.filter((d) => d.enabled);
+  const multiCount = enabledDays.length;
+
+  const toggleDay = (day: string) => {
+    setMultiDays((rows) =>
+      rows.map((r) =>
+        r.day === day ? { ...r, enabled: !r.enabled } : r,
+      ),
+    );
+  };
+
+  const updateDayTime = (
+    day: string,
+    field: 'startTime' | 'endTime',
+    value: string,
+  ) => {
+    setMultiDays((rows) =>
+      rows.map((r) => (r.day === day ? { ...r, [field]: value } : r)),
+    );
+  };
+
+  const applyDefaultTimes = (start: string, end: string) => {
+    setMultiDays((rows) =>
+      rows.map((r) => ({ ...r, startTime: start, endTime: end })),
+    );
+  };
+
+  // Debounced live validation (single mode only)
   useEffect(() => {
+    if (mode !== 'single') return;
     if (!open || !form.subjectId || !form.roomId || !form.dayOfWeek) return;
 
     setTouched(true);
@@ -331,7 +421,7 @@ export default function PlotSubjectModal({
     }, 400);
 
     return () => clearTimeout(timeout);
-  }, [open, form, termId, editing?.id]);
+  }, [open, form, termId, editing?.id, mode]);
 
   const plotMutation = useMutation({
     mutationFn: (payload: PlotSubjectPayload) => plotSubject(payload),
@@ -342,6 +432,22 @@ export default function PlotSubjectModal({
     onError: (err: any) => {
       alert(
         err?.response?.data?.message ?? err?.message ?? 'Failed to plot subject',
+      );
+      setSubmitting(false);
+    },
+  });
+
+  const plotMultiMutation = useMutation({
+    mutationFn: plotMulti,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      onClose();
+    },
+    onError: (err: any) => {
+      alert(
+        err?.response?.data?.message ??
+          err?.message ??
+          'Failed to plot sessions',
       );
       setSubmitting(false);
     },
@@ -380,7 +486,38 @@ export default function PlotSubjectModal({
     e.preventDefault();
     if (!form.facultyId) return;
     if (submitting) return;
-    if (sessionStatus.exceeded) return; // hard block
+
+    // ── Multi-session path ──
+    if (mode === 'multi') {
+      if (multiCount === 0) {
+        alert('Pick at least one day.');
+        return;
+      }
+      if (sessionStatus.limit != null && multiCount > sessionStatus.remaining) {
+        alert(
+          `This would exceed the ${sessionStatus.limit}-session limit for this subject and section. You can plot at most ${sessionStatus.remaining} more session${sessionStatus.remaining === 1 ? '' : 's'}.`,
+        );
+        return;
+      }
+      setSubmitting(true);
+      plotMultiMutation.mutate({
+        termId,
+        subjectId: form.subjectId,
+        facultyId: form.facultyId || undefined,
+        roomId: form.roomId || undefined,
+        section: form.section || undefined,
+        loadType: form.loadType,
+        sessions: enabledDays.map((d) => ({
+          dayOfWeek: d.day,
+          startTime: d.startTime,
+          endTime: d.endTime,
+        })),
+      });
+      return;
+    }
+
+    // ── Single-session path ──
+    if (sessionStatus.exceeded) return;
 
     setSubmitting(true);
     try {
@@ -435,7 +572,16 @@ export default function PlotSubjectModal({
 
   if (!open) return null;
 
-  const submitDisabled =
+  const multiSubmitDisabled =
+    submitting ||
+    plotMultiMutation.isPending ||
+    !form.subjectId ||
+    !form.roomId ||
+    !form.facultyId ||
+    multiCount === 0 ||
+    (sessionStatus.limit != null && multiCount > sessionStatus.remaining);
+
+  const singleSubmitDisabled =
     submitting ||
     plotMutation.isPending ||
     updateMutation.isPending ||
@@ -444,6 +590,8 @@ export default function PlotSubjectModal({
     !form.facultyId ||
     (touched && (validation?.hardConflicts.length ?? 0) > 0) ||
     sessionStatus.exceeded;
+
+  const submitDisabled = mode === 'multi' ? multiSubmitDisabled : singleSubmitDisabled;
 
   const hasActiveFilter = filterDept || filterYear || filterSem;
 
@@ -463,6 +611,8 @@ export default function PlotSubjectModal({
             <p className="text-xs text-on-surface-variant">
               {isEditMode
                 ? 'Modify day, time, room, or faculty'
+                : mode === 'multi'
+                ? 'Plot this subject on multiple days at once'
                 : 'Add a new class to the timetable'}
             </p>
           </div>
@@ -474,6 +624,50 @@ export default function PlotSubjectModal({
             <Icon name="close" />
           </button>
         </div>
+
+        {/* ── Mode toggle (hidden in edit mode) ── */}
+        {!isEditMode && (
+          <div className="px-6 pt-4">
+            <div
+              role="tablist"
+              aria-label="Plot mode"
+              className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5"
+            >
+              <button
+                role="tab"
+                aria-selected={mode === 'single'}
+                type="button"
+                onClick={() => setMode('single')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                  mode === 'single'
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <Icon name="calendar_today" size={14} />
+                Single session
+              </button>
+              <button
+                role="tab"
+                aria-selected={mode === 'multi'}
+                type="button"
+                onClick={() => {
+                  setMode('multi');
+                  // Seed default times from the current single-session times
+                  applyDefaultTimes(form.startTime, form.endTime);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                  mode === 'multi'
+                    ? 'bg-white text-primary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <Icon name="view_week" size={14} />
+                Multi-session
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {!isEditMode && (
@@ -626,7 +820,7 @@ export default function PlotSubjectModal({
             </div>
           </div>
 
-          {/* ── Session-limit info / warning ── */}
+          {/* Session limit info */}
           {sessionStatus.limit != null &&
             form.subjectId &&
             form.section &&
@@ -638,7 +832,7 @@ export default function PlotSubjectModal({
                   <strong>{sessionStatus.limit}</strong> allowed{' '}
                   {form.loadType} session
                   {sessionStatus.limit === 1 ? '' : 's'} for this subject and
-                  section.
+                  section. <strong>{sessionStatus.remaining}</strong> remaining.
                 </span>
               </div>
             )}
@@ -708,60 +902,194 @@ export default function PlotSubjectModal({
             </div>
           </div>
 
-          {/* Day + Times */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Day *
-              </label>
-              <select
-                name="dayOfWeek"
-                required
-                value={form.dayOfWeek}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              >
-                {DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+          {/* ═══════════════════════════════════════════════ */}
+          {/* SINGLE-SESSION: Day + Times                    */}
+          {/* ═══════════════════════════════════════════════ */}
+          {mode === 'single' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Day *
+                </label>
+                <select
+                  name="dayOfWeek"
+                  required
+                  value={form.dayOfWeek}
+                  onChange={handleChange}
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                >
+                  {DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Start *
+                </label>
+                <TimeSlotSelect
+                  value={form.startTime}
+                  onChange={(v) =>
+                    setForm((prev) => ({ ...prev, startTime: v }))
+                  }
+                  options={startOptions}
+                  ariaLabel="Start time"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  End *
+                </label>
+                <TimeSlotSelect
+                  value={form.endTime}
+                  onChange={(v) =>
+                    setForm((prev) => ({ ...prev, endTime: v }))
+                  }
+                  options={endOptions}
+                  ariaLabel="End time"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Start *
-              </label>
-              <TimeSlotSelect
-                value={form.startTime}
-                onChange={(v) => setForm((prev) => ({ ...prev, startTime: v }))}
-                options={startOptions}
-                ariaLabel="Start time"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                End *
-              </label>
-              <TimeSlotSelect
-                value={form.endTime}
-                onChange={(v) => setForm((prev) => ({ ...prev, endTime: v }))}
-                options={endOptions}
-                ariaLabel="End time"
-              />
-            </div>
-          </div>
+          )}
 
-          {/* Validation feedback */}
-          {touched && validation && (
+          {/* ═══════════════════════════════════════════════ */}
+          {/* MULTI-SESSION: day checkboxes                  */}
+          {/* ═══════════════════════════════════════════════ */}
+          {mode === 'multi' && (
+            <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                  Pick days this class meets
+                </span>
+                <span className="text-xs text-on-surface-variant">
+                  {multiCount} selected
+                </span>
+              </div>
+
+              {/* Optional: apply a shared time to all picked days */}
+              <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg bg-surface-container-low">
+                <div className="flex-1 min-w-[120px]">
+                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Default start
+                  </label>
+                  <TimeSlotSelect
+                    value={multiDays[0].startTime}
+                    onChange={(v) => {
+                      applyDefaultTimes(v, multiDays[0].endTime);
+                    }}
+                    options={startOptions}
+                    ariaLabel="Default start time"
+                  />
+                </div>
+                <div className="flex-1 min-w-[120px]">
+                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Default end
+                  </label>
+                  <TimeSlotSelect
+                    value={multiDays[0].endTime}
+                    onChange={(v) => {
+                      applyDefaultTimes(multiDays[0].startTime, v);
+                    }}
+                    options={endOptions}
+                    ariaLabel="Default end time"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    applyDefaultTimes(multiDays[0].startTime, multiDays[0].endTime)
+                  }
+                  className="px-3 py-2 text-xs font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high transition"
+                >
+                  Apply to all
+                </button>
+              </div>
+
+              <ul className="divide-y divide-surface-variant">
+                {multiDays.map((row, idx) => (
+                  <li
+                    key={row.day}
+                    className="py-2.5 flex flex-wrap items-center gap-3"
+                  >
+                    <label className="flex items-center gap-2 min-w-[110px] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={row.enabled}
+                        onChange={() => toggleDay(row.day)}
+                        className="accent-[#5c1219] w-4 h-4"
+                      />
+                      <span className="text-sm font-semibold text-on-surface">
+                        {DAY_ABBR[row.day] ?? row.day}
+                      </span>
+                    </label>
+                    {row.enabled && (
+                      <>
+                        <div className="flex-1 min-w-[110px]">
+                          <TimeSlotSelect
+                            value={row.startTime}
+                            onChange={(v) =>
+                              updateDayTime(row.day, 'startTime', v)
+                            }
+                            options={startOptions}
+                            ariaLabel={`${row.day} start time`}
+                          />
+                        </div>
+                        <span className="text-xs text-on-surface-variant">
+                          to
+                        </span>
+                        <div className="flex-1 min-w-[110px]">
+                          <TimeSlotSelect
+                            value={row.endTime}
+                            onChange={(v) =>
+                              updateDayTime(row.day, 'endTime', v)
+                            }
+                            options={
+                              idx >= 0
+                                ? TIME_OPTIONS.slice(
+                                    TIME_OPTIONS.indexOf(row.startTime) + 1,
+                                  )
+                                : TIME_OPTIONS
+                            }
+                            ariaLabel={`${row.day} end time`}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+
+              {sessionStatus.limit != null && (
+                <p className="text-[11px] text-on-surface-variant">
+                  The prospectus allows {sessionStatus.limit}{' '}
+                  {form.loadType} session
+                  {sessionStatus.limit === 1 ? '' : 's'}. You have{' '}
+                  {sessionStatus.remaining} remaining. Pick at most{' '}
+                  {sessionStatus.remaining} day
+                  {sessionStatus.remaining === 1 ? '' : 's'}.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Validation feedback (single mode) */}
+          {mode === 'single' && touched && validation && (
             <div className="space-y-2">
               {validation.hardConflicts.length > 0 && (
                 <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-red-50 text-red-800 border border-red-200">
-                  <Icon name="error" filled size={18} className="shrink-0 mt-0.5" />
+                  <Icon
+                    name="error"
+                    filled
+                    size={18}
+                    className="shrink-0 mt-0.5"
+                  />
                   <div>
                     <p className="font-medium">
                       {validation.hardConflicts.length} hard conflict
-                      {validation.hardConflicts.length === 1 ? '' : 's'} — cannot
+                      {validation.hardConflicts.length === 1 ? '' : 's'} —
+                      cannot
                       {isEditMode ? ' save' : ' plot'}:
                     </p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5">
@@ -780,7 +1108,12 @@ export default function PlotSubjectModal({
 
               {validation.softWarnings.length > 0 && (
                 <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
-                  <Icon name="warning" filled size={18} className="shrink-0 mt-0.5" />
+                  <Icon
+                    name="warning"
+                    filled
+                    size={18}
+                    className="shrink-0 mt-0.5"
+                  />
                   <div>
                     <p className="font-medium">
                       {validation.softWarnings.length} warning
@@ -830,6 +1163,7 @@ export default function PlotSubjectModal({
             >
               {submitting ||
               plotMutation.isPending ||
+              plotMultiMutation.isPending ||
               updateMutation.isPending ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -837,7 +1171,15 @@ export default function PlotSubjectModal({
                     ? 'Checking…'
                     : isEditMode
                     ? 'Saving…'
+                    : mode === 'multi'
+                    ? `Plotting ${multiCount}…`
                     : 'Plotting…'}
+                </>
+              ) : mode === 'multi' ? (
+                <>
+                  <Icon name="add" size={16} />
+                  Plot {multiCount || 0} Session
+                  {multiCount === 1 ? '' : 's'}
                 </>
               ) : sessionStatus.exceeded ? (
                 <>
