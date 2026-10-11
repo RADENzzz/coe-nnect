@@ -36,7 +36,7 @@ describe('H-4 consecutive blocks', () => {
     expect(consecutiveBlocksRule.validate(ctx).status).toBe('pass');
   });
 
-  it('fails with 3 blocks back to back', () => {
+  it('warns with 3 blocks back to back', () => {
     const ctx = baseContext({
       timeSlot: { dayOfWeek: 'Monday', startTime: '11:00', endTime: '12:30' },
       existingSchedule: [
@@ -44,7 +44,12 @@ describe('H-4 consecutive blocks', () => {
         row('e2', 'Monday', '09:30', '11:00'),
       ],
     });
-    expect(consecutiveBlocksRule.validate(ctx).status).toBe('fail');
+    const result = consecutiveBlocksRule.validate(ctx);
+    expect(result.status).toBe('warn');
+    if (result.status === 'warn') {
+      expect(result.metadata?.streak).toBe(3);
+      expect(result.metadata?.maxBlocks).toBe(2);
+    }
   });
 
   it('passes with 3 blocks when a break is inserted', () => {
@@ -53,9 +58,26 @@ describe('H-4 consecutive blocks', () => {
       existingSchedule: [
         row('e1', 'Monday', '08:00', '09:30'),
         row('e2', 'Monday', '09:30', '11:00'),
-        // 30-minute break between e2 (ends 11:00) and candidate (starts 11:30)
       ],
     });
     expect(consecutiveBlocksRule.validate(ctx).status).toBe('pass');
+  });
+
+  it('warns at the first streak that exceeds max (3), even with 4 blocks', () => {
+    const ctx = baseContext({
+      timeSlot: { dayOfWeek: 'Monday', startTime: '12:30', endTime: '14:00' },
+      existingSchedule: [
+        row('e1', 'Monday', '08:00', '09:30'),
+        row('e2', 'Monday', '09:30', '11:00'),
+        row('e3', 'Monday', '11:00', '12:30'),
+      ],
+    });
+    const result = consecutiveBlocksRule.validate(ctx);
+    expect(result.status).toBe('warn');
+    if (result.status === 'warn') {
+      // Rule returns at the FIRST streak > max, so this is 3, not 4.
+      expect(result.metadata?.streak).toBe(3);
+      expect(result.metadata?.maxBlocks).toBe(2);
+    }
   });
 });

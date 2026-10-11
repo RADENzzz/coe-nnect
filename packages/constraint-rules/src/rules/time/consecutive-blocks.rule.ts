@@ -4,37 +4,33 @@ import type { RuleResult } from '../../types/rule-result.type';
 import { toMinutes } from '../../utils/time.util';
 
 /**
- * H-4: No faculty member or section may have more than N consecutive
- * class blocks (default N=2, per config.maxConsecutiveHours = 3
- * which corresponds to two 1.5h blocks back-to-back = 3 hours).
+ * H-4: Warn when a faculty member or section has more than N
+ * consecutive class blocks.
  *
- * Implementation: we build the day's timeline (existing + candidate),
- * sort by start time, and walk. A "block" is any scheduled entry.
- * Two entries are consecutive if entry[i+1].start <= entry[i].end +
- * minBreakMinutes (i.e. no qualifying break between them).
+ * Updated per PM feedback (2026-10):
+ *   - 2 consecutive blocks → PASS (silent, no warning)
+ *   - 3+ consecutive blocks → WARN (allowed, but flagged for review)
+ *   - Never hard-blocks
  *
- * If at any point we see N consecutive blocks with no qualifying
- * break, we return fail.
+ * The rule is now classified as 'soft' — it produces a warning but
+ * does not prevent the schedule entry from being created.
  */
 export const consecutiveBlocksRule: ConstraintRule = {
   id: 'H-4',
   name: 'Max Consecutive Blocks',
   description:
-    'A faculty member or section cannot have more than two consecutive class blocks without a break.',
-  type: 'hard',
+    'A faculty member or section should not have more than two consecutive class blocks without a break. Three or more blocks in a row are allowed but will be flagged as a warning.',
+  type: 'soft',
   category: 'time',
 
   validate(ctx: RuleContext): RuleResult {
     const { faculty, section, timeSlot, existingSchedule, excludeScheduleId, config } = ctx;
 
-    // Compute max blocks: maxConsecutiveHours (3) / typical block (1.5) = 2.
-    // We treat the rule as a maximum count of consecutive blocks.
     const maxBlocks = Math.max(2, Math.floor(config.maxConsecutiveHours / 1.5));
     const minBreak = config.minBreakMinutes;
 
-    // Build timeline for the faculty, if any.
     if (faculty) {
-      const fail = walk(
+      const warn = walk(
         timeSlot,
         existingSchedule,
         excludeScheduleId,
@@ -42,12 +38,11 @@ export const consecutiveBlocksRule: ConstraintRule = {
         maxBlocks,
         minBreak,
       );
-      if (fail) return fail;
+      if (warn) return warn;
     }
 
-    // Build timeline for the section, if any.
     if (section.sectionCode) {
-      const fail = walk(
+      const warn = walk(
         timeSlot,
         existingSchedule,
         excludeScheduleId,
@@ -55,7 +50,7 @@ export const consecutiveBlocksRule: ConstraintRule = {
         maxBlocks,
         minBreak,
       );
-      if (fail) return fail;
+      if (warn) return warn;
     }
 
     return { status: 'pass' };
@@ -63,9 +58,9 @@ export const consecutiveBlocksRule: ConstraintRule = {
 };
 
 /**
- * Walks a day's timeline for one subject-identity (faculty or section)
- * and returns a fail result if the count of consecutive blocks
- * exceeds `maxBlocks`.
+ * Walks a day's timeline for one identity (faculty or section) and
+ * returns a warn result if the count of consecutive blocks exceeds
+ * `maxBlocks`. Never fails.
  */
 function walk(
   candidate: RuleContext['timeSlot'],
@@ -75,7 +70,6 @@ function walk(
   maxBlocks: number,
   minBreakMinutes: number,
 ): RuleResult | null {
-  // Collect rows on the same day that belong to this identity.
   const rows = existing
     .filter((r) => !(excludeScheduleId && r.scheduleId === excludeScheduleId))
     .filter((r) => r.dayOfWeek === candidate.dayOfWeek)
@@ -86,18 +80,14 @@ function walk(
       label: `${r.startTime}-${r.endTime}`,
     }));
 
-  // Add the candidate.
   rows.push({
     start: toMinutes(candidate.startTime),
     end: toMinutes(candidate.endTime),
     label: `${candidate.startTime}-${candidate.endTime} (candidate)`,
   });
 
-  // Sort by start.
   rows.sort((a, b) => a.start - b.start);
 
-  // Walk: count consecutive entries where the gap between them is
-  // less than minBreakMinutes.
   let streak = 1;
   for (let i = 1; i < rows.length; i++) {
     const gap = rows[i].start - rows[i - 1].end;
@@ -105,8 +95,8 @@ function walk(
       streak += 1;
       if (streak > maxBlocks) {
         return {
-          status: 'fail',
-          reason: `Consecutive block limit exceeded on ${candidate.dayOfWeek}: ${streak} blocks in a row (max ${maxBlocks}).`,
+          status: 'warn',
+          reason: `${streak} consecutive blocks on ${candidate.dayOfWeek} (recommended max: ${maxBlocks}). Consider inserting a break.`,
           metadata: { streak, maxBlocks, minBreakMinutes },
         };
       }
