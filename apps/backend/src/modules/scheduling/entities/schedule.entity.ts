@@ -78,6 +78,18 @@ export class Schedule {
   @Column({ type: 'text', nullable: true })
   remarks: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  flagged: boolean;
+
+  @Column({ name: 'flagged_by', type: 'uuid', nullable: true })
+  flaggedBy: string | null;
+
+  @Column({ name: 'flagged_at', type: 'timestamptz', nullable: true })
+  flaggedAt: Date | null;
+
+  @Column({ name: 'flag_reason', type: 'text', nullable: true })
+  flagReason: string | null;
+
   @Column({
     type: 'enum',
     enum: ['draft', 'review', 'finalized', 'published'],
