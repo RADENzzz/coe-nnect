@@ -22,8 +22,14 @@ export interface ScheduleEntry {
   color: string;
   hasConflict?: boolean;
   hasWarning?: boolean;
-  status?: 'draft' | 'review' | 'finalized' | 'published';   // ← NEW
-  remarks?: string | null;  
+  status?: 'draft' | 'review' | 'finalized' | 'published';
+  remarks?: string | null;
+
+  // ── Flag fields ──
+  flagged?: boolean;
+  flaggedBy?: string | null;
+  flaggedAt?: string | null;
+  flagReason?: string | null;
 }
 
 export interface DropCellData {
