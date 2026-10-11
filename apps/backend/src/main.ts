@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('Bootstrap');
 
 async function createApp() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
@@ -45,7 +48,7 @@ if (process.env.VERCEL !== '1') {
     const app = await createApp();
     const port = process.env.PORT ?? 3000;
     await app.listen(port, '0.0.0.0');
-    console.log(`🚀 Backend running on port ${port}`);
+    logger.log(`Backend running on port ${port}`);
   })();
 }
 

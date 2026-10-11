@@ -1,8 +1,9 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
-} from '@nestjs/common';
+} from '@nestjs/common';  
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupabaseService } from '../../database/supabase.service';
@@ -14,6 +15,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private supabase: SupabaseService,
     @InjectRepository(User) private userRepo: Repository<User>,
@@ -227,8 +230,7 @@ export class UsersService {
 
     if (error) {
       // Log but don't fail the whole operation — the DB row was already updated.
-      // eslint-disable-next-line no-console
-      console.warn(
+      this.logger.warn(
         `Failed to sync app_metadata for ${userId}: ${error.message}`,
       );
     }
