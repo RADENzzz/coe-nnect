@@ -19,6 +19,10 @@ export async function fetchAllProspectus(): Promise<
     subjectId: string;
     yearLevel: number;
     semester: string;
+    lectureSessionsPerWeek: number;
+    lectureMinutesPerSession: number;
+    labSessionsPerWeek: number;
+    labMinutesPerSession: number;
   }>
 > {
   const { data } = await api.get('/v1/prospectus');
@@ -43,6 +47,13 @@ export interface ProspectusRecord {
   yearLevel: number;
   semester: SemesterType;
   isActive: boolean;
+
+  // ── Multi-session scheduling (Phase 2) ──
+  lectureSessionsPerWeek: number;
+  lectureMinutesPerSession: number;
+  labSessionsPerWeek: number;
+  labMinutesPerSession: number;
+
   program?: ProgramRef;
   subject?: SubjectRef;
 }
@@ -52,6 +63,12 @@ export interface CreateProspectusInput {
   subjectId: string;
   yearLevel: number;
   semester: SemesterType;
+
+  // ── Multi-session scheduling (Phase 2) ──
+  lectureSessionsPerWeek?: number;
+  lectureMinutesPerSession?: number;
+  labSessionsPerWeek?: number;
+  labMinutesPerSession?: number;
 }
 
 export interface UpdateProspectusInput extends Partial<CreateProspectusInput> {
