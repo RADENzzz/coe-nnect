@@ -174,6 +174,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
     setInitialViewApplied(true);
   }, [searchParams, setSearchParams, initialViewApplied]);
 
+
+
   const [layoutTouched, setLayoutTouched] = useState(false);
   useEffect(() => {
     if (layoutTouched) return;
@@ -304,6 +306,24 @@ export default function TimetablePage({ readOnly = false }: Props) {
     facultyTargetId,
     onlyConflicts,
   ]);
+
+    // ── Deep-link: open drawer for ?focus=<scheduleId> ──
+  const [focusApplied, setFocusApplied] = useState(false);
+  useEffect(() => {
+    if (focusApplied) return;
+    const focusId = searchParams.get('focus');
+    if (!focusId || !entries.length) return;
+
+    const entry = entries.find((e) => e.id === focusId);
+    if (entry) {
+      setSelectedEntry(entry);
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('focus');
+    setSearchParams(next, { replace: true });
+    setFocusApplied(true);
+  }, [entries, searchParams, setSearchParams, focusApplied]);
 
   const conflictCount = useMemo(
     () => allEntries.filter((e) => e.hasConflict || e.hasWarning).length,
