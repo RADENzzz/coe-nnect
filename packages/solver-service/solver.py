@@ -33,6 +33,12 @@ class ProspectusEntry(BaseModel):
     yearLevel: int
     semester: str
 
+    # ── Multi-session scheduling (Phase 1) ──
+    lecture_sessions_per_week: int = 1
+    lecture_minutes_per_session: int = 90
+    lab_sessions_per_week: int = 1
+    lab_minutes_per_session: int = 180
+
 
 class Faculty(BaseModel):
     facultyId: str
@@ -128,38 +134,53 @@ def is_special_category(subject_code: str, prefixes_csv: str) -> bool:
     return any(subject_code.startswith(p) for p in prefixes)
 
 
-def compute_blocks(subject: Subject, config: Config) -> List[Dict]:
+def compute_blocks(
+    subject: Subject,
+    prospectus: Optional[ProspectusEntry],
+    config: Config,
+) -> List[Dict]:
     """Return the list of physical blocks this subject needs.
 
-    Rules (matching the constraint engine):
-      - Lecture: always config.lectureBlockMinutes (90 min by default),
-                 regardless of lecture_units. The engine enforces this.
-      - Lab: lab_units × config.labMinutesPerUnit (180 min each), split into
-             config.labMaxConsecutiveMinutes-sized sessions.
+    Uses the prospectus pattern when available. Falls back to config
+    defaults if the prospectus entry is missing.
     """
     blocks: List[Dict] = []
 
+    # ── Lecture ──
     if subject.lectureUnits > 0:
-        dur = config.lectureBlockMinutes
-        blocks.append({"kind": "lecture", "durationMinutes": dur, "sessionIndex": 0})
+        n_sessions = prospectus.lecture_sessions_per_week if prospectus else 1
+        mins_each = (
+            prospectus.lecture_minutes_per_session
+            if prospectus
+            else config.lectureBlockMinutes
+        )
+        for i in range(n_sessions):
+            blocks.append({
+                "kind": "lecture",
+                "durationMinutes": mins_each,
+                "sessionIndex": i,
+            })
 
+    # ── Lab ──
     if subject.labUnits > 0:
-        total_lab = int(subject.labUnits * config.labMinutesPerUnit)
-        max_session = config.labMaxConsecutiveMinutes
-        remaining = total_lab
-        idx = 0
-        while remaining > 0:
-            sess = min(remaining, max_session)
-            blocks.append({"kind": "lab", "durationMinutes": sess, "sessionIndex": idx})
-            remaining -= sess
-            idx += 1
+        n_sessions = prospectus.lab_sessions_per_week if prospectus else 1
+        mins_each = (
+            prospectus.lab_minutes_per_session
+            if prospectus
+            else config.labMaxConsecutiveMinutes
+        )
+        for i in range(n_sessions):
+            blocks.append({
+                "kind": "lab",
+                "durationMinutes": mins_each,
+                "sessionIndex": i,
+            })
 
     return blocks
 
 
 def room_accepts_block(room: Room, kind: str, subject: Subject) -> bool:
-    """R-1: room type must match the subject's required_room_type exactly.
-    If none is set, apply per-block-kind defaults."""
+    """R-1: room type must match the subject's required_room_type exactly."""
     if subject.requiredRoomType:
         return room.roomType == subject.requiredRoomType
     if kind == "lab":
@@ -182,6 +203,14 @@ def solve_schedule(req: SolveRequest) -> dict:
         f"prospectus={len(req.prospectus)} quals={len(req.qualifications)} "
         f"existing={len(req.existingSchedule)}"
     )
+
+    # ── DEBUG: show what patterns the solver received ──
+    for p in req.prospectus[:5]:
+        print(
+            f"[solver]   prospectus subject={p.subjectId} "
+            f"lec={p.lecture_sessions_per_week}×{p.lecture_minutes_per_session}m "
+            f"lab={p.lab_sessions_per_week}×{p.lab_minutes_per_session}m"
+        )
 
     model = cp_model.CpModel()
 
@@ -206,9 +235,16 @@ def solve_schedule(req: SolveRequest) -> dict:
     X: Dict[tuple, cp_model.IntVar] = {}
     block_meta: Dict[tuple, Dict] = {}
 
+    # Build a lookup: subjectId → prospectus entry (for pattern info)
+    prospectus_by_subject: Dict[str, ProspectusEntry] = {}
+    for p in req.prospectus:
+        if p.subjectId not in prospectus_by_subject:
+            prospectus_by_subject[p.subjectId] = p
+
     subject_blocks: Dict[str, List[Dict]] = {}
     for subj in req.subjects:
-        subject_blocks[subj.subjectId] = compute_blocks(subj, req.config)
+        prospectus = prospectus_by_subject.get(subj.subjectId)
+        subject_blocks[subj.subjectId] = compute_blocks(subj, prospectus, req.config)
 
     # ── Variable creation ──
     for sec in req.sections:
@@ -232,7 +268,9 @@ def solve_schedule(req: SolveRequest) -> dict:
                 dur = block["durationMinutes"]
                 kind = block["kind"]
 
-                possible_rooms = [r for r in req.rooms if room_accepts_block(r, kind, subj)]
+                possible_rooms = [
+                    r for r in req.rooms if room_accepts_block(r, kind, subj)
+                ]
                 if not possible_rooms:
                     print(f"[solver] WARN: no {kind} room for {subj.subjectCode}")
                     continue
@@ -283,7 +321,7 @@ def solve_schedule(req: SolveRequest) -> dict:
     fac_day: Dict[tuple, List] = defaultdict(list)
     room_day: Dict[tuple, List] = defaultdict(list)
     sec_day: Dict[tuple, List] = defaultdict(list)
-    fac_all_vars: Dict[str, List] = defaultdict(list)  # faculty_id → [(var, dur)]
+    fac_all_vars: Dict[str, List] = defaultdict(list)
 
     for k, v in X.items():
         sec_id, subj_id, kind, sess_idx, day, start_min, room_id, fac_id = k
@@ -294,19 +332,17 @@ def solve_schedule(req: SolveRequest) -> dict:
         sec_day[(sec_id, day)].append((v, start_min, dur))
         fac_all_vars[fac_id].append((v, dur))
 
-    # ── SOFT: every block *should* be scheduled ──
-    # If the solver can't place everything, it leaves some unscheduled and
-    # the response reports them. DH reviews and fixes manually.
-    unscheduled_vars: List[tuple] = []  # (BoolVar, group_key)
+    # ── SOFT: every block should be scheduled ──
+    unscheduled_vars: List[tuple] = []
     for group_key, vs in block_group.items():
         model.Add(sum(vs) <= 1)
-        unscheduled = model.NewBoolVar(f"un_{group_key[0]}_{group_key[1]}_{group_key[2]}{group_key[3]}")
+        unscheduled = model.NewBoolVar(
+            f"un_{group_key[0]}_{group_key[1]}_{group_key[2]}{group_key[3]}"
+        )
         model.Add(sum(vs) + unscheduled == 1)
         unscheduled_vars.append((unscheduled, group_key))
 
     # ── HARD: overlap-aware constraints (BUCKETED) ──
-    # For each (entity, day, slot), at most one block that covers that slot.
-    # This is ~50x faster than the pairwise approach.
     def add_bucketed_exclusion(
         day_index: Dict[tuple, List],
         granularity: int = 30,
@@ -326,6 +362,25 @@ def solve_schedule(req: SolveRequest) -> dict:
     add_bucketed_exclusion(fac_day)
     add_bucketed_exclusion(room_day)
     add_bucketed_exclusion(sec_day)
+        # ── HARD: same-subject sessions must be on different days ──
+    # For a given (section, subject, kind), each session must land on a
+    # distinct day. This prevents 2 lecture sessions from stacking on
+    # Monday when they should be Mon+Thu or Tue+Fri.
+    session_by_day: Dict[tuple, List] = defaultdict(list)
+    for k, v in X.items():
+        sec_id, subj_id, kind, sess_idx, day, start_min, room_id, fac_id = k
+        session_by_day[(sec_id, subj_id, kind, day)].append(v)
+
+    # Group by (section, subject, kind) → list of (day, [vars for that day])
+    grouped: Dict[tuple, Dict[str, List]] = defaultdict(lambda: defaultdict(list))
+    for (sec_id, subj_id, kind, day), vars_list in session_by_day.items():
+        grouped[(sec_id, subj_id, kind)][day] = vars_list
+
+    # For each subject-in-section-in-kind, at most one session per day
+    for key, day_vars in grouped.items():
+        for day, vars_list in day_vars.items():
+            if len(vars_list) > 0:
+                model.Add(sum(vars_list) <= 1)
 
     # ── HARD: existing schedule lock ──
     for existing in req.existingSchedule:
@@ -350,14 +405,13 @@ def solve_schedule(req: SolveRequest) -> dict:
                 model.Add(v == 0)
 
     # ── HARD: visiting lecturer max hours ──
-    visiting_cap = int(req.config.visitingLecturerMaxHours) * 60  # minutes
+    visiting_cap = int(req.config.visitingLecturerMaxHours) * 60
     for fac in req.faculty:
         if fac.classification != "visiting_lecturer":
             continue
         entries = fac_all_vars.get(fac.facultyId, [])
         if not entries:
             continue
-        # Per-faculty cap: requiredHours if set, else config default
         cap_minutes = (
             int(fac.requiredHours) * 60
             if fac.requiredHours and fac.requiredHours > 0
@@ -390,7 +444,6 @@ def solve_schedule(req: SolveRequest) -> dict:
             pref_penalties.append(v)
 
     # ── OBJECTIVE ──
-    # Prioritize: schedule every block first, then minimize soft penalties.
     objective_terms = []
     if unscheduled_vars:
         objective_terms.append(1000 * sum(u for u, _ in unscheduled_vars))
