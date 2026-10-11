@@ -256,3 +256,27 @@ export async function updateSchedule(
 export async function deleteSchedule(id: string): Promise<void> {
   await api.delete(`/v1/schedules/${id}`);
 }
+
+// ────────────────────────────────────────────
+// Flag system
+// ────────────────────────────────────────────
+
+export async function flagSchedule(
+  id: string,
+  reason: string,
+): Promise<RawSchedule> {
+  const { data } = await api.post(`/v1/schedules/${id}/flag`, { reason });
+  return data.data;
+}
+
+export async function unflagSchedule(id: string): Promise<RawSchedule> {
+  const { data } = await api.delete(`/v1/schedules/${id}/flag`);
+  return data.data;
+}
+
+export async function fetchFlagged(termId: string): Promise<RawSchedule[]> {
+  const { data } = await api.get('/v1/schedules/flagged', {
+    params: { termId },
+  });
+  return data.data;
+}
