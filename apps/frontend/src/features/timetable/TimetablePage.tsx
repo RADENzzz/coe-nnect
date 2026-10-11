@@ -10,6 +10,8 @@ import {
   autoGenerateSchedule,
   clearAutoDrafts,
   fetchUnscheduled,
+  confirmAutoGenerate,
+  discardAutoGenerate,
   type RawSchedule,
   type UnscheduledBlock,
 } from '../../api/schedule.api';
@@ -1108,38 +1110,49 @@ export default function TimetablePage({ readOnly = false }: Props) {
         )}
       </Modal>
 
-      {autoPreview && (
-        <div className="fixed inset-0 z-50 bg-surface-container-lowest">
-          <AutoSchedulePreview
-            solvedSchedule={autoPreview}
-            unscheduledBlocks={autoUnscheduled}
-            scopeLabel={
-              activeTerm
-                ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
-                : undefined
-            }
-            onAccept={() => {
-              setAutoPreview(null);
-              setAutoUnscheduled([]);
-              queryClient.invalidateQueries({
-                queryKey: ['schedules', activeTerm?.termId],
-              });
-            }}
-            onCancel={async () => {
-              try {
-                await clearAutoDrafts(activeTerm!.termId);
-              } catch (err) {
-                console.error('Failed to clear drafts:', err);
+        {autoPreview && (
+          <div className="fixed inset-0 z-50 bg-surface-container-lowest">
+            <AutoSchedulePreview
+              solvedSchedule={autoPreview}
+              unscheduledBlocks={autoUnscheduled}
+              scopeLabel={
+                activeTerm
+                  ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+                  : undefined
               }
-              setAutoPreview(null);
-              setAutoUnscheduled([]);
-              queryClient.invalidateQueries({
-                queryKey: ['schedules', activeTerm?.termId],
-              });
-            }}
-          />
-        </div>
-      )}
+              onAccept={async () => {
+                try {
+                  await confirmAutoGenerate(activeTerm!.termId);
+                } catch (err) {
+                  console.error('Failed to confirm auto-generate:', err);
+                }
+                setAutoPreview(null);
+                setAutoUnscheduled([]);
+                queryClient.invalidateQueries({
+                  queryKey: ['schedules', activeTerm?.termId],
+                });
+                queryClient.invalidateQueries({
+                  queryKey: ['unscheduled', activeTerm?.termId],
+                });
+              }}
+              onCancel={async () => {
+                try {
+                  await discardAutoGenerate(activeTerm!.termId);
+                } catch (err) {
+                  console.error('Failed to discard auto-generate:', err);
+                }
+                setAutoPreview(null);
+                setAutoUnscheduled([]);
+                queryClient.invalidateQueries({
+                  queryKey: ['schedules', activeTerm?.termId],
+                });
+                queryClient.invalidateQueries({
+                  queryKey: ['unscheduled', activeTerm?.termId],
+                });
+              }}
+            />
+          </div>
+        )}
 
       {/* Unscheduled panel */}
       {unscheduledRecords.length > 0 && !autoPreview && (
