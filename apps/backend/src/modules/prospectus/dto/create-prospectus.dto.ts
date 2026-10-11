@@ -1,6 +1,7 @@
 import {
   IsNumberString,
   IsInt,
+  IsOptional,
   Min,
   Max,
   IsIn,
@@ -22,4 +23,34 @@ export class CreateProspectusDto {
 
   @IsIn(['1st', '2nd', 'summer'])
   semester: '1st' | '2nd' | 'summer';
+
+  // ── Multi-session scheduling (Phase 2) ──
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  lectureSessionsPerWeek?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(30)
+  @Max(240)
+  lectureMinutesPerSession?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  labSessionsPerWeek?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  @Max(300)
+  labMinutesPerSession?: number;
 }
