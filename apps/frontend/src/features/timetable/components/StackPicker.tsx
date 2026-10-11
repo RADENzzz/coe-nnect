@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import clsx from 'clsx';
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import { formatTime } from '../utils/time.util';
@@ -39,6 +40,8 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
   const dayLabel = DAY_LABEL[first.day] ?? first.day;
   const timeLabel = `${formatTime(first.startTime)} – ${formatTime(first.endTime)}`;
 
+  const flaggedCount = entries.filter((e) => e.flagged).length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <div
@@ -71,6 +74,12 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
             <p className="text-xs text-on-surface-variant mt-0.5">
               {dayLabel} · {timeLabel}
             </p>
+            {flaggedCount > 0 && (
+              <p className="text-xs text-rose-700 mt-1 flex items-center gap-1.5">
+                <Icon name="flag" filled size={13} />
+                {flaggedCount} flagged for review
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -89,15 +98,33 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
               <button
                 type="button"
                 onClick={() => onPick(e)}
-                className="w-full text-left px-5 py-3.5 hover:bg-surface-container-low active:bg-surface-container transition flex items-start gap-3"
+                className={clsx(
+                  'w-full text-left px-5 py-3.5 transition flex items-start gap-3',
+                  e.flagged
+                    ? 'bg-rose-50/60 hover:bg-rose-50 active:bg-rose-100/60'
+                    : 'hover:bg-surface-container-low active:bg-surface-container',
+                )}
               >
+                {/* Left stripe — rose if flagged, subject color otherwise */}
                 <span
                   className="w-1.5 self-stretch rounded-full shrink-0"
-                  style={{ backgroundColor: e.color }}
+                  style={{
+                    backgroundColor: e.flagged ? '#e11d48' : e.color,
+                  }}
                   aria-hidden
                 />
+
                 <div className="flex-1 min-w-0">
+                  {/* Row 1: subject code + section + load type + flag pill */}
                   <div className="flex items-baseline gap-2 flex-wrap">
+                    {e.flagged && (
+                      <Icon
+                        name="flag"
+                        filled
+                        size={14}
+                        className="text-rose-600 shrink-0 self-center"
+                      />
+                    )}
                     <span className="font-bold text-sm text-on-surface">
                       {e.subjectCode}
                     </span>
@@ -109,14 +136,39 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
                     <span className="text-[10px] uppercase tracking-wider px-1.5 py-px rounded bg-surface-container-high text-on-surface-variant">
                       {e.loadType}
                     </span>
+                    {e.flagged && (
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-px rounded bg-rose-600 text-white font-semibold">
+                        Flagged
+                      </span>
+                    )}
                   </div>
+
+                  {/* Row 2: subject title */}
                   <p className="text-xs text-on-surface-variant mt-0.5 truncate">
                     {e.subjectTitle || '—'}
                   </p>
+
+                  {/* Row 3: faculty + room */}
                   <p className="text-[11px] text-on-surface-variant mt-1">
                     {e.facultyName} · Room {e.roomNumber}
                   </p>
+
+                  {/* Row 4: flag reason (only if flagged) */}
+                  {e.flagged && e.flagReason && (
+                    <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5 rounded bg-white border border-rose-200">
+                      <Icon
+                        name="flag"
+                        filled
+                        size={12}
+                        className="text-rose-600 shrink-0 mt-0.5"
+                      />
+                      <p className="text-[11px] text-rose-900 leading-snug break-words">
+                        {e.flagReason}
+                      </p>
+                    </div>
+                  )}
                 </div>
+
                 <Icon
                   name="chevron_right"
                   size={18}
