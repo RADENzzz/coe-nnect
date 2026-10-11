@@ -1,3 +1,4 @@
+
 import {
   Injectable,
   NotFoundException,
@@ -5,6 +6,12 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import {
+  abbrToFull,
+  fullToAbbr,
+  abbrToFullSafe,
+  fullToAbbrSafe,
+} from '../../common/utils/day-mapping.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Faculty } from './entities/faculty.entity';
@@ -22,34 +29,6 @@ import { User } from '../users/entities/user.entity';
 // ────────────────────────────────────────────
 // day_of_week mapping
 // ────────────────────────────────────────────
-
-const ABBR_TO_FULL: Record<string, string> = {
-  MON: 'Monday',
-  TUE: 'Tuesday',
-  WED: 'Wednesday',
-  THU: 'Thursday',
-  FRI: 'Friday',
-  SAT: 'Saturday',
-  SUN: 'Sunday',
-};
-
-const FULL_TO_ABBR: Record<string, string> = {
-  Monday: 'MON',
-  Tuesday: 'TUE',
-  Wednesday: 'WED',
-  Thursday: 'THU',
-  Friday: 'FRI',
-  Saturday: 'SAT',
-  Sunday: 'SUN',
-};
-
-function abbrToFull(abbr: string): string {
-  return ABBR_TO_FULL[abbr] ?? abbr;
-}
-
-function fullToAbbr(full: string): string {
-  return FULL_TO_ABBR[full] ?? full;
-}
 
 function normalizeTime(t: string): string {
   return t.length === 5 ? `${t}:00` : t;
