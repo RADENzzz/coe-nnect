@@ -4,6 +4,8 @@ import {
   deleteSchedule,
   updateScheduleStatus,
   updateRemarks,
+  flagSchedule,
+  unflagSchedule,
 } from '../../../api/schedule.api';
 import type { ScheduleEntry, Day } from '../types';
 import Icon from '../../../components/ui/Icon';
@@ -64,6 +66,10 @@ export default function ScheduleDetailDrawer({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [unfinalizeOpen, setUnfinalizeOpen] = useState(false);
 
+  // ── Flag state ──
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [flagReason, setFlagReason] = useState('');
+
   useEffect(() => {
     setRemarks(entry?.remarks ?? '');
     setRemarksSaved(false);
@@ -71,6 +77,8 @@ export default function ScheduleDetailDrawer({
     setMoveOpen(false);
     setDeleteOpen(false);
     setUnfinalizeOpen(false);
+    setFlagOpen(false);
+    setFlagReason('');
   }, [entry?.id, entry?.remarks]);
 
   useEffect(() => {
@@ -79,7 +87,8 @@ export default function ScheduleDetailDrawer({
         e.key === 'Escape' &&
         !moveOpen &&
         !deleteOpen &&
-        !unfinalizeOpen
+        !unfinalizeOpen &&
+        !flagOpen
       )
         onClose();
     };
@@ -91,7 +100,7 @@ export default function ScheduleDetailDrawer({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen]);
+  }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen, flagOpen]);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(entry!.id),
@@ -133,6 +142,34 @@ export default function ScheduleDetailDrawer({
     },
   });
 
+  // ── Flag mutations ──
+  const flagMutation = useMutation({
+    mutationFn: (reason: string) => flagSchedule(entry!.id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      queryClient.invalidateQueries({ queryKey: ['flagged', termId] });
+      setFlagOpen(false);
+      setFlagReason('');
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? err?.message ?? 'Flag failed');
+      setFlagOpen(false);
+    },
+  });
+
+  const unflagMutation = useMutation({
+    mutationFn: () => unflagSchedule(entry!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      queryClient.invalidateQueries({ queryKey: ['flagged', termId] });
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? err?.message ?? 'Unflag failed');
+    },
+  });
+
   const handleDeleteClick = () => {
     if (!entry) return;
     setDeleteOpen(true);
@@ -159,17 +196,14 @@ export default function ScheduleDetailDrawer({
   if (!entry) return null;
 
   // ── Foreign-entry detection ──
-  // A DH viewing a schedule entry whose subject belongs to another department
-  // must see the drawer in read-only mode, regardless of the `readOnly` prop.
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
   const isForeignEntry =
-    isDH &&
-    !!entry.deptId &&
-    String(entry.deptId) !== myDeptId;
+    isDH && !!entry.deptId && String(entry.deptId) !== myDeptId;
 
   const locked = isLocked(entry.status);
   const writable = !readOnly && !isForeignEntry;
+  const canFlag = !readOnly;   // ← anyone signed-in can flag
 
   return (
     <>
@@ -234,6 +268,33 @@ export default function ScheduleDetailDrawer({
                 This entry is locked. Click <strong>Unfinalize</strong> to make
                 edits.
               </span>
+            </div>
+          )}
+
+          {/* ── Flag banner ── */}
+          {entry.flagged && (
+            <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
+              <Icon name="flag" filled size={16} className="shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">Flagged for review</p>
+                {entry.flagReason && (
+                  <p className="mt-0.5 break-words">{entry.flagReason}</p>
+                )}
+                {entry.flaggedAt && (
+                  <p className="mt-1 text-[10px] text-rose-700">
+                    {new Date(entry.flaggedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              {writable && (
+                <button
+                  onClick={() => unflagMutation.mutate()}
+                  disabled={unflagMutation.isPending}
+                  className="text-[10px] font-semibold px-2 py-1 rounded border border-rose-300 hover:bg-rose-100 disabled:opacity-50 transition whitespace-nowrap"
+                >
+                  {unflagMutation.isPending ? '…' : 'Clear flag'}
+                </button>
+              )}
             </div>
           )}
 
@@ -413,41 +474,75 @@ export default function ScheduleDetailDrawer({
             </div>
           </div>
 
-          {writable && (
-            <footer className="border-t border-surface-variant p-4 flex items-center gap-3 bg-surface-container-low pb-safe">
-              <button
-                onClick={handleDeleteClick}
-                disabled={deleteMutation.isPending || locked}
-                title={locked ? 'Unfinalize first to delete' : 'Delete entry'}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-50"
-              >
-                <Icon name="delete" size={16} />
-                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-              </button>
-              {onEdit && (
-                <button
-                  onClick={() => onEdit(entry)}
-                  disabled={locked}
-                  title={locked ? 'Unfinalize first to edit' : 'Edit entry'}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:bg-tertiary transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
-                >
-                  <Icon name="edit" size={16} />
-                  Edit Entry
-                </button>
-              )}
-            </footer>
-          )}
+          <footer className="border-t border-surface-variant p-4 flex items-center gap-2 bg-surface-container-low pb-safe flex-wrap">
+            {/* ── Flag / Unflag — visible to everyone ── */}
+            {canFlag && (
+              <>
+                {!entry.flagged ? (
+                  <button
+                    onClick={() => setFlagOpen(true)}
+                    disabled={flagMutation.isPending}
+                    title="Flag for review"
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition disabled:opacity-50"
+                  >
+                    <Icon name="flag" size={16} />
+                    Flag
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => unflagMutation.mutate()}
+                    disabled={unflagMutation.isPending || isForeignEntry}
+                    title={
+                      isForeignEntry
+                        ? 'Only the owner, Dean, or Admin can clear the flag'
+                        : 'Clear flag'
+                    }
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Icon name="flag" filled size={16} />
+                    {unflagMutation.isPending ? '…' : 'Unflag'}
+                  </button>
+                )}
+              </>
+            )}
 
-          {!writable && (
-            <footer className="border-t border-surface-variant p-4 flex items-center justify-end bg-surface-container-low pb-safe">
-              <button
-                onClick={onClose}
-                className="px-5 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:bg-tertiary transition"
-              >
-                Close
-              </button>
-            </footer>
-          )}
+            {/* ── Owner-only actions ── */}
+            {writable && (
+              <>
+                <button
+                  onClick={handleDeleteClick}
+                  disabled={deleteMutation.isPending || locked}
+                  title={locked ? 'Unfinalize first to delete' : 'Delete entry'}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-50"
+                >
+                  <Icon name="delete" size={16} />
+                  {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+                </button>
+                {onEdit && (
+                  <button
+                    onClick={() => onEdit(entry)}
+                    disabled={locked}
+                    title={locked ? 'Unfinalize first to edit' : 'Edit entry'}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:bg-tertiary transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
+                  >
+                    <Icon name="edit" size={16} />
+                    Edit Entry
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* ── Close — always present, right-aligned ── */}
+            <button
+              onClick={onClose}
+              className={clsx(
+                'px-5 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:bg-tertiary transition',
+                !writable && 'ml-auto',
+              )}
+            >
+              Close
+            </button>
+          </footer>
         </aside>
       </div>
 
@@ -522,6 +617,52 @@ export default function ScheduleDetailDrawer({
         <p className="text-sm text-slate-600">
           Unfinalize this entry? It will be editable again and set back to{' '}
           <strong>Draft</strong>.
+        </p>
+      </Modal>
+
+      {/* ── Flag modal ── */}
+      <Modal
+        open={flagOpen}
+        onClose={() => setFlagOpen(false)}
+        title="Flag for review"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setFlagOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => flagMutation.mutate(flagReason)}
+              disabled={
+                flagMutation.isPending || flagReason.trim().length < 3
+              }
+              className="px-4 py-2 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-50"
+            >
+              {flagMutation.isPending ? 'Flagging…' : 'Flag'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 mb-3">
+          Why are you flagging <strong>"{entry.subjectCode}"</strong>? The
+          owning department and admins will see this reason.
+        </p>
+        <textarea
+          value={flagReason}
+          onChange={(e) => setFlagReason(e.target.value)}
+          placeholder="e.g. Room under maintenance; requires reschedule"
+          rows={4}
+          maxLength={500}
+          autoFocus
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-rose-500 resize-none"
+        />
+        <p className="text-xs text-slate-400 mt-1 text-right">
+          {flagReason.length}/500
         </p>
       </Modal>
     </>
