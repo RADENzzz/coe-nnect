@@ -18,7 +18,13 @@ export interface RawSchedule {
   startTime: string | null;
   endTime: string | null;
   remarks: string | null;
-    subject?: {
+
+  flagged: boolean;
+  flaggedBy: string | null;
+  flaggedAt: string | null;
+  flagReason: string | null;
+
+  subject?: {
     subjectId: string;
     subjectCode: string;
     title: string;
