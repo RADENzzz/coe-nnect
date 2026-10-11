@@ -69,6 +69,12 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     endTime: end.slice(0, 5),
     status: raw.status,
     remarks: raw.remarks,
+
+    flagged: raw.flagged,
+    flaggedBy: raw.flaggedBy,
+    flaggedAt: raw.flaggedAt,
+    flagReason: raw.flagReason,
+
     loadType: (raw.loadType ?? 'lecture') as LoadType,
     deptId: raw.subject?.deptId ?? '',
     deptColor: '#800000',
