@@ -6,7 +6,12 @@ import Modal from '../../components/ui/Modal';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import { useAuthStore } from '../../store/auth.store';
 import { useOnlineUsers } from '../../hooks/use-online-users';
-import { fetchSchedules, fetchActiveTerm, type RawSchedule } from '../../api/schedule.api';
+import {
+  fetchSchedules,
+  fetchActiveTerm,
+  fetchFlagged,
+  type RawSchedule,
+} from '../../api/schedule.api';
 import {
   fetchFacultyRequests,
   type FacultyRequest,
@@ -125,19 +130,20 @@ function SummaryCard({
 }: {
   icon: string;
   badge?: string;
-  badgeVariant?: 'neutral' | 'success' | 'warning' | 'danger' | 'brand';
+  badgeVariant?: 'neutral' | 'success' | 'warning' | 'danger' | 'brand' | 'rose';
   label: string;
   value: string;
   footer?: React.ReactNode;
   onClick?: () => void;
   clickable?: boolean;
 }) {
-  const badgeClasses = {
+  const badgeClasses: Record<string, string> = {
     neutral: 'bg-slate-50 text-slate-600 border-slate-200',
     success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     warning: 'bg-amber-50 text-amber-700 border-amber-200',
     danger: 'bg-red-50 text-red-700 border-red-200',
     brand: 'bg-red-50 text-red-800 border-red-200',
+    rose: 'bg-rose-50 text-rose-700 border-rose-200',
   };
 
   const Wrapper = clickable ? 'button' : 'div';
@@ -160,7 +166,9 @@ function SummaryCard({
         <div className="flex items-center gap-1.5">
           {badge && (
             <span
-              className={`text-[11px] font-bold uppercase tracking-wide border px-2 py-0.5 ${badgeClasses[badgeVariant]}`}
+              className={`text-[11px] font-bold uppercase tracking-wide border px-2 py-0.5 ${
+                badgeClasses[badgeVariant] ?? badgeClasses.neutral
+              }`}
             >
               {badge}
             </span>
@@ -333,10 +341,88 @@ function RequestRow({
 }
 
 // ─────────────────────────────────────────────
+// Flagged Row
+// ─────────────────────────────────────────────
+
+function FlaggedRow({
+  s,
+  onOpen,
+}: {
+  s: RawSchedule;
+  onOpen: () => void;
+}) {
+  const day = scheduleDay(s);
+  const start = scheduleStart(s);
+  const end = scheduleEnd(s);
+  return (
+    <button
+      onClick={onOpen}
+      className="w-full text-left py-3 border-b border-slate-100 last:border-b-0 px-2 hover:bg-rose-50/60 transition-colors flex items-start gap-3"
+    >
+      <span
+        className="w-1 self-stretch rounded-full shrink-0 bg-rose-600"
+        aria-hidden
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <Icon
+            name="flag"
+            filled
+            size={14}
+            className="text-rose-600 shrink-0 self-center"
+          />
+          <span className="font-semibold text-slate-900 text-sm">
+            {s.subject?.subjectCode ?? '—'}
+          </span>
+          {s.section && (
+            <span className="text-xs text-slate-500">· {s.section}</span>
+          )}
+          <span className="text-[10px] uppercase tracking-wider px-1.5 py-px rounded bg-slate-100 text-slate-600 border border-slate-200 font-bold">
+            {s.loadType ?? 'lecture'}
+          </span>
+        </div>
+        <p className="text-xs text-slate-600 mt-0.5 truncate">
+          {s.subject?.title ?? '—'}
+        </p>
+        <p className="text-[11px] text-slate-500 mt-0.5">
+          {DAY_ABBR_TO_LABEL[day] ?? day}
+          {start && end ? ` · ${fmtTime(start)} – ${fmtTime(end)}` : ''}
+          {s.faculty ? ` · ${s.faculty.firstName} ${s.faculty.lastName}` : ''}
+          {s.room ? ` · Rm ${s.room.roomNumber}` : ''}
+        </p>
+        {s.flagReason && (
+          <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5 rounded bg-white border border-rose-200">
+            <Icon
+              name="flag"
+              filled
+              size={12}
+              className="text-rose-600 shrink-0 mt-0.5"
+            />
+            <p className="text-[11px] text-rose-900 leading-snug break-words">
+              {s.flagReason}
+            </p>
+          </div>
+        )}
+        {s.flaggedAt && (
+          <p className="text-[10px] text-rose-700 mt-1">
+            Flagged {relativeTime(s.flaggedAt)}
+          </p>
+        )}
+      </div>
+      <Icon
+        name="chevron_right"
+        size={18}
+        className="text-slate-400 shrink-0 mt-1"
+      />
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────
 // Dashboard Page
 // ─────────────────────────────────────────────
 
-type BreakdownKind = 'schedules' | 'tasks' | 'completion' | null;
+type BreakdownKind = 'schedules' | 'tasks' | 'completion' | 'flagged' | null;
 
 export default function DashboardPage() {
   const { firstName, deptName } = useDepartmentLabel();
@@ -355,6 +441,12 @@ export default function DashboardPage() {
   const { data: schedules = [], isLoading: schedLoading } = useQuery({
     queryKey: ['schedules', activeTerm?.termId],
     queryFn: () => fetchSchedules(activeTerm?.termId),
+    enabled: !!activeTerm?.termId,
+  });
+
+  const { data: flagged = [], isLoading: flaggedLoading } = useQuery({
+    queryKey: ['flagged', activeTerm?.termId],
+    queryFn: () => fetchFlagged(activeTerm!.termId),
     enabled: !!activeTerm?.termId,
   });
 
@@ -422,7 +514,10 @@ export default function DashboardPage() {
       ? Math.round((finalizedOrPublished / totalSchedules) * 100)
       : 0;
 
+  const flaggedCount = flagged.length;
+
   const isLoading = schedLoading || reqLoading;
+  const isFlaggedLoading = flaggedLoading;
 
   const recentActivity = [...myRequests]
     .sort(
@@ -435,6 +530,12 @@ export default function DashboardPage() {
   const schedulesValue = isLoading ? '—' : String(totalSchedules);
   const tasksValue = isLoading ? '—' : String(pendingIncoming.length);
   const completionValue = isLoading ? '—' : `${completionRate}%`;
+  const flaggedValue = isFlaggedLoading ? '—' : String(flaggedCount);
+
+  const handleOpenFlaggedEntry = (s: RawSchedule) => {
+    setBreakdown(null);
+    navigate(`/timetable?focus=${s.scheduleId}`);
+  };
 
   return (
     <>
@@ -482,8 +583,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Summary Cards — 4 tiles */}
+        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <SummaryCard
             icon="view_timeline"
             badge={activeTerm?.termName ?? 'No term'}
@@ -547,6 +648,33 @@ export default function DashboardPage() {
                   className="bg-[#5c1219] h-1.5 transition-all duration-500"
                   style={{ width: `${completionRate}%` }}
                 />
+              </div>
+            }
+          />
+
+          {/* ── Flagged for review ── */}
+          <SummaryCard
+            icon="flag"
+            badge={flaggedCount > 0 ? 'Action' : 'Clean'}
+            badgeVariant={flaggedCount > 0 ? 'rose' : 'success'}
+            label="Flagged for review"
+            value={flaggedValue}
+            clickable={!isFlaggedLoading && flaggedCount > 0}
+            onClick={() => setBreakdown('flagged')}
+            footer={
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-block w-2 h-2 ${
+                    flaggedCount > 0 ? 'bg-rose-500' : 'bg-emerald-500'
+                  }`}
+                />
+                <span className="text-xs text-slate-500">
+                  {flaggedCount > 0
+                    ? `${flaggedCount} entr${
+                        flaggedCount === 1 ? 'y' : 'ies'
+                      } need review`
+                    : 'Nothing flagged'}
+                </span>
               </div>
             }
           />
@@ -654,10 +782,10 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-slate-100">
             {otherDeptHeads.map((head) => {
-            const isOnline = onlineUserIds.has(head.user_id);
-            const dept = departments.find(
-              (d) => String(d.deptId) === String(head.dept_id),
-            );
+              const isOnline = onlineUserIds.has(head.user_id);
+              const dept = departments.find(
+                (d) => String(d.deptId) === String(head.dept_id),
+              );
               return (
                 <div
                   key={head.user_id}
@@ -721,8 +849,10 @@ export default function DashboardPage() {
                 const da = scheduleDay(a);
                 const db = scheduleDay(b);
                 if (da !== db) return da.localeCompare(db);
-                return timeToMinutes(scheduleStart(a) || '00:00') -
-                  timeToMinutes(scheduleStart(b) || '00:00');
+                return (
+                  timeToMinutes(scheduleStart(a) || '00:00') -
+                  timeToMinutes(scheduleStart(b) || '00:00')
+                );
               })
               .map((s) => (
                 <ScheduleRow key={s.scheduleId} s={s} />
@@ -821,6 +951,31 @@ export default function DashboardPage() {
                 barColor="bg-emerald-500"
               />
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Flagged for review modal ── */}
+      <Modal
+        open={breakdown === 'flagged'}
+        onClose={() => setBreakdown(null)}
+        title="Flagged for review"
+        description={`${flaggedCount} ${
+          flaggedCount === 1 ? 'entry' : 'entries'
+        } flagged${activeTerm ? ` · ${activeTerm.termName}` : ''}`}
+        size="lg"
+      >
+        {flaggedCount === 0 ? (
+          <BreakdownEmpty message="Nothing flagged. Looking good." />
+        ) : (
+          <div>
+            {flagged.map((s) => (
+              <FlaggedRow
+                key={s.scheduleId}
+                s={s}
+                onOpen={() => handleOpenFlaggedEntry(s)}
+              />
+            ))}
           </div>
         )}
       </Modal>
