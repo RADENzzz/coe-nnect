@@ -319,33 +319,57 @@ export class SchedulingService {
    * Only DH (own dept), Dean, or Admin may flag.
    * Re-flagging overwrites the previous flag.
    */
-async flagSchedule(
-  id: string,
-  reason: string,
-  user: User,   // ← import from users/entities
-): Promise<Schedule> {
-  const found = await this.assertOwnership(id, user);
-  found.flagged = true;
-  found.flaggedBy = user.userId;   // ← direct, no fallback
-  found.flaggedAt = new Date();
-  found.flagReason = reason;
-  return this.scheduleRepo.save(found);
-}
+  async flagSchedule(
+    id: string,
+    reason: string,
+    user: User,
+  ): Promise<Schedule> {
+    if (!user?.userId) {
+      throw new ForbiddenException('Not authenticated');
+    }
+
+    const found = await this.scheduleRepo.findOne({
+      where: { scheduleId: id },
+    });
+    if (!found) throw new NotFoundException('Schedule entry not found');
+
+    found.flagged = true;
+    found.flaggedBy = user.userId;
+    found.flaggedAt = new Date();
+    found.flagReason = reason;
+
+    this.logger.log(
+      `Schedule ${id} flagged by ${user.userId} (role=${user.role}, dept=${user.deptId}): ${reason}`,
+    );
+    return this.scheduleRepo.save(found);
+  }
   /**
    * Clear a flag.
    * Only the original flagger, a Dean, or an Admin may clear.
    * A DH can also clear any flag on their own department's entries.
    */
   async unflagSchedule(id: string, user: User): Promise<Schedule> {
-    const found = await this.assertOwnership(id, user);
+    if (!user?.userId) {
+      throw new ForbiddenException('Not authenticated');
+    }
+
+    const found = await this.scheduleRepo.findOne({
+      where: { scheduleId: id },
+    });
+    if (!found) throw new NotFoundException('Schedule entry not found');
+
     const isAdmin = user.role === 'administrator';
     const isDean = user.role === 'college_dean';
     const isFlagger =
       found.flaggedBy && String(found.flaggedBy) === String(user.userId);
+    const isOwnerDH =
+      user.role === 'department_head' &&
+      user.deptId != null &&
+      String(found.deptId) === String(user.deptId);
 
-    if (!isAdmin && !isDean && !isFlagger) {
+    if (!isAdmin && !isDean && !isFlagger && !isOwnerDH) {
       throw new ForbiddenException(
-        'Only the person who flagged this entry, a Dean, or an Administrator can clear the flag.',
+        'Only the person who flagged this entry, the owning department head, a Dean, or an Administrator can clear the flag.',
       );
     }
 
