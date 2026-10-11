@@ -60,7 +60,6 @@ export class Schedule {
   })
   loadType: LoadType | null;
 
-  // ── NEW: day/time columns (added in schema v2) ──
   @Column({
     name: 'day_of_week',
     type: 'enum',
@@ -78,6 +77,14 @@ export class Schedule {
   @Column({ type: 'text', nullable: true })
   remarks: string | null;
 
+  @Column({
+    type: 'enum',
+    enum: ['draft', 'review', 'finalized', 'published'],
+    default: 'draft',
+  })
+  status: ScheduleStatus;
+
+  // ── NEW: Flag system ──
   @Column({ type: 'boolean', default: false })
   flagged: boolean;
 
@@ -90,20 +97,11 @@ export class Schedule {
   @Column({ name: 'flag_reason', type: 'text', nullable: true })
   flagReason: string | null;
 
-  @Column({
-    type: 'enum',
-    enum: ['draft', 'review', 'finalized', 'published'],
-    default: 'draft',
-  })
-  status: ScheduleStatus;
-
   @Column({ name: 'created_at', type: 'timestamptz', default: () => 'now()' })
   createdAt: Date;
 
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
   updatedAt: Date;
-
-
 
   @ManyToOne(() => Subject) @JoinColumn({ name: 'subject_id' }) subject: Subject;
   @ManyToOne(() => Faculty) @JoinColumn({ name: 'faculty_id' }) faculty: Faculty;
@@ -113,5 +111,4 @@ export class Schedule {
   @ManyToOne(() => Section, { nullable: true })
   @JoinColumn({ name: 'section_id' })
   sectionRef: Section | null;
-
 }
