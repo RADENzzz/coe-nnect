@@ -281,6 +281,29 @@ export async function validatePlot(payload: ValidatePlotPayload): Promise<Valida
   return data.data;
 }
 
+export interface PlotMultiSessionPayload {
+  startTime: string;
+  endTime: string;
+  dayOfWeek: string;
+}
+
+export interface PlotMultiPayload {
+  termId: string;
+  subjectId: string;
+  facultyId?: string;
+  roomId?: string;
+  section?: string;
+  loadType?: 'lecture' | 'laboratory' | 'other';
+  sessions: PlotMultiSessionPayload[];
+}
+
+export async function plotMulti(
+  payload: PlotMultiPayload,
+): Promise<RawSchedule[]> {
+  const { data } = await api.post('/v1/schedules/plot-multi', payload);
+  return data.data;
+}
+
 export async function updateSchedule(
   id: string,
   payload: {
