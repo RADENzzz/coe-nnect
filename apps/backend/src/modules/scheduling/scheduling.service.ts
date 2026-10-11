@@ -19,6 +19,7 @@ import { RuleContextBuilder } from './services/rule-context.builder';
 import { SolverClient } from './services/solver.client';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
+import { PlotMultiDto } from './dto/plot-multi.dto';
 
 type DayOfWeek =
   | 'Monday'
@@ -243,6 +244,144 @@ export class SchedulingService {
     status: 'draft',
   });
   return this.scheduleRepo.save(entry);
+  }
+
+  /**
+   * Plot the same subject on multiple days in one request.
+   *
+   * Validates every session against the engine BEFORE saving. If any
+   * session fails, none are saved (all-or-nothing).
+   *
+   * Ownership rules are identical to `plot()` — the whole batch is
+   * evaluated against the same subject/section/faculty/room ownership
+   * checks.
+   */
+  async plotMulti(
+    dto: PlotMultiDto,
+    user?: any,
+  ): Promise<Schedule[]> {
+    if (!dto.facultyId) {
+      throw new BadRequestException('facultyId is required.');
+    }
+    if (!dto.sessions || dto.sessions.length === 0) {
+      throw new BadRequestException('At least one session is required.');
+    }
+
+    // ── Ownership: fetch subject dept once ──
+    const { data: subjectRow, error: subjErr } = await this.supabase
+      .getAdminClient()
+      .from('subject')
+      .select('dept_id')
+      .eq('subject_id', dto.subjectId)
+      .maybeSingle();
+
+    if (subjErr) {
+      this.logger.warn(`plotMulti: subject lookup failed: ${subjErr.message}`);
+    }
+
+    const subjectDeptId = subjectRow?.dept_id
+      ? String(subjectRow.dept_id)
+      : null;
+
+    if (user && user.role === 'department_head') {
+      const myDept = user.deptId != null ? String(user.deptId) : null;
+      if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
+        throw new ForbiddenException(
+          'You can only plot subjects that belong to your own department.',
+        );
+      }
+    }
+
+    // ── Validate every session against the engine first ──
+    const errors: Array<{ dayOfWeek: string; reason: string }> = [];
+
+    for (const session of dto.sessions) {
+      const startMin = this.timeToMinutes(session.startTime);
+      const endMin = this.timeToMinutes(session.endTime);
+
+      if (endMin <= startMin) {
+        errors.push({
+          dayOfWeek: session.dayOfWeek,
+          reason: `${session.dayOfWeek}: end time must be after start time.`,
+        });
+        continue;
+      }
+      if (startMin < 7 * 60) {
+        errors.push({
+          dayOfWeek: session.dayOfWeek,
+          reason: `${session.dayOfWeek}: class cannot start before 7:00 AM.`,
+        });
+        continue;
+      }
+      if (endMin > 19 * 60) {
+        errors.push({
+          dayOfWeek: session.dayOfWeek,
+          reason: `${session.dayOfWeek}: class cannot end after 7:00 PM.`,
+        });
+        continue;
+      }
+
+      const context = await this.ruleContextBuilder.build({
+        termId: dto.termId,
+        subjectId: dto.subjectId,
+        facultyId: dto.facultyId,
+        roomId: dto.roomId,
+        section: dto.section,
+        dayOfWeek: session.dayOfWeek,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        loadType: dto.loadType,
+      });
+
+      const engineResult = this.constraints.evaluate(context);
+      if (!engineResult.valid) {
+        const reasons = engineResult.hardConflicts
+          .map((c) => `${c.ruleId}: ${c.reason}`)
+          .join('; ');
+        errors.push({
+          dayOfWeek: session.dayOfWeek,
+          reason: `${session.dayOfWeek}: ${reasons}`,
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      const summary = errors.map((e) => e.reason).join('\n');
+      throw new BadRequestException(
+        `Cannot plot — hard conflicts detected:\n${summary}`,
+      );
+    }
+
+    // ── Resolve section id once ──
+    const sectionId = await this.resolveSectionId(dto.section);
+    if (dto.section && !sectionId) {
+      throw new BadRequestException(
+        `Section "${dto.section}" not found. It may have been deleted or renamed.`,
+      );
+    }
+
+    // ── Build all rows ──
+    const now = new Date();
+    const rows = dto.sessions.map((s) => ({
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      facultyId: dto.facultyId ?? null,
+      roomId: dto.roomId ?? null,
+      timeslotId: null,
+      section: dto.section ?? null,
+      sectionId,
+      deptId: subjectDeptId,
+      loadType: dto.loadType ?? null,
+      dayOfWeek: s.dayOfWeek as DayOfWeek,
+      startTime:
+        s.startTime.length === 5 ? `${s.startTime}:00` : s.startTime,
+      endTime: s.endTime.length === 5 ? `${s.endTime}:00` : s.endTime,
+      status: 'draft' as const,
+    }));
+
+    // ── Save all at once (single transaction) ──
+    const created = this.scheduleRepo.create(rows);
+    return this.scheduleRepo.save(created);
   }
 
   async update(
