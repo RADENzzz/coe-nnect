@@ -33,6 +33,14 @@ type DayOfWeek =
 export class SchedulingService {
   private readonly logger = new Logger(SchedulingService.name);
 
+  /**
+   * In-memory fast-path guard. Prevents two simultaneous requests in the
+   * SAME backend process from hitting the DB lock at the same time. The
+   * DB lock is the real gate; this just skips the round-trip for the
+   * common case.
+   */
+  private readonly autoGenerateInFlight = new Set<string>();
+
   constructor(
     @InjectRepository(Schedule) private scheduleRepo: Repository<Schedule>,
     @InjectRepository(Term) private termRepo: Repository<Term>,
@@ -417,66 +425,118 @@ export class SchedulingService {
       `Auto-generate requested: term=${termId} dept=${deptId} by=${userId}`,
     );
 
-    const problem = await this.buildSolverProblem(termId, deptId);
-
-    // ── Pre-flight: room sufficiency check ──
-    const sufficiency = this.analyzeRoomSufficiency(problem);
-    if (!sufficiency.sufficient) {
-      this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
-      return {
-        success: false,
-        message: sufficiency.hint,
-        roomDeficits: sufficiency.deficits,
-      };
-    }
-
-    let result: any;
-    try {
-      result = await this.solverClient.solve(problem);
-    } catch (err) {
-      this.logger.error('Solver service call failed', err as Error);
-      return { success: false, message: 'Solver service unavailable' };
-    }
-
-    if (result.status !== 'success') {
-      return {
-        success: false,
-        message: result.message ?? 'Solver returned no solution',
-      };
-    }
-
-    const validation = await this.validateGeneratedSchedule(
-      termId,
-      result.schedule,
-    );
-
-    if (validation.hardFailures.length > 0) {
-      this.logger.error(
-        `Solver produced ${validation.hardFailures.length} hard failures`,
-        validation.hardFailures,
+    // ── Fast path: in-memory guard (same process) ──
+    if (this.autoGenerateInFlight.has(termId)) {
+      this.logger.warn(
+        `Auto-generate rejected (in-memory): already running for term=${termId}`,
       );
       return {
         success: false,
-        message: 'Generated schedule failed constraint validation',
-        failures: validation.hardFailures,
+        message:
+          'An auto-generate is already running for this term. ' +
+          'Please wait for it to finish, then try again.',
       };
     }
 
-    const saved = await this.persistDraftSchedule(
-      termId,
-      deptId,
-      result.schedule,
-      userId,
-    );
-    await this.persistUnscheduled(termId, result.unscheduled ?? []);
+    // ── Real gate: DB row lock (across processes) ──
+    const locked = await this.tryAcquireAutoGenerateLock(termId, userId);
+    if (!locked) {
+      this.logger.warn(
+        `Auto-generate rejected (db lock): another run in progress for term=${termId}`,
+      );
+      return {
+        success: false,
+        message:
+          'An auto-generate is already running for this term. ' +
+          'Please wait for it to finish, then try again.',
+      };
+    }
 
-    return {
-      success: true,
-      scheduleCount: saved.length,
-      solveTimeSeconds: result.solveTimeSeconds ?? null,
-      warnings: validation.softWarnings,
-      unscheduled: result.unscheduled ?? [],
-    };
+    this.autoGenerateInFlight.add(termId);
+
+    try {
+      const problem = await this.buildSolverProblem(termId, deptId);
+
+      // ── Pre-flight: room sufficiency check ──
+      const sufficiency = this.analyzeRoomSufficiency(problem);
+      if (!sufficiency.sufficient) {
+        this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
+        // Release: this is a terminal error, don't hold the lock
+        this.autoGenerateInFlight.delete(termId);
+        await this.releaseAutoGenerateLock(termId, userId);
+        return {
+          success: false,
+          message: sufficiency.hint,
+          roomDeficits: sufficiency.deficits,
+        };
+      }
+
+      let result: any;
+      try {
+        result = await this.solverClient.solve(problem);
+      } catch (err) {
+        this.logger.error('Solver service call failed', err as Error);
+        this.autoGenerateInFlight.delete(termId);
+        await this.releaseAutoGenerateLock(termId, userId);
+        return { success: false, message: 'Solver service unavailable' };
+      }
+
+      if (result.status !== 'success') {
+        this.autoGenerateInFlight.delete(termId);
+        await this.releaseAutoGenerateLock(termId, userId);
+        return {
+          success: false,
+          message: result.message ?? 'Solver returned no solution',
+        };
+      }
+
+      const validation = await this.validateGeneratedSchedule(
+        termId,
+        result.schedule,
+      );
+
+      if (validation.hardFailures.length > 0) {
+        this.logger.error(
+          `Solver produced ${validation.hardFailures.length} hard failures`,
+          validation.hardFailures,
+        );
+        this.autoGenerateInFlight.delete(termId);
+        await this.releaseAutoGenerateLock(termId, userId);
+        return {
+          success: false,
+          message: 'Generated schedule failed constraint validation',
+          failures: validation.hardFailures,
+        };
+      }
+
+      const saved = await this.persistDraftSchedule(
+        termId,
+        deptId,
+        result.schedule,
+        userId,
+      );
+      await this.persistUnscheduled(termId, result.unscheduled ?? []);
+
+      // ═══════════════════════════════════════════════════════════
+      // SUCCESS: keep the lock held in 'pending_confirm' state.
+      // The user must click Accept or Discard to release it.
+      // ═══════════════════════════════════════════════════════════
+      await this.markAutoGeneratePending(termId, userId);
+      this.autoGenerateInFlight.delete(termId);
+
+      return {
+        success: true,
+        scheduleCount: saved.length,
+        solveTimeSeconds: result.solveTimeSeconds ?? null,
+        warnings: validation.softWarnings,
+        unscheduled: result.unscheduled ?? [],
+      };
+    } catch (err) {
+      // ── Unexpected error: release lock, clear guard, rethrow ──
+      this.autoGenerateInFlight.delete(termId);
+      await this.releaseAutoGenerateLock(termId, userId);
+      throw err;
+    }
   }
 
   // ────────────────────────────────────────────
@@ -1428,6 +1488,91 @@ export class SchedulingService {
 
     return new Set(['H-4', 'H-6', 'S-7', 'S-2']);
   }
+
+  // ════════════════════════════════════════════
+  // AUTO-GENERATE LOCK (row-based, PostgREST-safe)
+  // ════════════════════════════════════════════
+
+  private async tryAcquireAutoGenerateLock(
+    termId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .rpc('try_acquire_auto_generate_lock', {
+        p_term_id: Number(termId),
+        p_user_id: userId,
+        p_ttl_seconds: 120,
+      });
+
+    if (error) {
+      this.logger.error(
+        `Failed to acquire auto-generate lock for term=${termId}: ${error.message}`,
+      );
+      return false;
+    }
+
+    return data === true;
+  }
+
+  private async releaseAutoGenerateLock(
+    termId: string,
+    userId: string,
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .getAdminClient()
+      .rpc('release_auto_generate_lock', {
+        p_term_id: Number(termId),
+        p_user_id: userId,
+      });
+
+    if (error) {
+      this.logger.warn(
+        `Failed to release auto-generate lock for term=${termId}: ${error.message}`,
+      );
+    }
+  }
+
+    private async markAutoGeneratePending(
+    termId: string,
+    userId: string,
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .getAdminClient()
+      .rpc('mark_auto_generate_pending', {
+        p_term_id: Number(termId),
+        p_user_id: userId,
+        p_ttl_seconds: 1800,
+      });
+    if (error) {
+      this.logger.warn(
+        `Failed to mark pending lock for term=${termId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Called when the user accepts the preview.
+   * Lock is released; drafts remain.
+   */
+  async confirmAutoGenerate(termId: string, userId: string): Promise<void> {
+    await this.releaseAutoGenerateLock(termId, userId);
+    this.logger.log(`Auto-generate confirmed for term=${termId}`);
+  }
+
+  /**
+   * Called when the user discards the preview.
+   * Lock is released AND drafts are deleted.
+   */
+  async discardAutoGenerate(termId: string, userId: string): Promise<{ deleted: number }> {
+    const result = await this.clearAutoDrafts(termId);
+    await this.releaseAutoGenerateLock(termId, userId);
+    this.logger.log(
+      `Auto-generate discarded for term=${termId} (${result.deleted} rows deleted)`,
+    );
+    return result;
+  }
+  
 private async assertOwnership(
   scheduleId: string,
   user: any,

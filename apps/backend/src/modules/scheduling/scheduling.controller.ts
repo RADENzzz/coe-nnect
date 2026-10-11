@@ -28,9 +28,9 @@ import { FlagScheduleDto } from './dto/flag-schedule.dto';
 export class SchedulingController {
   constructor(private service: SchedulingService) {}
 
+
   // ═══════════════════════════════════════════════════════════
-  // STATIC-PREFIX ROUTES — must come BEFORE parameterized (:id)
-  // routes, or Nest will match the static prefix as an :id.
+  // STATIC-PREFIX ROUTES 
   // ═══════════════════════════════════════════════════════════
 
   @Get('unscheduled')
@@ -39,7 +39,7 @@ export class SchedulingController {
     return { data };
   }
 
-  @Get('flagged')                                    // ← NEW
+  @Get('flagged')
   @Roles('administrator', 'college_dean', 'department_head')
   async findFlagged(
     @Query('termId') termId: string,
@@ -81,6 +81,28 @@ export class SchedulingController {
     return { data };
   }
 
+  @Auditable({ action: 'schedule.auto_confirm', source: 'Scheduling' })   // ← NEW
+  @Roles('administrator', 'department_head')                              // ← NEW
+  @Post('auto-generate/confirm')                                          // ← NEW
+  async confirmAutoGenerate(                                              // ← NEW
+    @Body('termId') termId: string,                                       // ← NEW
+    @Req() req: any,                                                      // ← NEW
+  ) {                                                                     // ← NEW
+    await this.service.confirmAutoGenerate(termId, req.user.id);          // ← NEW
+    return { data: { success: true } };                                   // ← NEW
+  }                                                                       // ← NEW
+
+  @Auditable({ action: 'schedule.auto_discard', source: 'Scheduling' })   // ← NEW
+  @Roles('administrator', 'department_head')                              // ← NEW
+  @Post('auto-generate/discard')                                          // ← NEW
+  async discardAutoGenerate(                                              // ← NEW
+    @Body('termId') termId: string,                                       // ← NEW
+    @Req() req: any,                                                      // ← NEW
+  ) {                                                                     // ← NEW
+    const data = await this.service.discardAutoGenerate(termId, req.user.id); // ← NEW
+    return { data };                                                      // ← NEW
+  }                                                                       // ← NEW
+
   @Auditable({ action: 'schedule.clear_auto_drafts', source: 'Scheduling' })
   @Roles('administrator', 'department_head')
   @Delete('auto-drafts')
@@ -88,6 +110,8 @@ export class SchedulingController {
     const data = await this.service.clearAutoDrafts(termId);
     return { data };
   }
+
+  // ... rest unchanged ...
 
   // ═══════════════════════════════════════════════════════════
   // LIST ROUTES
