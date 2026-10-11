@@ -12,6 +12,8 @@ import {
   fetchUnscheduled,
   confirmAutoGenerate,
   discardAutoGenerate,
+  abandonAutoGenerate,
+  getPendingAutoGenerate,
   type RawSchedule,
   type UnscheduledBlock,
 } from '../../api/schedule.api';
@@ -153,6 +155,22 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoPreview, setAutoPreview] = useState<ScheduleEntry[] | null>(null);
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
 
+
+  
+  // Warn the user before leaving if there's an unresolved auto-generate preview.
+  // Prevents accidentally orphaning the pending_confirm lock.
+  useEffect(() => {
+    if (!autoPreview) return;
+
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [autoPreview]);
+
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
   const { data: prospectus = [] } = useQuery({
@@ -162,6 +180,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     staleTime: 5 * 60 * 1000,
   });
 
+  
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialViewApplied, setInitialViewApplied] = useState(false);
   useEffect(() => {
@@ -220,7 +239,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     queryFn: () => fetchSchedules(activeTerm?.termId),
     enabled: !!user && !!activeTerm,
   });
-
+  
   const { data: unscheduledRecords = [] } = useQuery({
     queryKey: ['unscheduled', activeTerm?.termId],
     queryFn: () => fetchUnscheduled(activeTerm!.termId),
@@ -233,6 +252,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
     enabled: !!user && !readOnly,
     staleTime: 5 * 60 * 1000,
   });
+
+    // ── Pending auto-generate preview check ──
+  // Detects an unresolved preview from a previous session.
+  const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =
+    useQuery({
+      queryKey: ['pending-auto-generate', activeTerm?.termId],
+      queryFn: () => getPendingAutoGenerate(activeTerm!.termId),
+      enabled: !!activeTerm?.termId && !!user,
+      refetchOnMount: true,
+      staleTime: 30 * 1000,
+    });
 
   const { data: faculty = [] } = useQuery({
     queryKey: ['faculty'],
@@ -332,6 +362,55 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [allEntries],
   );
 
+    // ── Resume an abandoned preview ──
+  // Fetches the current drafts (which persist in the DB from the previous
+  // generate) and re-shows the AutoSchedulePreview modal.
+  const handleResumePendingPreview = useCallback(async () => {
+    if (!activeTerm) return;
+    try {
+      const fresh = await fetchSchedules(activeTerm.termId);
+      const entries = fresh.map(toEntry);
+      setAutoPreview(entries);
+
+      const unscheduled = await fetchUnscheduled(activeTerm.termId);
+      // Map to the shape AutoSchedulePreview expects
+      setAutoUnscheduled(
+        unscheduled.map((u) => ({
+          sectionId: u.sectionId ?? '',
+          sectionCode: u.sectionCode,
+          subjectId: u.subjectId,
+          subjectCode: u.subjectCode,
+          kind: u.kind,
+          sessionIndex: u.sessionIndex,
+        })),
+      );
+    } catch (err) {
+      console.error('Failed to resume preview:', err);
+      setAlertState({
+        title: 'Could not resume preview',
+        tone: 'error',
+        items: [{ message: (err as Error).message, tone: 'error' }],
+      });
+    }
+  }, [activeTerm]);
+
+  // ── Discard the pending preview ──
+  const handleDiscardPendingPreview = useCallback(async () => {
+    if (!activeTerm) return;
+    try {
+      await discardAutoGenerate(activeTerm.termId);
+      // Refresh the pending check so the banner disappears
+      refetchPendingAutoGenerate();
+    } catch (err) {
+      console.error('Failed to discard pending preview:', err);
+      setAlertState({
+        title: 'Could not discard preview',
+        tone: 'error',
+        items: [{ message: (err as Error).message, tone: 'error' }],
+      });
+    }
+  }, [activeTerm, refetchPendingAutoGenerate]);
+
   const {
     moveEntry: handleMove,
     isPending: movePending,
@@ -374,9 +453,22 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const handleAutoGenerate = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
+
+    // ── Clean slate: release any stale lock held by THIS user for this term ──
+    // If another DH holds the lock, this is a harmless no-op (backend scopes
+    // the release by (term_id, user_id)). If we previously abandoned a
+    // preview, this clears our old lock so we can generate again.
+    try {
+      await abandonAutoGenerate(activeTerm.termId);
+    } catch {
+      // Ignore — no lock held or network hiccup; the real request below
+      // will surface any real error.
+    }
+
     setAutoGenerating(true);
     try {
       const result = await autoGenerateSchedule(activeTerm.termId, myDeptId);
+      // ... rest unchanged
 
       if (!result.success) {
         if (result.roomDeficits && result.roomDeficits.length > 0) {
@@ -613,6 +705,49 @@ export default function TimetablePage({ readOnly = false }: Props) {
           )}
         </div>
       </div>
+
+      {/* ═══ Resume Pending Auto-Generate Preview Banner ═══ */}
+      {activeTerm &&
+        pendingAutoGenerate &&
+        pendingAutoGenerate.heldByUser &&
+        pendingAutoGenerate.state === 'pending_confirm' &&
+        !autoPreview && (
+          <div className="mb-4 p-4 rounded-xl border border-amber-300 bg-amber-50 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <Icon
+                name="warning"
+                filled
+                size={20}
+                className="text-amber-700 shrink-0 mt-0.5"
+              />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-900">
+                  You have an unresolved auto-generate preview
+                </p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  It was generated in a previous session and is still pending
+                  your review. Resume to accept it, or discard to clear it.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleDiscardPendingPreview}
+                className="px-3 py-2 text-xs font-semibold text-amber-800 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 transition"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleResumePendingPreview}
+                className="px-4 py-2 text-xs font-semibold bg-[#5c1219] text-white rounded-lg hover:opacity-90 transition"
+              >
+                Resume Preview
+              </button>
+            </div>
+          </div>
+        )}
 
       {/* Filter panel */}
       {activeTerm && (
@@ -1120,36 +1255,30 @@ export default function TimetablePage({ readOnly = false }: Props) {
                   ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
                   : undefined
               }
-              onAccept={async () => {
-                try {
-                  await confirmAutoGenerate(activeTerm!.termId);
-                } catch (err) {
-                  console.error('Failed to confirm auto-generate:', err);
-                }
-                setAutoPreview(null);
-                setAutoUnscheduled([]);
-                queryClient.invalidateQueries({
-                  queryKey: ['schedules', activeTerm?.termId],
-                });
-                queryClient.invalidateQueries({
-                  queryKey: ['unscheduled', activeTerm?.termId],
-                });
-              }}
-              onCancel={async () => {
-                try {
-                  await discardAutoGenerate(activeTerm!.termId);
-                } catch (err) {
-                  console.error('Failed to discard auto-generate:', err);
-                }
-                setAutoPreview(null);
-                setAutoUnscheduled([]);
-                queryClient.invalidateQueries({
-                  queryKey: ['schedules', activeTerm?.termId],
-                });
-                queryClient.invalidateQueries({
-                  queryKey: ['unscheduled', activeTerm?.termId],
-                });
-              }}
+                onAccept={async () => {
+                  try {
+                    await confirmAutoGenerate(activeTerm!.termId);
+                  } catch (err) {
+                    console.error('Failed to confirm auto-generate:', err);
+                  }
+                  setAutoPreview(null);
+                  setAutoUnscheduled([]);
+                  queryClient.invalidateQueries({ queryKey: ['schedules', activeTerm?.termId] });
+                  queryClient.invalidateQueries({ queryKey: ['unscheduled', activeTerm?.termId] });
+                  refetchPendingAutoGenerate();   // ← NEW
+                }}
+                onCancel={async () => {
+                  try {
+                    await discardAutoGenerate(activeTerm!.termId);
+                  } catch (err) {
+                    console.error('Failed to discard auto-generate:', err);
+                  }
+                  setAutoPreview(null);
+                  setAutoUnscheduled([]);
+                  queryClient.invalidateQueries({ queryKey: ['schedules', activeTerm?.termId] });
+                  queryClient.invalidateQueries({ queryKey: ['unscheduled', activeTerm?.termId] });
+                  refetchPendingAutoGenerate();   // ← NEW
+                }}
             />
           </div>
         )}

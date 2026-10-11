@@ -142,6 +142,15 @@ export async function discardAutoGenerate(
   return data.data;
 }
 
+export async function abandonAutoGenerate(
+  termId: string,
+): Promise<{ success: boolean }> {
+  const { data } = await api.post('/v1/schedules/auto-generate/abandon', {
+    termId,
+  });
+  return data.data;
+}
+
 export async function clearAutoDrafts(
   termId: string,
 ): Promise<{ deleted: number }> {
@@ -161,6 +170,21 @@ export interface UnscheduledRecord {
   kind: 'lecture' | 'lab';
   sessionIndex: number;
   reason: string | null;
+}
+
+export interface PendingAutoGenerateInfo {
+  heldByUser: boolean;
+  state: 'running' | 'pending_confirm';
+  expiresAt: string;
+}
+
+export async function getPendingAutoGenerate(
+  termId: string,
+): Promise<PendingAutoGenerateInfo | null> {
+  const { data } = await api.get('/v1/schedules/auto-generate/pending', {
+    params: { termId },
+  });
+  return data.data;
 }
 
 export async function fetchUnscheduled(
