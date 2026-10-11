@@ -54,10 +54,26 @@ function ClassBlockBase({
   const isLab = entry.loadType === 'laboratory';
   const locked =
     entry.status === 'finalized' || entry.status === 'published';
+  const isFlagged = !!entry.flagged;
 
   const isCompact = durationMinutes <= 30;
   const isNarrow = laneCount >= 3;
   const showSecondary = metrics.showSecondaryLines && !isCompact && !isNarrow;
+
+  // Ring priority: conflict > warning > flagged > foreign
+  const ringClass = entry.hasConflict
+    ? 'ring-2 ring-red-500 animate-pulse'
+    : entry.hasWarning
+    ? 'ring-2 ring-amber-400'
+    : isFlagged
+    ? 'ring-2 ring-rose-500'
+    : isForeign
+    ? 'ring-2 ring-slate-300 ring-offset-1'
+    : '';
+
+  // Top-left badge: locked > foreign > flagged (only one badge)
+  // But we want the flag icon to also show if the block is flagged.
+  // We prioritize lock/foreign as the leftmost icon, and add flag as secondary.
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -90,7 +106,9 @@ function ClassBlockBase({
       tabIndex={0}
       aria-label={`${entry.subjectCode}${
         entry.sectionCode ? ' ' + entry.sectionCode : ''
-      }, ${formatTime(entry.startTime)} to ${formatTime(entry.endTime)}`}
+      }, ${formatTime(entry.startTime)} to ${formatTime(entry.endTime)}${
+        entry.flagged ? ', flagged for review' : ''
+      }${entry.hasConflict ? ', has conflict' : ''}`}
       className={clsx(
         'rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
@@ -98,39 +116,54 @@ function ClassBlockBase({
         locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
-          entry.hasConflict && 'ring-2 ring-red-500 animate-pulse',
-          entry.hasWarning && !entry.hasConflict && 'ring-2 ring-amber-400',
-          isForeign && !entry.hasConflict && !entry.hasWarning && 'ring-2 ring-slate-300 ring-offset-1',
+        ringClass,
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
-      {locked && (
-        <span
-          className="absolute top-0.5 left-1 bg-black/70 text-white rounded px-1 py-px leading-none pointer-events-none flex items-center"
-          title="Finalized — locked"
-        >
-          <Icon name="lock" size={9} />
-        </span>
-      )}
+      {/* ── Top-left badges ──
+          Priority: locked/foreign (leftmost), then flag badge to the right */}
+      <div className="absolute top-0.5 left-1 flex items-center gap-0.5 pointer-events-none">
+        {locked && (
+          <span
+            className="bg-black/70 text-white rounded px-1 py-px leading-none flex items-center"
+            title="Finalized — locked"
+          >
+            <Icon name="lock" size={9} />
+          </span>
+        )}
+        {!locked && isForeign && (
+          <span
+            className="bg-black/40 text-white rounded px-1 py-px leading-none flex items-center"
+            title="Read-only — other department"
+          >
+            <Icon name="visibility" size={9} />
+          </span>
+        )}
+        {isFlagged && (
+          <span
+            className="bg-rose-600 text-white rounded px-1 py-px leading-none flex items-center"
+            title={entry.flagReason ?? 'Flagged for review'}
+          >
+            <Icon name="flag" filled size={9} />
+          </span>
+        )}
+      </div>
 
-      {/* NEW: foreign read-only indicator */}
-      {isForeign && !locked && (
-        <span
-          className="absolute top-0.5 left-1 bg-black/40 text-white rounded px-1 py-px leading-none pointer-events-none flex items-center"
-          title="Read-only — other department"
-        >
-          <Icon name="visibility" size={9} />
-        </span>
-      )}
-
+      {/* ── Top-right overlap counter ── */}
       {overlapCount > 1 && (
         <span className="absolute top-0.5 right-1 bg-black/70 text-white text-[9px] font-bold rounded px-1 py-px leading-none pointer-events-none">
           +{overlapCount - 1}
         </span>
       )}
 
-      {/* Line 1: subject code + section */}
-      <div className={clsx('font-bold truncate', locked || isForeign ? 'pl-4' : 'pr-4')}>
+      {/* ── Line 1: subject code + section ──
+          Left padding needs to account for badges */}
+      <div
+        className={clsx(
+          'font-bold truncate',
+          (locked || isForeign || isFlagged) && 'pl-5',
+        )}
+      >
         {entry.subjectCode}
         {entry.sectionCode && showSecondary && (
           <span className="font-normal opacity-90 ml-1">
@@ -139,16 +172,22 @@ function ClassBlockBase({
         )}
       </div>
 
-      {/* Line 2: faculty */}
+      {/* ── Line 2: faculty ── */}
       {showSecondary && (
-        <div className="truncate opacity-90" style={{ fontSize: metrics.blockFontSize - 1 }}>
+        <div
+          className="truncate opacity-90"
+          style={{ fontSize: metrics.blockFontSize - 1 }}
+        >
           {entry.facultyName}
         </div>
       )}
 
-      {/* Line 3: time */}
+      {/* ── Line 3: time ── */}
       {showSecondary && durationMinutes >= 60 && (
-        <div className="truncate opacity-80" style={{ fontSize: metrics.blockFontSize - 1 }}>
+        <div
+          className="truncate opacity-80"
+          style={{ fontSize: metrics.blockFontSize - 1 }}
+        >
           {formatTime(entry.startTime)}–{formatTime(entry.endTime)}
         </div>
       )}
