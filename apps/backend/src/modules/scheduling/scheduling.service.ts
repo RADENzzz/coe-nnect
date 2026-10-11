@@ -17,6 +17,7 @@ import { ConstraintsService } from '../constraints/constraints.service';
 import { RuleContextBuilder } from './services/rule-context.builder';
 import { SolverClient } from './services/solver.client';
 import { SupabaseService } from '../../database/supabase.service';
+import { User } from '../users/entities/user.entity';
 
 type DayOfWeek =
   | 'Monday'
@@ -318,38 +319,29 @@ export class SchedulingService {
    * Only DH (own dept), Dean, or Admin may flag.
    * Re-flagging overwrites the previous flag.
    */
-  async flagSchedule(
-    id: string,
-    reason: string,
-    user: any,
-  ): Promise<Schedule> {
-    const found = await this.assertOwnership(id, user);
-
-    found.flagged = true;
-    found.flaggedBy = user.userId ?? user.id ?? null;
-    found.flaggedAt = new Date();
-    found.flagReason = reason;
-
-    this.logger.log(
-      `Schedule ${id} flagged by ${found.flaggedBy}: ${reason}`,
-    );
-    return this.scheduleRepo.save(found);
-  }
-
+async flagSchedule(
+  id: string,
+  reason: string,
+  user: User,   // ← import from users/entities
+): Promise<Schedule> {
+  const found = await this.assertOwnership(id, user);
+  found.flagged = true;
+  found.flaggedBy = user.userId;   // ← direct, no fallback
+  found.flaggedAt = new Date();
+  found.flagReason = reason;
+  return this.scheduleRepo.save(found);
+}
   /**
    * Clear a flag.
    * Only the original flagger, a Dean, or an Admin may clear.
    * A DH can also clear any flag on their own department's entries.
    */
-  async unflagSchedule(id: string, user: any): Promise<Schedule> {
+  async unflagSchedule(id: string, user: User): Promise<Schedule> {
     const found = await this.assertOwnership(id, user);
-
-    // Additional: only flagger, admin, or dean can clear
     const isAdmin = user.role === 'administrator';
     const isDean = user.role === 'college_dean';
     const isFlagger =
-      found.flaggedBy &&
-      String(found.flaggedBy) === String(user.userId ?? user.id);
+      found.flaggedBy && String(found.flaggedBy) === String(user.userId);
 
     if (!isAdmin && !isDean && !isFlagger) {
       throw new ForbiddenException(
@@ -362,7 +354,7 @@ export class SchedulingService {
     found.flaggedAt = null;
     found.flagReason = null;
 
-    this.logger.log(`Schedule ${id} unflagged by ${user.userId ?? user.id}`);
+    this.logger.log(`Schedule ${id} unflagged by ${user.userId}`);
     return this.scheduleRepo.save(found);
   }
 
