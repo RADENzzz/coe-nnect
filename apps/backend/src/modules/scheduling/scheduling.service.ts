@@ -1533,7 +1533,7 @@ export class SchedulingService {
     }
   }
 
-    private async markAutoGeneratePending(
+  private async markAutoGeneratePending(
     termId: string,
     userId: string,
   ): Promise<void> {
@@ -1542,7 +1542,7 @@ export class SchedulingService {
       .rpc('mark_auto_generate_pending', {
         p_term_id: Number(termId),
         p_user_id: userId,
-        p_ttl_seconds: 1800,
+        p_ttl_seconds: 600, 
       });
     if (error) {
       this.logger.warn(
@@ -1571,6 +1571,58 @@ export class SchedulingService {
       `Auto-generate discarded for term=${termId} (${result.deleted} rows deleted)`,
     );
     return result;
+  }
+
+    /**
+   * Release the lock WITHOUT deleting drafts.
+   * Used when a user reopens the page after abandoning a preview, or
+   * fires a fresh Auto-Generate while holding a stale lock from a
+   * previous session.
+   *
+   * Only affects locks held by THIS user for THIS term. If another user
+   * holds the lock, this is a no-op (the release function is scoped by
+   * (term_id, user_id)).
+   */
+  async abandonAutoGenerate(
+    termId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.releaseAutoGenerateLock(termId, userId);
+    this.logger.log(`Auto-generate abandoned for term=${termId} by=${userId}`);
+  }
+
+    /**
+   * Return the current auto-generate lock for a term, if any.
+   * Used by the frontend to detect abandoned previews (state = 'pending_confirm')
+   * and offer the user to Resume or Discard.
+   */
+  async getAutoGenerateLock(
+    termId: string,
+    userId: string,
+  ): Promise<{
+    heldByUser: boolean;
+    state: 'running' | 'pending_confirm';
+    expiresAt: string;
+  } | null> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .rpc('get_auto_generate_lock', { p_term_id: Number(termId) });
+
+    if (error) {
+      this.logger.warn(
+        `Failed to get auto-generate lock for term=${termId}: ${error.message}`,
+      );
+      return null;
+    }
+
+    if (!data || data.length === 0) return null;
+
+    const row = data[0];
+    return {
+      heldByUser: String(row.held_by) === String(userId),
+      state: row.state as 'running' | 'pending_confirm',
+      expiresAt: row.expires_at,
+    };
   }
   
 private async assertOwnership(

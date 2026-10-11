@@ -81,6 +81,17 @@ export class SchedulingController {
     return { data };
   }
 
+  @Auditable({ action: 'schedule.auto_abandon', source: 'Scheduling' })
+  @Roles('administrator', 'department_head')
+  @Post('auto-generate/abandon')
+  async abandonAutoGenerate(
+    @Body('termId') termId: string,
+    @Req() req: any,
+  ) {
+    await this.service.abandonAutoGenerate(termId, req.user.id);
+    return { data: { success: true } };
+  }
+
   @Auditable({ action: 'schedule.auto_confirm', source: 'Scheduling' })   // ← NEW
   @Roles('administrator', 'department_head')                              // ← NEW
   @Post('auto-generate/confirm')                                          // ← NEW
@@ -91,6 +102,16 @@ export class SchedulingController {
     await this.service.confirmAutoGenerate(termId, req.user.id);          // ← NEW
     return { data: { success: true } };                                   // ← NEW
   }                                                                       // ← NEW
+
+  @Get('auto-generate/pending')
+  @Roles('administrator', 'department_head')
+  async getPendingAutoGenerate(
+    @Query('termId') termId: string,
+    @Req() req: any,
+  ) {
+    const data = await this.service.getAutoGenerateLock(termId, req.user.id);
+    return { data };
+  }
 
   @Auditable({ action: 'schedule.auto_discard', source: 'Scheduling' })   // ← NEW
   @Roles('administrator', 'department_head')                              // ← NEW
