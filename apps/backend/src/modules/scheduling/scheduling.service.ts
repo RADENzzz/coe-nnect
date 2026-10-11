@@ -592,7 +592,11 @@ export class SchedulingService {
 
     const { data: prospectus, error: prosErr } = await db
       .from('prospectus')
-      .select('prospectus_id, program_id, subject_id, year_level, semester')
+      .select(
+        'prospectus_id, program_id, subject_id, year_level, semester, ' +
+        'lecture_sessions_per_week, lecture_minutes_per_session, ' +
+        'lab_sessions_per_week, lab_minutes_per_session',
+      )
       .in('program_id', programIds)
       .eq('is_active', true)
       .eq('semester', termSemester);
@@ -601,7 +605,7 @@ export class SchedulingService {
       throw new Error(`Failed to load prospectus: ${prosErr.message}`);
 
     const subjectIds = Array.from(
-      new Set((prospectus ?? []).map((p) => String(p.subject_id))),
+      new Set((prospectus ?? []).map((p: any) => String(p.subject_id))),
     );
     if (subjectIds.length === 0) {
       throw new BadRequestException('Prospectus has no subjects');
@@ -736,6 +740,10 @@ export class SchedulingService {
         subjectId: String(p.subject_id),
         yearLevel: p.year_level,
         semester: p.semester,
+        lecture_sessions_per_week: Number(p.lecture_sessions_per_week ?? 1),
+        lecture_minutes_per_session: Number(p.lecture_minutes_per_session ?? 90),
+        lab_sessions_per_week: Number(p.lab_sessions_per_week ?? 1),
+        lab_minutes_per_session: Number(p.lab_minutes_per_session ?? 180),
       })),
       faculty: (faculty ?? []).map((f) => ({
         facultyId: String(f.faculty_id),
