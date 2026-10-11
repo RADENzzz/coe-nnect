@@ -8,7 +8,6 @@ import {
   fetchSchedules,
   fetchActiveTerm,
   autoGenerateSchedule,
-  clearAutoDrafts,
   fetchUnscheduled,
   confirmAutoGenerate,
   discardAutoGenerate,
@@ -51,9 +50,7 @@ const DAY_MAP: Record<string, Day> = {
 
 /**
  * Returns the loading message + progress (0-100) based on how long the
- * auto-generate has been running. Progress is a soft estimate — the solver
- * typically takes 5-15s, so we use a curve that fills up quickly at first
- * then asymptotically approaches 95%.
+ * auto-generate has been running.
  */
 function getGenerationProgressMessage(elapsedMs: number): {
   label: string;
@@ -61,8 +58,6 @@ function getGenerationProgressMessage(elapsedMs: number): {
 } {
   const sec = elapsedMs / 1000;
 
-  // Soft progress curve: reaches ~80% at 10s, ~95% at 20s, never 100
-  // Formula: 100 * (1 - exp(-sec / 6))
   const raw = 1 - Math.exp(-sec / 6);
   const progress = Math.min(95, Math.round(raw * 100));
 
@@ -97,9 +92,9 @@ function AutoGenerateButton({
   elapsedMs,
   onClick,
 }: AutoGenerateButtonProps) {
-const { label, progress } = isServerSide
-  ? { label: 'Other user generating…', progress: 60 }
-  : getGenerationProgressMessage(elapsedMs);
+  const { label, progress } = isServerSide
+    ? { label: 'Other user generating…', progress: 60 }
+    : getGenerationProgressMessage(elapsedMs);
 
   return (
     <button
@@ -108,9 +103,8 @@ const { label, progress } = isServerSide
       aria-busy={isGenerating}
       aria-live="polite"
       className={[
-        // FIXED dimensions — same for idle and loading
         'relative inline-flex items-center justify-center gap-2',
-        'px-3 w-[240px] h-[38px]',                 // ← w (fixed), not min-w
+        'px-3 w-[240px] h-[38px]',
         'text-sm font-semibold rounded-lg transition',
         'overflow-hidden',
         isGenerating
@@ -118,7 +112,6 @@ const { label, progress } = isServerSide
           : 'border border-primary text-primary hover:bg-primary/5',
       ].join(' ')}
     >
-      {/* Loading background bar */}
       {isGenerating && (
         <span
           aria-hidden
@@ -127,7 +120,6 @@ const { label, progress } = isServerSide
         />
       )}
 
-      {/* Idle content */}
       {!isGenerating && (
         <>
           <Icon name="auto_awesome" size={16} className="relative z-10 shrink-0" />
@@ -135,7 +127,6 @@ const { label, progress } = isServerSide
         </>
       )}
 
-      {/* Generating content — must fit inside w-[240px] */}
       {isGenerating && (
         <>
           <span
@@ -215,7 +206,6 @@ function defaultDensityForViewport(): GridDensity {
   return 'compact';
 }
 
-
 interface Props {
   readOnly?: boolean;
 }
@@ -262,7 +252,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
   const [serverSideGenerating, setServerSideGenerating] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
-
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
 
   // ── Warn before leaving if a generate is running or preview is open ──
@@ -278,7 +267,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [autoPreview, autoGenerating]);
 
-    // ── Tick every 500ms while a generation is running ──
+  // ── Tick every 500ms while a generation is running ──
   useEffect(() => {
     if (!autoGenerating) {
       setGenerationElapsedMs(0);
@@ -362,7 +351,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   });
 
   // ── Count of existing auto-generated drafts for this term ──
-  // Moved up so handleAutoGenerate can reference it without "used before declaration".
   const autoDraftCount = useMemo(() => {
     if (!schedules) return 0;
     return schedules.filter(
@@ -420,7 +408,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     return () => clearInterval(interval);
   }, [serverSideGenerating, activeTerm?.termId, refetchPendingAutoGenerate]);
 
-  // Combined flag
   const isGenerating = autoGenerating || serverSideGenerating;
 
   const { data: faculty = [] } = useQuery({
@@ -550,12 +537,18 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm]);
 
-  // ── Discard the pending preview ──
+  // ── Discard the pending preview (from banner) ──
   const handleDiscardPendingPreview = useCallback(async () => {
     if (!activeTerm) return;
+
+    // Optimistic: clear the pending banner immediately.
+    queryClient.setQueryData(
+      ['pending-auto-generate', activeTerm.termId],
+      null,
+    );
+
     try {
       await discardAutoGenerate(activeTerm.termId);
-      refetchPendingAutoGenerate();
     } catch (err) {
       console.error('Failed to discard pending preview:', err);
       setAlertState({
@@ -564,7 +557,63 @@ export default function TimetablePage({ readOnly = false }: Props) {
         items: [{ message: (err as Error).message, tone: 'error' }],
       });
     }
-  }, [activeTerm, refetchPendingAutoGenerate]);
+    refetchPendingAutoGenerate();
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
+
+  // ── Accept the auto-generate preview (from modal) ──
+  const handleAcceptPreview = useCallback(async () => {
+    if (!activeTerm) return;
+
+    // Optimistic: clear the pending banner immediately so it can't be
+    // clicked while the confirm request is in flight.
+    queryClient.setQueryData(
+      ['pending-auto-generate', activeTerm.termId],
+      null,
+    );
+
+    try {
+      await confirmAutoGenerate(activeTerm.termId);
+    } catch (err) {
+      console.error('Failed to confirm auto-generate:', err);
+    }
+
+    setAutoPreview(null);
+    setAutoUnscheduled([]);
+    queryClient.invalidateQueries({
+      queryKey: ['schedules', activeTerm.termId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['unscheduled', activeTerm.termId],
+    });
+    refetchPendingAutoGenerate();
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
+
+  // ── Discard the auto-generate preview (from modal) ──
+  const handleDiscardPreview = useCallback(async () => {
+    if (!activeTerm) return;
+
+    // Optimistic: clear the pending banner immediately.
+    queryClient.setQueryData(
+      ['pending-auto-generate', activeTerm.termId],
+      null,
+    );
+
+    try {
+      await discardAutoGenerate(activeTerm.termId);
+    } catch (err) {
+      console.error('Failed to discard auto-generate:', err);
+    }
+
+    setAutoPreview(null);
+    setAutoUnscheduled([]);
+    queryClient.invalidateQueries({
+      queryKey: ['schedules', activeTerm.termId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['unscheduled', activeTerm.termId],
+    });
+    refetchPendingAutoGenerate();
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
 
   const {
     moveEntry: handleMove,
@@ -666,7 +715,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm, myDeptId, queryClient, refetchPendingAutoGenerate]);
 
-  // ── Entry point from the button. Gate on overwrite confirmation. ──
+  // ── Entry point from button. Gate on overwrite confirmation. ──
   const handleAutoGenerate = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
 
@@ -855,7 +904,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
           {writable && activeTerm && (
             <button
               onClick={() => setPlotOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary transition"
+              disabled={isGenerating}
+              title={isGenerating ? 'Wait for the current generation to finish' : undefined}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
             >
               <Icon name="add" size={16} />
               Plot Subject
@@ -1337,7 +1388,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
       <MoveScheduleConfirmModal pending={pendingConfirmation} />
 
-      {/* Generic alert modal — structured items */}
+      {/* Generic alert modal */}
       <Modal
         open={!!alertState}
         onClose={() => setAlertState(null)}
@@ -1427,38 +1478,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
                 : undefined
             }
-            onAccept={async () => {
-              try {
-                await confirmAutoGenerate(activeTerm!.termId);
-              } catch (err) {
-                console.error('Failed to confirm auto-generate:', err);
-              }
-              setAutoPreview(null);
-              setAutoUnscheduled([]);
-              queryClient.invalidateQueries({
-                queryKey: ['schedules', activeTerm?.termId],
-              });
-              queryClient.invalidateQueries({
-                queryKey: ['unscheduled', activeTerm?.termId],
-              });
-              refetchPendingAutoGenerate();
-            }}
-            onCancel={async () => {
-              try {
-                await discardAutoGenerate(activeTerm!.termId);
-              } catch (err) {
-                console.error('Failed to discard auto-generate:', err);
-              }
-              setAutoPreview(null);
-              setAutoUnscheduled([]);
-              queryClient.invalidateQueries({
-                queryKey: ['schedules', activeTerm?.termId],
-              });
-              queryClient.invalidateQueries({
-                queryKey: ['unscheduled', activeTerm?.termId],
-              });
-              refetchPendingAutoGenerate();
-            }}
+            onAccept={handleAcceptPreview}
+            onCancel={handleDiscardPreview}
           />
         </div>
       )}
