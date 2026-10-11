@@ -124,6 +124,24 @@ export async function autoGenerateSchedule(
   return data.data;
 }
 
+export async function confirmAutoGenerate(
+  termId: string,
+): Promise<{ success: boolean }> {
+  const { data } = await api.post('/v1/schedules/auto-generate/confirm', {
+    termId,
+  });
+  return data.data;
+}
+
+export async function discardAutoGenerate(
+  termId: string,
+): Promise<{ deleted: number }> {
+  const { data } = await api.post('/v1/schedules/auto-generate/discard', {
+    termId,
+  });
+  return data.data;
+}
+
 export async function clearAutoDrafts(
   termId: string,
 ): Promise<{ deleted: number }> {
