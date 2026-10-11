@@ -1338,12 +1338,15 @@ export default function TimetablePage({ readOnly = false }: Props) {
             deptName: d.deptName,
           }))}
           subjects={subjects.map((s) => {
-            const years = prospectus
-              .filter((p) => p.subjectId === s.subjectId)
-              .map((p) => ({
-                yearLevel: p.yearLevel,
-                semester: p.semester,
-              }));
+            const entries = prospectus.filter(
+              (p) => p.subjectId === s.subjectId,
+            );
+            const years = entries.map((p) => ({
+              yearLevel: p.yearLevel,
+              semester: p.semester,
+            }));
+            // Take the first matching prospectus entry's pattern.
+            const first = entries[0];
             return {
               subjectId: s.subjectId,
               subjectCode: s.subjectCode,
@@ -1352,6 +1355,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
               labUnits: s.labUnits,
               deptId: s.deptId,
               prospectusYears: years,
+              lectureSessionsPerWeek: first?.lectureSessionsPerWeek ?? 1,
+              labSessionsPerWeek: first?.labSessionsPerWeek ?? 1,
             };
           })}
           faculty={faculty.map((f) => ({
@@ -1364,6 +1369,15 @@ export default function TimetablePage({ readOnly = false }: Props) {
             roomId: r.roomId,
             roomNumber: r.roomNumber,
             roomType: r.roomType,
+          }))}
+          existingCounts={(schedules ?? []).map((s) => ({
+            scheduleId: s.scheduleId,
+            section: s.section,
+            subjectId: s.subjectId,
+            loadType: (s.loadType ?? 'lecture') as
+              | 'lecture'
+              | 'laboratory'
+              | 'other',
           }))}
         />
       )}

@@ -26,11 +26,7 @@ const DAYS = [
   'Saturday',
 ] as const;
 
-/**
- * Boundaries inclusive of operating-hours end (19:00).
- * Values stay 24h internally; display is AM/PM via formatTime().
- */
-const TIME_OPTIONS = generateSlotBoundaries(); // ['07:00', ..., '18:30', '19:00']
+const TIME_OPTIONS = generateSlotBoundaries();
 
 const DAY_ABBR_TO_FULL: Record<string, string> = {
   MON: 'Monday',
@@ -50,6 +46,9 @@ interface SubjectOption {
   labUnits: number;
   deptId?: string;
   prospectusYears?: Array<{ yearLevel: number; semester: string }>;
+  // ── Multi-session limits (Phase 2) ──
+  lectureSessionsPerWeek?: number;
+  labSessionsPerWeek?: number;
 }
 
 interface FacultyOption {
@@ -78,9 +77,15 @@ interface Props {
   subjects: SubjectOption[];
   faculty: FacultyOption[];
   rooms: RoomOption[];
-  /** When provided, the modal runs in edit mode. */
   editing?: ScheduleEntry | null;
   departments?: DepartmentOption[];
+  /** Existing plotted entries for the term — used for session-limit enforcement. */
+  existingCounts?: Array<{
+    scheduleId: string;
+    section: string | null;
+    subjectId: string;
+    loadType: 'lecture' | 'laboratory' | 'other';
+  }>;
 }
 
 const EMPTY_FORM = {
@@ -103,6 +108,7 @@ export default function PlotSubjectModal({
   rooms,
   editing = null,
   departments = [],
+  existingCounts = [],
 }: Props) {
   const queryClient = useQueryClient();
   const profile = useAuthStore((s) => s.profile);
@@ -120,7 +126,6 @@ export default function PlotSubjectModal({
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // ── Filter state ──
   const [filterDept, setFilterDept] = useState('');
   const [filterYear, setFilterYear] = useState('');
   const [filterSem, setFilterSem] = useState('');
@@ -129,23 +134,20 @@ export default function PlotSubjectModal({
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
 
-  // Start times: all boundaries except the last (can't start at 19:00)
   const startOptions = useMemo(() => TIME_OPTIONS.slice(0, -1), []);
 
-  // End times: boundaries strictly after the selected start
   const endOptions = useMemo(() => {
     const startIdx = TIME_OPTIONS.indexOf(form.startTime);
     if (startIdx === -1) return TIME_OPTIONS.slice(1);
     return TIME_OPTIONS.slice(startIdx + 1);
   }, [form.startTime]);
 
-  // ── Filtered subject list ──
   const filteredSubjects = useMemo(() => {
     return subjects.filter((s) => {
       if (filterDept && String(s.deptId ?? '') !== filterDept) return false;
       if (filterYear || filterSem) {
         const years = s.prospectusYears ?? [];
-        if (years.length === 0) return false; // No prospectus entry — exclude
+        if (years.length === 0) return false;
         const match = years.some((y) => {
           if (filterYear && String(y.yearLevel) !== filterYear) return false;
           if (filterSem && y.semester !== filterSem) return false;
@@ -157,7 +159,6 @@ export default function PlotSubjectModal({
     });
   }, [subjects, filterDept, filterYear, filterSem]);
 
-  // Clear selected subject if filters make it invalid
   useEffect(() => {
     if (!form.subjectId) return;
     const stillValid = filteredSubjects.some(
@@ -168,7 +169,6 @@ export default function PlotSubjectModal({
     }
   }, [filteredSubjects, form.subjectId]);
 
-  // ── Faculty grouped by department ──
   const facultyGroups = useMemo(() => {
     const groups = new Map<string, FacultyOption[]>();
     for (const f of faculty) {
@@ -181,16 +181,12 @@ export default function PlotSubjectModal({
       if (!groups.has(label)) groups.set(label, []);
       groups.get(label)!.push(f);
     }
-    // Return as sorted array of [label, faculty[]] entries
     return Array.from(groups.entries()).sort((a, b) =>
       a[0].localeCompare(b[0]),
     );
   }, [faculty, departments]);
 
-    // Prefill / reset when the modal opens or the editing target changes
   useEffect(() => {
-    // Default filter: DHs see their own department pre-selected.
-    // Admin/Dean start with "All departments".
     const defaultDept =
       profile?.role === 'department_head' && myDeptId ? myDeptId : '';
 
@@ -236,7 +232,6 @@ export default function PlotSubjectModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing, myDeptId, profile?.role]);
 
-  // Auto-correct load type when the subject changes
   useEffect(() => {
     if (!selectedSubject) return;
     if (form.loadType === 'laboratory' && !allowsLaboratory) {
@@ -247,7 +242,6 @@ export default function PlotSubjectModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSubject?.subjectId, allowsLaboratory, allowsLecture]);
 
-  // If start time changes and end time is now invalid, bump end time
   useEffect(() => {
     const startIdx = TIME_OPTIONS.indexOf(form.startTime);
     const endIdx = TIME_OPTIONS.indexOf(form.endTime);
@@ -258,6 +252,57 @@ export default function PlotSubjectModal({
       }
     }
   }, [form.startTime, form.endTime]);
+
+  // ── Session-limit enforcement (Phase 2) ──
+  const sessionStatus = useMemo(() => {
+    if (!form.subjectId || !form.section) {
+      return {
+        current: 0,
+        limit: null as number | null,
+        exceeded: false,
+        message: null as string | null,
+      };
+    }
+
+    const subject = subjects.find((s) => s.subjectId === form.subjectId);
+    if (!subject) {
+      return { current: 0, limit: null, exceeded: false, message: null };
+    }
+
+    const loadType = form.loadType;
+    let limit: number | null = null;
+    if (loadType === 'lecture') {
+      limit = subject.lectureSessionsPerWeek ?? 1;
+    } else if (loadType === 'laboratory') {
+      limit = subject.labSessionsPerWeek ?? 1;
+    }
+
+    if (limit == null) {
+      return { current: 0, limit: null, exceeded: false, message: null };
+    }
+
+    const current = existingCounts.filter(
+      (e) =>
+        e.subjectId === form.subjectId &&
+        e.section === form.section &&
+        e.loadType === loadType &&
+        e.scheduleId !== editing?.id,
+    ).length;
+
+    const exceeded = current >= limit;
+    const message = exceeded
+      ? `This section already has ${current} of ${limit} ${loadType} session${limit === 1 ? '' : 's'} plotted for ${subject.subjectCode}. The prospectus allows a maximum of ${limit}.`
+      : null;
+
+    return { current, limit, exceeded, message };
+  }, [
+    form.subjectId,
+    form.section,
+    form.loadType,
+    subjects,
+    existingCounts,
+    editing?.id,
+  ]);
 
   // Debounced live validation
   useEffect(() => {
@@ -335,6 +380,7 @@ export default function PlotSubjectModal({
     e.preventDefault();
     if (!form.facultyId) return;
     if (submitting) return;
+    if (sessionStatus.exceeded) return; // hard block
 
     setSubmitting(true);
     try {
@@ -396,7 +442,8 @@ export default function PlotSubjectModal({
     !form.subjectId ||
     !form.roomId ||
     !form.facultyId ||
-    (touched && (validation?.hardConflicts.length ?? 0) > 0);
+    (touched && (validation?.hardConflicts.length ?? 0) > 0) ||
+    sessionStatus.exceeded;
 
   const hasActiveFilter = filterDept || filterYear || filterSem;
 
@@ -429,7 +476,6 @@ export default function PlotSubjectModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* ── Filters ── (hidden in edit mode since subject is locked) */}
           {!isEditMode && (
             <div className="rounded-lg border border-surface-variant bg-surface-container-low p-3">
               <div className="flex items-center justify-between mb-2">
@@ -450,14 +496,13 @@ export default function PlotSubjectModal({
                   </button>
                 )}
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <select
                   value={filterDept}
                   onChange={(e) => setFilterDept(e.target.value)}
                   className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
                 >
-                  
                   <option value="">All departments</option>
                   {departments.map((d) => (
                     <option key={d.deptId} value={d.deptId}>
@@ -580,6 +625,42 @@ export default function PlotSubjectModal({
               )}
             </div>
           </div>
+
+          {/* ── Session-limit info / warning ── */}
+          {sessionStatus.limit != null &&
+            form.subjectId &&
+            form.section &&
+            !sessionStatus.exceeded && (
+              <div className="rounded-lg px-3 py-2 text-xs flex items-center gap-2 bg-blue-50 text-blue-900 border border-blue-200">
+                <Icon name="info" size={14} className="shrink-0" />
+                <span>
+                  Plotted: <strong>{sessionStatus.current}</strong> of{' '}
+                  <strong>{sessionStatus.limit}</strong> allowed{' '}
+                  {form.loadType} session
+                  {sessionStatus.limit === 1 ? '' : 's'} for this subject and
+                  section.
+                </span>
+              </div>
+            )}
+
+          {sessionStatus.exceeded && sessionStatus.message && (
+            <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
+              <Icon
+                name="warning"
+                filled
+                size={18}
+                className="shrink-0 mt-0.5"
+              />
+              <div>
+                <p className="font-medium">Session limit reached</p>
+                <p className="mt-0.5">{sessionStatus.message}</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Remove an existing session first, or increase the pattern on
+                  the Prospectus page.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Faculty + Room */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -757,6 +838,11 @@ export default function PlotSubjectModal({
                     : isEditMode
                     ? 'Saving…'
                     : 'Plotting…'}
+                </>
+              ) : sessionStatus.exceeded ? (
+                <>
+                  <Icon name="block" size={16} />
+                  Limit reached
                 </>
               ) : (
                 <>
