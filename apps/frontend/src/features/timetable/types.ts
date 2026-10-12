@@ -30,6 +30,14 @@ export interface ScheduleEntry {
   flaggedBy?: string | null;
   flaggedAt?: string | null;
   flagReason?: string | null;
+
+  // ── Version-view marker ──
+  // Set only while rendering a historical version snapshot in
+  // read-only mode. Undefined for the live/latest schedule.
+  versionContext?: {
+    versionId: string;
+    versionNumber: number;
+  };
 }
 
 export interface DropCellData {
