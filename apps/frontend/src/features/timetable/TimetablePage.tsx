@@ -13,8 +13,11 @@ import {
   discardAutoGenerate,
   abandonAutoGenerate,
   getPendingAutoGenerate,
+  fetchVersion,
   type RawSchedule,
   type UnscheduledBlock,
+  type ScheduleVersionSummary,
+  type ScheduleVersionEntry,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -37,6 +40,9 @@ import { useMoveSchedule } from './hooks/useMoveSchedule';
 import MoveScheduleConfirmModal from './components/MoveScheduleConfirmModal';
 import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
 import { fetchAllProspectus } from '../../api/prospectus.api';
+import VersionHistoryDrawer from './components/VersionHistoryDrawer';
+import VersionViewBanner from './components/VersionViewBanner';
+import VersionCompareModal from './components/VersionCompareModal';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -48,33 +54,21 @@ const DAY_MAP: Record<string, Day> = {
   Sunday: 'SUN',
 };
 
-/**
- * Returns the loading message + progress (0-100) based on how long the
- * auto-generate has been running.
- */
 function getGenerationProgressMessage(elapsedMs: number): {
   label: string;
   progress: number;
 } {
   const sec = elapsedMs / 1000;
-
   const raw = 1 - Math.exp(-sec / 6);
   const progress = Math.min(95, Math.round(raw * 100));
 
   let label: string;
-  if (sec < 2) {
-    label = 'Starting solver…';
-  } else if (sec < 5) {
-    label = 'Analyzing constraints…';
-  } else if (sec < 10) {
-    label = 'Solving schedule…';
-  } else if (sec < 20) {
-    label = 'Placing classes…';
-  } else if (sec < 40) {
-    label = 'Almost done…';
-  } else {
-    label = 'Taking longer than expected…';
-  }
+  if (sec < 2) label = 'Starting solver…';
+  else if (sec < 5) label = 'Analyzing constraints…';
+  else if (sec < 10) label = 'Solving schedule…';
+  else if (sec < 20) label = 'Placing classes…';
+  else if (sec < 40) label = 'Almost done…';
+  else label = 'Taking longer than expected…';
 
   return { label, progress };
 }
@@ -182,6 +176,44 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   };
 }
 
+/**
+ * Convert a snapshot entry to a ScheduleEntry for rendering. Snapshot
+ * entries are denormalized — we don't need to resolve any relations.
+ */
+function versionEntryToEntry(
+  raw: ScheduleVersionEntry,
+  versionContext: { versionId: string; versionNumber: number },
+): ScheduleEntry {
+  const day = raw.day_of_week ?? 'Monday';
+  const start = raw.start_time ?? '07:00:00';
+  const end = raw.end_time ?? '08:00:00';
+  const isLab = raw.load_type === 'laboratory';
+
+  return {
+    id: raw.schedule_id,
+    subjectId: raw.subject_id,
+    subjectCode: raw.subject_code ?? '—',
+    subjectTitle: raw.subject_title ?? '',
+    sectionId: raw.section_id ?? '',
+    sectionCode: raw.section_code ?? '',
+    facultyId: raw.faculty_id ?? '',
+    facultyName: raw.faculty_name ?? 'VL',
+    roomId: raw.room_id ?? '',
+    roomNumber: raw.room_number ?? '—',
+    building: raw.building ?? '',
+    day: DAY_MAP[day] ?? 'MON',
+    startTime: start.slice(0, 5),
+    endTime: end.slice(0, 5),
+    loadType: isLab ? 'laboratory' : 'lecture',
+    deptId: raw.dept_id ?? '',
+    deptColor: '#800000',
+    color: colorForSubject(raw.subject_id),
+    status: (raw.status as any) ?? 'finalized',
+    remarks: raw.remarks ?? null,
+    versionContext,
+  };
+}
+
 type ViewMode = 'master' | 'byDepartment' | 'byRoom' | 'byFaculty';
 type SubMode = 'all' | 'bySection' | 'byFaculty';
 
@@ -254,33 +286,32 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
 
-  // ── Warn before leaving if a generate is running or preview is open ──
+  // ── Version state ──
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [activeVersion, setActiveVersion] = useState<ScheduleVersionSummary | null>(null);
+  const [compareA, setCompareA] = useState<ScheduleVersionSummary | null>(null);
+  const [compareB, setCompareB] = useState<ScheduleVersionSummary | null>(null);
+
   useEffect(() => {
     if (!autoPreview && !autoGenerating) return;
-
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
     };
-
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [autoPreview, autoGenerating]);
 
-  // ── Tick every 500ms while a generation is running ──
   useEffect(() => {
     if (!autoGenerating) {
       setGenerationElapsedMs(0);
       return;
     }
-
     const startedAt = Date.now();
     setGenerationElapsedMs(0);
-
     const interval = setInterval(() => {
       setGenerationElapsedMs(Date.now() - startedAt);
     }, 500);
-
     return () => clearInterval(interval);
   }, [autoGenerating]);
 
@@ -350,7 +381,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
     enabled: !!user && !!activeTerm,
   });
 
-  // ── Count of existing auto-generated drafts for this term ──
+  // ── Version snapshot query ──
+  const { data: versionDetail, isLoading: versionLoading } = useQuery({
+    queryKey: ['schedule-version-detail', activeVersion?.versionId],
+    queryFn: () => fetchVersion(activeVersion!.versionId),
+    enabled: !!activeVersion,
+    staleTime: 60 * 1000,
+  });
+
   const autoDraftCount = useMemo(() => {
     if (!schedules) return 0;
     return schedules.filter(
@@ -364,27 +402,25 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const { data: unscheduledRecords = [] } = useQuery({
     queryKey: ['unscheduled', activeTerm?.termId],
     queryFn: () => fetchUnscheduled(activeTerm!.termId),
-    enabled: !!user && !!activeTerm,
+    enabled: !!user && !!activeTerm && !activeVersion,
   });
 
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
-    enabled: !!user && !readOnly,
+    enabled: !!user && !readOnly && !activeVersion,
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Pending auto-generate preview check ──
   const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =
     useQuery({
       queryKey: ['pending-auto-generate', activeTerm?.termId],
       queryFn: () => getPendingAutoGenerate(activeTerm!.termId),
-      enabled: !!activeTerm?.termId && !!user,
+      enabled: !!activeTerm?.termId && !!user && !activeVersion,
       refetchOnMount: true,
       staleTime: 30 * 1000,
     });
 
-  // Derive server-side generating state from lock
   useEffect(() => {
     if (!pendingAutoGenerate) {
       setServerSideGenerating(false);
@@ -397,14 +433,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [pendingAutoGenerate]);
 
-  // Poll every 3s while a server-side generation is running
   useEffect(() => {
     if (!serverSideGenerating || !activeTerm?.termId) return;
-
     const interval = setInterval(() => {
       refetchPendingAutoGenerate();
     }, 3000);
-
     return () => clearInterval(interval);
   }, [serverSideGenerating, activeTerm?.termId, refetchPendingAutoGenerate]);
 
@@ -438,10 +471,24 @@ export default function TimetablePage({ readOnly = false }: Props) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const allEntries = useMemo(() => (schedules ?? []).map(toEntry), [schedules]);
+  // ── The entries we actually render. ──
+  // When a version is active, we render the snapshot; otherwise, live.
+  const allEntries = useMemo(() => {
+    if (activeVersion && versionDetail?.snapshot) {
+      const ctx = {
+        versionId: activeVersion.versionId,
+        versionNumber: activeVersion.versionNumber,
+      };
+      return versionDetail.snapshot.entries.map((e) =>
+        versionEntryToEntry(e, ctx),
+      );
+    }
+    return (schedules ?? []).map(toEntry);
+  }, [schedules, activeVersion, versionDetail]);
 
   const foreignEntryIds = useMemo(() => {
     if (!isDepartmentHead || !myDeptId) return new Set<string>();
+    if (activeVersion) return new Set<string>();
     return new Set(
       allEntries
         .filter((e) => {
@@ -450,14 +497,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
         })
         .map((e) => e.id),
     );
-  }, [allEntries, isDepartmentHead, myDeptId]);
+  }, [allEntries, isDepartmentHead, myDeptId, activeVersion]);
 
   const entries = useMemo(() => {
     let filtered = allEntries;
 
     if (viewMode === 'byDepartment' && viewDeptId) {
       filtered = filtered.filter((e) => e.deptId === viewDeptId);
-
       if (subMode === 'bySection' && subTargetId) {
         filtered = filtered.filter((e) => e.sectionCode === subTargetId);
       } else if (subMode === 'byFaculty' && subTargetId) {
@@ -469,7 +515,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       filtered = filtered.filter((e) => e.facultyId === facultyTargetId);
     }
 
-    if (onlyConflicts) {
+    if (onlyConflicts && !activeVersion) {
       filtered = filtered.filter((e) => e.hasConflict || e.hasWarning);
     }
 
@@ -483,20 +529,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
     roomTargetId,
     facultyTargetId,
     onlyConflicts,
+    activeVersion,
   ]);
 
-  // ── Deep-link: open drawer for ?focus=<scheduleId> ──
   const [focusApplied, setFocusApplied] = useState(false);
   useEffect(() => {
     if (focusApplied) return;
     const focusId = searchParams.get('focus');
     if (!focusId || !entries.length) return;
-
     const entry = entries.find((e) => e.id === focusId);
-    if (entry) {
-      setSelectedEntry(entry);
-    }
-
+    if (entry) setSelectedEntry(entry);
     const next = new URLSearchParams(searchParams);
     next.delete('focus');
     setSearchParams(next, { replace: true });
@@ -508,14 +550,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [allEntries],
   );
 
-  // ── Resume an abandoned preview ──
   const handleResumePendingPreview = useCallback(async () => {
     if (!activeTerm) return;
     try {
       const fresh = await fetchSchedules(activeTerm.termId);
       const freshEntries = fresh.map(toEntry);
       setAutoPreview(freshEntries);
-
       const unscheduled = await fetchUnscheduled(activeTerm.termId);
       setAutoUnscheduled(
         unscheduled.map((u) => ({
@@ -537,16 +577,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm]);
 
-  // ── Discard the pending preview (from banner) ──
   const handleDiscardPendingPreview = useCallback(async () => {
     if (!activeTerm) return;
-
-    // Optimistic: clear the pending banner immediately.
     queryClient.setQueryData(
       ['pending-auto-generate', activeTerm.termId],
       null,
     );
-
     try {
       await discardAutoGenerate(activeTerm.termId);
     } catch (err) {
@@ -560,23 +596,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
 
-  // ── Accept the auto-generate preview (from modal) ──
   const handleAcceptPreview = useCallback(async () => {
     if (!activeTerm) return;
-
-    // Optimistic: clear the pending banner immediately so it can't be
-    // clicked while the confirm request is in flight.
     queryClient.setQueryData(
       ['pending-auto-generate', activeTerm.termId],
       null,
     );
-
     try {
       await confirmAutoGenerate(activeTerm.termId);
     } catch (err) {
       console.error('Failed to confirm auto-generate:', err);
     }
-
     setAutoPreview(null);
     setAutoUnscheduled([]);
     queryClient.invalidateQueries({
@@ -588,22 +618,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
 
-  // ── Discard the auto-generate preview (from modal) ──
   const handleDiscardPreview = useCallback(async () => {
     if (!activeTerm) return;
-
-    // Optimistic: clear the pending banner immediately.
     queryClient.setQueryData(
       ['pending-auto-generate', activeTerm.termId],
       null,
     );
-
     try {
       await discardAutoGenerate(activeTerm.termId);
     } catch (err) {
       console.error('Failed to discard auto-generate:', err);
     }
-
     setAutoPreview(null);
     setAutoUnscheduled([]);
     queryClient.invalidateQueries({
@@ -655,20 +680,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
     setSelectedEntry(entry);
   }, []);
 
-  // ── Actual generate call ──
   const performAutoGenerate = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
-
     try {
       await abandonAutoGenerate(activeTerm.termId);
     } catch {
-      // Ignore — no lock held or transient error
+      // Ignore
     }
-
     setAutoGenerating(true);
     try {
       const result = await autoGenerateSchedule(activeTerm.termId, myDeptId);
-
       if (!result.success) {
         if (result.roomDeficits && result.roomDeficits.length > 0) {
           setAlertState({
@@ -683,7 +704,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
           });
           return;
         }
-
         setAlertState({
           title: 'Auto-generation failed',
           subtitle: result.message ?? 'Unknown error',
@@ -696,7 +716,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         });
         return;
       }
-
       await queryClient.invalidateQueries({
         queryKey: ['schedules', activeTerm.termId],
       });
@@ -715,25 +734,47 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm, myDeptId, queryClient, refetchPendingAutoGenerate]);
 
-  // ── Entry point from button. Gate on overwrite confirmation. ──
   const handleAutoGenerate = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
-
     if (autoDraftCount > 0) {
       setConfirmOverwrite(true);
       return;
     }
-
     await performAutoGenerate();
   }, [activeTerm, myDeptId, autoDraftCount, performAutoGenerate]);
 
-  // ── Confirmed overwrite → proceed ──
   const handleConfirmOverwrite = useCallback(async () => {
     setConfirmOverwrite(false);
     await performAutoGenerate();
   }, [performAutoGenerate]);
 
-  const isLoading = termLoading || schedulesLoading;
+  // ── Version handlers ──
+  const handleViewVersion = useCallback(
+    (version: ScheduleVersionSummary) => {
+      setActiveVersion(version);
+      setVersionsOpen(false);
+      setSelectedEntry(null);
+      setStackOpen(null);
+    },
+    [],
+  );
+
+  const handleExitVersionView = useCallback(() => {
+    setActiveVersion(null);
+    setSelectedEntry(null);
+    setStackOpen(null);
+  }, []);
+
+  const handleCompare = useCallback(
+    (a: ScheduleVersionSummary, b: ScheduleVersionSummary) => {
+      setCompareA(a);
+      setCompareB(b);
+      setVersionsOpen(false);
+    },
+    [],
+  );
+
+  const isLoading = termLoading || schedulesLoading || (!!activeVersion && versionLoading);
   const error = termError || schedulesError;
 
   const deptOptions = useMemo(
@@ -854,7 +895,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
     entries.length === 1 ? 'entry' : 'entries'
   }`;
 
-  const writable = !readOnly;
+  // readOnly is force-true when viewing a historical version.
+  const writable = !readOnly && !activeVersion;
+
+  const versionContext = activeVersion
+    ? {
+        versionNumber: activeVersion.versionNumber,
+        finalizedByName: activeVersion.finalizedByName,
+        capturedAt: activeVersion.capturedAt,
+      }
+    : null;
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
@@ -868,7 +918,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
             {activeTerm
               ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
               : 'Loading term...'}
-            {readOnly && (
+            {readOnly && !activeVersion && (
               <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5">
                 <Icon name="visibility" size={12} />
                 View only
@@ -877,7 +927,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {activeTerm && !isLoading && !error && (
             <div className="hidden sm:flex items-center gap-2 text-xs text-on-surface-variant">
               <span className="material-symbols-outlined text-base">
@@ -890,6 +940,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 </span>
               )}
             </div>
+          )}
+
+          {activeTerm && !activeVersion && (
+            <button
+              onClick={() => setVersionsOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-surface-variant text-sm font-semibold text-on-surface hover:bg-surface-container-low transition rounded-lg"
+              title="View version history"
+            >
+              <Icon name="history" size={16} />
+              <span className="hidden sm:inline">Version History</span>
+            </button>
           )}
 
           {writable && activeTerm && isDepartmentHead && (
@@ -915,8 +976,19 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       </div>
 
+      {/* Version view banner */}
+      {activeVersion && (
+        <VersionViewBanner
+          versionNumber={activeVersion.versionNumber}
+          finalizedByName={activeVersion.finalizedByName}
+          capturedAt={activeVersion.capturedAt}
+          onExit={handleExitVersionView}
+        />
+      )}
+
       {/* Someone else is generating */}
-      {activeTerm &&
+      {!activeVersion &&
+        activeTerm &&
         pendingAutoGenerate &&
         !pendingAutoGenerate.heldByUser &&
         pendingAutoGenerate.state === 'running' && (
@@ -929,8 +1001,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
 
-      {/* ═══ Resume Pending Auto-Generate Preview Banner ═══ */}
-      {activeTerm &&
+      {/* Resume Pending Auto-Generate Preview Banner */}
+      {!activeVersion &&
+        activeTerm &&
         pendingAutoGenerate &&
         pendingAutoGenerate.heldByUser &&
         pendingAutoGenerate.state === 'pending_confirm' &&
@@ -1219,21 +1292,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 </div>
               )}
 
-              <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={onlyConflicts}
-                  onChange={(e) => setOnlyConflicts(e.target.checked)}
-                  className="accent-[#5c1219]"
-                />
-                <Icon name="warning" size={14} />
-                Only conflicts
-                {conflictCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 font-bold">
-                    {conflictCount}
-                  </span>
-                )}
-              </label>
+              {!activeVersion && (
+                <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={onlyConflicts}
+                    onChange={(e) => setOnlyConflicts(e.target.checked)}
+                    className="accent-[#5c1219]"
+                  />
+                  <Icon name="warning" size={14} />
+                  Only conflicts
+                  {conflictCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 font-bold">
+                      {conflictCount}
+                    </span>
+                  )}
+                </label>
+              )}
             </div>
           </div>
         </div>
@@ -1257,17 +1332,21 @@ export default function TimetablePage({ readOnly = false }: Props) {
       {!isLoading && !error && activeTerm && entries.length === 0 && (
         <EmptyState
           title={
-            onlyConflicts
+            onlyConflicts && !activeVersion
               ? 'No conflicts detected'
               : hasAnyFilter
               ? 'No entries for this view'
+              : activeVersion
+              ? 'This version is empty'
               : 'No schedule entries yet'
           }
           description={
-            onlyConflicts
+            onlyConflicts && !activeVersion
               ? 'Every scheduled class is currently clean — no hard conflicts or soft warnings.'
               : hasAnyFilter
               ? 'Try selecting a different department, room, faculty, or section.'
+              : activeVersion
+              ? 'This snapshot contains no schedule entries.'
               : writable
               ? 'Click "Plot Subject" or "Auto-Generate" to add classes.'
               : 'No schedule entries have been created yet.'
@@ -1285,6 +1364,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 {exportScope.scopeLabel}
               </strong>{' '}
               · {entryCountLabel}
+              {activeVersion && (
+                <span className="ml-2 inline-flex items-center gap-1 text-primary font-semibold">
+                  <Icon name="history" size={12} />v
+                  {activeVersion.versionNumber}
+                </span>
+              )}
             </div>
             <ExportToolbar
               entries={entries}
@@ -1302,6 +1387,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                   : 'Master Schedule'
               }
               layoutMode={layoutMode}
+              versionContext={versionContext}
             />
           </div>
 
@@ -1315,7 +1401,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 fitToContainer
                 onEntryMove={writable ? handleMove : undefined}
                 onEntryClick={handleClick}
-                readOnlyEntryIds={foreignEntryIds}
+                readOnlyEntryIds={
+                  activeVersion
+                    ? new Set(entries.map((e) => e.id))
+                    : foreignEntryIds
+                }
               />
             )}
           </div>
@@ -1345,7 +1435,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
               yearLevel: p.yearLevel,
               semester: p.semester,
             }));
-            // Take the first matching prospectus entry's pattern.
             const first = entries[0];
             return {
               subjectId: s.subjectId,
@@ -1390,7 +1479,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           termId={activeTerm.termId}
           onMove={writable ? handleMove : undefined}
           movePending={movePending}
-          readOnly={readOnly}
+          readOnly={readOnly || !!activeVersion}
         />
       )}
 
@@ -1401,6 +1490,28 @@ export default function TimetablePage({ readOnly = false }: Props) {
       />
 
       <MoveScheduleConfirmModal pending={pendingConfirmation} />
+
+      {/* Version history drawer */}
+      <VersionHistoryDrawer
+        open={versionsOpen}
+        onClose={() => setVersionsOpen(false)}
+        termId={activeTerm?.termId}
+        activeVersionId={activeVersion?.versionId ?? null}
+        onViewVersion={handleViewVersion}
+        onExitVersionView={handleExitVersionView}
+        onCompare={handleCompare}
+      />
+
+      {/* Version compare modal */}
+      <VersionCompareModal
+        open={!!(compareA && compareB)}
+        onClose={() => {
+          setCompareA(null);
+          setCompareB(null);
+        }}
+        versionA={compareA}
+        versionB={compareB}
+      />
 
       {/* Generic alert modal */}
       <Modal
@@ -1498,7 +1609,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       )}
 
-      {/* ═══ Overwrite Confirmation Modal ═══ */}
       <Modal
         open={confirmOverwrite}
         onClose={() => setConfirmOverwrite(false)}
@@ -1548,8 +1658,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       </Modal>
 
-      {/* Unscheduled panel */}
-      {unscheduledRecords.length > 0 && !autoPreview && (
+      {!activeVersion && unscheduledRecords.length > 0 && !autoPreview && (
         <div className="fixed bottom-4 right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
           <details className="bg-white border border-amber-200 shadow-lg rounded-lg overflow-hidden">
             <summary className="px-4 py-3 cursor-pointer bg-amber-50 text-amber-900 font-semibold text-sm flex items-center gap-2 hover:bg-amber-100 transition select-none">
