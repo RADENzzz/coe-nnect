@@ -8,6 +8,7 @@ import {
   deleteTerm,
   type Term,
   type CreateTermInput,
+  type SemesterType,
 } from '../../../api/terms.api';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
@@ -26,11 +27,31 @@ function fmtDate(iso: string): string {
   });
 }
 
+/**
+ * Pick the semester enum value from a term name like "2nd Semester" or
+ * "Summer 2027". Returns null if nothing matches.
+ */
+function inferSemesterFromName(name: string): SemesterType | null {
+  const n = name.toLowerCase();
+  if (/summer/.test(n)) return 'summer';
+  if (/2nd|second/.test(n)) return '2nd';
+  if (/1st|first/.test(n)) return '1st';
+  return null;
+}
+
+/**
+ * Map a term name to the enum value. Also used for the initial form.
+ */
+function defaultSemesterForTermName(name: string): SemesterType {
+  return inferSemesterFromName(name) ?? '1st';
+}
+
 const EMPTY_FORM: CreateTermInput = {
   termName: '1st Semester',
   schoolYear: '',
   startDate: '',
   endDate: '',
+  semester: '1st',
   setActive: false,
 };
 
@@ -73,11 +94,22 @@ export default function TermsPanel({ isAdmin }: Props) {
         d.setFullYear(d.getFullYear() + 1);
         return d.toISOString().slice(0, 10);
       };
+      // Infer semester from the latest term's name, but shift forward if
+      // it was 1st sem (the natural next term is 2nd).
+      const inferred = inferSemesterFromName(latest.termName);
+      const nextSemester: SemesterType =
+        inferred === '1st' ? '2nd' : (inferred ?? '1st');
       setForm({
-        termName: latest.termName,
+        termName:
+          nextSemester === '2nd'
+            ? '2nd Semester'
+            : nextSemester === 'summer'
+            ? 'Summer'
+            : '1st Semester',
         schoolYear: nextSy,
         startDate: shiftDate(latest.startDate),
         endDate: shiftDate(latest.endDate),
+        semester: nextSemester,
         setActive: terms.length > 0 && !terms.some((t) => t.isActive),
       });
     } else {
@@ -116,7 +148,7 @@ export default function TermsPanel({ isAdmin }: Props) {
   const deactivateMutation = useMutation({
     mutationFn: deactivateTerm,
     onSuccess: (t) => {
-      setDeactivateTarget(null);   // ← NEW
+      setDeactivateTarget(null);
       setSuccess(
         `Term "${t.termName}" deactivated. No term is currently active.`,
       );
@@ -152,11 +184,16 @@ export default function TermsPanel({ isAdmin }: Props) {
       setError('End date must be after start date.');
       return;
     }
+    if (!form.semester) {
+      setError('Please select a semester.');
+      return;
+    }
     createMutation.mutate({
       termName: form.termName.trim(),
       schoolYear: form.schoolYear.trim(),
       startDate: form.startDate,
       endDate: form.endDate,
+      semester: form.semester,
       setActive: form.setActive,
     });
   };
@@ -249,6 +286,11 @@ export default function TermsPanel({ isAdmin }: Props) {
                       <span className="text-xs text-on-surface-variant">
                         · AY {t.schoolYear}
                       </span>
+                      {t.semester && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded">
+                          {t.semester}
+                        </span>
+                      )}
                       {t.isActive && (
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">
                           Active
@@ -263,15 +305,15 @@ export default function TermsPanel({ isAdmin }: Props) {
 
                 {isAdmin && (
                   <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                      {t.isActive ? (
-                        <button
-                          onClick={() => setDeactivateTarget(t)}
-                          disabled={deactivateMutation.isPending}
-                          className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-50"
-                        >
-                          {deactivateMutation.isPending ? '…' : 'Deactivate'}
-                        </button>
-                      ) : (
+                    {t.isActive ? (
+                      <button
+                        onClick={() => setDeactivateTarget(t)}
+                        disabled={deactivateMutation.isPending}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-50"
+                      >
+                        {deactivateMutation.isPending ? '…' : 'Deactivate'}
+                      </button>
+                    ) : (
                       <>
                         <button
                           onClick={() => activateMutation.mutate(t.termId)}
@@ -339,15 +381,46 @@ export default function TermsPanel({ isAdmin }: Props) {
               </label>
               <select
                 value={form.termName}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, termName: e.target.value }))
-                }
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const inferred = inferSemesterFromName(name);
+                  setForm((p) => ({
+                    ...p,
+                    termName: name,
+                    // Auto-suggest semester when the user picks a term name.
+                    semester: inferred ?? p.semester,
+                  }));
+                }}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
                 <option value="1st Semester">1st Semester</option>
                 <option value="2nd Semester">2nd Semester</option>
                 <option value="Summer">Summer</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Semester *
+              </label>
+              <select
+                value={form.semester}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    semester: e.target.value as SemesterType,
+                  }))
+                }
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+                <option value="summer">Summer</option>
+              </select>
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                Controls which prospectus subjects the solver schedules for
+                this term.
+              </p>
             </div>
 
             <div>

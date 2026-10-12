@@ -58,6 +58,7 @@ export class TermsService {
       schoolYear: dto.schoolYear,
       startDate: dto.startDate,
       endDate: dto.endDate,
+      semester: dto.semester,   // ← NOW SAVED
       isActive: false,
     });
     const saved = await this.repo.save(entity);
@@ -89,8 +90,6 @@ export class TermsService {
 
     const activated = await this.findOne(id);
 
-    // ═══ Notification: term activated ═══
-    // Recipients: all DHs + the college dean
     const allDHs = await this.recipients.allDepartmentHeads();
     const dean = await this.recipients.collegeDean();
     await this.dispatcher.dispatch('term.activated', {

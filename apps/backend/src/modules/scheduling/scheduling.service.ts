@@ -1206,17 +1206,27 @@ export class SchedulingService {
 
     const { data: termRow, error: termErr } = await db
       .from('term')
-      .select('semester')
+      .select('semester, term_name')
       .eq('term_id', termId)
       .maybeSingle();
 
-    if (termErr) {
-      this.logger.warn(
-        `Failed to load term semester for ${termId}: ${termErr.message}`,
+    if (termErr || !termRow) {
+      throw new BadRequestException(
+        `Term ${termId} not found. Cannot determine semester.`,
       );
     }
 
-    const termSemester = termRow?.semester ?? '1st';
+    if (!termRow.semester) {
+      throw new BadRequestException(
+        `Term "${termRow.term_name}" (id ${termId}) has no semester set. ` +
+          `Set it in System Settings → Terms before generating a schedule.`,
+      );
+    }
+
+    const termSemester = termRow.semester;
+    this.logger.log(
+      `Filtering prospectus by semester='${termSemester}' for term ${termId}`,
+    );
     this.logger.log(
       `Filtering prospectus by semester='${termSemester}' for term ${termId}`,
     );

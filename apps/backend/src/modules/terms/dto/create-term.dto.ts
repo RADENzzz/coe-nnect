@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, Matches, IsBoolean, IsOptional } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  Matches,
+  IsBoolean,
+  IsOptional,
+  IsIn,
+} from 'class-validator';
 
 export class CreateTermDto {
   @IsNotEmpty()
@@ -23,6 +30,12 @@ export class CreateTermDto {
     message: 'endDate must be in the format YYYY-MM-DD.',
   })
   endDate!: string;
+
+  @IsNotEmpty()
+  @IsIn(['1st', '2nd', 'summer'], {
+    message: 'semester must be one of: 1st, 2nd, summer',
+  })
+  semester!: '1st' | '2nd' | 'summer';
 
   @IsOptional()
   @IsBoolean()

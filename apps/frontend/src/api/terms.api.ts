@@ -1,5 +1,7 @@
 import { api } from './client';
 
+export type SemesterType = '1st' | '2nd' | 'summer';
+
 export interface Term {
   termId: string;
   termName: string;
@@ -7,6 +9,7 @@ export interface Term {
   startDate: string;
   endDate: string;
   isActive: boolean;
+  semester: SemesterType | null;
 }
 
 export interface CreateTermInput {
@@ -14,6 +17,7 @@ export interface CreateTermInput {
   schoolYear: string;
   startDate: string;
   endDate: string;
+  semester: SemesterType;
   setActive?: boolean;
 }
 
