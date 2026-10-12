@@ -11,6 +11,7 @@ import type {
   FacultyCommitmentContext,
   MinorBlockContext,
   SchedulingConfig,
+  FacultyUnavailabilityContext,
 } from '@coe-nnect/constraint-rules';
 
 export interface BuildContextInput {
@@ -152,8 +153,6 @@ export class RuleContextBuilder {
       .select('subject_id')
       .eq('faculty_id', facultyId);
 
-
-
     const { data: prefs } = await this.db
       .from('faculty_preference')
       .select('preferred_day, preferred_start_time, preferred_end_time')
@@ -165,6 +164,35 @@ export class RuleContextBuilder {
             preferredDay: p.preferred_day,
             preferredStartTime: p.preferred_start_time,
             preferredEndTime: p.preferred_end_time,
+          }))
+        : undefined;
+
+    // ── H-14: faculty unavailability ──
+    // Load blocks that apply to this term OR are term-agnostic.
+    const { data: unavailRows, error: unavailErr } = await this.db
+      .from('faculty_unavailability')
+      .select(
+        'unavailability_id, faculty_id, term_id, day_of_week, start_time, end_time, reason',
+      )
+      .eq('faculty_id', facultyId)
+      .or(`term_id.eq.${termId},term_id.is.null`);
+
+    if (unavailErr) {
+      this.logger.warn(
+        `Failed to load unavailability for faculty ${facultyId}: ${unavailErr.message}`,
+      );
+    }
+
+    const unavailability: FacultyUnavailabilityContext[] | undefined =
+      unavailRows && unavailRows.length > 0
+        ? unavailRows.map((u) => ({
+            unavailabilityId: String(u.unavailability_id),
+            facultyId: String(u.faculty_id),
+            termId: u.term_id ? String(u.term_id) : null,
+            dayOfWeek: u.day_of_week,
+            startTime: u.start_time,
+            endTime: u.end_time,
+            reason: u.reason ?? null,
           }))
         : undefined;
 
@@ -218,6 +246,7 @@ export class RuleContextBuilder {
       assignedHours,
       assignedUnits,
       preferences,
+      unavailability,   // ← H-14
     };
   }
 
@@ -315,7 +344,7 @@ export class RuleContextBuilder {
       }));
   }
 
-    private async loadConfig(): Promise<SchedulingConfig> {
+  private async loadConfig(): Promise<SchedulingConfig> {
     const { data } = await this.db
       .from('scheduling_setting')
       .select('setting_key, value');
@@ -391,7 +420,7 @@ export class RuleContextBuilder {
     };
   }
 
-    private async loadApprovedFacultyRequests(
+  private async loadApprovedFacultyRequests(
     facultyId: string | undefined,
     termId: string,
   ): Promise<
