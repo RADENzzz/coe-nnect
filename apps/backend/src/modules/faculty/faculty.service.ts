@@ -25,6 +25,9 @@ import { FacultyPreference } from './entities/faculty-preference.entity';
 import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto';
 import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto';
 import { User } from '../users/entities/user.entity';
+import { FacultyUnavailability } from './entities/faculty-unavailability.entity';
+import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
+import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
 
 // ────────────────────────────────────────────
 // day_of_week mapping
@@ -45,6 +48,8 @@ export class FacultyService {
     private readonly prefs: Repository<FacultyPreference>,
     @InjectRepository(Subject)
     private readonly subjects: Repository<Subject>,
+    @InjectRepository(FacultyUnavailability)
+    private readonly unavailabilityRepo: Repository<FacultyUnavailability>,
   ) {}
 
   // ────────────────────────────────────────────
@@ -391,5 +396,111 @@ export class FacultyService {
     if (!found) throw new NotFoundException('Preference not found');
     await this.prefs.remove(found);
     return { success: true };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // FACULTY UNAVAILABILITY — H-14 (hard constraint)
+  // ═══════════════════════════════════════════════════════════
+
+  async findUnavailability(
+    facultyId: string,
+    termId?: string,
+  ): Promise<FacultyUnavailability[]> {
+    await this.findOne(facultyId); // 404 if faculty doesn't exist
+
+    const qb = this.unavailabilityRepo
+      .createQueryBuilder('u')
+      .where('u.faculty_id = :facultyId', { facultyId })
+      .orderBy('u.day_of_week', 'ASC')
+      .addOrderBy('u.start_time', 'ASC');
+
+    if (termId) {
+      // Return blocks that apply to this term OR are term-agnostic
+      qb.andWhere('(u.term_id = :termId OR u.term_id IS NULL)', { termId });
+    }
+
+    return qb.getMany();
+  }
+
+  async addUnavailability(
+    facultyId: string,
+    dto: CreateFacultyUnavailabilityDto,
+  ): Promise<FacultyUnavailability> {
+    await this.findOne(facultyId);
+
+    if (dto.startTime >= dto.endTime) {
+      throw new BadRequestException(
+        'endTime must be after startTime',
+      );
+    }
+
+    const entity = this.unavailabilityRepo.create({
+      facultyId,
+      termId: dto.termId ?? null,
+      dayOfWeek: dto.dayOfWeek,
+      startTime: this.normalizeTime(dto.startTime),
+      endTime: this.normalizeTime(dto.endTime),
+      reason: dto.reason ?? null,
+      source: 'local',
+      externalId: null,
+      syncedAt: null,
+    });
+
+    return this.unavailabilityRepo.save(entity);
+  }
+
+  async updateUnavailability(
+    facultyId: string,
+    unavailabilityId: string,
+    dto: UpdateFacultyUnavailabilityDto,
+  ): Promise<FacultyUnavailability> {
+    const found = await this.unavailabilityRepo.findOne({
+      where: { unavailabilityId, facultyId },
+    });
+    if (!found) {
+      throw new NotFoundException(
+        `Unavailability block ${unavailabilityId} not found for faculty ${facultyId}`,
+      );
+    }
+
+    if (dto.dayOfWeek !== undefined) found.dayOfWeek = dto.dayOfWeek;
+    if (dto.startTime !== undefined) {
+      found.startTime = this.normalizeTime(dto.startTime);
+    }
+    if (dto.endTime !== undefined) {
+      found.endTime = this.normalizeTime(dto.endTime);
+    }
+    if (dto.reason !== undefined) found.reason = dto.reason ?? null;
+    if (dto.termId !== undefined) found.termId = dto.termId ?? null;
+
+    if (found.startTime >= found.endTime) {
+      throw new BadRequestException(
+        'endTime must be after startTime',
+      );
+    }
+
+    return this.unavailabilityRepo.save(found);
+  }
+
+  async removeUnavailability(
+    facultyId: string,
+    unavailabilityId: string,
+  ): Promise<{ success: boolean }> {
+    const found = await this.unavailabilityRepo.findOne({
+      where: { unavailabilityId, facultyId },
+    });
+    if (!found) {
+      throw new NotFoundException(
+        `Unavailability block ${unavailabilityId} not found for faculty ${facultyId}`,
+      );
+    }
+
+    await this.unavailabilityRepo.remove(found);
+    return { success: true };
+  }
+
+  /** Convert 'HH:MM' → 'HH:MM:00' so Postgres time comparison works reliably. */
+  private normalizeTime(t: string): string {
+    return /^\d{2}:\d{2}$/.test(t) ? `${t}:00` : t;
   }
 }

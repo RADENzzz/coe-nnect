@@ -18,8 +18,11 @@ import { UpdateQualificationDto } from './dto/update-qualification.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
 import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto';
 import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto';
+import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
+import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/faculty')
@@ -123,6 +126,63 @@ export class FacultyController {
     @Req() req: any,
   ) {
     return this.faculty.removePreference(id, preferenceId, req.profile);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // FACULTY UNAVAILABILITY — must come before @Get(':id')
+  // ═══════════════════════════════════════════════════════════
+
+  @Get(':id/unavailability')
+  @Roles('administrator', 'college_dean', 'department_head')
+  async findUnavailability(
+    @Param('id') id: string,
+    @Query('termId') termId?: string,
+  ) {
+    const data = await this.faculty.findUnavailability(id, termId);
+    return { data };
+  }
+
+  @Post(':id/unavailability')
+  @Roles('administrator', 'department_head')
+  @Auditable({
+    action: 'faculty.unavailability.create',
+    source: 'Faculty',
+  })
+  async addUnavailability(
+    @Param('id') id: string,
+    @Body() dto: CreateFacultyUnavailabilityDto,
+  ) {
+    const data = await this.faculty.addUnavailability(id, dto);
+    return { data };
+  }
+
+  @Patch(':id/unavailability/:uid')
+  @Roles('administrator', 'department_head')
+  @Auditable({
+    action: 'faculty.unavailability.update',
+    source: 'Faculty',
+  })
+  async updateUnavailability(
+    @Param('id') id: string,
+    @Param('uid') uid: string,
+    @Body() dto: UpdateFacultyUnavailabilityDto,
+  ) {
+    const data = await this.faculty.updateUnavailability(id, uid, dto);
+    return { data };
+  }
+
+  @Delete(':id/unavailability/:uid')
+  @Roles('administrator', 'department_head')
+  @Auditable({
+    action: 'faculty.unavailability.delete',
+    source: 'Faculty',
+  })
+  async removeUnavailability(
+    @Param('id') id: string,
+    @Param('uid') uid: string,
+  ) {
+    const data = await this.faculty.removeUnavailability(id, uid);
+    return { data };
   }
 
   // ── Generic :id routes ──
