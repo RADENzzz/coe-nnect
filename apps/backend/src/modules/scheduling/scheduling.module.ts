@@ -14,6 +14,7 @@ import { SolverClient } from './services/solver.client';
 import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ScheduleVersion } from './entities/schedule-version.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ScheduleVersion } from './entities/schedule-version.entity';
       User,
       Section,
     ]),
+    NotificationsModule,
   ],
   controllers: [SchedulingController],
   providers: [SchedulingService, RuleContextBuilder, SolverClient, RolesGuard],

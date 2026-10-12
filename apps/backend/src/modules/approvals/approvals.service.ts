@@ -10,6 +10,8 @@ import { FacultyRequest } from './entities/faculty-request.entity';
 import { CreateFacultyRequestDto } from './dto/create-faculty-request.dto';
 import { RespondFacultyRequestDto } from './dto/respond-faculty-request.dto';
 import { User } from '../users/entities/user.entity';
+import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
+import { RecipientsService } from '../notifications/recipients.service';
 
 @Injectable()
 export class ApprovalsService {
@@ -18,14 +20,14 @@ export class ApprovalsService {
     private readonly repo: Repository<FacultyRequest>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly dispatcher: NotificationDispatcherService,
+    private readonly recipients: RecipientsService,
   ) {}
 
   async findAllForCurrentUser(userId: string): Promise<FacultyRequest[]> {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new ForbiddenException('User profile not found');
 
-    // Admin / dean see everything; dept heads see requests where they're
-    // either the requester or the target.
     if (user.role === 'administrator' || user.role === 'college_dean') {
       return this.repo.find({ order: { createdAt: 'DESC' } });
     }
@@ -75,7 +77,34 @@ export class ApprovalsService {
       status: 'pending',
       createdBy: userId,
     });
-    return this.repo.save(entity);
+    const saved = await this.repo.save(entity);
+
+    // ═══ Notification: request submitted ═══
+    const targetDHs = await this.recipients.departmentHeadsOf(
+      String(saved.targetDeptId),
+    );
+    const dean = await this.recipients.collegeDean();
+    const requesterName =
+      (user as any).firstName ??
+      (user as any).username ??
+      (user as any).email ??
+      'A department head';
+
+    await this.dispatcher.dispatch('request.submitted', {
+      recipientUserIds: this.recipients.uniq([...targetDHs, ...dean]),
+      title: 'Cross-dept faculty request submitted',
+      body: `${requesterName} requested faculty from your department.`,
+      entityType: 'faculty_request',
+      entityId: String(saved.requestId),
+      payload: {
+        requestingDeptId: String(saved.requestingDeptId),
+        targetDeptId: String(saved.targetDeptId),
+        subjectId: String(saved.subjectId),
+        termId: String(saved.termId),
+      },
+    });
+
+    return saved;
   }
 
   async approve(
@@ -102,7 +131,6 @@ export class ApprovalsService {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new ForbiddenException();
 
-    // Only the requesting dept head (or admin/dean) can cancel.
     if (
       user.role !== 'administrator' &&
       user.role !== 'college_dean' &&
@@ -114,7 +142,33 @@ export class ApprovalsService {
     found.status = 'cancelled';
     found.respondedBy = userId;
     found.respondedAt = new Date();
-    return this.repo.save(found);
+    const saved = await this.repo.save(found);
+
+    // ═══ Notification: request cancelled ═══
+    const targetDHs = await this.recipients.departmentHeadsOf(
+      String(saved.targetDeptId),
+    );
+    const dean = await this.recipients.collegeDean();
+    const cancellerName =
+      (user as any).firstName ??
+      (user as any).username ??
+      (user as any).email ??
+      'A department head';
+
+    await this.dispatcher.dispatch('request.cancelled', {
+      recipientUserIds: this.recipients.uniq([...targetDHs, ...dean]),
+      title: 'Cross-dept request cancelled',
+      body: `A request from ${cancellerName}'s department was cancelled.`,
+      entityType: 'faculty_request',
+      entityId: String(saved.requestId),
+      payload: {
+        requestingDeptId: String(saved.requestingDeptId),
+        targetDeptId: String(saved.targetDeptId),
+        cancelledBy: userId,
+      },
+    });
+
+    return saved;
   }
 
   private async respond(
@@ -132,7 +186,6 @@ export class ApprovalsService {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new ForbiddenException();
 
-    // Only the target dept head (or admin/dean) can approve/reject.
     if (
       user.role !== 'administrator' &&
       user.role !== 'college_dean' &&
@@ -153,6 +206,33 @@ export class ApprovalsService {
     found.respondedBy = userId;
     found.respondedAt = new Date();
     found.responseRemarks = remarks ?? null;
-    return this.repo.save(found);
+    const saved = await this.repo.save(found);
+
+    // ═══ Notification: approved OR rejected ═══
+    const requestingDHs = await this.recipients.departmentHeadsOf(
+      String(saved.requestingDeptId),
+    );
+    const triggerKey =
+      status === 'approved' ? 'request.approved' : 'request.rejected';
+    const verb = status === 'approved' ? 'approved' : 'rejected';
+
+    await this.dispatcher.dispatch(triggerKey, {
+      recipientUserIds: requestingDHs,
+      title: `Cross-dept request ${verb}`,
+      body:
+        status === 'approved'
+          ? `Your request was approved${remarks ? `: ${remarks}` : '.'}`
+          : `Your request was rejected${remarks ? `: ${remarks}` : '.'}`,
+      entityType: 'faculty_request',
+      entityId: String(saved.requestId),
+      payload: {
+        requestingDeptId: String(saved.requestingDeptId),
+        targetDeptId: String(saved.targetDeptId),
+        respondedBy: userId,
+        remarks: remarks ?? null,
+      },
+    });
+
+    return saved;
   }
 }

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 
@@ -38,6 +39,12 @@ async function createApp() {
       forbidNonWhitelisted: false,
     }),
   );
+
+  // ═══ WebSocket adapter — enables @WebSocketGateway() for Notifications ═══
+  // The IoAdapter uses the CORS settings baked into each gateway's
+  // @WebSocketGateway({ cors: {...} }) decorator, not the HTTP CORS above.
+  // We'll set gateway CORS in Batch 2.
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   return app;
 }

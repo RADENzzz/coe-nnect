@@ -13,6 +13,7 @@ import { ProspectusPdfsController } from './prospectus-pdfs.controller';
 import { ProspectusPdfsService } from './prospectus-pdfs.service';
 import { ProspectusStorageService } from './storage.service';
 import { ProspectusParserClient } from './parser.client';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ProspectusParserClient } from './parser.client';
       Prospectus,
       Program,
     ]),
+    NotificationsModule,
   ],
   controllers: [ProspectusPdfsController],
   providers: [

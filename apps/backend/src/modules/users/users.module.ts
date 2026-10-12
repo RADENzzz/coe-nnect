@@ -5,9 +5,13 @@ import { Department } from '../departments/entities/department.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Department, Faculty])],
+  imports: [
+    TypeOrmModule.forFeature([User, Department, Faculty]),
+    NotificationsModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

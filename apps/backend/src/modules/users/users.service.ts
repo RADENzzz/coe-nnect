@@ -3,7 +3,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
-} from '@nestjs/common';  
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupabaseService } from '../../database/supabase.service';
@@ -12,6 +12,8 @@ import { Department } from '../departments/entities/department.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
+import { RecipientsService } from '../notifications/recipients.service';
 
 @Injectable()
 export class UsersService {
@@ -22,19 +24,14 @@ export class UsersService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Department) private deptRepo: Repository<Department>,
     @InjectRepository(Faculty) private facultyRepo: Repository<Faculty>,
+    private readonly dispatcher: NotificationDispatcherService,
+    private readonly recipients: RecipientsService,
   ) {}
 
   async findAll(): Promise<User[]> {
     return this.userRepo.find({ order: { createdAt: 'DESC' } });
   }
 
-    /**
-   * Presence-safe directory for non-admin roles (Dean, DH).
-   * Returns ONLY the fields those dashboards need:
-   *   - user_id, username, role, dept_id, is_active
-   * Excludes email, employee IDs, WMSU IDs, faculty_id — no PII leak.
-   * Uses snake_case to match the presence payload from Supabase Realtime.
-   */
   async findDirectory() {
     const users = await this.userRepo.find({
       where: { isActive: true },
@@ -57,12 +54,6 @@ export class UsersService {
     return user;
   }
 
-  /**
-   * Builds the app_metadata object for Supabase Auth.
-   * The frontend's AuthProvider reads these fields as a fallback when the
-   * full DB profile can't be fetched yet (RLS or timing), so we include
-   * dept_code / dept_name / first_name here.
-   */
   private async buildAppMetadata(opts: {
     role: string;
     username: string;
@@ -90,7 +81,14 @@ export class UsersService {
     };
   }
 
-  async create(dto: CreateUserDto): Promise<User> {
+  /**
+   * Create a user.
+   *
+   * `actingUserId` is the admin performing the action. Used for the
+   * `user.created` notification so we can exclude the creator from
+   * the recipients list (they already know).
+   */
+  async create(dto: CreateUserDto, actingUserId?: string): Promise<User> {
     // 1. Check for existing email in our public.users
     const existing = await this.userRepo.findOne({
       where: { email: dto.email },
@@ -115,7 +113,7 @@ export class UsersService {
       );
     }
 
-    // 3. Build app_metadata with the extra display fields
+    // 3. Build app_metadata
     const appMetadata = await this.buildAppMetadata({
       role: dto.role,
       username: dto.username,
@@ -136,14 +134,13 @@ export class UsersService {
     if (error) throw new ConflictException(error.message);
     if (!data.user) throw new Error('Supabase did not return a user');
 
-    // 5. The DB trigger `handle_new_auth_user` will insert into public.users.
-    //    Fetch the row to return it.
+    // 5. Fetch the profile the trigger created, or fall back to manual
+    let saved: User;
     const profile = await this.userRepo.findOne({
       where: { userId: data.user.id },
     });
 
     if (!profile) {
-      // Fallback: if the trigger didn't fire, create manually
       const fallback = this.userRepo.create({
         userId: data.user.id,
         username: dto.username,
@@ -153,22 +150,68 @@ export class UsersService {
         facultyId: dto.facultyId ?? null,
         isActive: true,
       });
-      return this.userRepo.save(fallback);
+      saved = await this.userRepo.save(fallback);
+    } else {
+      saved = profile;
     }
 
-    return profile;
+    // ═══ Notification: user.created (to admins, excluding the actor) ═══
+    const admins = await this.recipients.administrators();
+    const recipients = actingUserId
+      ? admins.filter((id) => id !== actingUserId)
+      : admins;
+
+    await this.dispatcher.dispatch('user.created', {
+      recipientUserIds: recipients,
+      title: 'User account created',
+      body: `${saved.username} was created with role ${saved.role}.`,
+      entityType: 'user',
+      entityId: String(saved.userId),
+      payload: {
+        role: saved.role,
+        deptId: saved.deptId ?? null,
+        createdBy: actingUserId ?? null,
+      },
+    });
+
+    return saved;
   }
 
-  async toggleActive(userId: string): Promise<User> {
+  /**
+   * Toggle is_active. `actingUserId` is the admin performing the action.
+   */
+  async toggleActive(userId: string, actingUserId?: string): Promise<User> {
     const user = await this.findOne(userId);
     user.isActive = !user.isActive;
-    return this.userRepo.save(user);
+    const saved = await this.userRepo.save(user);
+
+    // ═══ Notification: user.deactivated (only when transitioning to inactive) ═══
+    if (saved.isActive === false) {
+      const admins = await this.recipients.administrators();
+      const recipients = actingUserId
+        ? admins.filter((id) => id !== actingUserId)
+        : admins;
+
+      await this.dispatcher.dispatch('user.deactivated', {
+        recipientUserIds: recipients,
+        title: 'User account deactivated',
+        body: `${saved.username} was deactivated.`,
+        entityType: 'user',
+        entityId: String(saved.userId),
+        payload: {
+          role: saved.role,
+          deptId: saved.deptId ?? null,
+          deactivatedBy: actingUserId ?? null,
+        },
+      });
+    }
+
+    return saved;
   }
 
   async remove(userId: string): Promise<void> {
     const user = await this.findOne(userId);
 
-    // Delete from Supabase Auth (cascades to public.users via FK)
     const { error } = await this.supabase
       .getAdminClient()
       .auth.admin.deleteUser(userId);
@@ -179,7 +222,6 @@ export class UsersService {
   async update(userId: string, dto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(userId);
 
-    // Single-dean rule: if promoting to college_dean, ensure no other active dean.
     if (
       dto.role === 'college_dean' &&
       user.role !== 'college_dean' &&
@@ -195,7 +237,6 @@ export class UsersService {
       }
     }
 
-    // Department is required for department heads.
     const finalRole = dto.role ?? user.role;
     const finalDeptId =
       dto.deptId !== undefined ? dto.deptId : user.deptId;
@@ -205,7 +246,6 @@ export class UsersService {
       );
     }
 
-    // Apply changes to public.users
     if (dto.username !== undefined) user.username = dto.username;
     if (dto.role !== undefined) user.role = dto.role as any;
     if (dto.deptId !== undefined) user.deptId = dto.deptId || null;
@@ -214,7 +254,6 @@ export class UsersService {
 
     const saved = await this.userRepo.save(user);
 
-    // Sync app_metadata so the next login carries the correct role/dept
     const appMetadata = await this.buildAppMetadata({
       role: saved.role,
       username: saved.username,
@@ -229,7 +268,6 @@ export class UsersService {
       });
 
     if (error) {
-      // Log but don't fail the whole operation — the DB row was already updated.
       this.logger.warn(
         `Failed to sync app_metadata for ${userId}: ${error.message}`,
       );

@@ -6,6 +6,15 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 
+
+
+// TODO(FR 6.1.x): schedule.conflict_detected — fire when a foreign-dept
+// plot invalidates an existing entry. Deferred to a follow-up batch;
+// the other 15 triggers cover the demo scope. Implement by:
+//   1. In plot()/plotMulti(), detect hardConflicts that target an
+//      existing schedule row with dept_id !== current subject's dept.
+//   2. Dispatch to that row's owner DH.
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Schedule } from './entities/schedule.entity';
@@ -21,6 +30,8 @@ import { SolverClient } from './services/solver.client';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
+import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
+import { RecipientsService } from '../notifications/recipients.service';
 
 type DayOfWeek =
   | 'Monday'
@@ -47,6 +58,8 @@ export class SchedulingService {
     private readonly constraints: ConstraintsService,
     private readonly solverClient: SolverClient,
     private readonly supabase: SupabaseService,
+    private readonly dispatcher: NotificationDispatcherService,
+    private readonly recipients: RecipientsService,
   ) {}
 
   // ════════════════════════════════════════════
@@ -246,7 +259,14 @@ export class SchedulingService {
       endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
       status: 'draft',
     });
-    return this.scheduleRepo.save(entry);
+    const saved = await this.scheduleRepo.save(entry);
+
+    // Fire-and-forget overload check
+    if (dto.facultyId) {
+      void this.checkFacultyOverload(dto.facultyId, dto.termId);
+    }
+
+    return saved;
   }
 
   async plotMulti(dto: PlotMultiDto, user?: any): Promise<Schedule[]> {
@@ -366,7 +386,14 @@ export class SchedulingService {
     }));
 
     const created = this.scheduleRepo.create(rows);
-    return this.scheduleRepo.save(created);
+    const saved = await this.scheduleRepo.save(created);
+
+    // Fire-and-forget overload check
+    if (dto.facultyId) {
+      void this.checkFacultyOverload(dto.facultyId, dto.termId);
+    }
+
+    return saved;
   }
 
   async update(
@@ -442,6 +469,23 @@ export class SchedulingService {
 
     found.status = status;
     const saved = await this.scheduleRepo.save(found);
+
+      // ═══ Notification: status changed ═══
+    if (previousStatus !== status) {
+      const recipients = await this.recipients.departmentHeadsOfSchedule(id);
+      await this.dispatcher.dispatch('schedule.status_changed', {
+        recipientUserIds: recipients,
+        title: 'Schedule status changed',
+        body: `${found.subject?.subjectCode ?? 'A schedule entry'} moved from ${previousStatus} to ${status}.`,
+        entityType: 'schedule',
+        entityId: id,
+        payload: {
+          previousStatus,
+          newStatus: status,
+          changedBy: user?.userId ?? null,
+        },
+      });
+    }
 
     if (isBecomingFinalized) {
       try {
@@ -849,7 +893,26 @@ export class SchedulingService {
     this.logger.log(
       `Schedule ${id} flagged by ${user.userId} (role=${user.role}, dept=${user.deptId}): ${reason}`,
     );
-    return this.scheduleRepo.save(found);
+    const saved = await this.scheduleRepo.save(found);
+
+    // ═══ Notification: flagged ═══
+    const ownerDHs = await this.recipients.departmentHeadsOfSchedule(id);
+    const dean = await this.recipients.collegeDean();
+    await this.dispatcher.dispatch('schedule.flagged', {
+      recipientUserIds: this.recipients.uniq([...ownerDHs, ...dean]),
+      title: 'Schedule entry flagged',
+      body: `An entry was flagged for review: ${reason}`,
+      entityType: 'schedule',
+      entityId: id,
+      payload: {
+        reason,
+        flaggedBy: user.userId,
+        flaggedByName: user.email ?? null,
+        subjectCode: null, // enrich if available from a join
+      },
+    });
+
+    return saved;
   }
 
   async unflagSchedule(id: string, user: User): Promise<Schedule> {
@@ -939,12 +1002,52 @@ export class SchedulingService {
 
     this.autoGenerateInFlight.add(termId);
 
+    // ═══ Notification: auto-generate started ═══
+    const starterDHs = await this.recipients.departmentHeadsOf(deptId);
+    await this.dispatcher.dispatch('auto_generate.started', {
+      recipientUserIds: starterDHs,
+      title: 'Auto-generate started',
+      body: `Schedule generation started for term ${termId}.`,
+      entityType: 'term',
+      entityId: termId,
+      payload: { deptId, triggeredBy: userId },
+    });
+
+    
+
     try {
       const problem = await this.buildSolverProblem(termId, deptId);
 
       const sufficiency = this.analyzeRoomSufficiency(problem);
       if (!sufficiency.sufficient) {
         this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
+
+        // ═══ Notification: room sufficiency below threshold ═══
+        const admins = await this.recipients.administrators();
+        const dean = await this.recipients.collegeDean();
+        await this.dispatcher.dispatch('room_sufficiency.below_threshold', {
+          recipientUserIds: this.recipients.uniq([...admins, ...dean]),
+          title: 'Room capacity below threshold',
+          body: sufficiency.hint,
+          entityType: 'term',
+          entityId: termId,
+          payload: { deptId, deficits: sufficiency.deficits },
+        });
+
+        // ═══ Notification: auto-generate failed (to the requester) ═══
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: starterDHs,
+          title: 'Auto-generate failed',
+          body: sufficiency.hint,
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            reason: 'insufficient_rooms',
+            deficits: sufficiency.deficits,
+          },
+        });
+
         this.autoGenerateInFlight.delete(termId);
         await this.releaseAutoGenerateLock(termId, userId);
         return {
@@ -956,17 +1059,45 @@ export class SchedulingService {
 
       let result: any;
       try {
+        
         result = await this.solverClient.solve(problem);
       } catch (err) {
         this.logger.error('Solver service call failed', err as Error);
         this.autoGenerateInFlight.delete(termId);
         await this.releaseAutoGenerateLock(termId, userId);
+
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: starterDHs,
+          title: 'Auto-generate failed',
+          body: 'Solver service is unavailable. Please try again later.',
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            reason: 'solver_unavailable',
+            error: (err as Error).message,
+          },
+        });
+
         return { success: false, message: 'Solver service unavailable' };
       }
 
       if (result.status !== 'success') {
         this.autoGenerateInFlight.delete(termId);
         await this.releaseAutoGenerateLock(termId, userId);
+
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: starterDHs,
+          title: 'Auto-generate failed',
+          body: result.message ?? 'Solver returned no solution.',
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            reason: 'no_solution',
+          },
+        });
+
         return {
           success: false,
           message: result.message ?? 'Solver returned no solution',
@@ -985,6 +1116,20 @@ export class SchedulingService {
         );
         this.autoGenerateInFlight.delete(termId);
         await this.releaseAutoGenerateLock(termId, userId);
+
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: starterDHs,
+          title: 'Auto-generate failed',
+          body: `Generated schedule has ${validation.hardFailures.length} constraint failure(s).`,
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            reason: 'constraint_validation',
+            failures: validation.hardFailures.slice(0, 10),
+          },
+        });
+
         return {
           success: false,
           message: 'Generated schedule failed constraint validation',
@@ -1002,6 +1147,16 @@ export class SchedulingService {
 
       await this.markAutoGeneratePending(termId, userId);
       this.autoGenerateInFlight.delete(termId);
+
+      // ═══ Notification: auto-generate finished ═══
+      await this.dispatcher.dispatch('auto_generate.finished', {
+        recipientUserIds: starterDHs,
+        title: 'Auto-generate finished',
+        body: `Generated ${saved.length} schedule entries. Review the preview to accept or discard.`,
+        entityType: 'term',
+        entityId: termId,
+        payload: { deptId, scheduleCount: saved.length },
+      });
 
       return {
         success: true,
@@ -1687,12 +1842,17 @@ export class SchedulingService {
       }
     }
 
+    
+
     const startMin = this.timeToMinutes(problem.config.operatingHoursStart);
     const endMin = this.timeToMinutes(problem.config.operatingHoursEnd);
     const hoursPerDay = (endMin - startMin) / 60;
     const operatingDays = 6;
     const hoursPerWeekPerRoom = hoursPerDay * operatingDays;
 
+
+
+    
     const supplyByType = new Map<string, { rooms: number; hours: number }>();
     for (const room of problem.rooms) {
       const entry = supplyByType.get(room.roomType) ?? {
@@ -2107,5 +2267,71 @@ export class SchedulingService {
     throw new ForbiddenException(
       'You do not have permission to modify schedules.',
     );
+  }
+    private async computeFacultyWeeklyHours(
+    facultyId: string,
+    termId: string,
+  ): Promise<number> {
+    const { data } = await this.supabase
+      .getAdminClient()
+      .from('schedule')
+      .select('start_time, end_time')
+      .eq('faculty_id', facultyId)
+      .eq('term_id', termId);
+
+    let totalMinutes = 0;
+    for (const row of data ?? []) {
+      if (!row.start_time || !row.end_time) continue;
+      const start = this.timeToMinutes(row.start_time);
+      const end = this.timeToMinutes(row.end_time);
+      if (end > start) totalMinutes += end - start;
+    }
+    return Math.round((totalMinutes / 60) * 10) / 10;
+  }
+
+  private async checkFacultyOverload(
+    facultyId: string,
+    termId: string,
+  ): Promise<void> {
+    try {
+      const totalHours = await this.computeFacultyWeeklyHours(
+        facultyId,
+        termId,
+      );
+
+      const { data: fac } = await this.supabase
+        .getAdminClient()
+        .from('faculty')
+        .select('first_name, last_name, dept_id, required_hours')
+        .eq('faculty_id', facultyId)
+        .maybeSingle();
+
+      if (!fac) return;
+
+      const requiredHours = Number(fac.required_hours ?? 18);
+      if (totalHours <= requiredHours) return;
+
+      const ownerDHs = await this.recipients.departmentHeadsOf(
+        String(fac.dept_id),
+      );
+      const dean = await this.recipients.collegeDean();
+
+      await this.dispatcher.dispatch('faculty.overloaded', {
+        recipientUserIds: this.recipients.uniq([...ownerDHs, ...dean]),
+        title: 'Faculty workload exceeds cap',
+        body: `${fac.first_name} ${fac.last_name} is assigned ${totalHours}h (cap: ${requiredHours}h).`,
+        entityType: 'faculty',
+        entityId: facultyId,
+        payload: {
+          facultyName: `${fac.first_name} ${fac.last_name}`,
+          totalHours,
+          requiredHours,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `checkFacultyOverload(${facultyId}) failed: ${(err as Error).message}`,
+      );
+    }
   }
 }

@@ -7,6 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Term } from './entities/term.entity';
 import { CreateTermDto } from './dto/create-term.dto';
+import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
+import { RecipientsService } from '../notifications/recipients.service';
 
 @Injectable()
 export class TermsService {
@@ -14,6 +16,8 @@ export class TermsService {
     @InjectRepository(Term)
     private readonly repo: Repository<Term>,
     private readonly dataSource: DataSource,
+    private readonly dispatcher: NotificationDispatcherService,
+    private readonly recipients: RecipientsService,
   ) {}
 
   findAll(): Promise<Term[]> {
@@ -83,16 +87,34 @@ export class TermsService {
         .execute();
     });
 
-    return this.findOne(id);
+    const activated = await this.findOne(id);
+
+    // ═══ Notification: term activated ═══
+    // Recipients: all DHs + the college dean
+    const allDHs = await this.recipients.allDepartmentHeads();
+    const dean = await this.recipients.collegeDean();
+    await this.dispatcher.dispatch('term.activated', {
+      recipientUserIds: this.recipients.uniq([...allDHs, ...dean]),
+      title: 'New term activated',
+      body: `${activated.termName} (AY ${activated.schoolYear}) is now active.`,
+      entityType: 'term',
+      entityId: String(activated.termId),
+      payload: {
+        termName: activated.termName,
+        schoolYear: activated.schoolYear,
+      },
+    });
+
+    return activated;
   }
 
   async deactivate(id: string): Promise<Term> {
-  const found = await this.findOne(id);
-  if (!found.isActive) {
-    throw new BadRequestException('This term is already inactive.');
-  }
-  found.isActive = false;
-  return this.repo.save(found);
+    const found = await this.findOne(id);
+    if (!found.isActive) {
+      throw new BadRequestException('This term is already inactive.');
+    }
+    found.isActive = false;
+    return this.repo.save(found);
   }
 
   async remove(id: string): Promise<{ success: boolean }> {

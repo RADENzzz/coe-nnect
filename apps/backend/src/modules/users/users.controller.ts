@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -22,11 +23,6 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 export class UsersController {
   constructor(private service: UsersService) {}
 
-  /**
-   * Presence-safe directory for Dean + DH dashboards.
-   * Overrides the class-level @Roles('administrator') with a wider set.
-   * MUST be declared before @Get(':id'), or Nest matches 'directory' as :id.
-   */
   @Get('directory')
   @Roles('administrator', 'college_dean', 'department_head')
   async findDirectory() {
@@ -48,8 +44,8 @@ export class UsersController {
 
   @Auditable({ action: 'user.create', source: 'Users' })
   @Post()
-  async create(@Body() dto: CreateUserDto) {
-    const data = await this.service.create(dto);
+  async create(@Body() dto: CreateUserDto, @Req() req: any) {
+    const data = await this.service.create(dto, req.user?.id);
     return { data };
   }
 
@@ -60,8 +56,8 @@ export class UsersController {
   }
 
   @Patch(':id/toggle-active')
-  async toggleActive(@Param('id') id: string) {
-    const data = await this.service.toggleActive(id);
+  async toggleActive(@Param('id') id: string, @Req() req: any) {
+    const data = await this.service.toggleActive(id, req.user?.id);
     return { data };
   }
 

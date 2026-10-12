@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 
 import { ProspectusPdf } from './entities/prospectus-pdf.entity';
@@ -30,6 +30,7 @@ import { ImportConfirmDto } from './dto/extract.dto';
 import { Subject } from '../subjects/entities/subject.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
 import { Program } from '../programs/entities/program.entity';
+import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 
 export interface UploadedPdfFile {
   mimetype: string;
@@ -63,6 +64,7 @@ export class ProspectusPdfsService {
     private readonly programRepo: Repository<Program>,
     private readonly storage: ProspectusStorageService,
     private readonly parser: ProspectusParserClient,
+    private readonly dispatcher: NotificationDispatcherService,
   ) {}
 
   // ============================================================
@@ -130,7 +132,7 @@ export class ProspectusPdfsService {
     user: UserProfile,
     departmentId?: string,
   ): Promise<ProspectusPdf[]> {
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = { deletedAt: IsNull() };
     if (departmentId) {
       this.assertCanReadDepartment(user, departmentId);
       where.departmentId = departmentId;
@@ -146,7 +148,7 @@ export class ProspectusPdfsService {
 
   async findOne(id: string, user: UserProfile): Promise<ProspectusPdf> {
     const pdf = await this.pdfRepo.findOne({
-      where: { pdfId: id, deletedAt: null },
+      where: { pdfId: id, deletedAt: IsNull() },
       relations: { tables: true },
     });
     if (!pdf) throw new NotFoundException(`Prospectus PDF ${id} not found`);
@@ -454,8 +456,6 @@ export class ProspectusPdfsService {
     }
 
     // Resolve target tables directly from the DB.
-    // We don't rely on `pdf.tables` (the eager-loaded relation) because
-    // the OneToMany relation has proven flaky in this Nest+TypeORM setup.
     const allTables = await this.tableRepo.find({
       where: { pdfId },
     });
@@ -501,7 +501,6 @@ export class ProspectusPdfsService {
       let existing = 0;
 
       for (const sub of region.subjects) {
-        // Validate code
         const code = (sub.code ?? '').trim();
         if (!code || !SUBJECT_CODE_RE.test(code)) {
           skipped++;
@@ -517,7 +516,6 @@ export class ProspectusPdfsService {
         const lab = this.parseIntSafe(sub.lab);
         const total = this.parseIntSafe(sub.total);
 
-        // Validate units: skip rows where lec + lab !== total
         if (lec + lab !== total) {
           skipped++;
           warnings.push(
@@ -605,6 +603,33 @@ export class ProspectusPdfsService {
         `${prospectusSkipped} skipped, ${skippedRows} invalid`,
     );
 
+    // ═══ Notification: prospectus imported (to the importer) ═══
+    const totalProcessed = prospectusCreated + prospectusSkipped;
+    await this.dispatcher.dispatch('prospectus.imported', {
+      recipientUserIds: [user.userId],
+      title: 'Prospectus imported',
+      body:
+        `Imported ${prospectusCreated} new prospectus entr${
+          prospectusCreated === 1 ? 'y' : 'ies'
+        }` +
+        (subjectsCreated > 0
+          ? ` and created ${subjectsCreated} new subject${subjectsCreated === 1 ? '' : 's'}`
+          : '') +
+        (skippedRows > 0 ? `. ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped.` : '.'),
+      entityType: 'prospectus_pdf',
+      entityId: String(pdfId),
+      payload: {
+        programId,
+        subjectsCreated,
+        subjectsExisting,
+        prospectusCreated,
+        prospectusSkipped,
+        skippedRows,
+        totalProcessed,
+        byTable,
+      },
+    });
+
     return {
       subjectsCreated,
       subjectsExisting,
@@ -684,8 +709,6 @@ export class ProspectusPdfsService {
 
   private parseIntSafe(v: string | undefined): number {
     if (!v) return 0;
-    // Strip parentheses, spaces, and any non-numeric chars, then parse.
-    // "(3)" → "3", "  4 " → "4", "(1.5)" → "1.5" → 1 (int)
     const cleaned = String(v).replace(/[^0-9.-]/g, '');
     if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
     const n = parseFloat(cleaned);
