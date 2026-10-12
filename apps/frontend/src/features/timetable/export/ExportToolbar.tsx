@@ -34,8 +34,17 @@ interface Props {
   suggestedFilename: string;
   gridAvailable: boolean;
   gridScopeLabel: string;
-  /** The on-screen layout — used to pick a sensible default format. */
   layoutMode: LayoutMode;
+  /**
+   * When set, the toolbar is exporting a historical version instead of
+   * the live schedule. Version number is appended to titles, and the
+   * "finalized by / on" line is added to the doc subtitle.
+   */
+  versionContext?: {
+    versionNumber: number;
+    finalizedByName: string | null;
+    capturedAt: string | null;
+  } | null;
 }
 
 function isMobileViewport(): boolean {
@@ -55,7 +64,6 @@ function useIsMobile(): boolean {
 }
 
 function useCanShare(): boolean {
-  // Web Share API Level 2 (file sharing) support check.
   if (typeof navigator === 'undefined') return false;
   const nav = navigator as Navigator & {
     canShare?: (data?: ShareData) => boolean;
@@ -64,7 +72,6 @@ function useCanShare(): boolean {
     return false;
   }
   try {
-    // Probe with a dummy File to confirm Level 2 support.
     const probe = new File([new Blob()], 'probe.pdf', {
       type: 'application/pdf',
     });
@@ -82,6 +89,7 @@ export default function ExportToolbar({
   gridAvailable,
   gridScopeLabel,
   layoutMode,
+  versionContext,
 }: Props) {
   const isMobile = useIsMobile();
   const canShare = useCanShare();
@@ -93,7 +101,6 @@ export default function ExportToolbar({
       if (gridAvailable) list.push('grid');
       list.push('table');
     } else {
-      // grid on-screen
       if (gridAvailable) list.push('grid');
       list.push('agenda', 'table');
     }
@@ -108,7 +115,6 @@ export default function ExportToolbar({
 
   const [format, setFormat] = useState<ExportFormat>(defaultFormat);
 
-  // Re-sync default when the layout or availability changes.
   useEffect(() => {
     setFormat(defaultFormat);
   }, [defaultFormat]);
@@ -123,37 +129,84 @@ export default function ExportToolbar({
 
   const isMaster = scopeLabel === 'Master View';
 
+  // ── Version context: title suffix + subtitle ──
+  const versionSuffix = versionContext
+    ? ` — v${versionContext.versionNumber}`
+    : '';
+
+  const versionSubtitle = versionContext
+    ? [
+        `Version ${versionContext.versionNumber}`,
+        versionContext.finalizedByName
+          ? `finalized by ${versionContext.finalizedByName}`
+          : null,
+        versionContext.capturedAt
+          ? `on ${new Date(versionContext.capturedAt).toLocaleString(
+              undefined,
+              {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              },
+            )}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null;
+
+  // ── Filename with version suffix ──
+  const effectiveFilename = versionContext
+    ? `${suggestedFilename}_v${versionContext.versionNumber}`
+    : suggestedFilename;
+
   // ── Doc props builders ──
   const tableDocProps: SchedulePdfProps = {
     entries,
-    title: isMaster
-      ? 'CoE-NNECT Master Timetable'
-      : `CoE-NNECT Timetable — ${scopeLabel}`,
-    subtitle: isMaster ? 'College-wide schedule' : `View: ${scopeLabel}`,
+    title:
+      (isMaster
+        ? 'CoE-NNECT Master Timetable'
+        : `CoE-NNECT Timetable — ${scopeLabel}`) + versionSuffix,
+    subtitle: versionSubtitle
+      ? versionSubtitle
+      : isMaster
+      ? 'College-wide schedule'
+      : `View: ${scopeLabel}`,
     termLabel,
     scopeLabel: isMaster ? undefined : scopeLabel,
   };
 
   const gridDocProps: ScheduleGridPdfProps = {
     entries,
-    title: isMaster
-      ? 'CoE-NNECT Master Schedule'
-      : `Room Schedule — ${gridScopeLabel}`,
-    subtitle: isMaster ? 'College-wide master schedule' : gridScopeLabel,
+    title:
+      (isMaster
+        ? 'CoE-NNECT Master Schedule'
+        : `Room Schedule — ${gridScopeLabel}`) + versionSuffix,
+    subtitle: versionSubtitle
+      ? versionSubtitle
+      : isMaster
+      ? 'College-wide master schedule'
+      : gridScopeLabel,
     termLabel,
   };
 
   const agendaDocProps: ScheduleAgendaPdfProps = {
     entries,
-    title: isMaster
-      ? 'CoE-NNECT Master Schedule'
-      : `CoE-NNECT Schedule — ${scopeLabel}`,
-    subtitle: isMaster ? 'College-wide schedule' : `View: ${scopeLabel}`,
+    title:
+      (isMaster
+        ? 'CoE-NNECT Master Schedule'
+        : `CoE-NNECT Schedule — ${scopeLabel}`) + versionSuffix,
+    subtitle: versionSubtitle
+      ? versionSubtitle
+      : isMaster
+      ? 'College-wide schedule'
+      : `View: ${scopeLabel}`,
     termLabel,
     scopeLabel: isMaster ? undefined : scopeLabel,
   };
 
-  // ── Dispatch helpers ──
   const runExportPdf = async (filename: string) => {
     setError(null);
     setBusy('pdf');
@@ -175,9 +228,9 @@ export default function ExportToolbar({
 
   const runPrint = async () => {
     setError(null);
-    const filename = suggestedFilename.endsWith('.pdf')
-      ? suggestedFilename
-      : `${suggestedFilename}.pdf`;
+    const filename = effectiveFilename.endsWith('.pdf')
+      ? effectiveFilename
+      : `${effectiveFilename}.pdf`;
     setBusy('print');
     try {
       if (format === 'grid' && gridAvailable) {
@@ -201,9 +254,9 @@ export default function ExportToolbar({
     setBusy('share');
     try {
       let file: File;
-      const filename = suggestedFilename.endsWith('.pdf')
-        ? suggestedFilename
-        : `${suggestedFilename}.pdf`;
+      const filename = effectiveFilename.endsWith('.pdf')
+        ? effectiveFilename
+        : `${effectiveFilename}.pdf`;
 
       if (format === 'grid' && gridAvailable) {
         file = await generateScheduleGridPdfFile(gridDocProps, filename);
@@ -216,10 +269,11 @@ export default function ExportToolbar({
       await navigator.share({
         files: [file],
         title: file.name,
-        text: `${scopeLabel} — ${termLabel}`,
+        text: `${scopeLabel} — ${termLabel}${
+          versionContext ? ` (v${versionContext.versionNumber})` : ''
+        }`,
       });
     } catch (err: any) {
-      // User cancelling the share sheet throws AbortError — ignore.
       if (err?.name !== 'AbortError') {
         console.error('[Share] Failed:', err);
         setError(err?.message ?? 'Failed to share PDF.');
@@ -237,9 +291,13 @@ export default function ExportToolbar({
       exportScheduleExcel({
         entries,
         title: stem,
-        termLabel,
+        termLabel: versionSubtitle
+          ? `${termLabel} — ${versionSubtitle}`
+          : termLabel,
         scopeLabel: isMaster ? undefined : scopeLabel,
-        sheetName: isMaster ? 'Master' : scopeLabel.slice(0, 31),
+        sheetName: isMaster
+          ? 'Master'
+          : scopeLabel.slice(0, 31),
       });
     } catch (err: any) {
       console.error('[Excel export] Failed:', err);
@@ -249,7 +307,6 @@ export default function ExportToolbar({
     }
   };
 
-  // ── Public actions ──
   const handleExportPdf = () => {
     setFilenameModal({
       ext: 'pdf',
@@ -266,7 +323,6 @@ export default function ExportToolbar({
 
   const disabled = busy !== null || entries.length === 0;
 
-  // ── Mobile: single button + sheet ──
   if (isMobile) {
     return (
       <>
@@ -316,7 +372,7 @@ export default function ExportToolbar({
           <ExportFilenameModal
             open={true}
             onClose={() => setFilenameModal(null)}
-            defaultStem={suggestedFilename}
+            defaultStem={effectiveFilename}
             extension={filenameModal.ext}
             onConfirm={(filename) => filenameModal.pending(filename)}
           />
@@ -325,7 +381,6 @@ export default function ExportToolbar({
     );
   }
 
-  // ── Desktop: inline toolbar (current behavior) ──
   return (
     <div className="flex flex-wrap items-center gap-2">
       {error && (
@@ -334,7 +389,6 @@ export default function ExportToolbar({
         </div>
       )}
 
-      {/* Format toggle */}
       {availableFormats.length > 1 && (
         <div className="flex items-center border border-surface-variant overflow-hidden">
           {availableFormats.map((f, idx) => {
@@ -369,7 +423,6 @@ export default function ExportToolbar({
         </div>
       )}
 
-      {/* Export buttons */}
       <button
         type="button"
         onClick={handleExportPdf}
