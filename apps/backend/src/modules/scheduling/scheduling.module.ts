@@ -13,11 +13,13 @@ import { RuleContextBuilder } from './services/rule-context.builder';
 import { SolverClient } from './services/solver.client';
 import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { ScheduleVersion } from './entities/schedule-version.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Schedule,
+      ScheduleVersion,
       TimeSlot,
       Term,
       Subject,
