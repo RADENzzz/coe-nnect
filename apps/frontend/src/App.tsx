@@ -24,6 +24,9 @@ import FacultyWorkloadPage from './features/reports/FacultyWorkloadPage';
 import ReportsHubPage from './features/reports/ReportsHubPage';
 import ApprovalsReportPage from './features/reports/ApprovalsReportPage';
 import RoomSufficiencyPage from './features/reports/RoomSufficiencyPage';
+import ProspectusPdfListPage from './features/import/ProspectusPdfListPage';
+import ProspectusPdfEditorPage from './features/import/ProspectusPdfEditorPage';
+import RequireDesktop from './features/import/components/RequireDesktop';
 
 function App() {
   return (
@@ -46,6 +49,15 @@ function App() {
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
           <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+          <Route path="import" element={<ProspectusPdfListPage />} />
+          <Route
+            path="import/:id"
+            element={
+              <RequireDesktop>
+                <ProspectusPdfEditorPage />
+              </RequireDesktop>
+            }
+          />
         </Route>
       </Route>
 
@@ -64,6 +76,15 @@ function App() {
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
           <Route path="timetable" element={<TimetablePage readOnly />} />
           <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+          <Route path="import" element={<ProspectusPdfListPage />} />
+          <Route
+            path="import/:id"
+            element={
+              <RequireDesktop>
+                <ProspectusPdfEditorPage />
+              </RequireDesktop>
+            }
+          />
         </Route>
       </Route>
 
@@ -86,6 +107,15 @@ function App() {
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
           <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+          <Route path="import" element={<ProspectusPdfListPage />} />
+          <Route
+            path="import/:id"
+            element={
+              <RequireDesktop>
+                <ProspectusPdfEditorPage />
+              </RequireDesktop>
+            }
+          />
         </Route>
       </Route>
 
