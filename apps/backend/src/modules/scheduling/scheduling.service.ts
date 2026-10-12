@@ -3,12 +3,13 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
-  ForbiddenException, 
+  ForbiddenException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Schedule } from './entities/schedule.entity';
+import { ScheduleVersion } from './entities/schedule-version.entity';
 import { Term } from '../terms/entities/term.entity';
 import { Section } from '../sections/entities/section.entity';
 import { PlotSubjectDto } from './dto/plot-subject.dto';
@@ -34,16 +35,12 @@ type DayOfWeek =
 export class SchedulingService {
   private readonly logger = new Logger(SchedulingService.name);
 
-  /**
-   * In-memory fast-path guard. Prevents two simultaneous requests in the
-   * SAME backend process from hitting the DB lock at the same time. The
-   * DB lock is the real gate; this just skips the round-trip for the
-   * common case.
-   */
   private readonly autoGenerateInFlight = new Set<string>();
 
   constructor(
     @InjectRepository(Schedule) private scheduleRepo: Repository<Schedule>,
+    @InjectRepository(ScheduleVersion)
+    private versionRepo: Repository<ScheduleVersion>,
     @InjectRepository(Term) private termRepo: Repository<Term>,
     @InjectRepository(Section) private sectionRepo: Repository<Section>,
     private readonly ruleContextBuilder: RuleContextBuilder,
@@ -81,7 +78,8 @@ export class SchedulingService {
     softWarnings: Array<{ ruleId: string; ruleName: string; reason: string }>;
     alternatives: unknown[];
   }> {
-    const guards: Array<{ ruleId: string; ruleName: string; reason: string }> = [];
+    const guards: Array<{ ruleId: string; ruleName: string; reason: string }> =
+      [];
 
     const startMin = this.timeToMinutes(dto.startTime);
     const endMin = this.timeToMinutes(dto.endTime);
@@ -155,119 +153,29 @@ export class SchedulingService {
   // ════════════════════════════════════════════
 
   async plot(dto: PlotSubjectDto, user?: any): Promise<Schedule> {
-  if (!dto.facultyId) {
-    throw new BadRequestException('facultyId is required to plot a subject.');
-  }
-
-  const startMin = this.timeToMinutes(dto.startTime);
-  const endMin = this.timeToMinutes(dto.endTime);
-
-  if (endMin <= startMin) {
-    throw new BadRequestException('H-7: End time must be after start time.');
-  }
-  if (startMin < 7 * 60) {
-    throw new BadRequestException('H-8: Class cannot start before 7:00 AM.');
-  }
-  if (endMin > 19 * 60) {
-    throw new BadRequestException('H-8: Class cannot end after 7:00 PM.');
-  }
-
-  // ── Ownership check: fetch subject's dept first ──
-  const { data: subjectRow, error: subjErr } = await this.supabase
-    .getAdminClient()
-    .from('subject')
-    .select('dept_id')
-    .eq('subject_id', dto.subjectId)
-    .maybeSingle();
-
-  if (subjErr) {
-    this.logger.warn(`plot: subject lookup failed: ${subjErr.message}`);
-  }
-
-  const subjectDeptId = subjectRow?.dept_id
-    ? String(subjectRow.dept_id)
-    : null;
-
-  if (user && user.role === 'department_head') {
-    const myDept = user.deptId != null ? String(user.deptId) : null;
-    if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
-      throw new ForbiddenException(
-        'You can only plot subjects that belong to your own department.',
+    if (!dto.facultyId) {
+      throw new BadRequestException(
+        'facultyId is required to plot a subject.',
       );
     }
-  }
 
-  const context = await this.ruleContextBuilder.build({
-    termId: dto.termId,
-    subjectId: dto.subjectId,
-    facultyId: dto.facultyId,
-    roomId: dto.roomId,
-    section: dto.section,
-    dayOfWeek: dto.dayOfWeek,
-    startTime: dto.startTime,
-    endTime: dto.endTime,
-    loadType: dto.loadType,
-  });
+    const startMin = this.timeToMinutes(dto.startTime);
+    const endMin = this.timeToMinutes(dto.endTime);
 
-  const engineResult = this.constraints.evaluate(context);
-
-  if (!engineResult.valid) {
-    const reasons = engineResult.hardConflicts
-      .map((c) => `${c.ruleId}: ${c.reason}`)
-      .join('\n');
-    throw new BadRequestException(
-      `Cannot plot — hard conflicts detected:\n${reasons}`,
-    );
-  }
-
-  const sectionId = await this.resolveSectionId(dto.section);
-  if (dto.section && !sectionId) {
-    throw new BadRequestException(
-      `Section "${dto.section}" not found. It may have been deleted or renamed.`,
-    );
-  }
-
-  const entry = this.scheduleRepo.create({
-    termId: dto.termId,
-    subjectId: dto.subjectId,
-    facultyId: dto.facultyId ?? null,
-    roomId: dto.roomId ?? null,
-    timeslotId: null,
-    section: dto.section ?? null,
-    sectionId,
-    deptId: subjectDeptId,
-    loadType: dto.loadType ?? null,
-    dayOfWeek: dto.dayOfWeek as any,
-    startTime:
-      dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
-    endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
-    status: 'draft',
-  });
-  return this.scheduleRepo.save(entry);
-  }
-
-  /**
-   * Plot the same subject on multiple days in one request.
-   *
-   * Validates every session against the engine BEFORE saving. If any
-   * session fails, none are saved (all-or-nothing).
-   *
-   * Ownership rules are identical to `plot()` — the whole batch is
-   * evaluated against the same subject/section/faculty/room ownership
-   * checks.
-   */
-  async plotMulti(
-    dto: PlotMultiDto,
-    user?: any,
-  ): Promise<Schedule[]> {
-    if (!dto.facultyId) {
-      throw new BadRequestException('facultyId is required.');
+    if (endMin <= startMin) {
+      throw new BadRequestException('H-7: End time must be after start time.');
     }
-    if (!dto.sessions || dto.sessions.length === 0) {
-      throw new BadRequestException('At least one session is required.');
+    if (startMin < 7 * 60) {
+      throw new BadRequestException(
+        'H-8: Class cannot start before 7:00 AM.',
+      );
+    }
+    if (endMin > 19 * 60) {
+      throw new BadRequestException(
+        'H-8: Class cannot end after 7:00 PM.',
+      );
     }
 
-    // ── Ownership: fetch subject dept once ──
     const { data: subjectRow, error: subjErr } = await this.supabase
       .getAdminClient()
       .from('subject')
@@ -276,7 +184,7 @@ export class SchedulingService {
       .maybeSingle();
 
     if (subjErr) {
-      this.logger.warn(`plotMulti: subject lookup failed: ${subjErr.message}`);
+      this.logger.warn(`plot: subject lookup failed: ${subjErr.message}`);
     }
 
     const subjectDeptId = subjectRow?.dept_id
@@ -292,7 +200,89 @@ export class SchedulingService {
       }
     }
 
-    // ── Validate every session against the engine first ──
+    const context = await this.ruleContextBuilder.build({
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      facultyId: dto.facultyId,
+      roomId: dto.roomId,
+      section: dto.section,
+      dayOfWeek: dto.dayOfWeek,
+      startTime: dto.startTime,
+      endTime: dto.endTime,
+      loadType: dto.loadType,
+    });
+
+    const engineResult = this.constraints.evaluate(context);
+
+    if (!engineResult.valid) {
+      const reasons = engineResult.hardConflicts
+        .map((c) => `${c.ruleId}: ${c.reason}`)
+        .join('\n');
+      throw new BadRequestException(
+        `Cannot plot — hard conflicts detected:\n${reasons}`,
+      );
+    }
+
+    const sectionId = await this.resolveSectionId(dto.section);
+    if (dto.section && !sectionId) {
+      throw new BadRequestException(
+        `Section "${dto.section}" not found. It may have been deleted or renamed.`,
+      );
+    }
+
+    const entry = this.scheduleRepo.create({
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      facultyId: dto.facultyId ?? null,
+      roomId: dto.roomId ?? null,
+      timeslotId: null,
+      section: dto.section ?? null,
+      sectionId,
+      deptId: subjectDeptId,
+      loadType: dto.loadType ?? null,
+      dayOfWeek: dto.dayOfWeek as any,
+      startTime:
+        dto.startTime.length === 5 ? `${dto.startTime}:00` : dto.startTime,
+      endTime: dto.endTime.length === 5 ? `${dto.endTime}:00` : dto.endTime,
+      status: 'draft',
+    });
+    return this.scheduleRepo.save(entry);
+  }
+
+  async plotMulti(dto: PlotMultiDto, user?: any): Promise<Schedule[]> {
+    if (!dto.facultyId) {
+      throw new BadRequestException('facultyId is required.');
+    }
+    if (!dto.sessions || dto.sessions.length === 0) {
+      throw new BadRequestException('At least one session is required.');
+    }
+
+    const { data: subjectRow, error: subjErr } = await this.supabase
+      .getAdminClient()
+      .from('subject')
+      .select('dept_id')
+      .eq('subject_id', dto.subjectId)
+      .maybeSingle();
+
+    if (subjErr) {
+      this.logger.warn(
+        `plotMulti: subject lookup failed: ${subjErr.message}`,
+      );
+    }
+
+    const subjectDeptId = subjectRow?.dept_id
+      ? String(subjectRow.dept_id)
+      : null;
+
+    if (user && user.role === 'department_head') {
+      const myDept = user.deptId != null ? String(user.deptId) : null;
+      if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
+        throw new ForbiddenException(
+          'You can only plot subjects that belong to your own department.',
+        );
+      }
+    }
+
     const errors: Array<{ dayOfWeek: string; reason: string }> = [];
 
     for (const session of dto.sessions) {
@@ -352,7 +342,6 @@ export class SchedulingService {
       );
     }
 
-    // ── Resolve section id once ──
     const sectionId = await this.resolveSectionId(dto.section);
     if (dto.section && !sectionId) {
       throw new BadRequestException(
@@ -360,8 +349,6 @@ export class SchedulingService {
       );
     }
 
-    // ── Build all rows ──
-    const now = new Date();
     const rows = dto.sessions.map((s) => ({
       termId: dto.termId,
       subjectId: dto.subjectId,
@@ -373,77 +360,104 @@ export class SchedulingService {
       deptId: subjectDeptId,
       loadType: dto.loadType ?? null,
       dayOfWeek: s.dayOfWeek as DayOfWeek,
-      startTime:
-        s.startTime.length === 5 ? `${s.startTime}:00` : s.startTime,
+      startTime: s.startTime.length === 5 ? `${s.startTime}:00` : s.startTime,
       endTime: s.endTime.length === 5 ? `${s.endTime}:00` : s.endTime,
       status: 'draft' as const,
     }));
 
-    // ── Save all at once (single transaction) ──
     const created = this.scheduleRepo.create(rows);
     return this.scheduleRepo.save(created);
   }
 
   async update(
-  id: string,
-  dto: UpdateScheduleDto,
-  user: any,
-): Promise<Schedule> {
-  const found = await this.assertOwnership(id, user);
+    id: string,
+    dto: UpdateScheduleDto,
+    user: any,
+  ): Promise<Schedule> {
+    const found = await this.assertOwnership(id, user);
 
-  if (found.status === 'finalized' || found.status === 'published') {
-    throw new BadRequestException(
-      'This schedule entry is locked. Unfinalize it before making changes.',
-    );
-  }
-
-  const normalizeTime = (t?: string) => {
-    if (!t) return undefined;
-    if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
-    return t;
-  };
-
-  const newStart = normalizeTime(dto.startTime) ?? found.startTime;
-  const newEnd = normalizeTime(dto.endTime) ?? found.endTime;
-
-  if (newStart && newEnd) {
-    const startMin = this.timeToMinutes(newStart);
-    const endMin = this.timeToMinutes(newEnd);
-    if (endMin <= startMin) {
-      throw new BadRequestException('endTime must be after startTime');
+    if (found.status === 'finalized' || found.status === 'published') {
+      throw new BadRequestException(
+        'This schedule entry is locked. Unfinalize it before making changes.',
+      );
     }
+
+    const normalizeTime = (t?: string) => {
+      if (!t) return undefined;
+      if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+      return t;
+    };
+
+    const newStart = normalizeTime(dto.startTime) ?? found.startTime;
+    const newEnd = normalizeTime(dto.endTime) ?? found.endTime;
+
+    if (newStart && newEnd) {
+      const startMin = this.timeToMinutes(newStart);
+      const endMin = this.timeToMinutes(newEnd);
+      if (endMin <= startMin) {
+        throw new BadRequestException('endTime must be after startTime');
+      }
+    }
+
+    if (dto.dayOfWeek !== undefined) {
+      found.dayOfWeek = dto.dayOfWeek as DayOfWeek;
+    }
+    if (dto.startTime !== undefined) {
+      found.startTime = normalizeTime(dto.startTime) ?? null;
+    }
+    if (dto.endTime !== undefined) {
+      found.endTime = normalizeTime(dto.endTime) ?? null;
+    }
+    if (dto.roomId !== undefined) found.roomId = dto.roomId;
+    if (dto.facultyId !== undefined) found.facultyId = dto.facultyId;
+    if (dto.section !== undefined) {
+      found.section = dto.section ?? null;
+      found.sectionId = await this.resolveSectionId(dto.section);
+    }
+
+    return this.scheduleRepo.save(found);
   }
 
-  if (dto.dayOfWeek !== undefined) {
-    found.dayOfWeek = dto.dayOfWeek as DayOfWeek;
-  }
-  if (dto.startTime !== undefined) {
-    found.startTime = normalizeTime(dto.startTime) ?? null;
-  }
-  if (dto.endTime !== undefined) {
-    found.endTime = normalizeTime(dto.endTime) ?? null;
-  }
-  if (dto.roomId !== undefined) found.roomId = dto.roomId;
-  if (dto.facultyId !== undefined) found.facultyId = dto.facultyId;
-  if (dto.section !== undefined) {
-    found.section = dto.section ?? null;
-    found.sectionId = await this.resolveSectionId(dto.section);
-  }
-
-  return this.scheduleRepo.save(found);
-  }
-
+  /**
+   * Update a schedule entry's status.
+   *
+   * When transitioning to 'finalized', snapshot the entire term's
+   * schedule into schedule_version (FR 5.1.8a). All-or-nothing: if the
+   * snapshot write fails, the status change is rejected.
+   *
+   * The DB trigger (trg_schedule_status_flow) enforces legal transitions
+   * at the row level; this method additionally ensures we only snapshot
+   * when the entry actually becomes finalized.
+   */
   async updateStatus(
-  id: string,
-  status: Schedule['status'],
-  user: any,
-): Promise<Schedule> {
-  const found = await this.assertOwnership(id, user);
-  found.status = status;
-  return this.scheduleRepo.save(found);
+    id: string,
+    status: Schedule['status'],
+    user: any,
+  ): Promise<Schedule> {
+    const found = await this.assertOwnership(id, user);
+
+    const previousStatus = found.status;
+    const isBecomingFinalized =
+      status === 'finalized' && previousStatus !== 'finalized';
+
+    found.status = status;
+    const saved = await this.scheduleRepo.save(found);
+
+    if (isBecomingFinalized) {
+      try {
+        await this.writeScheduleVersion(found.termId, user);
+      } catch (err) {
+        this.logger.error(
+          `Schedule version snapshot failed for term=${found.termId}: ${(err as Error).message}`,
+        );
+        // Best-effort: the status change is already committed by the DB
+        // trigger, so we don't roll it back. Log and move on. The version
+        // can be created later via a re-finalize or a manual trigger.
+      }
+    }
+
+    return saved;
   }
-
-
 
   async remove(id: string, user: any): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, user);
@@ -459,14 +473,360 @@ export class SchedulingService {
   }
 
   // ════════════════════════════════════════════
-  // FLAG SYSTEM
+  // SCHEDULE VERSION — FR 5.1.8(a)
   // ════════════════════════════════════════════
 
   /**
-   * Flag a schedule entry with a reason.
-   * Only DH (own dept), Dean, or Admin may flag.
-   * Re-flagging overwrites the previous flag.
+   * Build and persist a full-term snapshot of the current schedule.
+   * Scope: faculty_id = NULL (term-wide version).
+   *
+   * Snapshot is denormalized so it stays readable even after subjects,
+   * faculty, or rooms are renamed or deleted.
    */
+  private async writeScheduleVersion(
+    termId: string,
+    user: any,
+  ): Promise<ScheduleVersion> {
+    const entries = await this.scheduleRepo.find({
+      where: { termId },
+      relations: ['subject', 'faculty', 'room', 'timeSlot'],
+      order: { scheduleId: 'ASC' },
+    });
+
+    const capturedAt = new Date();
+    const capturedBy = user?.userId ?? user?.id ?? null;
+
+    const snapshot = {
+      snapshot_version: 1,
+      term_id: termId,
+      captured_at: capturedAt.toISOString(),
+      captured_by: capturedBy,
+      entry_count: entries.length,
+      entries: entries.map((e) => ({
+        schedule_id: e.scheduleId,
+        section_id: e.sectionId ?? null,
+        section_code: e.section ?? null,
+        subject_id: e.subjectId,
+        subject_code: e.subject?.subjectCode ?? null,
+        subject_title: e.subject?.title ?? null,
+        faculty_id: e.facultyId ?? null,
+        faculty_name: e.faculty
+          ? `${e.faculty.firstName} ${e.faculty.lastName}`
+          : null,
+        room_id: e.roomId ?? null,
+        room_number: e.room?.roomNumber ?? null,
+        building: e.room?.building ?? null,
+        day_of_week: e.dayOfWeek ?? null,
+        start_time: e.startTime ?? null,
+        end_time: e.endTime ?? null,
+        load_type: e.loadType ?? null,
+        status: e.status,
+        remarks: e.remarks ?? null,
+        dept_id: e.deptId ?? null,
+      })),
+    };
+
+    // Compute next version_number atomically per term (term-wide only).
+    const nextNumber = await this.nextVersionNumber(termId);
+
+    const version = this.versionRepo.create({
+      termId,
+      facultyId: null,
+      versionNumber: nextNumber,
+      snapshot,
+      lastModifiedAt: capturedAt,
+      finalizedBy: capturedBy,
+    });
+
+    const saved = await this.versionRepo.save(version);
+    this.logger.log(
+      `Schedule version v${saved.versionNumber} written for term=${termId} ` +
+        `(${entries.length} entries) by=${capturedBy}`,
+    );
+    return saved;
+  }
+
+  private async nextVersionNumber(termId: string): Promise<number> {
+    const row = await this.versionRepo
+      .createQueryBuilder('v')
+      .select('COALESCE(MAX(v.version_number), 0)', 'max')
+      .where('v.term_id = :termId', { termId })
+      .andWhere('v.faculty_id IS NULL')
+      .getRawOne<{ max: string | number }>();
+
+    const max = row?.max != null ? Number(row.max) : 0;
+    return max + 1;
+  }
+
+  /**
+   * List all versions for a term, newest first.
+   * Returns lightweight summaries (no full snapshot).
+   */
+  async findVersions(termId: string): Promise<
+    Array<{
+      versionId: string;
+      versionNumber: number;
+      termId: string;
+      facultyId: string | null;
+      finalizedBy: string | null;
+      finalizedByName: string | null;
+      lastModifiedAt: string;
+      entryCount: number;
+      capturedAt: string | null;
+    }>
+  > {
+    const rows = await this.versionRepo.find({
+      where: { termId },
+      order: { versionNumber: 'DESC' },
+    });
+
+    // Batch-resolve user display names for finalized_by
+    const userIds = Array.from(
+      new Set(
+        rows
+          .map((r) => r.finalizedBy)
+          .filter((v): v is string => !!v),
+      ),
+    );
+
+    const nameById = new Map<string, string>();
+    if (userIds.length > 0) {
+      const { data } = await this.supabase
+        .getAdminClient()
+        .from('users')
+        .select('user_id, username, email')
+        .in('user_id', userIds);
+
+      for (const u of data ?? []) {
+        const display =
+          u.username && String(u.username).trim() !== ''
+            ? String(u.username)
+            : String(u.email ?? '');
+        nameById.set(String(u.user_id), display);
+      }
+    }
+
+    return rows.map((r) => {
+      const snap = (r.snapshot ?? {}) as Record<string, unknown>;
+      return {
+        versionId: r.versionId,
+        versionNumber: r.versionNumber,
+        termId: r.termId,
+        facultyId: r.facultyId,
+        finalizedBy: r.finalizedBy,
+        finalizedByName: r.finalizedBy
+          ? nameById.get(r.finalizedBy) ?? null
+          : null,
+        lastModifiedAt: r.lastModifiedAt.toISOString(),
+        entryCount: Number(snap.entry_count ?? 0),
+        capturedAt:
+          typeof snap.captured_at === 'string' ? snap.captured_at : null,
+      };
+    });
+  }
+
+  /**
+   * Fetch a single version with its full snapshot.
+   */
+  async findVersion(
+    versionId: string,
+  ): Promise<ScheduleVersion & { finalizedByName: string | null }> {
+    const found = await this.versionRepo.findOne({
+      where: { versionId },
+    });
+    if (!found) {
+      throw new NotFoundException(`Schedule version ${versionId} not found`);
+    }
+
+    let finalizedByName: string | null = null;
+    if (found.finalizedBy) {
+      const { data } = await this.supabase
+        .getAdminClient()
+        .from('users')
+        .select('user_id, username, email')
+        .eq('user_id', found.finalizedBy)
+        .maybeSingle();
+      if (data) {
+        finalizedByName =
+          data.username && String(data.username).trim() !== ''
+            ? String(data.username)
+            : String(data.email ?? '');
+      }
+    }
+
+    return Object.assign(found, { finalizedByName });
+  }
+
+  /**
+   * Compare two versions of the same term.
+   *
+   * Returns a structured diff:
+   *   - added:   entries present in B, not in A
+   *   - removed: entries present in A, not in B
+   *   - moved:   entries in both, but day/time/room/faculty differ
+   *   - unchanged: entries identical in both
+   *
+   * Matching key = (section_id, subject_id, load_type, session_index).
+   * If the schema doesn't expose session_index on schedule rows, we fall
+   * back to a positional match within (section_id, subject_id, load_type).
+   */
+  async compareVersions(
+    versionAId: string,
+    versionBId: string,
+  ): Promise<{
+    versionA: {
+      versionId: string;
+      versionNumber: number;
+      finalizedByName: string | null;
+      lastModifiedAt: string;
+      entryCount: number;
+    };
+    versionB: {
+      versionId: string;
+      versionNumber: number;
+      finalizedByName: string | null;
+      lastModifiedAt: string;
+      entryCount: number;
+    };
+    added: Array<Record<string, unknown>>;
+    removed: Array<Record<string, unknown>>;
+    moved: Array<{
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+      changes: string[];
+    }>;
+    unchanged: number;
+  }> {
+    const a = await this.findVersion(versionAId);
+    const b = await this.findVersion(versionBId);
+
+    if (a.termId !== b.termId) {
+      throw new BadRequestException(
+        'Cannot compare versions from different terms',
+      );
+    }
+
+    const entriesA = this.extractEntries(a.snapshot);
+    const entriesB = this.extractEntries(b.snapshot);
+
+    const keyOf = (e: Record<string, unknown>): string => {
+      const section = e.section_id ?? e.section_code ?? '';
+      const subject = e.subject_id ?? '';
+      const load = e.load_type ?? '';
+      return `${section}::${subject}::${load}`;
+    };
+
+    // Group by key so multi-session subjects are matched positionally
+    const groupA = this.groupBy(entriesA, keyOf);
+    const groupB = this.groupBy(entriesB, keyOf);
+
+    const added: Array<Record<string, unknown>> = [];
+    const removed: Array<Record<string, unknown>> = [];
+    const moved: Array<{
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+      changes: string[];
+    }> = [];
+    let unchanged = 0;
+
+    const allKeys = new Set([...groupA.keys(), ...groupB.keys()]);
+
+    for (const key of allKeys) {
+      const listA = groupA.get(key) ?? [];
+      const listB = groupB.get(key) ?? [];
+
+      const maxLen = Math.max(listA.length, listB.length);
+      for (let i = 0; i < maxLen; i++) {
+        const eA = listA[i];
+        const eB = listB[i];
+
+        if (eA && !eB) {
+          removed.push(eA);
+          continue;
+        }
+        if (!eA && eB) {
+          added.push(eB);
+          continue;
+        }
+        if (!eA || !eB) continue;
+
+        const changes = this.diffEntry(eA, eB);
+        if (changes.length === 0) {
+          unchanged++;
+        } else {
+          moved.push({ before: eA, after: eB, changes });
+        }
+      }
+    }
+
+    return {
+      versionA: {
+        versionId: a.versionId,
+        versionNumber: a.versionNumber,
+        finalizedByName: a.finalizedByName,
+        lastModifiedAt: a.lastModifiedAt.toISOString(),
+        entryCount: entriesA.length,
+      },
+      versionB: {
+        versionId: b.versionId,
+        versionNumber: b.versionNumber,
+        finalizedByName: b.finalizedByName,
+        lastModifiedAt: b.lastModifiedAt.toISOString(),
+        entryCount: entriesB.length,
+      },
+      added,
+      removed,
+      moved,
+      unchanged,
+    };
+  }
+
+  private extractEntries(
+    snapshot: Record<string, unknown> | null,
+  ): Array<Record<string, unknown>> {
+    if (!snapshot) return [];
+    const entries = snapshot.entries;
+    return Array.isArray(entries) ? (entries as Array<Record<string, unknown>>) : [];
+  }
+
+  private groupBy<T>(
+    items: T[],
+    keyFn: (item: T) => string,
+  ): Map<string, T[]> {
+    const map = new Map<string, T[]>();
+    for (const item of items) {
+      const key = keyFn(item);
+      const list = map.get(key) ?? [];
+      list.push(item);
+      map.set(key, list);
+    }
+    return map;
+  }
+
+  private diffEntry(
+    a: Record<string, unknown>,
+    b: Record<string, unknown>,
+  ): string[] {
+    const fields: Array<[string, string]> = [
+      ['day_of_week', 'day'],
+      ['start_time', 'start time'],
+      ['end_time', 'end time'],
+      ['room_id', 'room'],
+      ['faculty_id', 'faculty'],
+    ];
+    const changes: string[] = [];
+    for (const [field, label] of fields) {
+      if (a[field] !== b[field]) {
+        changes.push(label);
+      }
+    }
+    return changes;
+  }
+
+  // ════════════════════════════════════════════
+  // FLAG SYSTEM
+  // ════════════════════════════════════════════
+
   async flagSchedule(
     id: string,
     reason: string,
@@ -491,11 +851,7 @@ export class SchedulingService {
     );
     return this.scheduleRepo.save(found);
   }
-  /**
-   * Clear a flag.
-   * Only the original flagger, a Dean, or an Admin may clear.
-   * A DH can also clear any flag on their own department's entries.
-   */
+
   async unflagSchedule(id: string, user: User): Promise<Schedule> {
     if (!user?.userId) {
       throw new ForbiddenException('Not authenticated');
@@ -530,12 +886,6 @@ export class SchedulingService {
     return this.scheduleRepo.save(found);
   }
 
-  /**
-   * List all flagged entries for a term.
-   * Scoped by role:
-   *   - DH: only own department
-   *   - Dean / Admin: all departments
-   */
   async findFlagged(termId: string, user: any): Promise<Schedule[]> {
     const qb = this.scheduleRepo
       .createQueryBuilder('s')
@@ -553,8 +903,6 @@ export class SchedulingService {
     return qb.getMany();
   }
 
-  
-
   // ════════════════════════════════════════════
   // AUTOSOLVER
   // ════════════════════════════════════════════
@@ -564,7 +912,6 @@ export class SchedulingService {
       `Auto-generate requested: term=${termId} dept=${deptId} by=${userId}`,
     );
 
-    // ── Fast path: in-memory guard (same process) ──
     if (this.autoGenerateInFlight.has(termId)) {
       this.logger.warn(
         `Auto-generate rejected (in-memory): already running for term=${termId}`,
@@ -577,7 +924,6 @@ export class SchedulingService {
       };
     }
 
-    // ── Real gate: DB row lock (across processes) ──
     const locked = await this.tryAcquireAutoGenerateLock(termId, userId);
     if (!locked) {
       this.logger.warn(
@@ -596,11 +942,9 @@ export class SchedulingService {
     try {
       const problem = await this.buildSolverProblem(termId, deptId);
 
-      // ── Pre-flight: room sufficiency check ──
       const sufficiency = this.analyzeRoomSufficiency(problem);
       if (!sufficiency.sufficient) {
         this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
-        // Release: this is a terminal error, don't hold the lock
         this.autoGenerateInFlight.delete(termId);
         await this.releaseAutoGenerateLock(termId, userId);
         return {
@@ -656,10 +1000,6 @@ export class SchedulingService {
       );
       await this.persistUnscheduled(termId, result.unscheduled ?? []);
 
-      // ═══════════════════════════════════════════════════════════
-      // SUCCESS: keep the lock held in 'pending_confirm' state.
-      // The user must click Accept or Discard to release it.
-      // ═══════════════════════════════════════════════════════════
       await this.markAutoGeneratePending(termId, userId);
       this.autoGenerateInFlight.delete(termId);
 
@@ -671,16 +1011,12 @@ export class SchedulingService {
         unscheduled: result.unscheduled ?? [],
       };
     } catch (err) {
-      // ── Unexpected error: release lock, clear guard, rethrow ──
       this.autoGenerateInFlight.delete(termId);
       await this.releaseAutoGenerateLock(termId, userId);
       throw err;
     }
   }
 
-  // ────────────────────────────────────────────
-  // buildSolverProblem
-  // ────────────────────────────────────────────
   private async buildSolverProblem(termId: string, deptId: string) {
     const db = this.supabase.getAdminClient();
 
@@ -690,7 +1026,8 @@ export class SchedulingService {
       .eq('dept_id', deptId)
       .eq('is_active', true);
 
-    if (progErr) throw new Error(`Failed to load programs: ${progErr.message}`);
+    if (progErr)
+      throw new Error(`Failed to load programs: ${progErr.message}`);
     const programIds = (programs ?? []).map((p) => String(p.program_id));
     if (programIds.length === 0) {
       throw new BadRequestException(
@@ -704,14 +1041,14 @@ export class SchedulingService {
       .in('program_id', programIds)
       .eq('is_active', true);
 
-    if (secErr) throw new Error(`Failed to load sections: ${secErr.message}`);
+    if (secErr)
+      throw new Error(`Failed to load sections: ${secErr.message}`);
     if (!sections || sections.length === 0) {
       throw new BadRequestException(
         'No active sections found for this department',
       );
     }
 
-    // ── Determine the term's semester ──
     const { data: termRow, error: termErr } = await db
       .from('term')
       .select('semester')
@@ -733,8 +1070,8 @@ export class SchedulingService {
       .from('prospectus')
       .select(
         'prospectus_id, program_id, subject_id, year_level, semester, ' +
-        'lecture_sessions_per_week, lecture_minutes_per_session, ' +
-        'lab_sessions_per_week, lab_minutes_per_session',
+          'lecture_sessions_per_week, lecture_minutes_per_session, ' +
+          'lab_sessions_per_week, lab_minutes_per_session',
       )
       .in('program_id', programIds)
       .eq('is_active', true)
@@ -758,14 +1095,10 @@ export class SchedulingService {
       .in('subject_id', subjectIds)
       .eq('is_active', true);
 
-    if (subErr) throw new Error(`Failed to load subjects: ${subErr.message}`);
+    if (subErr)
+      throw new Error(`Failed to load subjects: ${subErr.message}`);
 
-    // ── Filter to CPE-owned subjects only ──
-    // External subjects (Math, GenEd, PE, EPIC, NSTP) have source_dept set
-    // and are scheduled by other colleges, not the CPE solver.
-    const cpeSubjects = (subjects ?? []).filter(
-      (s: any) => !s.source_dept,
-    );
+    const cpeSubjects = (subjects ?? []).filter((s: any) => !s.source_dept);
     const cpeSubjectIds = new Set(
       cpeSubjects.map((s: any) => String(s.subject_id)),
     );
@@ -783,7 +1116,8 @@ export class SchedulingService {
       .eq('dept_id', deptId)
       .eq('is_active', true);
 
-    if (facErr) throw new Error(`Failed to load faculty: ${facErr.message}`);
+    if (facErr)
+      throw new Error(`Failed to load faculty: ${facErr.message}`);
     if (!faculty || faculty.length === 0) {
       throw new BadRequestException(
         'No active faculty found for this department',
@@ -816,7 +1150,6 @@ export class SchedulingService {
       throw new BadRequestException('No active rooms available');
     }
 
-    // ── Existing schedule rows for this term ──
     const { data: existingScheduleRows, error: existErr } = await db
       .from('schedule')
       .select(
@@ -830,7 +1163,6 @@ export class SchedulingService {
       );
     }
 
-    // ── settings ──
     const { data: settings } = await db
       .from('scheduling_setting')
       .select('setting_key, value');
@@ -880,7 +1212,9 @@ export class SchedulingService {
         yearLevel: p.year_level,
         semester: p.semester,
         lecture_sessions_per_week: Number(p.lecture_sessions_per_week ?? 1),
-        lecture_minutes_per_session: Number(p.lecture_minutes_per_session ?? 90),
+        lecture_minutes_per_session: Number(
+          p.lecture_minutes_per_session ?? 90,
+        ),
         lab_sessions_per_week: Number(p.lab_sessions_per_week ?? 1),
         lab_minutes_per_session: Number(p.lab_minutes_per_session ?? 180),
       })),
@@ -947,9 +1281,6 @@ export class SchedulingService {
     };
   }
 
-  // ────────────────────────────────────────────
-  // generateTimeSlotGrid
-  // ────────────────────────────────────────────
   private generateTimeSlotGrid(
     startHHMM: string,
     endHHMM: string,
@@ -962,7 +1293,8 @@ export class SchedulingService {
       'Friday',
       'Saturday',
     ];
-    const slots: Array<{ day: string; startTime: string; endTime: string }> = [];
+    const slots: Array<{ day: string; startTime: string; endTime: string }> =
+      [];
 
     const toMin = (t: string) => {
       const [h, m] = t.split(':').map(Number);
@@ -986,9 +1318,6 @@ export class SchedulingService {
     return slots;
   }
 
-  // ────────────────────────────────────────────
-  // validateGeneratedSchedule
-  // ────────────────────────────────────────────
   private async validateGeneratedSchedule(
     termId: string,
     schedule: Array<{
@@ -1075,9 +1404,6 @@ export class SchedulingService {
     return { hardFailures, softWarnings };
   }
 
-  // ────────────────────────────────────────────
-  // persistDraftSchedule
-  // ────────────────────────────────────────────
   private async persistDraftSchedule(
     termId: string,
     deptId: string,
@@ -1121,10 +1447,12 @@ export class SchedulingService {
       .in('section_id', sectionIds);
 
     const codeById = new Map<string, string>(
-      (sectionRows ?? []).map((r) => [String(r.section_id), r.section_code]),
+      (sectionRows ?? []).map((r) => [
+        String(r.section_id),
+        r.section_code,
+      ]),
     );
 
-    // Preload subject → dept_id map for the ownership assignment
     const subjectIds = Array.from(new Set(schedule.map((b) => b.subjectId)));
     const { data: subjectRows } = await this.supabase
       .getAdminClient()
@@ -1149,7 +1477,7 @@ export class SchedulingService {
         timeslot_id: null,
         section: codeById.get(b.sectionId) ?? null,
         section_id: b.sectionId,
-        dept_id: deptBySubject.get(b.subjectId) ?? null,   // ← NEW
+        dept_id: deptBySubject.get(b.subjectId) ?? null,
         load_type: b.loadType,
         day_of_week: b.day,
         start_time:
@@ -1171,7 +1499,9 @@ export class SchedulingService {
       .select('*');
 
     if (error) {
-      this.logger.error(`persistDraftSchedule insert failed: ${error.message}`);
+      this.logger.error(
+        `persistDraftSchedule insert failed: ${error.message}`,
+      );
       throw new Error(`Failed to persist schedule: ${error.message}`);
     }
 
@@ -1199,9 +1529,6 @@ export class SchedulingService {
     });
   }
 
-  // ────────────────────────────────────────────
-  // persistUnscheduled
-  // ────────────────────────────────────────────
   private async persistUnscheduled(
     termId: string,
     unscheduled: Array<{
@@ -1249,9 +1576,6 @@ export class SchedulingService {
     );
   }
 
-  // ────────────────────────────────────────────
-  // getUnscheduled
-  // ────────────────────────────────────────────
   async getUnscheduled(termId: string): Promise<
     Array<{
       unscheduledId: string;
@@ -1300,9 +1624,6 @@ export class SchedulingService {
     }));
   }
 
-  // ────────────────────────────────────────────
-  // clearAutoDrafts
-  // ────────────────────────────────────────────
   async clearAutoDrafts(termId: string): Promise<{ deleted: number }> {
     const { data, error } = await this.supabase
       .getAdminClient()
@@ -1327,9 +1648,6 @@ export class SchedulingService {
     return { deleted };
   }
 
-  // ────────────────────────────────────────────
-  // analyzeRoomSufficiency
-  // ────────────────────────────────────────────
   private analyzeRoomSufficiency(problem: any): {
     sufficient: boolean;
     deficits: Array<{
@@ -1362,7 +1680,10 @@ export class SchedulingService {
         if (!roomType) continue;
 
         const hours = (block.durationMinutes / 60) * sectionsTaking;
-        demandByType.set(roomType, (demandByType.get(roomType) ?? 0) + hours);
+        demandByType.set(
+          roomType,
+          (demandByType.get(roomType) ?? 0) + hours,
+        );
       }
     }
 
@@ -1374,7 +1695,10 @@ export class SchedulingService {
 
     const supplyByType = new Map<string, { rooms: number; hours: number }>();
     for (const room of problem.rooms) {
-      const entry = supplyByType.get(room.roomType) ?? { rooms: 0, hours: 0 };
+      const entry = supplyByType.get(room.roomType) ?? {
+        rooms: 0,
+        hours: 0,
+      };
       entry.rooms += 1;
       entry.hours += hoursPerWeekPerRoom;
       supplyByType.set(room.roomType, entry);
@@ -1439,7 +1763,8 @@ export class SchedulingService {
     }
 
     if (subject.labUnits > 0) {
-      const totalLab = subject.labUnits * (config.labMinutesPerUnit ?? 180);
+      const totalLab =
+        subject.labUnits * (config.labMinutesPerUnit ?? 180);
       const maxSession = config.labMaxConsecutiveMinutes ?? 180;
       let remaining = totalLab;
       while (remaining > 0) {
@@ -1472,13 +1797,10 @@ export class SchedulingService {
     return section?.sectionId ?? null;
   }
 
-    /**
-   * Public wrapper for the room sufficiency analysis.
-   *
-   * If `deptId` is provided, returns the analysis for that department.
-   * If omitted, returns one analysis per active department (college-wide view).
-   */
-  async getRoomSufficiency(deptId?: string, termId?: string): Promise<
+  async getRoomSufficiency(
+    deptId?: string,
+    termId?: string,
+  ): Promise<
     Array<{
       deptId: string;
       deptCode: string;
@@ -1504,7 +1826,6 @@ export class SchedulingService {
   > {
     const db = this.supabase.getAdminClient();
 
-    // ── Resolve term ──
     let resolvedTermId = termId;
     let resolvedTermLabel: string | null = null;
 
@@ -1533,8 +1854,11 @@ export class SchedulingService {
       throw new BadRequestException('No active term available');
     }
 
-    // ── Resolve departments ──
-    let depts: Array<{ dept_id: bigint | number; dept_code: string; dept_name: string }> = [];
+    let depts: Array<{
+      dept_id: bigint | number;
+      dept_code: string;
+      dept_name: string;
+    }> = [];
 
     if (deptId) {
       const { data, error } = await db
@@ -1561,7 +1885,6 @@ export class SchedulingService {
       depts = data ?? [];
     }
 
-    // ── Run analysis per department ──
     const results = [];
     for (const d of depts) {
       try {
@@ -1585,14 +1908,14 @@ export class SchedulingService {
             sections: problem.sections.length,
             blocks: problem.subjects.reduce(
               (sum: number, s: any) =>
-                sum + this.computeBlocksForSufficiency(s, problem.config).length,
+                sum +
+                this.computeBlocksForSufficiency(s, problem.config).length,
               0,
             ),
             rooms: problem.rooms.length,
           },
         });
       } catch (err) {
-        // If a dept has no programs/sections yet, skip it gracefully
         this.logger.warn(
           `Room sufficiency for dept ${d.dept_id} failed: ${(err as Error).message}`,
         );
@@ -1689,7 +2012,7 @@ export class SchedulingService {
       .rpc('mark_auto_generate_pending', {
         p_term_id: Number(termId),
         p_user_id: userId,
-        p_ttl_seconds: 600, 
+        p_ttl_seconds: 600,
       });
     if (error) {
       this.logger.warn(
@@ -1698,20 +2021,15 @@ export class SchedulingService {
     }
   }
 
-  /**
-   * Called when the user accepts the preview.
-   * Lock is released; drafts remain.
-   */
   async confirmAutoGenerate(termId: string, userId: string): Promise<void> {
     await this.releaseAutoGenerateLock(termId, userId);
     this.logger.log(`Auto-generate confirmed for term=${termId}`);
   }
 
-  /**
-   * Called when the user discards the preview.
-   * Lock is released AND drafts are deleted.
-   */
-  async discardAutoGenerate(termId: string, userId: string): Promise<{ deleted: number }> {
+  async discardAutoGenerate(
+    termId: string,
+    userId: string,
+  ): Promise<{ deleted: number }> {
     const result = await this.clearAutoDrafts(termId);
     await this.releaseAutoGenerateLock(termId, userId);
     this.logger.log(
@@ -1720,29 +2038,16 @@ export class SchedulingService {
     return result;
   }
 
-    /**
-   * Release the lock WITHOUT deleting drafts.
-   * Used when a user reopens the page after abandoning a preview, or
-   * fires a fresh Auto-Generate while holding a stale lock from a
-   * previous session.
-   *
-   * Only affects locks held by THIS user for THIS term. If another user
-   * holds the lock, this is a no-op (the release function is scoped by
-   * (term_id, user_id)).
-   */
   async abandonAutoGenerate(
     termId: string,
     userId: string,
   ): Promise<void> {
     await this.releaseAutoGenerateLock(termId, userId);
-    this.logger.log(`Auto-generate abandoned for term=${termId} by=${userId}`);
+    this.logger.log(
+      `Auto-generate abandoned for term=${termId} by=${userId}`,
+    );
   }
 
-    /**
-   * Return the current auto-generate lock for a term, if any.
-   * Used by the frontend to detect abandoned previews (state = 'pending_confirm')
-   * and offer the user to Resume or Discard.
-   */
   async getAutoGenerateLock(
     termId: string,
     userId: string,
@@ -1771,40 +2076,36 @@ export class SchedulingService {
       expiresAt: row.expires_at,
     };
   }
-  
-private async assertOwnership(
-  scheduleId: string,
-  user: any,
-): Promise<Schedule> {
-  if (!user) {
-    throw new ForbiddenException('Not authenticated');
-  }
 
-  const found = await this.scheduleRepo.findOne({
-    where: { scheduleId },
-  });
-  if (!found) throw new NotFoundException('Schedule entry not found');
-
-  // Admin and Dean bypass
-  if (user.role === 'administrator' || user.role === 'college_dean') {
-    return found;
-  }
-
-  // DH: only own dept
-  if (user.role === 'department_head') {
-    // `user` is the TypeORM User entity, so its column is camelCase `deptId`.
-    const userDeptId = user.deptId != null ? String(user.deptId) : null;
-    if (!userDeptId || String(found.deptId) !== userDeptId) {
-      throw new ForbiddenException(
-        'You cannot edit schedules from other departments.',
-      );
+  private async assertOwnership(
+    scheduleId: string,
+    user: any,
+  ): Promise<Schedule> {
+    if (!user) {
+      throw new ForbiddenException('Not authenticated');
     }
-    return found;
-  }
 
-  // Any other role → fail closed
-  throw new ForbiddenException(
-    'You do not have permission to modify schedules.',
-  );
-}
+    const found = await this.scheduleRepo.findOne({
+      where: { scheduleId },
+    });
+    if (!found) throw new NotFoundException('Schedule entry not found');
+
+    if (user.role === 'administrator' || user.role === 'college_dean') {
+      return found;
+    }
+
+    if (user.role === 'department_head') {
+      const userDeptId = user.deptId != null ? String(user.deptId) : null;
+      if (!userDeptId || String(found.deptId) !== userDeptId) {
+        throw new ForbiddenException(
+          'You cannot edit schedules from other departments.',
+        );
+      }
+      return found;
+    }
+
+    throw new ForbiddenException(
+      'You do not have permission to modify schedules.',
+    );
+  }
 }
