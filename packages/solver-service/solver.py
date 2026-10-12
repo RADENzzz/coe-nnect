@@ -62,6 +62,15 @@ class Preference(BaseModel):
     preferredEndTime: Optional[str] = None
 
 
+class UnavailabilityBlock(BaseModel):
+    """H-14: a window during which a faculty member cannot be scheduled."""
+    facultyId: str
+    dayOfWeek: str
+    startTime: str
+    endTime: str
+    reason: Optional[str] = None
+
+
 class Room(BaseModel):
     roomId: str
     roomNumber: str
@@ -110,6 +119,7 @@ class SolveRequest(BaseModel):
     faculty: List[Faculty]
     qualifications: List[Qualification]
     preferences: List[Preference] = []
+    unavailability: List[UnavailabilityBlock] = []  # ← H-14
     rooms: List[Room]
     timeSlots: List[TimeSlot]
     config: Config
@@ -201,7 +211,7 @@ def solve_schedule(req: SolveRequest) -> dict:
         f"[solver] input: sections={len(req.sections)} subjects={len(req.subjects)} "
         f"slots={len(req.timeSlots)} rooms={len(req.rooms)} faculty={len(req.faculty)} "
         f"prospectus={len(req.prospectus)} quals={len(req.qualifications)} "
-        f"existing={len(req.existingSchedule)}"
+        f"existing={len(req.existingSchedule)} unavail={len(req.unavailability)}"
     )
 
     # ── DEBUG: show what patterns the solver received ──
@@ -362,7 +372,8 @@ def solve_schedule(req: SolveRequest) -> dict:
     add_bucketed_exclusion(fac_day)
     add_bucketed_exclusion(room_day)
     add_bucketed_exclusion(sec_day)
-        # ── HARD: same-subject sessions must be on different days ──
+
+    # ── HARD: same-subject sessions must be on different days ──
     # For a given (section, subject, kind), each session must land on a
     # distinct day. This prevents 2 lecture sessions from stacking on
     # Monday when they should be Mon+Thu or Tue+Fri.
@@ -403,6 +414,38 @@ def solve_schedule(req: SolveRequest) -> dict:
                 or (existing.sectionId and sec_id == existing.sectionId)
             ):
                 model.Add(v == 0)
+
+    # ── HARD: faculty unavailability (H-14) ──
+    # For each faculty member with declared blocks, forbid any variable
+    # that would schedule them during a blocked window.
+    unavail_by_fac: Dict[str, List[UnavailabilityBlock]] = defaultdict(list)
+    for u in req.unavailability:
+        unavail_by_fac[u.facultyId].append(u)
+
+    unavail_forbidden = 0
+    for k, v in X.items():
+        sec_id, subj_id, kind, sess_idx, day, start_min, room_id, fac_id = k
+        blocks = unavail_by_fac.get(fac_id)
+        if not blocks:
+            continue
+        dur = block_meta[k]["durationMinutes"]
+        end_min = start_min + dur
+        for u in blocks:
+            if u.dayOfWeek != day:
+                continue
+            u_start = time_to_min(u.startTime)
+            u_end = time_to_min(u.endTime)
+            # Half-open interval overlap: [start, end)
+            if start_min < u_end and u_start < end_min:
+                model.Add(v == 0)
+                unavail_forbidden += 1
+                break
+
+    if unavail_forbidden:
+        print(
+            f"[solver] H-14: forbade {unavail_forbidden} candidate(s) "
+            f"across {len(unavail_by_fac)} faculty member(s)"
+        )
 
     # ── HARD: visiting lecturer max hours ──
     visiting_cap = int(req.config.visitingLecturerMaxHours) * 60
