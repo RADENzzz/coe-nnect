@@ -20,6 +20,7 @@ export type {
   SubjectRestrictionContext,
   ApprovedFacultyRequestContext,
   FacultyPreferenceContext,
+  FacultyUnavailabilityContext,
 } from './types/rule-context.type';
 export type { ConstraintRule } from './types/rule.interface';
 
@@ -65,6 +66,7 @@ export { workloadOverloadRule } from './rules/faculty/workload-overload.rule';
 export { visitingLecturerCapRule } from './rules/faculty/visiting-lecturer-cap.rule';
 export { facultyPreferenceRule } from './rules/faculty/faculty-preference.rule';
 export { crossDeptRequestRule } from './rules/faculty/cross-dept-request.rule';
+export { unavailabilityRule } from './rules/faculty/unavailability.rule';
 
 // Rules — lab
 export { noBackToBackLabsRule } from './rules/lab/no-back-to-back-labs.rule';
@@ -102,14 +104,15 @@ import { servicingPriorityRule } from './rules/room/servicing-priority.rule';
 import { cohortOverflowRule } from './rules/room/cohort-overflow.rule';
 import { subjectRestrictionRule } from './rules/subject/subject-restriction.rule';
 import { facultyPreferenceRule } from './rules/faculty/faculty-preference.rule';
-import { crossDeptRequestRule } from './rules/faculty/cross-dept-request.rule';  
+import { crossDeptRequestRule } from './rules/faculty/cross-dept-request.rule';
+import { unavailabilityRule } from './rules/faculty/unavailability.rule';
 
 export const allRules: ConstraintRule[] = [
   roomTypeMatchRule,
   roomNoLabRule,
-  labPriorityRule,            
-  roomOwnershipRule,          
-  labHostsLectureRule,        
+  labPriorityRule,
+  roomOwnershipRule,
+  labHostsLectureRule,
   servicingPriorityRule,
   cohortOverflowRule,
   facultyOverlapRule,
@@ -131,4 +134,5 @@ export const allRules: ConstraintRule[] = [
   subjectRestrictionRule,
   facultyPreferenceRule,
   crossDeptRequestRule,
+  unavailabilityRule,          // ← NEW (27 rules total)
 ];
