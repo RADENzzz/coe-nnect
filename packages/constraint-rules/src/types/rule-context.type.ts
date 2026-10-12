@@ -47,6 +47,12 @@ export interface FacultyContext {
    */
   assignedUnits?: number;
   preferences?: FacultyPreferenceContext[];
+    /**
+   * Unavailability windows declared for this faculty member.
+   * Loaded by RuleContextBuilder for the current term OR term-agnostic.
+   * Consumed by rule H-14.
+   */
+  unavailability?: FacultyUnavailabilityContext[];
 }
 
 export interface RoomContext {
@@ -149,6 +155,24 @@ export interface FacultyPreferenceContext {
 }
 
 /**
+ * A single declared unavailability window for a faculty member.
+ * Full day name matches the DB enum ('Monday'..'Sunday').
+ *
+ * Time strings are 'HH:MM' or 'HH:MM:SS' — the `toMinutes` util
+ * handles both.
+ */
+export interface FacultyUnavailabilityContext {
+  unavailabilityId: string;
+  facultyId: string;
+  /** NULL means the block applies to all terms. */
+  termId: string | null;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  reason: string | null;
+}
+
+/**
  * The full context handed to every rule.
  * `excludeScheduleId` lets edit operations ignore the row being edited.
  */
@@ -168,5 +192,5 @@ export interface RuleContext {
   approvedFacultyRequests: ApprovedFacultyRequestContext[];
   config: SchedulingConfig;
   excludeScheduleId?: string;
-  
+  facultyUnavailability?: FacultyUnavailabilityContext[];
 }
