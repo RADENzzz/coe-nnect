@@ -27,12 +27,15 @@ import RoomSufficiencyPage from './features/reports/RoomSufficiencyPage';
 import ProspectusPdfListPage from './features/import/ProspectusPdfListPage';
 import ProspectusPdfEditorPage from './features/import/ProspectusPdfEditorPage';
 import RequireDesktop from './features/import/components/RequireDesktop';
+import NotificationsInboxPage from './features/notifications/NotificationsInboxPage';
+import SettingsPage from './features/settings/SettingsPage';
 
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
+      {/* ═══════════════ ADMIN ═══════════════ */}
       <Route
         element={
           <ProtectedRoute allowedRoles={['administrator']} redirectTo="/login" />
@@ -58,9 +61,12 @@ function App() {
               </RequireDesktop>
             }
           />
+          <Route path="notifications" element={<NotificationsInboxPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
 
+      {/* ═══════════════ DEAN ═══════════════ */}
       <Route
         element={
           <ProtectedRoute allowedRoles={['college_dean']} redirectTo="/login" />
@@ -85,9 +91,12 @@ function App() {
               </RequireDesktop>
             }
           />
+          <Route path="notifications" element={<NotificationsInboxPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
 
+      {/* ═══════════════ DEPARTMENT HEAD ═══════════════ */}
       <Route
         element={
           <ProtectedRoute allowedRoles={['department_head']} redirectTo="/login" />
@@ -116,6 +125,8 @@ function App() {
               </RequireDesktop>
             }
           />
+          <Route path="notifications" element={<NotificationsInboxPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
 

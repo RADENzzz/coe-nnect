@@ -5,6 +5,7 @@ import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useLogout } from '../../hooks/use-logout';
 import { getNavForRole } from '../../lib/constants/nav-config';
+import NotificationBell from '../notifications/NotificationBell';
 
 interface TopBarProps {
   /** Small label shown on desktop only. Mobile shows the current page title. */
@@ -91,12 +92,8 @@ export default function TopBar({ label }: TopBarProps) {
           />
         </div>
 
-        <button
-          className="tap-target hover:bg-slate-50 transition-colors flex items-center justify-center text-slate-500"
-          aria-label="Notifications"
-        >
-          <Icon name="notifications" />
-        </button>
+        {/* Notification bell — live, replaces the previous dead button */}
+        <NotificationBell />
 
         <button
           className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500"

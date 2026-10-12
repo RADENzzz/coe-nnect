@@ -8,14 +8,23 @@ import ChatWidget from '../../features/chat/ChatWidget';
 import { useAuthStore } from '../../store/auth.store';
 import { useUiStore } from '../../store/ui.store';
 import { getNavForRole } from '../../lib/constants/nav-config';
+import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
+import { useNotificationSocketBridge } from '../../hooks/use-notifications';
 
-export default function AppShell() {
+/**
+ * Inner component — inside the NotificationSocketProvider so it can
+ * access the socket context.
+ */
+function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
   const setLastPath = useUiStore((s) => s.setLastPath);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const location = useLocation();
 
   const nav = getNavForRole(profile?.role);
+
+  // Wire socket events into React Query cache
+  useNotificationSocketBridge();
 
   useEffect(() => {
     const mqTablet = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
@@ -60,9 +69,15 @@ export default function AppShell() {
 
       <BottomNav items={nav.bottom} />
 
-      {/* Chat widget — floating, mounted once per shell.
-          Admin and Dean shells are wrappers around AppShell, so they inherit it. */}
       {profile?.role !== 'viewer' && <ChatWidget />}
     </div>
+  );
+}
+
+export default function AppShell() {
+  return (
+    <NotificationSocketProvider>
+      <ShellInner />
+    </NotificationSocketProvider>
   );
 }
