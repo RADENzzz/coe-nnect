@@ -18,6 +18,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { TermsModule } from './modules/terms/terms.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     AuditModule,
     TermsModule,
     ChatModule,
+    ProspectusPdfsModule,
   ],
   providers: [
     {
