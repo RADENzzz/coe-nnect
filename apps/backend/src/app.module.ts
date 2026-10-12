@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -19,6 +20,7 @@ import { TermsModule } from './modules/terms/terms.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -26,6 +28,10 @@ import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.
       isGlobal: true,
       ignoreEnvFile: process.env.VERCEL === '1',
     }),
+
+    // Enables @Cron() decorators — used by the notification retention sweep.
+    ScheduleModule.forRoot(),
+
     DatabaseModule,
     AuthModule,
     UsersModule,
@@ -43,6 +49,7 @@ import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.
     TermsModule,
     ChatModule,
     ProspectusPdfsModule,
+    NotificationsModule,
   ],
   providers: [
     {
