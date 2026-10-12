@@ -29,9 +29,8 @@ import { PlotMultiDto } from './dto/plot-multi.dto';
 export class SchedulingController {
   constructor(private service: SchedulingService) {}
 
-
   // ═══════════════════════════════════════════════════════════
-  // STATIC-PREFIX ROUTES 
+  // STATIC-PREFIX ROUTES
   // ═══════════════════════════════════════════════════════════
 
   @Get('unscheduled')
@@ -101,16 +100,16 @@ export class SchedulingController {
     return { data: { success: true } };
   }
 
-  @Auditable({ action: 'schedule.auto_confirm', source: 'Scheduling' })   // ← NEW
-  @Roles('administrator', 'department_head')                              // ← NEW
-  @Post('auto-generate/confirm')                                          // ← NEW
-  async confirmAutoGenerate(                                              // ← NEW
-    @Body('termId') termId: string,                                       // ← NEW
-    @Req() req: any,                                                      // ← NEW
-  ) {                                                                     // ← NEW
-    await this.service.confirmAutoGenerate(termId, req.user.id);          // ← NEW
-    return { data: { success: true } };                                   // ← NEW
-  }                                                                       // ← NEW
+  @Auditable({ action: 'schedule.auto_confirm', source: 'Scheduling' })
+  @Roles('administrator', 'department_head')
+  @Post('auto-generate/confirm')
+  async confirmAutoGenerate(
+    @Body('termId') termId: string,
+    @Req() req: any,
+  ) {
+    await this.service.confirmAutoGenerate(termId, req.user.id);
+    return { data: { success: true } };
+  }
 
   @Get('auto-generate/pending')
   @Roles('administrator', 'department_head')
@@ -122,16 +121,16 @@ export class SchedulingController {
     return { data };
   }
 
-  @Auditable({ action: 'schedule.auto_discard', source: 'Scheduling' })   // ← NEW
-  @Roles('administrator', 'department_head')                              // ← NEW
-  @Post('auto-generate/discard')                                          // ← NEW
-  async discardAutoGenerate(                                              // ← NEW
-    @Body('termId') termId: string,                                       // ← NEW
-    @Req() req: any,                                                      // ← NEW
-  ) {                                                                     // ← NEW
-    const data = await this.service.discardAutoGenerate(termId, req.user.id); // ← NEW
-    return { data };                                                      // ← NEW
-  }                                                                       // ← NEW
+  @Auditable({ action: 'schedule.auto_discard', source: 'Scheduling' })
+  @Roles('administrator', 'department_head')
+  @Post('auto-generate/discard')
+  async discardAutoGenerate(
+    @Body('termId') termId: string,
+    @Req() req: any,
+  ) {
+    const data = await this.service.discardAutoGenerate(termId, req.user.id);
+    return { data };
+  }
 
   @Auditable({ action: 'schedule.clear_auto_drafts', source: 'Scheduling' })
   @Roles('administrator', 'department_head')
@@ -141,7 +140,34 @@ export class SchedulingController {
     return { data };
   }
 
-  // ... rest unchanged ...
+  // ═══════════════════════════════════════════════════════════
+  // SCHEDULE VERSION ROUTES — FR 5.1.8(a)
+  // MUST be declared before the parameterized :id routes below.
+  // ═══════════════════════════════════════════════════════════
+
+  @Get('versions')
+  @Roles('administrator', 'college_dean', 'department_head')
+  async findVersions(@Query('termId') termId: string) {
+    const data = await this.service.findVersions(termId);
+    return { data };
+  }
+
+  @Get('versions/compare')
+  @Roles('administrator', 'college_dean', 'department_head')
+  async compareVersions(
+    @Query('a') versionAId: string,
+    @Query('b') versionBId: string,
+  ) {
+    const data = await this.service.compareVersions(versionAId, versionBId);
+    return { data };
+  }
+
+  @Get('versions/:versionId')
+  @Roles('administrator', 'college_dean', 'department_head')
+  async findVersion(@Param('versionId') versionId: string) {
+    const data = await this.service.findVersion(versionId);
+    return { data };
+  }
 
   // ═══════════════════════════════════════════════════════════
   // LIST ROUTES
@@ -207,7 +233,6 @@ export class SchedulingController {
     return { data };
   }
 
-  // ── Flag routes ──
   @Auditable({ action: 'schedule.flag', source: 'Scheduling' })
   @Roles('administrator', 'college_dean', 'department_head')
   @Post(':id/flag')
