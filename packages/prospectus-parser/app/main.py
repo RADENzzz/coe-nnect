@@ -1,7 +1,10 @@
 """FastAPI entrypoint for the prospectus parser service."""
 from __future__ import annotations
 
+import base64
 import logging
+import os
+import tempfile
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -47,13 +50,43 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Local dev only — production calls come from the NestJS backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
+
+
+def _decode_pdf_to_tempfile(pdf_base64: str) -> str:
+    """
+    Decode a base64 PDF payload to a temp file on the parser's own
+    filesystem. Caller is responsible for deleting the file.
+    """
+    try:
+        pdf_bytes = base64.b64decode(pdf_base64, validate=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64: {e}")
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Empty PDF payload")
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf", prefix="coennect-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(pdf_bytes)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
+    return tmp_path
+
+
+def _safe_unlink(path: str) -> None:
+    try:
+        os.unlink(path)
+    except Exception:
+        pass
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -70,23 +103,21 @@ def extract(req: ExtractRequest) -> ExtractResponse:
     """
     Extract text for every (region, row, column) cell.
 
-    The caller provides the PDF path (already on disk, written by the
-    NestJS backend after uploading to Supabase Storage) and the mapping
-    regions. We return one ExtractedSubject per row.
+    The caller sends the PDF as base64. We decode it to a temp file,
+    run extraction, and clean up.
     """
+    pdf_path = _decode_pdf_to_tempfile(req.pdf_base64)
+
     try:
-        doc = PdfDocument(req.pdf_path)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        doc = PdfDocument(pdf_path)
     except Exception as e:
+        _safe_unlink(pdf_path)
         log.exception("Failed to open PDF")
         raise HTTPException(status_code=400, detail=f"Cannot open PDF: {e}")
 
     try:
-        # Cache textpages per page index — regions can share a page
         textpage_cache: dict[int, object] = {}
         page_refs: list = []
-
         results: list[ExtractedRegion] = []
 
         for region in req.regions:
@@ -116,7 +147,6 @@ def extract(req: ExtractRequest) -> ExtractResponse:
         return ExtractResponse(regions=results)
 
     finally:
-        # Clean up textpages + pages
         for textpage in textpage_cache.values():
             try:
                 textpage.close()
@@ -128,26 +158,18 @@ def extract(req: ExtractRequest) -> ExtractResponse:
             except Exception:
                 pass
         doc.close()
+        _safe_unlink(pdf_path)
 
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=settings.port,
-        reload=True,
-    )
 
 @app.post("/info", response_model=InfoResponse)
 def info(req: InfoRequest) -> InfoResponse:
     """Return page count + per-page dimensions for a PDF."""
+    pdf_path = _decode_pdf_to_tempfile(req.pdf_base64)
+
     try:
-        doc = PdfDocument(req.pdf_path)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        doc = PdfDocument(pdf_path)
     except Exception as e:
+        _safe_unlink(pdf_path)
         log.exception("Failed to open PDF for /info")
         raise HTTPException(status_code=400, detail=f"Cannot open PDF: {e}")
 
@@ -162,3 +184,15 @@ def info(req: InfoRequest) -> InfoResponse:
         )
     finally:
         doc.close()
+        _safe_unlink(pdf_path)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.port,
+        reload=True,
+    )

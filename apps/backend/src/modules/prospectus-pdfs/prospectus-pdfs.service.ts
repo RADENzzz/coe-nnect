@@ -9,9 +9,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 
 import { ProspectusPdf } from './entities/prospectus-pdf.entity';
 import {
@@ -86,17 +83,21 @@ export class ProspectusPdfsService {
 
     const pdfUuid = randomUUID();
 
-    const tmpPath = await this.writeTempPdf(file.buffer);
     let pageCount: number;
     let pageWidthPt: number;
     let pageHeightPt: number;
     try {
-      const info = await this.getPageInfo(tmpPath);
+      const info = await this.getPageInfo(file.buffer);
       pageCount = info.pageCount;
       pageWidthPt = info.pageWidthPt;
       pageHeightPt = info.pageHeightPt;
-    } finally {
-      await fs.unlink(tmpPath).catch(() => undefined);
+    } catch (err) {
+      this.logger.warn(
+        `Page-info failed, using Letter defaults: ${String(err)}`,
+      );
+      pageCount = 1;
+      pageWidthPt = 612;
+      pageHeightPt = 792;
     }
 
     const { storagePath, bucket } = await this.storage.uploadPdf({
@@ -356,55 +357,51 @@ export class ProspectusPdfsService {
     }
 
     const buffer = await this.storage.downloadPdf(pdf.storagePath);
-    const tmpPath = await this.writeTempPdf(buffer);
+    const pdfBase64 = buffer.toString('base64');
 
-    try {
-      const regions: ParserRegionInput[] = tables.map((t) => ({
-        table_id: Number(t.tableId),
-        page_index: t.regionPageIndex,
-        x_start_pt: Number(t.regionXStartPt),
-        x_end_pt: Number(t.regionXEndPt),
-        y_start_pt: Number(t.regionYStartPt),
-        y_end_pt: Number(t.regionYEndPt),
-        columns: t.columns.map((c) => ({
-          role: c.role,
-          x_start_pt: c.x_start_pt,
-          x_end_pt: c.x_end_pt,
-        })),
-        rows: t.rows.map((r) => ({
-          row_id: r.row_id,
-          y_top_pt: r.y_top_pt,
-          y_bottom_pt: r.y_bottom_pt,
-        })),
-      }));
+    const regions: ParserRegionInput[] = tables.map((t) => ({
+      table_id: Number(t.tableId),
+      page_index: t.regionPageIndex,
+      x_start_pt: Number(t.regionXStartPt),
+      x_end_pt: Number(t.regionXEndPt),
+      y_start_pt: Number(t.regionYStartPt),
+      y_end_pt: Number(t.regionYEndPt),
+      columns: t.columns.map((c) => ({
+        role: c.role,
+        x_start_pt: c.x_start_pt,
+        x_end_pt: c.x_end_pt,
+      })),
+      rows: t.rows.map((r) => ({
+        row_id: r.row_id,
+        y_top_pt: r.y_top_pt,
+        y_bottom_pt: r.y_bottom_pt,
+      })),
+    }));
 
-      const result = await this.parser.extract({
-        pdfPath: tmpPath,
-        regions,
+    const result = await this.parser.extract({
+      pdfBase64,
+      regions,
+    });
+
+    const warnings: string[] = [];
+    const regionsOut = result.regions.map((r) => {
+      const table = tables.find((t) => Number(t.tableId) === r.table_id);
+      const label = table
+        ? `Year ${table.yearLevel} ${table.semester}`
+        : `Table ${r.table_id}`;
+      r.subjects.forEach((s, i) => {
+        if (!s.code) {
+          warnings.push(`${label} row ${i + 1}: missing subject code`);
+        } else if (!SUBJECT_CODE_RE.test(s.code)) {
+          warnings.push(
+            `${label} row ${i + 1}: "${s.code}" doesn't look like a subject code`,
+          );
+        }
       });
+      return { table_id: String(r.table_id), subjects: r.subjects };
+    });
 
-      const warnings: string[] = [];
-      const regionsOut = result.regions.map((r) => {
-        const table = tables.find((t) => Number(t.tableId) === r.table_id);
-        const label = table
-          ? `Year ${table.yearLevel} ${table.semester}`
-          : `Table ${r.table_id}`;
-        r.subjects.forEach((s, i) => {
-          if (!s.code) {
-            warnings.push(`${label} row ${i + 1}: missing subject code`);
-          } else if (!SUBJECT_CODE_RE.test(s.code)) {
-            warnings.push(
-              `${label} row ${i + 1}: "${s.code}" doesn't look like a subject code`,
-            );
-          }
-        });
-        return { table_id: String(r.table_id), subjects: r.subjects };
-      });
-
-      return { regions: regionsOut, warnings };
-    } finally {
-      await fs.unlink(tmpPath).catch(() => undefined);
-    }
+    return { regions: regionsOut, warnings };
   }
 
   // ============================================================
@@ -623,36 +620,21 @@ export class ProspectusPdfsService {
   // Helpers
   // ============================================================
 
-  private async writeTempPdf(buffer: Buffer): Promise<string> {
-    const tmpPath = path.join(
-      os.tmpdir(),
-      `coennect-prospectus-${randomUUID()}.pdf`,
-    );
-    await fs.writeFile(tmpPath, buffer);
-    return tmpPath;
-  }
-
   private async getPageInfo(
-    pdfPath: string,
+    pdfBuffer: Buffer,
   ): Promise<{
     pageCount: number;
     pageWidthPt: number;
     pageHeightPt: number;
   }> {
-    try {
-      const info = await this.parser.getPageInfo(pdfPath);
-      const first = info.page_sizes_pt[0];
-      return {
-        pageCount: info.page_count,
-        pageWidthPt: first?.width_pt ?? 612,
-        pageHeightPt: first?.height_pt ?? 792,
-      };
-    } catch (err) {
-      this.logger.warn(
-        `Parser page-info failed, using Letter defaults: ${String(err)}`,
-      );
-      return { pageCount: 1, pageWidthPt: 612, pageHeightPt: 792 };
-    }
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const info = await this.parser.getPageInfo(pdfBase64);
+    const first = info.page_sizes_pt[0];
+    return {
+      pageCount: info.page_count,
+      pageWidthPt: first?.width_pt ?? 612,
+      pageHeightPt: first?.height_pt ?? 792,
+    };
   }
 
   private assertValidColumns(cols: { role: string }[]): void {

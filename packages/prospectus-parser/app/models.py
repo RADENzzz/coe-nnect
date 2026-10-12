@@ -1,4 +1,4 @@
-"""Pydantic schemas for /extract."""
+"""Pydantic schemas for /extract and /info."""
 from __future__ import annotations
 
 from typing import Literal
@@ -58,7 +58,12 @@ class RegionSpec(BaseModel):
 
 
 class ExtractRequest(BaseModel):
-    pdf_path: str = Field(..., min_length=1)  # absolute or relative path on disk
+    """
+    The PDF is transmitted as a base64-encoded string because the
+    parser runs in its own container and can't read the backend's
+    temp files. The parser decodes to a temp file, extracts, deletes.
+    """
+    pdf_base64: str = Field(..., min_length=1)
     regions: list[RegionSpec]
 
     @field_validator("regions")
@@ -92,8 +97,9 @@ class HealthResponse(BaseModel):
     service: str
     version: str
 
+
 class InfoRequest(BaseModel):
-    pdf_path: str = Field(..., min_length=1)
+    pdf_base64: str = Field(..., min_length=1)
 
 
 class PageSize(BaseModel):

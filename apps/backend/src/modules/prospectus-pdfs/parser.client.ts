@@ -70,20 +70,23 @@ export class ProspectusParserClient {
       'http://localhost:8001';
     this.http = axios.create({
       baseURL: this.baseUrl,
-      timeout: 60_000, // extraction is fast, but PDFs can be large
+      timeout: 60_000,
+      // Base64 payloads can be large (a 5MB PDF → ~7MB base64)
+      maxBodyLength: 50 * 1024 * 1024,
+      maxContentLength: 50 * 1024 * 1024,
     });
     this.logger.log(`Prospectus parser client → ${this.baseUrl}`);
   }
 
   async extract(params: {
-    pdfPath: string;
+    pdfBase64: string;
     regions: ParserRegionInput[];
   }): Promise<ParserExtractResponse> {
     try {
       const { data } = await this.http.post<ParserExtractResponse>(
         '/extract',
         {
-          pdf_path: params.pdfPath,
+          pdf_base64: params.pdfBase64,
           regions: params.regions,
         },
       );
@@ -99,10 +102,10 @@ export class ProspectusParserClient {
     }
   }
 
-    async getPageInfo(pdfPath: string): Promise<ParserPageInfo> {
+  async getPageInfo(pdfBase64: string): Promise<ParserPageInfo> {
     try {
       const { data } = await this.http.post<ParserPageInfo>('/info', {
-        pdf_path: pdfPath,
+        pdf_base64: pdfBase64,
       });
       return data;
     } catch (err) {
@@ -116,7 +119,11 @@ export class ProspectusParserClient {
     }
   }
 
-  async health(): Promise<{ status: string; service: string; version: string }> {
+  async health(): Promise<{
+    status: string;
+    service: string;
+    version: string;
+  }> {
     const { data } = await this.http.get('/health');
     return data;
   }
