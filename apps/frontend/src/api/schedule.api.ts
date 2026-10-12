@@ -109,7 +109,7 @@ export interface AutoGenerateResult {
   warnings?: Array<{ ruleId: string; ruleName: string; reason: string }>;
   failures?: Array<{ ruleId: string; ruleName: string; reason: string }>;
   unscheduled?: UnscheduledBlock[];
-  roomDeficits?: RoomDeficit[];   // ← NEW
+  roomDeficits?: RoomDeficit[];
 }
 
 export async function autoGenerateSchedule(
@@ -119,7 +119,7 @@ export async function autoGenerateSchedule(
   const { data } = await api.post(
     '/v1/schedules/auto-generate',
     { termId, deptId },
-    { timeout: 120_000 }, // 2 min — CP-SAT can take up to 60s
+    { timeout: 120_000 },
   );
   return data.data;
 }
@@ -276,7 +276,9 @@ export async function plotSubject(
   return data.data;
 }
 
-export async function validatePlot(payload: ValidatePlotPayload): Promise<ValidateResult> {
+export async function validatePlot(
+  payload: ValidatePlotPayload,
+): Promise<ValidateResult> {
   const { data } = await api.post('/v1/schedules/validate', payload);
   return data.data;
 }
@@ -342,6 +344,114 @@ export async function unflagSchedule(id: string): Promise<RawSchedule> {
 export async function fetchFlagged(termId: string): Promise<RawSchedule[]> {
   const { data } = await api.get('/v1/schedules/flagged', {
     params: { termId },
+  });
+  return data.data;
+}
+
+// ────────────────────────────────────────────
+// Schedule Version — FR 5.1.8(a)
+// ────────────────────────────────────────────
+
+export interface ScheduleVersionSummary {
+  versionId: string;
+  versionNumber: number;
+  termId: string;
+  facultyId: string | null;
+  finalizedBy: string | null;
+  finalizedByName: string | null;
+  lastModifiedAt: string;
+  entryCount: number;
+  capturedAt: string | null;
+}
+
+export interface ScheduleVersionEntry {
+  schedule_id: string;
+  section_id: string | null;
+  section_code: string | null;
+  subject_id: string;
+  subject_code: string | null;
+  subject_title: string | null;
+  faculty_id: string | null;
+  faculty_name: string | null;
+  room_id: string | null;
+  room_number: string | null;
+  building: string | null;
+  day_of_week: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  load_type: string | null;
+  status: string;
+  remarks: string | null;
+  dept_id: string | null;
+}
+
+export interface ScheduleVersionSnapshot {
+  snapshot_version: number;
+  term_id: string;
+  captured_at: string;
+  captured_by: string | null;
+  entry_count: number;
+  entries: ScheduleVersionEntry[];
+}
+
+export interface ScheduleVersionDetail {
+  versionId: string;
+  termId: string;
+  facultyId: string | null;
+  versionNumber: number;
+  snapshot: ScheduleVersionSnapshot | null;
+  lastModifiedAt: string;
+  finalizedBy: string | null;
+  finalizedByName: string | null;
+}
+
+export interface VersionCompareResult {
+  versionA: {
+    versionId: string;
+    versionNumber: number;
+    finalizedByName: string | null;
+    lastModifiedAt: string;
+    entryCount: number;
+  };
+  versionB: {
+    versionId: string;
+    versionNumber: number;
+    finalizedByName: string | null;
+    lastModifiedAt: string;
+    entryCount: number;
+  };
+  added: ScheduleVersionEntry[];
+  removed: ScheduleVersionEntry[];
+  moved: Array<{
+    before: ScheduleVersionEntry;
+    after: ScheduleVersionEntry;
+    changes: string[];
+  }>;
+  unchanged: number;
+}
+
+export async function fetchVersions(
+  termId: string,
+): Promise<ScheduleVersionSummary[]> {
+  const { data } = await api.get('/v1/schedules/versions', {
+    params: { termId },
+  });
+  return data.data;
+}
+
+export async function fetchVersion(
+  versionId: string,
+): Promise<ScheduleVersionDetail> {
+  const { data } = await api.get(`/v1/schedules/versions/${versionId}`);
+  return data.data;
+}
+
+export async function compareVersions(
+  versionAId: string,
+  versionBId: string,
+): Promise<VersionCompareResult> {
+  const { data } = await api.get('/v1/schedules/versions/compare', {
+    params: { a: versionAId, b: versionBId },
   });
   return data.data;
 }
