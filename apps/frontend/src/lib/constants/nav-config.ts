@@ -5,20 +5,14 @@ export interface NavItem {
   label: string;
   path: string;
   icon: string;
-  /** Shown in the mobile bottom tab bar (max 4 per role). */
   primary?: boolean;
 }
 
 export interface RoleNav {
-  /** Brand subtitle under "CoE-NNECT". */
   brandSubtitle: string;
-  /** Small label in the top bar (desktop only on some shells). */
   topBarLabel: string;
-  /** Main nav in the sidebar / drawer. */
   main: NavItem[];
-  /** Footer nav in the sidebar / drawer. */
   footer: NavItem[];
-  /** Items shown in the mobile bottom tab bar. Max 4. */
   bottom: NavItem[];
 }
 
@@ -33,6 +27,7 @@ const DH_NAV: RoleNav = {
     { label: 'Rooms',             path: ROUTES.ROOMS,          icon: 'meeting_room' },
     { label: 'Subjects',          path: ROUTES.SUBJECTS,       icon: 'menu_book' },
     { label: 'Prospectus',        path: ROUTES.PROSPECTUS,     icon: 'library_books' },
+    { label: 'Import Prospectus', path: ROUTES.IMPORT,         icon: 'upload_file' },
     { label: 'Sections',          path: ROUTES.SECTIONS,       icon: 'view_module' },
     { label: 'Reports',           path: ROUTES.REPORTS_HUB,    icon: 'bar_chart' },
   ],
@@ -52,12 +47,13 @@ const ADMIN_NAV: RoleNav = {
   brandSubtitle: 'Admin Portal',
   topBarLabel: 'System Administrator',
   main: [
-    { label: 'Dashboard',       path: '/admin/dashboard',        icon: 'dashboard',       primary: true },
-    { label: 'Departments',     path: '/admin/departments',      icon: 'domain',          primary: true },
-    { label: 'Users',           path: '/admin/users',            icon: 'manage_accounts', primary: true },
-    { label: 'Reports',         path: '/admin/reports',          icon: 'bar_chart' },
-    { label: 'System Settings', path: '/admin/system-settings',  icon: 'settings' },
-    { label: 'Audit Trail',     path: '/admin/audit-trail',      icon: 'history',         primary: true },
+    { label: 'Dashboard',         path: '/admin/dashboard',        icon: 'dashboard',       primary: true },
+    { label: 'Departments',       path: '/admin/departments',      icon: 'domain',          primary: true },
+    { label: 'Users',             path: '/admin/users',            icon: 'manage_accounts', primary: true },
+    { label: 'Import Prospectus', path: '/admin/import',           icon: 'upload_file' },
+    { label: 'Reports',           path: '/admin/reports',          icon: 'bar_chart' },
+    { label: 'System Settings',   path: '/admin/system-settings',  icon: 'settings' },
+    { label: 'Audit Trail',       path: '/admin/audit-trail',      icon: 'history',         primary: true },
   ],
   footer: [
     { label: 'Help', path: '/help', icon: 'help_outline' },
@@ -77,16 +73,17 @@ const DEAN_NAV: RoleNav = {
     { label: 'Dashboard',          path: '/dean/dashboard',      icon: 'dashboard',        primary: true },
     { label: 'Departments',        path: '/dean/departments',    icon: 'corporate_fare',   primary: true },
     { label: 'Schedule Approvals', path: '/dean/approvals',      icon: 'pending_actions',  primary: true },
+    { label: 'Import Prospectus',  path: '/dean/import',         icon: 'upload_file' },
     { label: 'Reports',            path: '/dean/reports',        icon: 'bar_chart' },
   ],
   footer: [
     { label: 'Help', path: '/help', icon: 'help_outline' },
   ],
   bottom: [
-    { label: 'Dashboard',   path: '/dean/dashboard',   icon: 'dashboard',       primary: true },
+    { label: 'Dashboard',   path: '/dean/dashboard',   icon: 'dashboard',           primary: true },
     { label: 'Timetable',   path: '/dean/timetable',   icon: 'calendar_view_month', primary: true },
-    { label: 'Departments', path: '/dean/departments', icon: 'corporate_fare',  primary: true },
-    { label: 'Approvals',   path: '/dean/approvals',   icon: 'pending_actions', primary: true },
+    { label: 'Departments', path: '/dean/departments', icon: 'corporate_fare',      primary: true },
+    { label: 'Approvals',   path: '/dean/approvals',   icon: 'pending_actions',     primary: true },
   ],
 };
 

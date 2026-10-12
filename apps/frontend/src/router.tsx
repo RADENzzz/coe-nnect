@@ -25,6 +25,7 @@ export const ROUTES = {
   WORKLOAD_SUMMARY: '/reports/workload',
   REPORTS_HUB: '/reports',
   APPROVALS_REPORT: '/reports/approvals',
+  IMPORT: '/import',
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
