@@ -7,6 +7,7 @@ import { FAQ } from './sections/FAQ';
 import { Troubleshooting } from './sections/Troubleshooting';
 import { TeamInfo } from './sections/TeamInfo';
 import { VersionInfo } from './sections/VersionInfo';
+import { StatsEasterEgg } from './components/StatsEasterEgg';
 import { useAuthStore } from '../../store/auth.store';
 
 const SECTIONS = [
@@ -88,7 +89,7 @@ export default function HelpPage() {
         </div>
       </div>
 
-      {/* Page-level attribution footer */}
+      {/* Attribution footer */}
       <div className="animate-fade-up mt-16 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
         <p>
           CoE-NNECT is developed by the{' '}
@@ -100,6 +101,9 @@ export default function HelpPage() {
         <p className="mt-1 text-[11px] text-slate-400">
           CPE SD 3 — Management Information System · Academic Year 2026–2027
         </p>
+
+        {/* Hidden easter egg trigger — a subtle dot below the attribution */}
+        <StatsEasterEgg />
       </div>
     </div>
   );
