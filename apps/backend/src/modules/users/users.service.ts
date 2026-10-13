@@ -7,13 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupabaseService } from '../../database/supabase.service';
-import { User } from './entities/user.entity';
 import { Department } from '../departments/entities/department.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
+import { User, UserRole } from './entities/user.entity';
 
 @Injectable()
 export class UsersService {
@@ -145,7 +145,7 @@ export class UsersService {
         userId: data.user.id,
         username: dto.username,
         email: dto.email,
-        role: dto.role as any,
+        role: dto.role as UserRole,
         deptId: dto.deptId ?? null,
         facultyId: dto.facultyId ?? null,
         isActive: true,
@@ -274,5 +274,17 @@ export class UsersService {
     }
 
     return saved;
+  }
+    /**
+   * True if the user holds the hidden dev-only `administrator` role.
+   *
+   * This exists so services can distinguish "actual dev account" from
+   * "Dean acting as top role" — they are deliberately not the same.
+   * Do NOT use this to gate normal business logic; use
+   * `role === 'college_dean'` for that. This is only for dev-tooling
+   * paths (demo reset, seed, etc.).
+   */
+  isDevAccount(user: Pick<User, 'role'>): boolean {
+    return user.role === 'administrator';
   }
 }
