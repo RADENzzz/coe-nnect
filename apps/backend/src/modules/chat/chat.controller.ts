@@ -17,11 +17,20 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 /**
- * Chat is restricted to Administrator / College Dean / Department Head.
+ * Chat is restricted to College Dean and Department Head.
  * Viewers are excluded entirely (CH-1.9).
+ *
+ * After the Admin→Dean consolidation:
+ *   - The `administrator` role is dropped from the class-level
+ *     @Roles() decorator. The hidden dev account can still use chat
+ *     because ChatService.CHAT_ELIGIBLE_ROLES still includes it — but
+ *     the primary user-facing roles are the Dean and DH.
+ *
+ * NOTE: The service-layer eligibility list is intentionally broader
+ * than the controller guard so the dev account can reach the route.
  */
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('administrator', 'college_dean', 'department_head')
+@Roles('college_dean', 'department_head')
 @Controller('v1/chat')
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
