@@ -26,6 +26,9 @@ export const ROUTES = {
   REPORTS_HUB: '/reports',
   APPROVALS_REPORT: '/reports/approvals',
   IMPORT: '/import',
+  HELP: '/help',
+  ARCHIVE: '/archive',
+  DEAN_ARCHIVE: '/dean/archive',
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

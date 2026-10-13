@@ -10,10 +10,20 @@ export default {
       colors: {
         // ── New Design System ──
         // Brand
-        brand: {
-          DEFAULT: '#5c1219',
-          hover: '#4a0e14',
-        },
+brand: {
+  DEFAULT: '#5c1219',
+  50:  '#fdf2f3',
+  100: '#fbe5e7',
+  200: '#f6c9cd',
+  300: '#eea1a8',
+  400: '#dd6a75',
+  500: '#8b1e2d',
+  600: '#6d1822',
+  700: '#5c1219',   // ← your current DEFAULT
+  800: '#4a0e14',   // ← your current hover
+  900: '#3a0b10',
+  hover: '#4a0e14',
+},
         // Backgrounds
         'app-root': '#020617', // slate-950
         workspace: '#f8fafc', // slate-50

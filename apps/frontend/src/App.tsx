@@ -27,6 +27,7 @@ import ProspectusPdfEditorPage from './features/import/ProspectusPdfEditorPage';
 import RequireDesktop from './features/import/components/RequireDesktop';
 import NotificationsInboxPage from './features/notifications/NotificationsInboxPage';
 import SettingsPage from './features/settings/SettingsPage';
+import HelpPage from './features/help/HelpPage';
 
 /**
  * Route tree.
@@ -38,6 +39,11 @@ import SettingsPage from './features/settings/SettingsPage';
  *   - The `administrator` role is routed into `/dean/*` via ROLE_HOME
  *     and ProtectedRoute fallback logic.
  *   - The Department Head portal at `/*` is unchanged.
+ *
+ * Help is mounted separately inside each shell, so the same component
+ * renders with the correct role-aware shell:
+ *   - DH:   /help
+ *   - Dean: /dean/help
  */
 function App() {
   return (
@@ -91,6 +97,9 @@ function App() {
           {/* Notifications + settings */}
           <Route path="notifications" element={<NotificationsInboxPage />} />
           <Route path="settings" element={<SettingsPage />} />
+
+          {/* Help */}
+          <Route path="help" element={<HelpPage />} />
         </Route>
       </Route>
 
@@ -128,6 +137,9 @@ function App() {
           />
           <Route path="notifications" element={<NotificationsInboxPage />} />
           <Route path="settings" element={<SettingsPage />} />
+
+          {/* Help */}
+          <Route path="help" element={<HelpPage />} />
         </Route>
       </Route>
 

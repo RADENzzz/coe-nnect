@@ -18,8 +18,6 @@ export interface RoleNav {
 
 /**
  * Department Head navigation.
- * Unchanged from pre-consolidation — DH portal is not affected by the
- * Admin→Dean change.
  */
 const DH_NAV: RoleNav = {
   brandSubtitle: 'Department Portal',
@@ -36,10 +34,9 @@ const DH_NAV: RoleNav = {
     { label: 'Sections',          path: ROUTES.SECTIONS,       icon: 'view_module' },
     { label: 'Reports',           path: ROUTES.REPORTS_HUB,    icon: 'bar_chart' },
   ],
-  footer: [
-    { label: 'Archive', path: ROUTES.AUDIT_TRAIL, icon: 'archive' },
-    { label: 'Help',    path: '/help',            icon: 'help_outline' },
-  ],
+footer: [
+  { label: 'Help', path: ROUTES.HELP, icon: 'help_outline' },
+],
   bottom: [
     { label: 'Dashboard', path: ROUTES.DASHBOARD,  icon: 'dashboard',            primary: true },
     { label: 'Planner',   path: ROUTES.TIMETABLE,  icon: 'calendar_view_month',  primary: true },
@@ -50,9 +47,6 @@ const DH_NAV: RoleNav = {
 
 /**
  * Dean navigation.
- *
- * After the Admin→Dean consolidation, this nav absorbs every entry
- * that used to live in ADMIN_NAV. The Dean is the top user-facing role.
  */
 const DEAN_NAV: RoleNav = {
   brandSubtitle: 'Dean Portal',
@@ -66,11 +60,10 @@ const DEAN_NAV: RoleNav = {
     { label: 'Import Prospectus',  path: '/dean/import',         icon: 'upload_file' },
     { label: 'Reports',            path: '/dean/reports',        icon: 'bar_chart' },
     { label: 'System Settings',    path: '/dean/system-settings',icon: 'settings' },
-    { label: 'Audit Trail',        path: '/dean/audit-trail',    icon: 'history',          primary: true },
   ],
-  footer: [
-    { label: 'Help', path: '/help', icon: 'help_outline' },
-  ],
+footer: [
+  { label: 'Help', path: '/dean/help', icon: 'help_outline' },
+],
   bottom: [
     { label: 'Dashboard',   path: '/dean/dashboard',      icon: 'dashboard',           primary: true },
     { label: 'Departments', path: '/dean/departments',    icon: 'corporate_fare',      primary: true },
@@ -79,18 +72,11 @@ const DEAN_NAV: RoleNav = {
   ],
 };
 
-/**
- * Navigation map.
- *
- * `administrator` and `college_dean` share the same nav — the dev
- * account is routed into the Dean portal by ROLE_HOME.
- * `viewer` gets no nav (should never reach the app).
- */
 export const NAV_BY_ROLE: Record<Role, RoleNav> = {
   [ROLES.ADMIN]:     DEAN_NAV,
   [ROLES.DEAN]:      DEAN_NAV,
   [ROLES.DEPT_HEAD]: DH_NAV,
-  [ROLES.VIEWER]:    DH_NAV,   // placeholder; viewer never renders
+  [ROLES.VIEWER]:    DH_NAV,
 };
 
 export function getNavForRole(role: Role | undefined): RoleNav {
