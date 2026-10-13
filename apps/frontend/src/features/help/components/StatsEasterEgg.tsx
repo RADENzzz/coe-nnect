@@ -437,7 +437,7 @@ export function StatsEasterEgg({ onOverlayChange }: Props) {
             </div>
 
             <p className="mt-2 text-center text-[9px] text-slate-400">
-              Music: <span className="font-medium">song.mp3</span>
+              Music: <span className="font-medium">はいはい、承知しました  by Muso ^._.^</span>
             </p>
           </div>
         )}
