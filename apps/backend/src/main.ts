@@ -1,13 +1,39 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { Logger } from '@nestjs/common';
 
 const logger = new Logger('Bootstrap');
 
 async function createApp() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
+
+  // ─── Security headers (Helmet) ───
+  //
+  // We disable strict CSP initially — the SPA + Vite dev + WS + Supabase
+  // all need 'unsafe-inline' / broad connectSrc, and getting CSP wrong
+  // breaks the app silently. Start with everything else, then tighten
+  // CSP if the panel asks.
+  app.use(
+    helmet({
+      // CSP disabled for now — will turn on later with a tuned policy
+      contentSecurityPolicy: false,
+
+      // Cross-origin policies relaxed for SPA → API + Supabase + WS
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+
+      // Everything else on (these are the headers ZAP flagged)
+      // - X-Frame-Options: SAMEORIGIN      (anti-clickjacking)
+      // - X-Content-Type-Options: nosniff   (MIME sniffing)
+      // - Strict-Transport-Security         (HSTS, on HTTPS only)
+      // - Referrer-Policy                   (referrer hardening)
+      // - X-DNS-Prefetch-Control            (privacy)
+      // - X-Download-Options / X-Permitted-Cross-Domain-Policies
+    }),
+  );
 
   app.setGlobalPrefix(process.env.API_PREFIX ?? 'api');
 
@@ -40,11 +66,7 @@ async function createApp() {
     }),
   );
 
-  // ═══ WebSocket adapter — enables @WebSocketGateway() for Notifications ═══
-  // The IoAdapter uses the CORS settings baked into each gateway's
-  // @WebSocketGateway({ cors: {...} }) decorator, not the HTTP CORS above.
-  // We'll set gateway CORS in Batch 2.
-  app.useWebSocketAdapter(new IoAdapter(app));
+  app.useWebSocketAdapter(new IoAdapter(app) as any);
 
   return app;
 }
@@ -65,7 +87,7 @@ let cachedApp: any = null;
 export default async function handler(req: any, res: any) {
   if (!cachedApp) {
     cachedApp = await createApp();
-    await cachedApp.init();   // ← CRITICAL: registers routes
+    await cachedApp.init();
   }
   const instance = cachedApp.getHttpAdapter().getInstance();
   return instance(req, res);
