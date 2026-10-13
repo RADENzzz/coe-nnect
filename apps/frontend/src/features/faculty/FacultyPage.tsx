@@ -70,8 +70,6 @@ export default function FacultyPage() {
   const [deleteTarget, setDeleteTarget] = useState<FacultyRecord | null>(null);
 
   // ── Auth-derived flags ──
-  // After the Admin→Dean consolidation, both the dev account and the
-  // College Dean have full faculty management powers (including delete).
   const isAdminOrDean =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
   const isDH = profile?.role === 'department_head';
@@ -260,7 +258,6 @@ export default function FacultyPage() {
     return d?.designationName ?? '—';
   };
 
-  // ── Column definitions ──
   const columns: Column<FacultyRecord>[] = [
     {
       key: 'name',
@@ -506,7 +503,7 @@ export default function FacultyPage() {
         getActions={getActions}
       />
 
-      {/* Create / Edit modal — unchanged */}
+      {/* Create / Edit modal — fields restored */}
       <Modal
         open={!!mode}
         onClose={closeForm}
@@ -517,16 +514,186 @@ export default function FacultyPage() {
         }
         size="lg"
       >
-        {/* ...unchanged content from original file... */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Personal info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* NOTE: fields unchanged — copy from original file */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                First Name *
+              </label>
+              <input
+                type="text"
+                name="firstName"
+                value={form.firstName}
+                onChange={handleChange}
+                required
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Last Name *
+              </label>
+              <input
+                type="text"
+                name="lastName"
+                value={form.lastName}
+                onChange={handleChange}
+                required
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
           </div>
-          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+
+          {/* Contact */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Email
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Contact
+              </label>
+              <input
+                type="text"
+                name="contact"
+                value={form.contact}
+                onChange={handleChange}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+
+          {/* IDs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                WMSU ID
+              </label>
+              <input
+                type="text"
+                name="wmsuId"
+                value={form.wmsuId}
+                onChange={handleChange}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Employee ID
+              </label>
+              <input
+                type="text"
+                name="employeeId"
+                value={form.employeeId}
+                onChange={handleChange}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+
+          {/* Department + Designation */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Department
+              </label>
+              <select
+                name="deptId"
+                value={form.deptId}
+                onChange={handleChange}
+                disabled={isDH}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <option value="">— None —</option>
+                {departments
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
+              {isDH && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Locked to your department.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Designation
+              </label>
+              <select
+                name="designationId"
+                value={form.designationId}
+                onChange={handleChange}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">— None —</option>
+                {designations.map((d) => (
+                  <option key={d.designationId} value={d.designationId}>
+                    {d.designationName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Classification + Required Hours */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Classification
+              </label>
+              <select
+                name="classification"
+                value={form.classification}
+                onChange={handleChange}
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                {CLASSIFICATIONS.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
+                Required Hours
+              </label>
+              <input
+                type="number"
+                name="requiredHours"
+                value={form.requiredHours}
+                onChange={handleChange}
+                min={0}
+                step={0.5}
+                placeholder="18"
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Leave blank to use the 18h default.
+              </p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 justify-end pt-4 border-t border-slate-200 mt-6">
             <button
               type="button"
               onClick={closeForm}
-              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+              className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition"
             >
               Cancel
             </button>
@@ -545,7 +712,7 @@ export default function FacultyPage() {
         </form>
       </Modal>
 
-      {/* Delete confirmation — unchanged */}
+      {/* Delete confirmation */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -562,7 +729,9 @@ export default function FacultyPage() {
             </button>
             <button
               type="button"
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.facultyId)}
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.facultyId)
+              }
               disabled={deleteMutation.isPending}
               className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
             >
@@ -600,7 +769,7 @@ export default function FacultyPage() {
         faculty={prefsFaculty}
       />
 
-      {/* Unavailability — NEW */}
+      {/* Unavailability */}
       <UnavailabilityModal
         open={unavailOpen}
         onClose={() => {
