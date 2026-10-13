@@ -25,10 +25,17 @@ export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 /**
  * Keys are the runtime role strings (Supabase user_role enum).
- * Do NOT use 'ADMIN' / 'DEPT_HEAD' / 'DEAN' here — those are not runtime values.
+ *
+ * After the Admin→Dean consolidation, the Dean inherits every admin
+ * permission. The `administrator` role gets the same permission set
+ * as the Dean (dev account parity) — but it never sees its own
+ * portal; it's routed into the Dean portal by ROLE_HOME.
+ *
+ * `viewer` has no permissions.
  */
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   [ROLES.ADMIN]: [
+    // Dev account parity with Dean — everything
     PERMISSIONS.MANAGE_USERS,
     PERMISSIONS.MANAGE_DEPARTMENTS,
     PERMISSIONS.MANAGE_SUBJECTS,
@@ -38,7 +45,34 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.MANAGE_FACULTY,
     PERMISSIONS.CONFIGURE_SYSTEM,
     PERMISSIONS.IMPORT_MINOR_SCHEDULES,
+    PERMISSIONS.PLOT_SUBJECT,
+    PERMISSIONS.EDIT_SCHEDULE,
+    PERMISSIONS.FINALIZE_SCHEDULE,
+    PERMISSIONS.PUBLISH_SCHEDULE,
     PERMISSIONS.VIEW_DEPT_SCHEDULE,
+    PERMISSIONS.VIEW_COLLEGE_SCHEDULE,
+    PERMISSIONS.OVERRIDE_CROSS_DEPT_CONFLICT,
+    PERMISSIONS.GENERATE_REPORTS,
+    PERMISSIONS.VIEW_AUDIT_TRAIL,
+  ],
+  [ROLES.DEAN]: [
+    // Dean inherits the full admin capability set
+    PERMISSIONS.MANAGE_USERS,
+    PERMISSIONS.MANAGE_DEPARTMENTS,
+    PERMISSIONS.MANAGE_SUBJECTS,
+    PERMISSIONS.MANAGE_PROSPECTUS,
+    PERMISSIONS.MANAGE_SECTIONS,
+    PERMISSIONS.MANAGE_ROOMS,
+    PERMISSIONS.MANAGE_FACULTY,
+    PERMISSIONS.CONFIGURE_SYSTEM,
+    PERMISSIONS.IMPORT_MINOR_SCHEDULES,
+    PERMISSIONS.PLOT_SUBJECT,
+    PERMISSIONS.EDIT_SCHEDULE,
+    PERMISSIONS.FINALIZE_SCHEDULE,
+    PERMISSIONS.PUBLISH_SCHEDULE,
+    PERMISSIONS.VIEW_DEPT_SCHEDULE,
+    PERMISSIONS.VIEW_COLLEGE_SCHEDULE,
+    PERMISSIONS.OVERRIDE_CROSS_DEPT_CONFLICT,
     PERMISSIONS.GENERATE_REPORTS,
     PERMISSIONS.VIEW_AUDIT_TRAIL,
   ],
@@ -48,18 +82,21 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     PERMISSIONS.FINALIZE_SCHEDULE,
     PERMISSIONS.PUBLISH_SCHEDULE,
     PERMISSIONS.VIEW_DEPT_SCHEDULE,
+    PERMISSIONS.MANAGE_SUBJECTS,
+    PERMISSIONS.MANAGE_PROSPECTUS,
+    PERMISSIONS.MANAGE_SECTIONS,
+    PERMISSIONS.MANAGE_ROOMS,
+    PERMISSIONS.MANAGE_FACULTY,
+    PERMISSIONS.IMPORT_MINOR_SCHEDULES,
     PERMISSIONS.GENERATE_REPORTS,
   ],
-  [ROLES.DEAN]: [
-    PERMISSIONS.VIEW_DEPT_SCHEDULE,
-    PERMISSIONS.VIEW_COLLEGE_SCHEDULE,
-    PERMISSIONS.OVERRIDE_CROSS_DEPT_CONFLICT,
-    PERMISSIONS.GENERATE_REPORTS,
-    PERMISSIONS.VIEW_AUDIT_TRAIL,
-  ],
+  // `viewer` intentionally absent — no permissions
 };
 
-export function hasPermission(role: string | undefined, permission: Permission): boolean {
+export function hasPermission(
+  role: string | undefined,
+  permission: Permission,
+): boolean {
   if (!role) return false;
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
 }
