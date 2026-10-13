@@ -41,7 +41,10 @@ export default function RoomsPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
-  const isAdmin = profile?.role === 'administrator';
+  // After the Admin→Dean consolidation, both the dev account and the
+  // College Dean have full room management powers.
+  const isAdminOrDean =
+    profile?.role === 'administrator' || profile?.role === 'college_dean';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
@@ -321,7 +324,7 @@ export default function RoomsPage() {
             {rooms.length} room(s) registered
           </p>
         </div>
-        {isDH || isAdmin ? (
+        {isDH || isAdminOrDean ? (
           <button
             onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
