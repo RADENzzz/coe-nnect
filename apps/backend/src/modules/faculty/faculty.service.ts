@@ -55,9 +55,13 @@ export class FacultyService {
   // ────────────────────────────────────────────
   // Cross-department protection
   //
-  // Admin and Dean can modify any faculty anywhere.
+  // Dean can modify any faculty anywhere.
   // DH can only modify faculty that belong to their own department.
   // Anyone else: hard reject (fail-closed).
+  //
+  // NOTE: the `administrator` role is still accepted here so the
+  // hidden dev account retains full access. It is NOT used for
+  // user-facing authorization — the Dean is the top role.
   //
   // Returns the faculty row so callers don't need a second findOne.
   // ────────────────────────────────────────────
@@ -77,7 +81,7 @@ export class FacultyService {
 
     if (profile.role !== 'department_head') {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can modify faculty.',
+        'Only deans and department heads can modify faculty.',
       );
     }
 
