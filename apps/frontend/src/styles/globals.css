@@ -248,135 +248,82 @@
     box-shadow: none !important;
   }
 
+  /* ═══ Animations ═══ */
+
   @keyframes chat-in {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+  .animate-chat-in {
+    animation: chat-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1);
   }
-}
 
-.animate-chat-in {
-  animation: chat-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-
-}
-
-/* ============================================
-   Animations
-   ============================================ */
-@layer utilities {
   @keyframes fade-in {
     from { opacity: 0; }
-    to { opacity: 1; }
+    to   { opacity: 1; }
   }
 
   @keyframes sheetUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
   }
 
   @keyframes fade-up {
-    from {
-      opacity: 0;
-      transform: translateY(16px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes slide-in {
-    from {
-      opacity: 0;
-      transform: translateX(16px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
 
-  /* For MobileDrawer slide-in from left */
   @keyframes drawer-in {
     from { transform: translateX(-100%); }
-    to { transform: translateX(0); }
+    to   { transform: translateX(0); }
   }
 
   @keyframes backdrop-in {
     from { opacity: 0; }
-    to { opacity: 1; }
+    to   { opacity: 1; }
   }
 
   @keyframes shake {
     0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-6px); }
-    40% { transform: translateX(6px); }
-    60% { transform: translateX(-4px); }
-    80% { transform: translateX(4px); }
+    20%      { transform: translateX(-6px); }
+    40%      { transform: translateX(6px); }
+    60%      { transform: translateX(-4px); }
+    80%      { transform: translateX(4px); }
   }
 
   @keyframes pulse-slow {
     0%, 100% { opacity: 0.3; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.05); }
+    50%      { opacity: 0.5; transform: scale(1.05); }
   }
 
   @keyframes pulse-slower {
     0%, 100% { opacity: 0.2; transform: scale(1); }
-    50% { opacity: 0.35; transform: scale(1.08); }
+    50%      { opacity: 0.35; transform: scale(1.08); }
   }
 
-  .animate-fade-in {
-    animation: fade-in 250ms ease-out;
-  }
+  .animate-fade-in { animation: fade-in 250ms ease-out; }
+  .animate-fade-up { animation: fade-up 400ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .animate-slide-in { animation: slide-in 350ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .animate-drawer-in { animation: drawer-in 250ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .animate-backdrop-in { animation: backdrop-in 200ms ease-out; }
+  .animate-pulse-slow { animation: pulse-slow 6s ease-in-out infinite; }
+  .animate-pulse-slower { animation: pulse-slower 9s ease-in-out infinite; }
 
-  .animate-fade-up {
-    animation: fade-up 400ms cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-
-  .animate-slide-in {
-    animation: slide-in 350ms cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-
-  .animate-drawer-in {
-    animation: drawer-in 250ms cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-
-  .animate-backdrop-in {
-    animation: backdrop-in 200ms ease-out;
-  }
-
-  .animate-pulse-slow {
-    animation: pulse-slow 6s ease-in-out infinite;
-  }
-
-  .animate-pulse-slower {
-    animation: pulse-slower 9s ease-in-out infinite;
-  }
-    /* ═══ Help page additions ═══ */
+  /* ═══ Help page additions ═══ */
 
   @keyframes slide-in-left {
-    from {
-      opacity: 0;
-      transform: translateX(-12px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
 
   @keyframes shimmer {
-    0% {
-      background-position: -200% 0;
-    }
-    100% {
-      background-position: 200% 0;
-    }
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
   }
 
   .animate-slide-in-left {
@@ -407,4 +354,403 @@
       animation: none !important;
     }
   }
+}
+
+/* ═══════════════════════════════════════════════
+   Disco overlay — easter egg (v5, full-screen)
+   Outside @layer so Tailwind cannot tree-shake.
+   ═══════════════════════════════════════════════ */
+
+.disco-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(40, 4, 10, 0.78),
+    rgba(0, 0, 0, 0.95)
+  );
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.disco-overlay.active {
+  opacity: 1;
+}
+
+/* ── Layer 1: FIVE color spotlights sweeping from the top ── */
+.disco-overlay::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -25%;
+  right: -25%;
+  bottom: -50%;
+  background:
+    conic-gradient(from 0deg at 15% 0%, rgba(220, 38, 38, 0.35) 0deg, transparent 30deg),
+    conic-gradient(from 30deg at 35% 0%, rgba(245, 158, 11, 0.30) 0deg, transparent 25deg),
+    conic-gradient(from -20deg at 55% 0%, rgba(255, 100, 100, 0.35) 0deg, transparent 30deg),
+    conic-gradient(from 10deg at 75% 0%, rgba(139, 30, 45, 0.40) 0deg, transparent 28deg),
+    conic-gradient(from -40deg at 90% 0%, rgba(255, 180, 120, 0.25) 0deg, transparent 22deg);
+  animation: disco-spotlights 1.6s steps(4, end) infinite;
+  filter: blur(8px);
+}
+
+@keyframes disco-spotlights {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(8deg); }
+  50%  { transform: rotate(-6deg); }
+  75%  { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* ── Layer 2: Rapid color flash strobe (screen blend so it shows on dark) ── */
+.disco-flash {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  animation: disco-flash-colors 1.2s steps(1) infinite;
+}
+
+@keyframes disco-flash-colors {
+  0%   { background: rgba(220, 38, 38, 0.35); }
+  20%  { background: rgba(139, 30, 45, 0.42); }
+  40%  { background: rgba(245, 158, 11, 0.28); }
+  60%  { background: rgba(255, 100, 100, 0.38); }
+  80%  { background: rgba(92, 18, 25, 0.45); }
+  100% { background: rgba(220, 38, 38, 0.35); }
+}
+
+/* ── Layer 3: Beat pulse ── */
+.disco-overlay .disco-pulse {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 200, 180, 0.35) 0%,
+    rgba(220, 38, 38, 0.10) 25%,
+    transparent 55%
+  );
+  animation: disco-beat 0.75s cubic-bezier(0.2, 0, 0.4, 1) infinite;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+@keyframes disco-beat {
+  0%   { opacity: 1;    transform: scale(1); }
+  15%  { opacity: 0.85; transform: scale(1.15); }
+  30%  { opacity: 0.4;  transform: scale(1.05); }
+  60%  { opacity: 0.7;  transform: scale(1.1); }
+  100% { opacity: 1;    transform: scale(1); }
+}
+
+/* ── Layer 4: Grid blinks ── */
+.disco-overlay .disco-blinks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+}
+
+.disco-overlay .disco-blink {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  background: radial-gradient(
+    circle,
+    rgba(255, 200, 160, 0.75) 0%,
+    rgba(220, 38, 38, 0.35) 30%,
+    transparent 65%
+  );
+  animation: disco-blink 0.9s steps(3, end) infinite;
+}
+
+@keyframes disco-blink {
+  0%   { opacity: 0;   transform: scale(0.3); }
+  20%  { opacity: 1;   transform: scale(1.05); }
+  40%  { opacity: 0.2; transform: scale(0.8); }
+  60%  { opacity: 0.9; transform: scale(1); }
+  80%  { opacity: 0;   transform: scale(0.5); }
+  100% { opacity: 0;   transform: scale(0.3); }
+}
+
+/* ── Layer 5: Falling sparks ── */
+.disco-overlay .disco-sparks {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.disco-overlay .disco-spark {
+  position: absolute;
+  top: -10px;
+  width: 3px;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 235, 200, 1);
+  box-shadow: 0 0 8px rgba(255, 200, 100, 1), 0 0 12px rgba(220, 38, 38, 0.6);
+  animation: disco-spark-fall linear infinite;
+  opacity: 0;
+}
+
+@keyframes disco-spark-fall {
+  0%   { opacity: 0; transform: translateY(0) translateX(0) scale(0.6); }
+  8%   { opacity: 1; }
+  50%  { transform: translateY(50vh) translateX(16px) scale(1.1); }
+  90%  { opacity: 0.7; }
+  100% { opacity: 0; transform: translateY(105vh) translateX(-10px) scale(0.4); }
+}
+
+/* ── Layer 6: Retro dot grid ── */
+.disco-overlay .disco-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(rgba(255, 200, 180, 0.18) 1px, transparent 1px),
+    radial-gradient(rgba(255, 180, 160, 0.08) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px;
+  background-position: 0 0, 24px 24px;
+  animation: disco-grid-drift 6s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes disco-grid-drift {
+  0%   { background-position: 0 0, 24px 24px; }
+  100% { background-position: 48px 48px, 72px 72px; }
+}
+
+/* ── Layer 7: Vignette — cinematic dark edges ── */
+.disco-overlay .disco-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 30%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Layer 8: Floor glow — warm dance floor ── */
+.disco-overlay .disco-floor-glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 25%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(220, 38, 38, 0.15) 60%,
+    rgba(220, 38, 38, 0.35) 100%
+  );
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+/* ═══════════════════════════════════════════════
+   Disco-active panel — slow dance (not strobe)
+   ═══════════════════════════════════════════════ */
+
+
+.disco-panel-active {
+  animation:
+    panel-rock 4.2s ease-in-out infinite,
+    panel-glow 2.8s ease-in-out infinite;
+}
+
+.disco-stat {
+  animation: stat-disco 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+@keyframes stat-disco {
+  /* Start low */
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  /* Up + lean right + grow */
+  15% {
+    transform: translate(3px, -6px) rotate(2deg) scale(1.04);
+    border-color: rgba(220, 38, 38, 0.6);
+    box-shadow:
+      0 0 14px rgba(220, 38, 38, 0.45),
+      0 6px 12px rgba(0, 0, 0, 0.15);
+  }
+  /* Back through center */
+  30% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  /* Down low (bounce)
+  45% {
+    transform: translate(0, 3px) rotate(0deg) scale(0.98);
+    border-color: rgba(220, 38, 38, 0.3);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+  /* Up + lean left + grow */
+  60% {
+    transform: translate(-3px, -6px) rotate(-2deg) scale(1.04);
+    border-color: rgba(220, 38, 38, 0.6);
+    box-shadow:
+      0 0 14px rgba(220, 38, 38, 0.45),
+      0 6px 12px rgba(0, 0, 0, 0.15);
+  }
+  /* Through center again */
+  75% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  /* Down low again */
+  90% {
+    transform: translate(0, 3px) rotate(0deg) scale(0.98);
+    border-color: rgba(220, 38, 38, 0.3);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+  /* Back to start */
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+@keyframes panel-rock {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%      { transform: translateY(-4px) rotate(-0.6deg); }
+  50%      { transform: translateY(0) rotate(0deg); }
+  75%      { transform: translateY(-4px) rotate(0.6deg); }
+}
+
+@keyframes panel-glow {
+  0%, 100% {
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.45),
+      0 0 0 rgba(220, 38, 38, 0);
+  }
+  50% {
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.55),
+      0 0 40px rgba(220, 38, 38, 0.45);
+  }
+}
+
+
+
+@keyframes stat-sway {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  25% {
+    transform: translateY(-2px) rotate(-0.6deg) scale(1.01);
+    border-color: rgba(220, 38, 38, 0.35);
+    box-shadow: 0 0 8px rgba(220, 38, 38, 0.2);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  75% {
+    transform: translateY(-2px) rotate(0.6deg) scale(1.01);
+    border-color: rgba(220, 38, 38, 0.35);
+    box-shadow: 0 0 8px rgba(220, 38, 38, 0.2);
+  }
+}
+
+.disco-stat-icon {
+  animation: icon-bob 2.4s ease-in-out infinite;
+} 
+
+@keyframes icon-bob {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+  50%      { transform: translateY(-2px) scale(1.08); opacity: 0.9; }
+}
+
+.disco-stat-value {
+  animation: value-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes value-pulse {
+  0%, 100% { text-shadow: 0 0 0 rgba(220, 38, 38, 0); color: #0f172a; }
+  50%      { text-shadow: 0 0 10px rgba(220, 38, 38, 0.5); color: #5c1219; }
+}
+
+.disco-title {
+  animation: title-shimmer 4s linear infinite;
+  background: linear-gradient(
+    90deg,
+    #0f172a 0%,
+    #5c1219 25%,
+    #dc2626 50%,
+    #5c1219 75%,
+    #0f172a 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes title-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.disco-tagline {
+  animation: tagline-glow 3s ease-in-out infinite;
+}
+
+@keyframes tagline-glow {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* Staggered sway — cards dance in a slow wave */
+.disco-stats-grid > *:nth-child(1) { animation-delay: 0s; }
+.disco-stats-grid > *:nth-child(2) { animation-delay: 0.25s; }
+.disco-stats-grid > *:nth-child(3) { animation-delay: 0.50s; }
+.disco-stats-grid > *:nth-child(4) { animation-delay: 0.75s; }
+.disco-stats-grid > *:nth-child(5) { animation-delay: 1.00s; }
+.disco-stats-grid > *:nth-child(6) { animation-delay: 1.25s; }
+.disco-stats-grid > *:nth-child(7) { animation-delay: 1.50s; }
+.disco-stats-grid > *:nth-child(8) { animation-delay: 1.75s; }
+
+/* ═══════════════════════════════════════════════
+   Reduced-motion fallback
+   ═══════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Kill all the intense flashing disco layers */
+  .disco-overlay::before,
+  .disco-overlay::after,
+  .disco-overlay .disco-pulse,
+  .disco-overlay .disco-grid,
+  .disco-overlay .disco-blink,
+  .disco-overlay .disco-spark,
+  .disco-overlay .disco-flash,
+  .disco-overlay .disco-vignette,
+  .disco-overlay .disco-floor-glow {
+    animation: none !important;
+  }
+  .disco-overlay .disco-spark,
+  .disco-overlay .disco-blink,
+  .disco-overlay .disco-flash {
+    display: none;
+  }
+  /* Panel animations stay — they're subtle and slow */
 }

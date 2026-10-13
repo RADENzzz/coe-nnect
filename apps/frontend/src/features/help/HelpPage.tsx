@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { HelpTOC } from './components/HelpTOC';
 import { GettingStarted } from './sections/GettingStarted';
 import { RoleGuides } from './sections/RoleGuides';
@@ -9,6 +9,7 @@ import { TeamInfo } from './sections/TeamInfo';
 import { VersionInfo } from './sections/VersionInfo';
 import { StatsEasterEgg } from './components/StatsEasterEgg';
 import { useAuthStore } from '../../store/auth.store';
+import { useUiStore } from '../../store/ui.store';
 
 const SECTIONS = [
   { id: 'getting-started',  label: 'Getting Started' },
@@ -23,8 +24,30 @@ const SECTIONS = [
 export default function HelpPage() {
   const profile = useAuthStore((s) => s.profile);
   const [activeId, setActiveId] = useState<string>('getting-started');
+  const [discoActive, setDiscoActive] = useState(false);
+
+  // ── Sidebar control ──
+  const isSidebarCollapsed = useUiStore((s) => s.isSidebarCollapsed);
+  const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+
+  // Remember what the sidebar was before disco activated
+  const prevCollapsedRef = useRef<boolean>(isSidebarCollapsed);
+
+  // ── Collapse sidebar while disco is active; restore after ──
+  useEffect(() => {
+    if (discoActive) {
+      prevCollapsedRef.current = isSidebarCollapsed;
+      setSidebarCollapsed(true);
+    } else {
+      setSidebarCollapsed(prevCollapsedRef.current);
+    }
+    // We intentionally exclude isSidebarCollapsed/setSidebarCollapsed —
+    // only discoActive should trigger the state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoActive]);
 
   useEffect(() => {
+    if (discoActive) return;
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -39,7 +62,7 @@ export default function HelpPage() {
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
-  }, []);
+  }, [discoActive]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
@@ -89,7 +112,6 @@ export default function HelpPage() {
         </div>
       </div>
 
-      {/* Attribution footer */}
       <div className="animate-fade-up mt-16 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
         <p>
           CoE-NNECT is developed by the{' '}
@@ -102,8 +124,8 @@ export default function HelpPage() {
           CPE SD 3 — Management Information System · Academic Year 2026–2027
         </p>
 
-        {/* Hidden easter egg trigger — a subtle dot below the attribution */}
-        <StatsEasterEgg />
+        {/* Easter egg — reports disco state up */}
+        <StatsEasterEgg onDiscoChange={setDiscoActive} />
       </div>
     </div>
   );

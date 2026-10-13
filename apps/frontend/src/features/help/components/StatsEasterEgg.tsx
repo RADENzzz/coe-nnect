@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 
 const STATS: Array<{ icon: string; label: string; value: string }> = [
   { icon: 'schedule',       label: 'Constraint rules',     value: '27' },
@@ -13,36 +14,85 @@ const STATS: Array<{ icon: string; label: string; value: string }> = [
 
 const TOTAL_TAPS = 7;
 const RESET_DELAY_MS = 2000;
+const BLINK_CELLS = 8 * 6;
+const SPARK_COUNT = 40;
 
-export function StatsEasterEgg() {
+interface Props {
+  onDiscoChange?: (active: boolean) => void;
+}
+
+export function StatsEasterEgg({ onDiscoChange }: Props) {
   const [taps, setTaps] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [discoEnabled, setDiscoEnabled] = useState(true);
+  const [entranceDone, setEntranceDone] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const resetTimerRef = useRef<number | null>(null);
+  const onDiscoChangeRef = useRef(onDiscoChange);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  // ── Audio setup ──
+  useEffect(() => {
+    onDiscoChangeRef.current = onDiscoChange;
+  }, [onDiscoChange]);
+
+  // ── Audio ──
   useEffect(() => {
     const audio = new Audio('/help/music/song.mp3');
     audio.loop = true;
     audio.volume = 0.4;
     audio.preload = 'auto';
     audioRef.current = audio;
-
     return () => {
       audio.pause();
       audio.src = '';
     };
   }, []);
 
-  // ── Start music (inside user gesture) ──
+  useEffect(() => {
+    if (revealed) setDiscoEnabled(true);
+  }, [revealed]);
+
+  const discoActive = revealed && discoEnabled;
+  useEffect(() => {
+    onDiscoChangeRef.current?.(discoActive);
+  }, [discoActive]);
+
+  // ── Entrance → dance handoff ──
+  useEffect(() => {
+    if (!revealed) {
+      setEntranceDone(false);
+      return;
+    }
+    const t = window.setTimeout(() => setEntranceDone(true), 450);
+    return () => window.clearTimeout(t);
+  }, [revealed]);
+
+  // ── Auto-scroll to center the panel ──
+  useEffect(() => {
+    if (!revealed) return;
+    const centerPanel = (behavior: ScrollBehavior) => {
+      const el = panelRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const targetY =
+        window.scrollY + rect.top - (window.innerHeight - rect.height) / 2;
+      window.scrollTo({ top: Math.max(0, targetY), behavior });
+    };
+    const immediate = window.setTimeout(() => centerPanel('auto'), 20);
+    const afterAnim = window.setTimeout(() => centerPanel('smooth'), 500);
+    return () => {
+      window.clearTimeout(immediate);
+      window.clearTimeout(afterAnim);
+    };
+  }, [revealed]);
+
   const startMusic = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
     if (musicPlaying) return;
-
     void audio.play().then(
       () => setMusicPlaying(true),
       (err) => {
@@ -52,7 +102,6 @@ export function StatsEasterEgg() {
     );
   }, [musicPlaying]);
 
-  // ── Stop music ──
   const stopMusic = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -60,20 +109,30 @@ export function StatsEasterEgg() {
     setMusicPlaying(false);
   }, []);
 
-  // ── Reset counter after idle ──
+  // ── Esc to hide ──
+  useEffect(() => {
+    if (!revealed) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setRevealed(false);
+        setTaps(0);
+        setHint(null);
+        stopMusic();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [revealed, stopMusic]);
+
   const scheduleReset = useCallback(() => {
-    if (resetTimerRef.current) {
-      window.clearTimeout(resetTimerRef.current);
-    }
+    if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current);
     resetTimerRef.current = window.setTimeout(() => {
       setTaps(0);
       setHint(null);
     }, RESET_DELAY_MS);
   }, []);
 
-  // ── Trigger tap handler ──
   const handleTap = useCallback(() => {
-    // If already revealed → hide + stop music
     if (revealed) {
       setRevealed(false);
       setTaps(0);
@@ -81,137 +140,241 @@ export function StatsEasterEgg() {
       stopMusic();
       return;
     }
-
     const next = taps + 1;
-
-    // Feedback for taps 3 through 6
     const remaining = TOTAL_TAPS - next;
     if (next >= 3 && next < TOTAL_TAPS) {
       setHint(
-        remaining === 1
-          ? `${remaining} tap away…`
-          : `${remaining} taps away…`,
+        remaining === 1 ? `${remaining} tap away…` : `${remaining} taps away…`,
       );
     }
-
     if (next >= TOTAL_TAPS) {
-      // Reveal!
       setRevealed(true);
       setTaps(0);
       setHint(null);
       startMusic();
       return;
     }
-
     setTaps(next);
     scheduleReset();
   }, [taps, revealed, startMusic, stopMusic, scheduleReset]);
 
-  // ── Music toggle ──
   const toggleMusic = useCallback(() => {
-    if (musicPlaying) {
-      stopMusic();
-    } else {
-      startMusic();
-    }
+    if (musicPlaying) stopMusic();
+    else startMusic();
   }, [musicPlaying, startMusic, stopMusic]);
 
+  const blinkDelays = useMemo(
+    () =>
+      Array.from({ length: BLINK_CELLS }, () =>
+        +(Math.random() * 2).toFixed(2),
+      ),
+    [],
+  );
+
+  const sparks = useMemo(
+    () =>
+      Array.from({ length: SPARK_COUNT }, (_, i) => ({
+        id: i,
+        left: +(Math.random() * 100).toFixed(2),
+        delay: +(Math.random() * 6).toFixed(2),
+        duration: +(4 + Math.random() * 4).toFixed(2),
+        size: +(2 + Math.random() * 3).toFixed(2),
+      })),
+    [],
+  );
+
+  // ── Portal to body ──
+  const overlayContent =
+    typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className={'disco-overlay ' + (discoActive ? 'active' : '')}
+            aria-hidden="true"
+          >
+            <div className="disco-grid" />
+            <div className="disco-blinks">
+              {blinkDelays.map((delay, i) => (
+                <div
+                  key={i}
+                  className="disco-blink"
+                  style={{ animationDelay: `${delay}s` }}
+                />
+              ))}
+            </div>
+            <div className="disco-sparks">
+              {sparks.map((s) => (
+                <span
+                  key={s.id}
+                  className="disco-spark"
+                  style={{
+                    left: `${s.left}%`,
+                    width: `${s.size}px`,
+                    height: `${s.size}px`,
+                    animationDelay: `${s.delay}s`,
+                    animationDuration: `${s.duration}s`,
+                  }}
+                />
+              ))}
+            </div>
+            <div className="disco-pulse" />
+            <div className="disco-flash" />
+            <div className="disco-vignette" />
+            <div className="disco-floor-glow" />
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div className="relative mt-4">
-      {/* Trigger — 20px sparkle, Android-style tap counter */}
-      <button
-        type="button"
-        onClick={handleTap}
-        className="mx-auto flex h-8 w-8 items-center justify-center text-slate-300 transition-colors hover:text-brand-700"
-        aria-label="Hidden trigger"
-        tabIndex={-1}
-      >
-        <span className="material-symbols-outlined text-[20px]">
-          auto_awesome
-        </span>
-      </button>
+    <>
+      {overlayContent}
 
-      {/* Progressive hint — Android-style */}
-      {hint && !revealed && (
-        <p className="mt-2 text-center text-[11px] italic text-slate-400 animate-fade-in">
-          {hint}
-        </p>
-      )}
+      <div className="relative mt-4">
+        {/* Trigger */}
+        <button
+          type="button"
+          onClick={handleTap}
+          className="mx-auto flex h-8 w-8 items-center justify-center text-slate-300 transition-colors hover:text-brand-700"
+          aria-label="Hidden trigger"
+          tabIndex={-1}
+        >
+          <span className="material-symbols-outlined text-[20px]">
+            auto_awesome
+          </span>
+        </button>
 
-      {/* Revealed panel */}
-      {revealed && (
-        <div className="animate-fade-up mx-auto mt-4 max-w-lg border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-[20px] text-brand-700">
-              auto_awesome
-            </span>
-            <h3 className="text-sm font-semibold text-slate-900">
-              CoE-NNECT by the numbers
-            </h3>
-          </div>
+        {hint && !revealed && (
+          <p className="mt-2 text-center text-[11px] italic text-slate-400 animate-fade-in">
+            {hint}
+          </p>
+        )}
 
-          <div className="grid grid-cols-2 gap-2">
-            {STATS.map((s) => (
-              <div
-                key={s.label}
-                className="flex items-center gap-2 border border-slate-200 bg-white px-3 py-2"
+        {revealed && (
+          <div
+            ref={panelRef}
+            className={
+              'relative z-[9999] mx-auto mt-4 max-w-lg border-2 border-brand-700 bg-white p-5 shadow-2xl ' +
+              (!entranceDone ? 'animate-fade-up' : '') +
+              ' ' +
+              (entranceDone && discoActive ? 'disco-panel-active' : '')
+            }
+          >
+            <div className="mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-brand-700">
+                auto_awesome
+              </span>
+              <h3
+                className={
+                  'text-sm font-semibold text-slate-900 ' +
+                  (discoActive ? 'disco-title' : '')
+                }
               >
-                <span className="material-symbols-outlined text-[16px] text-brand-700">
-                  {s.icon}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[10px] uppercase tracking-wider text-slate-500">
-                    {s.label}
-                  </div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {s.value}
+                CoE-NNECT by the numbers
+              </h3>
+            </div>
+
+<div
+  className={
+    'grid grid-cols-2 gap-2 ' +
+    (discoActive ? 'disco-stats-grid' : '')
+  }
+>
+  {STATS.map((s) => (
+    <div
+      key={s.label}
+      className={
+        'flex items-center gap-2 border border-slate-200 bg-white px-3 py-2 ' +
+        (discoActive ? 'disco-stat' : '')
+      }
+    >
+                  <span
+                    className={
+                      'material-symbols-outlined text-[16px] text-brand-700 ' +
+                      (discoActive ? 'disco-stat-icon' : '')
+                    }
+                  >
+                    {s.icon}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[10px] uppercase tracking-wider text-slate-500">
+                      {s.label}
+                    </div>
+                    <div
+                      className={
+                        'text-sm font-semibold text-slate-900 ' +
+                        (discoActive ? 'disco-stat-value' : '')
+                      }
+                    >
+                      {s.value}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
-            <p className="text-[10px] italic text-slate-400">
-              You found the easter egg. 🎉
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleMusic}
-                className={
-                  'flex items-center gap-1 border px-2 py-1 text-[10px] font-medium transition-colors ' +
-                  (musicPlaying
-                    ? 'border-brand-700 bg-brand-700 text-white hover:bg-brand-800'
-                    : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50')
-                }
-                title="Toggle music"
-              >
-                <span className="material-symbols-outlined text-[14px]">
-                  {musicPlaying ? 'pause' : 'play_arrow'}
-                </span>
-                {musicPlaying ? 'Pause' : 'Play music'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setRevealed(false);
-                  setTaps(0);
-                  setHint(null);
-                  stopMusic();
-                }}
-                className="text-[10px] text-slate-500 hover:text-slate-800"
-              >
-                Hide
-              </button>
+              ))}
             </div>
-          </div>
 
-          <p className="mt-2 text-center text-[9px] text-slate-400">
-            Music: <span className="font-medium">song.mp3</span>
-          </p>
-        </div>
-      )}
-    </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+              <p
+                className={
+                  'text-[10px] italic text-slate-400 ' +
+                  (discoActive ? 'disco-tagline' : '')
+                }
+              >
+                You found the easter egg. 🎉
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDiscoEnabled((v) => !v)}
+                  className={
+                    'flex items-center gap-1 border px-2 py-1 text-[10px] font-medium transition-colors ' +
+                    (discoEnabled
+                      ? 'border-brand-700 bg-brand-700 text-white hover:bg-brand-800'
+                      : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50')
+                  }
+                  title="Toggle disco lights"
+                >
+                  <span className="material-symbols-outlined text-[14px]">
+                    {discoEnabled ? 'celebration' : 'light_off'}
+                  </span>
+                  Disco: {discoEnabled ? 'On' : 'Off'}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleMusic}
+                  className={
+                    'flex items-center gap-1 border px-2 py-1 text-[10px] font-medium transition-colors ' +
+                    (musicPlaying
+                      ? 'border-brand-700 bg-brand-700 text-white hover:bg-brand-800'
+                      : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50')
+                  }
+                  title="Toggle music"
+                >
+                  <span className="material-symbols-outlined text-[14px]">
+                    {musicPlaying ? 'pause' : 'play_arrow'}
+                  </span>
+                  {musicPlaying ? 'Pause' : 'Play music'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRevealed(false);
+                    setTaps(0);
+                    setHint(null);
+                    stopMusic();
+                  }}
+                  className="text-[10px] text-slate-500 hover:text-slate-800"
+                >
+                  Hide
+                </button>
+              </div>
+            </div>
+
+            <p className="mt-2 text-center text-[9px] text-slate-400">
+              Music: <span className="font-medium">song.mp3</span>
+            </p>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
