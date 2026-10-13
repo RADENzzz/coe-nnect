@@ -87,6 +87,20 @@ export default function HelpPage() {
           </section>
         </div>
       </div>
+
+      {/* Page-level attribution footer */}
+      <div className="animate-fade-up mt-16 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
+        <p>
+          CoE-NNECT is developed by the{' '}
+          <span className="font-medium text-slate-700">
+            Department of Computer Engineering
+          </span>
+          , College of Engineering, Western Mindanao State University.
+        </p>
+        <p className="mt-1 text-[11px] text-slate-400">
+          CPE SD 3 — Management Information System · Academic Year 2026–2027
+        </p>
+      </div>
     </div>
   );
 }
