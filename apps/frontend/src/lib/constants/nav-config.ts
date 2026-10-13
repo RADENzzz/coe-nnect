@@ -16,6 +16,11 @@ export interface RoleNav {
   bottom: NavItem[];
 }
 
+/**
+ * Department Head navigation.
+ * Unchanged from pre-consolidation — DH portal is not affected by the
+ * Admin→Dean change.
+ */
 const DH_NAV: RoleNav = {
   brandSubtitle: 'Department Portal',
   topBarLabel: 'Department Head',
@@ -43,70 +48,52 @@ const DH_NAV: RoleNav = {
   ],
 };
 
-const ADMIN_NAV: RoleNav = {
-  brandSubtitle: 'Admin Portal',
-  topBarLabel: 'System Administrator',
-  main: [
-    { label: 'Dashboard',         path: '/admin/dashboard',        icon: 'dashboard',       primary: true },
-    { label: 'Departments',       path: '/admin/departments',      icon: 'domain',          primary: true },
-    { label: 'Users',             path: '/admin/users',            icon: 'manage_accounts', primary: true },
-    { label: 'Import Prospectus', path: '/admin/import',           icon: 'upload_file' },
-    { label: 'Reports',           path: '/admin/reports',          icon: 'bar_chart' },
-    { label: 'System Settings',   path: '/admin/system-settings',  icon: 'settings' },
-    { label: 'Audit Trail',       path: '/admin/audit-trail',      icon: 'history',         primary: true },
-  ],
-  footer: [
-    { label: 'Help', path: '/help', icon: 'help_outline' },
-  ],
-  bottom: [
-    { label: 'Dashboard',   path: '/admin/dashboard',      icon: 'dashboard',       primary: true },
-    { label: 'Departments', path: '/admin/departments',    icon: 'domain',          primary: true },
-    { label: 'Users',       path: '/admin/users',          icon: 'manage_accounts', primary: true },
-    { label: 'Audit',       path: '/admin/audit-trail',    icon: 'history',         primary: true },
-  ],
-};
-
+/**
+ * Dean navigation.
+ *
+ * After the Admin→Dean consolidation, this nav absorbs every entry
+ * that used to live in ADMIN_NAV. The Dean is the top user-facing role.
+ */
 const DEAN_NAV: RoleNav = {
   brandSubtitle: 'Dean Portal',
   topBarLabel: 'College Dean',
   main: [
     { label: 'Dashboard',          path: '/dean/dashboard',      icon: 'dashboard',        primary: true },
     { label: 'Departments',        path: '/dean/departments',    icon: 'corporate_fare',   primary: true },
+    { label: 'Users',              path: '/dean/users',          icon: 'manage_accounts',  primary: true },
     { label: 'Schedule Approvals', path: '/dean/approvals',      icon: 'pending_actions',  primary: true },
+    { label: 'Timetable',          path: '/dean/timetable',      icon: 'calendar_view_month' },
     { label: 'Import Prospectus',  path: '/dean/import',         icon: 'upload_file' },
     { label: 'Reports',            path: '/dean/reports',        icon: 'bar_chart' },
+    { label: 'System Settings',    path: '/dean/system-settings',icon: 'settings' },
+    { label: 'Audit Trail',        path: '/dean/audit-trail',    icon: 'history',          primary: true },
   ],
   footer: [
     { label: 'Help', path: '/help', icon: 'help_outline' },
   ],
   bottom: [
-    { label: 'Dashboard',   path: '/dean/dashboard',   icon: 'dashboard',           primary: true },
-    { label: 'Timetable',   path: '/dean/timetable',   icon: 'calendar_view_month', primary: true },
-    { label: 'Departments', path: '/dean/departments', icon: 'corporate_fare',      primary: true },
-    { label: 'Approvals',   path: '/dean/approvals',   icon: 'pending_actions',     primary: true },
+    { label: 'Dashboard',   path: '/dean/dashboard',      icon: 'dashboard',           primary: true },
+    { label: 'Departments', path: '/dean/departments',    icon: 'corporate_fare',      primary: true },
+    { label: 'Users',       path: '/dean/users',          icon: 'manage_accounts',     primary: true },
+    { label: 'Approvals',   path: '/dean/approvals',      icon: 'pending_actions',     primary: true },
   ],
 };
 
-const VIEWER_NAV: RoleNav = {
-  brandSubtitle: 'Viewer',
-  topBarLabel: 'Viewer',
-  main: [
-    { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: 'dashboard' },
-  ],
-  footer: [],
-  bottom: [
-    { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: 'dashboard', primary: true },
-  ],
-};
-
+/**
+ * Navigation map.
+ *
+ * `administrator` and `college_dean` share the same nav — the dev
+ * account is routed into the Dean portal by ROLE_HOME.
+ * `viewer` gets no nav (should never reach the app).
+ */
 export const NAV_BY_ROLE: Record<Role, RoleNav> = {
-  [ROLES.ADMIN]:     ADMIN_NAV,
+  [ROLES.ADMIN]:     DEAN_NAV,
   [ROLES.DEAN]:      DEAN_NAV,
   [ROLES.DEPT_HEAD]: DH_NAV,
-  [ROLES.VIEWER]:    VIEWER_NAV,
+  [ROLES.VIEWER]:    DH_NAV,   // placeholder; viewer never renders
 };
 
 export function getNavForRole(role: Role | undefined): RoleNav {
-  if (!role) return VIEWER_NAV;
-  return NAV_BY_ROLE[role] ?? VIEWER_NAV;
+  if (!role) return DH_NAV;
+  return NAV_BY_ROLE[role] ?? DH_NAV;
 }
