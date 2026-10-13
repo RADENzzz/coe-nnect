@@ -24,30 +24,30 @@ const SECTIONS = [
 export default function HelpPage() {
   const profile = useAuthStore((s) => s.profile);
   const [activeId, setActiveId] = useState<string>('getting-started');
-  const [discoActive, setDiscoActive] = useState(false);
+  const [overlayActive, setOverlayActive] = useState(false);
 
   // ── Sidebar control ──
   const isSidebarCollapsed = useUiStore((s) => s.isSidebarCollapsed);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
 
-  // Remember what the sidebar was before disco activated
+  // Remember what the sidebar was before the easter egg opens
   const prevCollapsedRef = useRef<boolean>(isSidebarCollapsed);
 
-  // ── Collapse sidebar while disco is active; restore after ──
+  // ── Collapse sidebar while the easter egg is open; restore after ──
   useEffect(() => {
-    if (discoActive) {
+    if (overlayActive) {
       prevCollapsedRef.current = isSidebarCollapsed;
       setSidebarCollapsed(true);
     } else {
       setSidebarCollapsed(prevCollapsedRef.current);
     }
     // We intentionally exclude isSidebarCollapsed/setSidebarCollapsed —
-    // only discoActive should trigger the state change.
+    // only overlayActive should trigger the state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoActive]);
+  }, [overlayActive]);
 
   useEffect(() => {
-    if (discoActive) return;
+    if (overlayActive) return;
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -62,7 +62,7 @@ export default function HelpPage() {
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
-  }, [discoActive]);
+  }, [overlayActive]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
@@ -124,8 +124,8 @@ export default function HelpPage() {
           CPE SD 3 — Management Information System · Academic Year 2026–2027
         </p>
 
-        {/* Easter egg — reports disco state up */}
-        <StatsEasterEgg onDiscoChange={setDiscoActive} />
+        {/* Easter egg — reports overlay state up */}
+        <StatsEasterEgg onOverlayChange={setOverlayActive} />
       </div>
     </div>
   );

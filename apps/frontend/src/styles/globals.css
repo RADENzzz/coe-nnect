@@ -16,7 +16,6 @@
   }
 
   html {
-    /* Prevent font scaling on orientation change on iOS */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
@@ -31,13 +30,10 @@
     color: #0f172a;
     font-size: 15px;
     line-height: 22px;
-
-    /* Mobile ergonomics */
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
   }
 
-  /* Material Symbols default settings */
   .material-symbols-outlined {
     font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
     font-size: 20px;
@@ -79,7 +75,6 @@
     outline-offset: 2px;
   }
 
-  /* Prevent iOS auto-zoom when focusing inputs */
   @media (max-width: 767px) {
     input,
     select,
@@ -90,7 +85,6 @@
 }
 
 @layer components {
-  /* ----- Cards ----- */
   .card {
     @apply bg-white border border-slate-200 rounded-none shadow-card;
   }
@@ -104,14 +98,10 @@
     @apply font-extrabold tracking-tight text-slate-900;
   }
 
-  /* ----- Buttons base ----- */
   .btn {
     @apply inline-flex items-center justify-center rounded-none font-semibold transition-colors
            whitespace-nowrap text-xs sm:text-sm px-3.5 py-1.5
            disabled:opacity-50 disabled:cursor-not-allowed;
-
-    /* Touch target: Apple HIG minimum is 44x44. We enforce 44px height
-       on phones, relax on md+ where pointer precision is higher. */
     min-height: 44px;
   }
 
@@ -121,35 +111,28 @@
     }
   }
 
-  /* Primary */
   .btn-primary {
     @apply btn text-white hover:opacity-90;
     background-color: #5c1219;
   }
 
-  /* Outline / Secondary */
   .btn-secondary {
     @apply btn bg-white border border-slate-300 text-slate-700 hover:bg-slate-50;
   }
 
-  /* Ghost */
   .btn-ghost {
     @apply btn bg-transparent border-none text-slate-500 hover:text-slate-800;
   }
 
-  /* Danger */
   .btn-danger {
     @apply btn border border-red-200 bg-red-50 text-red-700 hover:bg-red-100;
   }
 
-  /* ----- Inputs ----- */
   .input {
     @apply w-full px-3 py-2 text-sm rounded-none;
     @apply bg-white border border-slate-300;
     @apply text-slate-900 placeholder:text-slate-400;
     @apply transition-colors;
-
-    /* Touch-friendly height on mobile */
     min-height: 44px;
   }
 
@@ -164,12 +147,10 @@
     box-shadow: 0 0 0 1px #5c1219;
   }
 
-  /* ----- Labels ----- */
   .label {
     @apply text-xs font-semibold text-slate-500;
   }
 
-  /* ----- Badges / Tones ----- */
   .badge {
     @apply inline-flex items-center gap-1.5 rounded-none border
            text-[11px] font-bold uppercase tracking-wide whitespace-nowrap px-2 py-0.5;
@@ -195,8 +176,6 @@
     @apply badge bg-red-50 text-red-800 border-red-200;
   }
 
-  /* ----- Tap target helper -----
-     For icon-only buttons that don't use .btn */
   .tap-target {
     @apply inline-flex items-center justify-center;
     min-width: 44px;
@@ -205,7 +184,6 @@
 }
 
 @layer utilities {
-  /* Safe-area padding utilities */
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
@@ -218,12 +196,10 @@
     height: env(safe-area-inset-bottom);
   }
 
-  /* Contain overscroll for inner scroll areas */
   .overscroll-contain {
     overscroll-behavior: contain;
   }
 
-  /* Prevent text selection on chrome UI */
   .select-none-chrome {
     -webkit-user-select: none;
     user-select: none;
@@ -247,8 +223,6 @@
   .no-shadows {
     box-shadow: none !important;
   }
-
-  /* ═══ Animations ═══ */
 
   @keyframes chat-in {
     from { opacity: 0; transform: translateX(24px); }
@@ -306,6 +280,21 @@
     50%      { opacity: 0.35; transform: scale(1.08); }
   }
 
+  @keyframes easter-egg-tap-pulse {
+    0%   { color: inherit; text-shadow: 0 0 0 transparent; transform: scale(1); }
+    45%  { color: #5c1219; text-shadow: 0 0 12px rgba(92, 18, 25, 0.45); transform: scale(1.12); }
+    100% { color: inherit; text-shadow: 0 0 0 transparent; transform: scale(1); }
+  }
+
+  .easter-egg-tap-pulse {
+    display: inline-block;
+    animation: easter-egg-tap-pulse 450ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .easter-egg-tap-pulse { animation: none; }
+  }
+
   .animate-fade-in { animation: fade-in 250ms ease-out; }
   .animate-fade-up { animation: fade-up 400ms cubic-bezier(0.2, 0.9, 0.3, 1); }
   .animate-slide-in { animation: slide-in 350ms cubic-bezier(0.2, 0.9, 0.3, 1); }
@@ -313,8 +302,6 @@
   .animate-backdrop-in { animation: backdrop-in 200ms ease-out; }
   .animate-pulse-slow { animation: pulse-slow 6s ease-in-out infinite; }
   .animate-pulse-slower { animation: pulse-slower 9s ease-in-out infinite; }
-
-  /* ═══ Help page additions ═══ */
 
   @keyframes slide-in-left {
     from { opacity: 0; transform: translateX(-12px); }
@@ -341,7 +328,6 @@
     animation: shimmer 1.5s infinite;
   }
 
-  /* Respect reduced-motion preferences */
   @media (prefers-reduced-motion: reduce) {
     .animate-fade-up,
     .animate-fade-in,
@@ -357,7 +343,7 @@
 }
 
 /* ═══════════════════════════════════════════════
-   Disco overlay — easter egg (v5, full-screen)
+   Disco overlay — easter egg (v6, full-screen)
    Outside @layer so Tailwind cannot tree-shake.
    ═══════════════════════════════════════════════ */
 
@@ -381,7 +367,7 @@
   opacity: 1;
 }
 
-/* ── Layer 1: FIVE color spotlights sweeping from the top ── */
+/* ── Layer 1: Conic spotlights sweeping from the top ── */
 .disco-overlay::before {
   content: '';
   position: absolute;
@@ -407,7 +393,7 @@
   100% { transform: rotate(0deg); }
 }
 
-/* ── Layer 2: Rapid color flash strobe (screen blend so it shows on dark) ── */
+/* ── Layer 2: Color flash strobe ── */
 .disco-flash {
   position: absolute;
   inset: 0;
@@ -448,65 +434,6 @@
   100% { opacity: 1;    transform: scale(1); }
 }
 
-/* ── Layer 4: Grid blinks ── */
-.disco-overlay .disco-blinks {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  grid-template-rows: repeat(6, 1fr);
-}
-
-.disco-overlay .disco-blink {
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  background: radial-gradient(
-    circle,
-    rgba(255, 200, 160, 0.75) 0%,
-    rgba(220, 38, 38, 0.35) 30%,
-    transparent 65%
-  );
-  animation: disco-blink 0.9s steps(3, end) infinite;
-}
-
-@keyframes disco-blink {
-  0%   { opacity: 0;   transform: scale(0.3); }
-  20%  { opacity: 1;   transform: scale(1.05); }
-  40%  { opacity: 0.2; transform: scale(0.8); }
-  60%  { opacity: 0.9; transform: scale(1); }
-  80%  { opacity: 0;   transform: scale(0.5); }
-  100% { opacity: 0;   transform: scale(0.3); }
-}
-
-/* ── Layer 5: Falling sparks ── */
-.disco-overlay .disco-sparks {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.disco-overlay .disco-spark {
-  position: absolute;
-  top: -10px;
-  width: 3px;
-  height: 3px;
-  border-radius: 9999px;
-  background: rgba(255, 235, 200, 1);
-  box-shadow: 0 0 8px rgba(255, 200, 100, 1), 0 0 12px rgba(220, 38, 38, 0.6);
-  animation: disco-spark-fall linear infinite;
-  opacity: 0;
-}
-
-@keyframes disco-spark-fall {
-  0%   { opacity: 0; transform: translateY(0) translateX(0) scale(0.6); }
-  8%   { opacity: 1; }
-  50%  { transform: translateY(50vh) translateX(16px) scale(1.1); }
-  90%  { opacity: 0.7; }
-  100% { opacity: 0; transform: translateY(105vh) translateX(-10px) scale(0.4); }
-}
 
 /* ── Layer 6: Retro dot grid ── */
 .disco-overlay .disco-grid {
@@ -526,7 +453,7 @@
   100% { background-position: 48px 48px, 72px 72px; }
 }
 
-/* ── Layer 7: Vignette — cinematic dark edges ── */
+/* ── Layer 7: Vignette ── */
 .disco-overlay .disco-vignette {
   position: absolute;
   inset: 0;
@@ -538,7 +465,7 @@
   pointer-events: none;
 }
 
-/* ── Layer 8: Floor glow — warm dance floor ── */
+/* ── Layer 8: Floor glow ── */
 .disco-overlay .disco-floor-glow {
   position: absolute;
   left: 0;
@@ -555,83 +482,171 @@
   mix-blend-mode: screen;
 }
 
-/* ═══════════════════════════════════════════════
-   Disco-active panel — slow dance (not strobe)
-   ═══════════════════════════════════════════════ */
+/* ── Layer 9: Floating team names ── */
+.disco-names {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
 
+.disco-name {
+  position: absolute;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #ffe4d4;
+  text-shadow:
+    0 0 12px rgba(255, 100, 100, 0.9),
+    0 0 24px rgba(220, 38, 38, 0.6),
+    0 0 40px rgba(92, 18, 25, 0.5);
+  opacity: 0.7;
+  will-change: transform, opacity;
+  transform: translate(-50%, -50%);
+  /* animationName is set inline */
+}
+
+@keyframes name-pulse {
+  0%, 100% { opacity: 0.55; filter: hue-rotate(0deg); }
+  50%      { opacity: 1;    filter: hue-rotate(-10deg); }
+}
+
+/* Circular orbit */
+.disco-name-circle {
+  animation:
+    name-orbit linear infinite,
+    name-pulse 2s ease-in-out infinite;
+}
+
+/* Elliptical orbit */
+.disco-name-ellipse {
+  animation:
+    name-orbit-ellipse linear infinite,
+    name-pulse 2s ease-in-out infinite;
+}
+
+/* Full circular orbit around each name's center point */
+@keyframes name-orbit {
+  0% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc(var(--start-angle, 0deg) * var(--orbit-dir, 1)))
+      translateX(var(--orbit-rx, 20vw))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      rotate(var(--rot-start, -4deg))
+      scale(1);
+  }
+  25% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 90deg) * var(--orbit-dir, 1)))
+      translateX(var(--orbit-rx, 20vw))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      rotate(var(--rot-start, -4deg))
+      scale(1.06);
+  }
+  50% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 180deg) * var(--orbit-dir, 1)))
+      translateX(var(--orbit-rx, 20vw))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      rotate(var(--rot-start, -4deg))
+      scale(0.96);
+  }
+  75% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 270deg) * var(--orbit-dir, 1)))
+      translateX(var(--orbit-rx, 20vw))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      rotate(var(--rot-start, -4deg))
+      scale(1.04);
+  }
+  100% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 360deg) * var(--orbit-dir, 1)))
+      translateX(var(--orbit-rx, 20vw))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      rotate(var(--rot-start, -4deg))
+      scale(1);
+  }
+}
+
+/* Elliptical orbit variant — uses both rx and ry */
+@keyframes name-orbit-ellipse {
+  0% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc(var(--start-angle, 0deg) * var(--orbit-dir, 1)))
+      translate(var(--orbit-rx, 20vw), 0)
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      scale(1);
+  }
+  25% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 90deg) * var(--orbit-dir, 1)))
+      translate(0, var(--orbit-ry, 20vh))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      scale(1.06);
+  }
+  50% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 180deg) * var(--orbit-dir, 1)))
+      translate(calc(-1 * var(--orbit-rx, 20vw)), 0)
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      scale(0.96);
+  }
+  75% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 270deg) * var(--orbit-dir, 1)))
+      translate(0, calc(-1 * var(--orbit-ry, 20vh)))
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      scale(1.04);
+  }
+  100% {
+    transform:
+      translate(-50%, -50%)
+      rotate(calc((var(--start-angle, 0deg) + 360deg) * var(--orbit-dir, 1)))
+      translate(var(--orbit-rx, 20vw), 0)
+      rotate(calc(-1deg * var(--orbit-dir, 1)))
+      scale(1);
+  }
+}
+
+@keyframes name-pulse {
+  0%, 100% {
+    opacity: 0.55;
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    filter: hue-rotate(-10deg);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   Disco-active panel + cells
+   ═══════════════════════════════════════════════ */
 
 .disco-panel-active {
   animation:
-    panel-rock 4.2s ease-in-out infinite,
-    panel-glow 2.8s ease-in-out infinite;
-}
-
-.disco-stat {
-  animation: stat-disco 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  transform-origin: center center;
+    panel-rock 3.6s ease-in-out infinite,
+    panel-glow 2.6s ease-in-out infinite;
+  transform-origin: center bottom;
   will-change: transform;
 }
 
-@keyframes stat-disco {
-  /* Start low */
-  0% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    border-color: #e2e8f0;
-    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
-  }
-  /* Up + lean right + grow */
-  15% {
-    transform: translate(3px, -6px) rotate(2deg) scale(1.04);
-    border-color: rgba(220, 38, 38, 0.6);
-    box-shadow:
-      0 0 14px rgba(220, 38, 38, 0.45),
-      0 6px 12px rgba(0, 0, 0, 0.15);
-  }
-  /* Back through center */
-  30% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    border-color: #e2e8f0;
-    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
-  }
-  /* Down low (bounce)
-  45% {
-    transform: translate(0, 3px) rotate(0deg) scale(0.98);
-    border-color: rgba(220, 38, 38, 0.3);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  }
-  /* Up + lean left + grow */
-  60% {
-    transform: translate(-3px, -6px) rotate(-2deg) scale(1.04);
-    border-color: rgba(220, 38, 38, 0.6);
-    box-shadow:
-      0 0 14px rgba(220, 38, 38, 0.45),
-      0 6px 12px rgba(0, 0, 0, 0.15);
-  }
-  /* Through center again */
-  75% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    border-color: #e2e8f0;
-    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
-  }
-  /* Down low again */
-  90% {
-    transform: translate(0, 3px) rotate(0deg) scale(0.98);
-    border-color: rgba(220, 38, 38, 0.3);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  }
-  /* Back to start */
-  100% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    border-color: #e2e8f0;
-    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
-  }
-}
-
 @keyframes panel-rock {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25%      { transform: translateY(-4px) rotate(-0.6deg); }
-  50%      { transform: translateY(0) rotate(0deg); }
-  75%      { transform: translateY(-4px) rotate(0.6deg); }
+  0%, 100% { transform: translateY(0) rotate(-0.5deg) scale(1); }
+  25%      { transform: translateY(-6px) rotate(0deg) scale(1.005); }
+  50%      { transform: translateY(0) rotate(0.5deg) scale(1); }
+  75%      { transform: translateY(-6px) rotate(0deg) scale(1.005); }
 }
 
 @keyframes panel-glow {
@@ -643,38 +658,66 @@
   50% {
     box-shadow:
       0 20px 60px rgba(0, 0, 0, 0.55),
-      0 0 40px rgba(220, 38, 38, 0.45);
+      0 0 40px rgba(220, 38, 38, 0.55);
   }
 }
 
+.disco-stat {
+  animation: stat-disco 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-origin: center center;
+  will-change: transform;
+}
 
-
-@keyframes stat-sway {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg) scale(1);
+@keyframes stat-disco {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
     border-color: #e2e8f0;
     box-shadow: 0 0 0 rgba(220, 38, 38, 0);
   }
-  25% {
-    transform: translateY(-2px) rotate(-0.6deg) scale(1.01);
-    border-color: rgba(220, 38, 38, 0.35);
-    box-shadow: 0 0 8px rgba(220, 38, 38, 0.2);
+  15% {
+    transform: translate(3px, -6px) rotate(2deg) scale(1.04);
+    border-color: rgba(220, 38, 38, 0.6);
+    box-shadow:
+      0 0 14px rgba(220, 38, 38, 0.45),
+      0 6px 12px rgba(0, 0, 0, 0.15);
   }
-  50% {
-    transform: translateY(0) rotate(0deg) scale(1);
+  30% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
     border-color: #e2e8f0;
     box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  45% {
+    transform: translate(0, 3px) rotate(0deg) scale(0.98);
+    border-color: rgba(220, 38, 38, 0.3);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+  60% {
+    transform: translate(-3px, -6px) rotate(-2deg) scale(1.04);
+    border-color: rgba(220, 38, 38, 0.6);
+    box-shadow:
+      0 0 14px rgba(220, 38, 38, 0.45),
+      0 6px 12px rgba(0, 0, 0, 0.15);
   }
   75% {
-    transform: translateY(-2px) rotate(0.6deg) scale(1.01);
-    border-color: rgba(220, 38, 38, 0.35);
-    box-shadow: 0 0 8px rgba(220, 38, 38, 0.2);
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+  }
+  90% {
+    transform: translate(0, 3px) rotate(0deg) scale(0.98);
+    border-color: rgba(220, 38, 38, 0.3);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    border-color: #e2e8f0;
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
   }
 }
 
 .disco-stat-icon {
   animation: icon-bob 2.4s ease-in-out infinite;
-} 
+}
 
 @keyframes icon-bob {
   0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
@@ -720,37 +763,32 @@
   50%      { opacity: 1; }
 }
 
-/* Staggered sway — cards dance in a slow wave */
+/* Staggered wave through the stats grid */
 .disco-stats-grid > *:nth-child(1) { animation-delay: 0s; }
-.disco-stats-grid > *:nth-child(2) { animation-delay: 0.25s; }
-.disco-stats-grid > *:nth-child(3) { animation-delay: 0.50s; }
-.disco-stats-grid > *:nth-child(4) { animation-delay: 0.75s; }
-.disco-stats-grid > *:nth-child(5) { animation-delay: 1.00s; }
-.disco-stats-grid > *:nth-child(6) { animation-delay: 1.25s; }
-.disco-stats-grid > *:nth-child(7) { animation-delay: 1.50s; }
-.disco-stats-grid > *:nth-child(8) { animation-delay: 1.75s; }
+.disco-stats-grid > *:nth-child(2) { animation-delay: 0.08s; }
+.disco-stats-grid > *:nth-child(3) { animation-delay: 0.16s; }
+.disco-stats-grid > *:nth-child(4) { animation-delay: 0.24s; }
+.disco-stats-grid > *:nth-child(5) { animation-delay: 0.32s; }
+.disco-stats-grid > *:nth-child(6) { animation-delay: 0.40s; }
+.disco-stats-grid > *:nth-child(7) { animation-delay: 0.48s; }
+.disco-stats-grid > *:nth-child(8) { animation-delay: 0.56s; }
 
 /* ═══════════════════════════════════════════════
    Reduced-motion fallback
    ═══════════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {
-  /* Kill all the intense flashing disco layers */
   .disco-overlay::before,
   .disco-overlay::after,
   .disco-overlay .disco-pulse,
   .disco-overlay .disco-grid,
-  .disco-overlay .disco-blink,
-  .disco-overlay .disco-spark,
-  .disco-overlay .disco-flash,
   .disco-overlay .disco-vignette,
-  .disco-overlay .disco-floor-glow {
+  .disco-overlay .disco-floor-glow,
+  .disco-name {
     animation: none !important;
   }
-  .disco-overlay .disco-spark,
-  .disco-overlay .disco-blink,
-  .disco-overlay .disco-flash {
-    display: none;
+
   }
-  /* Panel animations stay — they're subtle and slow */
-}
+  .disco-name {
+    opacity: 0.7;
+  }

@@ -22,6 +22,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SearchModule } from './modules/search/search.module';
+import { StatsModule } from './modules/stats/stats.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { SearchModule } from './modules/search/search.module';
     DepartmentsModule,
     SchedulingModule,
     SearchModule,
+    StatsModule,
     ConstraintsModule,
     SectionsModule,
     ApprovalsModule,

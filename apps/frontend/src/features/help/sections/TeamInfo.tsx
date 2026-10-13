@@ -1,7 +1,14 @@
 import { TeamCard } from '../components/TeamCard';
 import { TEAM_GROUPS, CLIENT } from '../data/team';
+import {
+  EASTER_EGG_TOTAL_TAPS,
+  useEasterEggStore,
+} from '../store/easter-egg.store';
 
 export function TeamInfo() {
+  const registerTap = useEasterEggStore((s) => s.registerTap);
+  const taps = useEasterEggStore((s) => s.taps);
+
   return (
     <div>
       <h2 className="mb-4 text-xl font-semibold text-slate-900">About the Team</h2>
@@ -37,33 +44,26 @@ export function TeamInfo() {
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {group.members.map((m, i) => (
-                <TeamCard key={m.name} member={m} index={i} />
+                <TeamCard
+                  key={m.name}
+                  member={m}
+                  index={i}
+                  // ⭐ Easter egg trigger on Alrhaden's card only
+                  onTap={
+                    m.name === 'Alrhaden A. Javier'
+                      ? () => registerTap()
+                      : undefined
+                  }
+                  remainingSteps={
+                    m.name === 'Alrhaden A. Javier' && taps > 0
+                      ? EASTER_EGG_TOTAL_TAPS - taps
+                      : null
+                  }
+                />
               ))}
             </div>
           </div>
         ))}
-
-        {/* Development note */}
-        <div
-          className="animate-fade-up border border-slate-200 bg-slate-50 p-4"
-          style={{ animationDelay: '400ms', animationFillMode: 'both' }}
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px] text-slate-600">
-              history
-            </span>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-600">
-              Development Note
-            </h3>
-          </div>
-          <p className="text-xs leading-relaxed text-slate-600">
-            CoE-NNECT was developed iteratively over multiple months. The primary
-            implementation work was led by Alrhaden A. Javier, with foundational
-            contributions including the initial PostgreSQL schema by Edzel Don V.
-            Tio and early frontend by Giel V. Andales. See the
-            repository&apos;s commit history for details.
-          </p>
-        </div>
 
         {/* Client — highlighted separately */}
         <div
@@ -90,6 +90,24 @@ export function TeamInfo() {
               <div className="mt-1 text-xs text-slate-600">{CLIENT.focus}</div>
             </div>
           </div>
+        </div>
+
+        {/* Department attribution */}
+        <div
+          className="animate-fade-up mt-8 border-t border-slate-200 pt-6 text-center text-xs text-slate-500"
+          style={{ animationDelay: '600ms', animationFillMode: 'both' }}
+        >
+          <p>
+            Developed under the{' '}
+            <span className="font-medium text-slate-700">
+              Department of Computer Engineering
+            </span>
+            <br />
+            College of Engineering · Western Mindanao State University
+          </p>
+          <p className="mt-2 text-[11px] text-slate-400">
+            CPE SD 3 — Management Information System · Academic Year 2026–2027
+          </p>
         </div>
       </div>
     </div>
