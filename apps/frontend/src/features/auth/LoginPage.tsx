@@ -263,7 +263,7 @@ export default function LoginPage() {
               <span className="text-white/50">SCHEDULING SYSTEM</span>
             </h1>
             <p className="mt-4 text-sm text-white/60 max-w-xs">
-              Manage faculty schedules, resolve conflicts, and plan academic terms — all in one place.
+              Manage faculty schedules, resolve conflicts, and plan academic terms, all in one place.
             </p>
           </div>
 
