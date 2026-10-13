@@ -76,9 +76,13 @@ export class ProspectusService {
    * Ensures the caller is allowed to write prospectus entries for the
    * given program.
    *
-   *   administrator / college_dean  → allowed for any program
-   *   department_head               → only own department's programs
-   *   everyone else                 → rejected
+   *   college_dean     → allowed for any program
+   *   department_head  → only own department's programs
+   *   everyone else    → rejected
+   *
+   * NOTE: the `administrator` role is still accepted so the hidden
+   * dev account retains full access. It is NOT used for user-facing
+   * authorization — the Dean is the top role.
    */
   private async assertProgramWriteAccess(
     programId: string,
