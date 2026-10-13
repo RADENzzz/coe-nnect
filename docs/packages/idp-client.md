@@ -1,24 +1,24 @@
 # IDP client
 
-`packages/idp-client` reserves the workspace name `@coe-nnect/idp-client` for a future client to the university's Individual Daily Program (IDP) system.
+`packages/idp-client` reserves the workspace name `@coe-nnect/idp-client` for a possible client to the university's Individual Daily Program (IDP) system.
 
 ## Current status
 
-The package is **not implemented or integrated**. Its tracked TypeScript source files are empty, so it currently provides no client, endpoint methods, types, or usable public exports. The package manifest lists Axios as a dependency, but there is no working API implementation yet.
+The package is **not implemented and is not integrated** with the main application. It has no usable client, endpoint methods, API types, or public exports. The presence of a package manifest or dependency does not indicate that IDP communication is available.
 
-Potential future integration areas include faculty data, qualifications, designations, schedules, and non-class commitments. These are intended areas only; no endpoint or authentication contract is defined here.
+Possible future use cases include synchronizing faculty information and qualifications and retrieving non-class commitments. These are ideas only: no IDP endpoint, data contract, or authentication method is documented or implemented.
 
-## Before implementing
+## Before implementation
 
-Confirm the IDP API contract and authentication approach with its owner. Then implement and export typed client methods, document configuration without embedding credentials, add mocked tests, and integrate the client through an explicit backend module or service.
+Agree on the API contract, authentication, and ownership with the IDP service team. Then define typed client methods, configure secrets outside source control, add mocked tests, and integrate the client through an explicit backend service.
 
 ## Package checks
 
-The package manifest defines `typecheck` and `test` scripts:
+The package currently defines these scripts:
 
 ```powershell
 pnpm --filter @coe-nnect/idp-client typecheck
 pnpm --filter @coe-nnect/idp-client test
 ```
 
-These checks do not imply that the integration is implemented.
+Passing package checks does not imply that the IDP integration is implemented.

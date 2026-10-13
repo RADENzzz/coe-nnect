@@ -1,18 +1,16 @@
 # Shared types
 
-`packages/shared-types` reserves the workspace name `@coe-nnect/shared-types` for TypeScript types shared across the frontend and backend.
+`packages/shared-types` reserves the workspace name `@coe-nnect/shared-types` for transport-level TypeScript types that may eventually be shared across applications.
 
 ## Current status
 
-The package is **not implemented**. Its tracked `src` files are empty and it currently exports no API or type declarations. Do not rely on a type import from this package yet; the frontend and backend still have their own types.
+This package is **not implemented** and currently exports no usable types. The frontend and backend maintain their own type definitions. Placeholder source filenames are not API contracts; do not import or rely on them.
 
-The source filenames indicate intended domains such as API responses, constraints, faculty, IDP, rooms, schedules, subjects, and users. Those names are placeholders, not implemented contracts.
+## Adding shared types
 
-## When adding shared types
+Only move a type here when it is stable and genuinely needed by multiple workspace projects. Export it from `src/index.ts`, keep this package independent of application runtime code, and update consumers and tests in the same change.
 
-Add stable, transport-level types that are genuinely shared by more than one workspace project. Export them from `src/index.ts`, avoid importing runtime app code into this package, and update consumers and tests in the same change.
-
-The package currently defines a `typecheck` script:
+The package defines a type-check script:
 
 ```powershell
 pnpm --filter @coe-nnect/shared-types typecheck

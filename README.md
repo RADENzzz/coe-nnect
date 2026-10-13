@@ -1,15 +1,47 @@
 # CoE-NNECT
 
-CoE-NNECT is a scheduling system for the College of Engineering at Western Mindanao State University. It is maintained as a pnpm monorepo with a React frontend, a NestJS API, shared TypeScript packages, and standalone Python services.
+<p align="center">
+  <strong>College of Engineering Scheduling System</strong><br>
+  Western Mindanao State University<br>
+  <em>CPE SD 3 — Management Information System · Academic Year 2026–2027</em>
+</p>
 
-## What it does
+CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
 
-- Manages departments, terms, faculty, rooms, subjects, sections, and prospectuses.
-- Builds and reviews class schedules, checks scheduling constraints, and supports approval and publication workflows.
-- Provides role-specific workspaces for department heads, college deans, and administrators.
-- Includes timetable views, reports, audit history, notifications, and prospectus PDF extraction.
+## Project information
 
-The schedule solver and IDP client are not currently integrated into the main application. See the package documentation for their current status.
+|                    |                                               |
+| ------------------ | --------------------------------------------- |
+| **Project**        | CPE SD 3 — Management Information System      |
+| **Institution**    | Western Mindanao State University             |
+| **College**        | College of Engineering                        |
+| **Academic year**  | 2026–2027                                     |
+| **Status**         | Active development                            |
+| **Project client** | Engr. Gajil J. Santos, College of Engineering |
+
+## Project team
+
+| Name                        | Project role                                       |
+| --------------------------- | -------------------------------------------------- |
+| Jazmine Elaiza L. Luis      | Project Manager                                    |
+| Alrhaden A. Javier          | Lead Developer · System Architect                  |
+| Giel V. Andales             | Senior Developer                                   |
+| Edzel Don V. Tio            | Junior Developer                                   |
+| Roland C. Velez             | Lead Tester · Assistant Trainer · Junior Archivist |
+| Andre Aga B. Dacumos        | Lead Trainer · Senior Tester                       |
+| Aizzah Arabelle B. Javelosa | Lead Archivist · Assistant System Analyst          |
+| Euwan Tyrone B. Prias       | Lead System Analyst · Senior Archivist             |
+
+## Capabilities
+
+- Manage departments, academic terms, faculty, rooms, subjects, sections, and prospectuses.
+- Create, edit, validate, and review class schedules; coordinate approvals and publication.
+- Apply scheduling rules for conflicts, qualifications, workloads, room suitability, and other constraints.
+- Provide role-based workspaces for college deans, department heads, and administrators.
+- View timetables and reports, review audit history, and use notifications and chat.
+- Import prospectus information from PDF text using editor-defined regions.
+
+The Python OR-Tools solver and the IDP client are standalone or reserved packages; neither is currently integrated into the main application. See the [package documentation](docs/README.md) for their status.
 
 ## Repository layout
 
@@ -18,94 +50,93 @@ apps/
   backend/                 NestJS API
   frontend/                React + Vite web application
 packages/
-  constraint-rules/        Scheduling constraint engine
+  constraint-rules/        TypeScript scheduling rules engine
   idp-client/              Reserved IDP integration package
   prospectus-parser/       FastAPI PDF text extraction service
   shared-types/            Reserved shared TypeScript types package
   solver-service/          Standalone OR-Tools scheduling service
-docs/
-  apps/                    App-specific guides
-  packages/                Package and service guides
+docs/                      App, package, API, and rules documentation
 ```
 
-See the [documentation index](docs/README.md) for details on each app and package.
+See the [documentation index](docs/README.md) for guides and service-specific instructions.
 
-## Prerequisites
+## Requirements
 
 - Node.js 24 or newer
-- pnpm 12.6.0
+- pnpm 12.6.0 (the repository pins this version)
 - Git
-- A configured Supabase project for backend/database features
+- Supabase project credentials and a PostgreSQL database for database-backed features
 
-The root `package.json` declares the Node.js engine requirement and pins the pnpm package-manager version.
+The parser and solver services have independent Python dependencies; see their guides before running them.
 
-## Getting started
+## Get started
 
-1. Clone the repository and enter its directory:
+Clone the repository and install the workspace dependencies:
 
-   ```bash
-   git clone https://github.com/RADENzzz/SCHEDULING-SYSTEM-WMSU-.git
-   cd SCHEDULING-SYSTEM-WMSU-
-   ```
+```powershell
+git clone https://github.com/RADENzzz/SCHEDULING-SYSTEM-WMSU-.git
+Set-Location SCHEDULING-SYSTEM-WMSU-
+pnpm install
+```
 
-2. Install JavaScript dependencies:
+Create local environment files from the checked-in examples and configure each value for your environment:
 
-   ```bash
-   pnpm install
-   ```
+```powershell
+Copy-Item apps\backend\.env.example apps\backend\.env
+Copy-Item apps\frontend\.env.example apps\frontend\.env.local
+```
 
-3. Copy each app's `.env.example` to its local environment file and set values for your environment:
-   - Backend: `apps/backend/.env`
-   - Frontend: `apps/frontend/.env.local`
+Configure the backend's Supabase credentials, PostgreSQL `DATABASE_URL`, and the frontend's API and Supabase settings. Never commit real environment files or credentials. Values prefixed with `VITE_` are delivered to the browser and must not contain secrets.
 
-   The backend needs Supabase credentials and a PostgreSQL `DATABASE_URL`. The frontend needs the API URL and Supabase URL/anonymous key. Never commit real environment files or credentials.
+Run the API and web app in separate terminals:
 
-4. Start the app processes in separate terminals:
+```powershell
+pnpm --filter @coe-nnect/backend dev
+```
 
-   ```bash
-   pnpm --filter @coe-nnect/backend dev
-   ```
+```powershell
+pnpm --filter @coe-nnect/frontend dev
+```
 
-   ```bash
-   pnpm --filter @coe-nnect/frontend dev
-   ```
-
-   The frontend is served by Vite, normally at `http://localhost:5173`; the API defaults to port `3000`. See the [backend guide](docs/apps/backend.md) and [frontend guide](docs/apps/frontend.md) for configuration and service details.
+By default, Vite serves the frontend at `http://localhost:5173` and the API listens on port `3000` with the `/api` prefix. Read the [backend guide](docs/apps/backend.md) and [frontend guide](docs/apps/frontend.md) for configuration and checks.
 
 ## Common commands
 
-| Command                                          | Purpose                                             |
-| ------------------------------------------------ | --------------------------------------------------- |
-| `pnpm build`                                     | Build workspace projects that define a build script |
-| `pnpm test`                                      | Run workspace tests                                 |
-| `pnpm lint`                                      | Run workspace lint scripts                          |
-| `pnpm typecheck`                                 | Type-check workspace projects                       |
-| `pnpm --filter @coe-nnect/constraint-rules test` | Run constraint engine tests                         |
-| `pnpm --filter @coe-nnect/backend seed:demo`     | Seed demo data in the configured backend database   |
+Run from the repository root:
 
-The Python services have separate dependencies and run instructions in the [package docs](docs/README.md).
+| Command                                          | Purpose                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------- |
+| `pnpm build`                                     | Run available workspace build scripts                            |
+| `pnpm test`                                      | Run available workspace test scripts                             |
+| `pnpm lint`                                      | Run available workspace lint scripts; backend lint applies fixes |
+| `pnpm typecheck`                                 | Run available workspace type checks                              |
+| `pnpm --filter @coe-nnect/constraint-rules test` | Test the scheduling rules package                                |
+| `pnpm --filter @coe-nnect/backend seed:demo`     | Seed demo data in the configured database                        |
+
+Review scripts and database targets before running them. Python services use the commands in their respective guides.
 
 ## Architecture
 
 ```text
 Browser
-  └── React frontend (apps/frontend)
+  └── React + Vite frontend (apps/frontend)
         └── NestJS API (apps/backend)
               ├── Supabase Auth and PostgreSQL
-              └── Scheduling rules (@coe-nnect/constraint-rules)
+              └── TypeScript scheduling rules (packages/constraint-rules)
 
-Standalone services:
-  ├── Prospectus PDF parser (packages/prospectus-parser)
-  └── OR-Tools solver (packages/solver-service)
+Supporting services:
+  ├── FastAPI prospectus parser (packages/prospectus-parser)
+  └── FastAPI OR-Tools solver (packages/solver-service; not integrated)
 ```
 
-The backend database schema is managed through Supabase SQL; TypeORM schema synchronization is disabled. Configure the database and credentials before running database-backed features or seed commands.
+Database schema changes are managed through the Supabase SQL workflow; TypeORM schema synchronization is disabled. Use a configured development database when running seeds or other database-changing commands.
 
-## Further reading
+## Documentation
 
-- [App and package documentation](docs/README.md)
+- [Documentation index](docs/README.md)
 - [Scheduling API contract](docs/interface-contract/docs/interface-contract/scheduling-api.md)
 - [Scheduling rules checklist](docs/reconciliation/scheduling-rules-checklist.md)
+- [Prospectus parser quick reference](packages/prospectus-parser/README.md)
 
 ---
 

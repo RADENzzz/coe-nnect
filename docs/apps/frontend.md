@@ -1,20 +1,19 @@
 # Frontend
 
-`apps/frontend` is the CoE-NNECT browser application, built with React 18, TypeScript, Vite, and Tailwind CSS. It uses React Router for navigation, React Query for server state, Zustand for client state, and Axios-based API clients.
+The `apps/frontend` directory contains the CoE-NNECT browser application. It is built with React, TypeScript, Vite, and Tailwind CSS, with React Router for navigation, React Query for server state, Zustand for client state, and Axios-based API clients.
 
-## Main areas
+## Features
 
-- Login and role-protected workspaces
-- Department-head views for schedules, sections, subjects, prospectuses, faculty, and rooms
-- Dean and administrator views for departments, users, approvals, and system settings
-- Timetables, reports, audit history, notifications, and settings
-- Prospectus PDF import and table-region editing
+- Login and role-protected workspaces for department heads, deans, and administrators.
+- Academic data management, schedule planning and review, timetable views, and schedule generation.
+- Reports, audit history, approvals, notifications, chat, and settings.
+- Prospectus PDF import with editor-defined table and cell regions.
 
-Routes are composed in `src/App.tsx`. Route access is guarded by role; importing/editing a prospectus PDF also requires a desktop viewport.
+Routes are assembled in `src/App.tsx`; route guards enforce role access. The PDF import and editing experience is restricted to desktop-sized viewports.
 
-## Local development
+## Setup and local development
 
-From the repository root:
+From the repository root, install dependencies, create the local environment file, configure it, and start Vite:
 
 ```powershell
 pnpm install
@@ -22,9 +21,13 @@ Copy-Item apps\frontend\.env.example apps\frontend\.env.local
 pnpm --filter @coe-nnect/frontend dev
 ```
 
-Vite normally serves the app at `http://localhost:5173`. Set `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` in `.env.local`; see [`apps/frontend/.env.example`](../../apps/frontend/.env.example). Optional development login credentials can also be set there. Do not put production secrets in Vite variables because values prefixed with `VITE_` are available to the client.
+Vite normally serves the application at `http://localhost:5173`. Configure `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` in `.env.local`; variable names and any optional development login settings are listed in the [frontend environment template](../../apps/frontend/.env.example).
+
+Anything prefixed with `VITE_` is bundled for the browser. Never place service-role keys, passwords, or other secrets in frontend environment variables.
 
 ## Build and checks
+
+Run these commands from the repository root:
 
 ```powershell
 pnpm --filter @coe-nnect/frontend build
@@ -32,4 +35,4 @@ pnpm --filter @coe-nnect/frontend typecheck
 pnpm --filter @coe-nnect/frontend lint
 ```
 
-The app source is organized into `src/api`, shared `src/components`, page-oriented `src/features`, hooks, libraries, state stores, and types.
+The source is grouped into `src/api`, reusable `src/components`, page-oriented `src/features`, hooks, libraries, state stores, and types.
