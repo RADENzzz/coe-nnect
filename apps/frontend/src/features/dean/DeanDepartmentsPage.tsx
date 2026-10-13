@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchUsers } from '../../api/users.api';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
+import Icon from '../../components/ui/Icon';
 import type { Department } from '../../api/departments.api';
 
 export default function DeanDepartmentsPage() {
@@ -68,13 +70,22 @@ export default function DeanDepartmentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-200 pb-5">
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          Departments
-        </h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          All departments under the College of Engineering.
-        </p>
+      <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            Departments
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            All departments under the College of Engineering.
+          </p>
+        </div>
+        <Link
+          to="/dean/departments/manage"
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition"
+        >
+          <Icon name="settings" size={18} />
+          Manage Departments
+        </Link>
       </div>
 
       <ResponsiveTable
