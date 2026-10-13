@@ -19,6 +19,16 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+/**
+ * Subject management + subject restrictions.
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean is the top user-facing role.
+ *   - Department Head can only touch subjects in their own department
+ *     (enforced by SubjectsService.assertOwnership).
+ *
+ * `administrator` is intentionally absent from every @Roles() list.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/subjects')
 export class SubjectsController {
@@ -44,7 +54,7 @@ export class SubjectsController {
     return { data: await this.subjects.findAllRestrictions(termId) };
   }
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post('restrictions')
   async createRestriction(
     @Body() dto: CreateSubjectRestrictionDto,
@@ -59,7 +69,7 @@ export class SubjectsController {
     };
   }
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch('restrictions/:id')
   async updateRestriction(
     @Param('id') id: string,
@@ -71,7 +81,7 @@ export class SubjectsController {
     };
   }
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Delete('restrictions/:id')
   async removeRestriction(@Param('id') id: string, @Req() req: any) {
     return this.subjects.removeRestriction(id, req.profile);
@@ -84,13 +94,13 @@ export class SubjectsController {
     return { data: await this.subjects.findOne(id) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post()
   async create(@Body() dto: CreateSubjectDto, @Req() req: any) {
     return { data: await this.subjects.create(dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -100,13 +110,13 @@ export class SubjectsController {
     return { data: await this.subjects.update(id, dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return { data: await this.subjects.toggleActive(id, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.subjects.remove(id, req.profile);
