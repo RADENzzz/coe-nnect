@@ -24,6 +24,19 @@ import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto'
 import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
 import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
 
+/**
+ * Faculty management.
+ *
+ * After the Admin→Dean consolidation:
+ *   - The College Dean is the top user-facing role.
+ *   - Department Heads may only touch faculty in their own department
+ *     (enforced by FacultyService.assertOwnership).
+ *
+ * `administrator` is intentionally absent from every @Roles() list.
+ * The hidden dev account still bypasses ownership checks at the
+ * service layer (see FacultyService.assertOwnership) — but the API
+ * surface treats the Dean as the top role.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/faculty')
 export class FacultyController {
@@ -50,7 +63,7 @@ export class FacultyController {
     return { data: await this.faculty.findQualifications(id) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post(':id/qualifications')
   async addQualification(
     @Param('id') id: string,
@@ -60,7 +73,7 @@ export class FacultyController {
     return { data: await this.faculty.addQualification(id, dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id/qualifications/:qualId')
   async updateQualification(
     @Param('id') id: string,
@@ -73,7 +86,7 @@ export class FacultyController {
     };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Delete(':id/qualifications/:qualId')
   async removeQualification(
     @Param('id') id: string,
@@ -90,7 +103,7 @@ export class FacultyController {
     return { data: await this.faculty.findPreferences(id) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post(':id/preferences')
   async addPreference(
     @Param('id') id: string,
@@ -100,7 +113,7 @@ export class FacultyController {
     return { data: await this.faculty.addPreference(id, dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id/preferences/:preferenceId')
   async updatePreference(
     @Param('id') id: string,
@@ -118,7 +131,7 @@ export class FacultyController {
     };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Delete(':id/preferences/:preferenceId')
   async removePreference(
     @Param('id') id: string,
@@ -133,7 +146,7 @@ export class FacultyController {
   // ═══════════════════════════════════════════════════════════
 
   @Get(':id/unavailability')
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   async findUnavailability(
     @Param('id') id: string,
     @Query('termId') termId?: string,
@@ -143,7 +156,7 @@ export class FacultyController {
   }
 
   @Post(':id/unavailability')
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Auditable({
     action: 'faculty.unavailability.create',
     source: 'Faculty',
@@ -157,7 +170,7 @@ export class FacultyController {
   }
 
   @Patch(':id/unavailability/:uid')
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Auditable({
     action: 'faculty.unavailability.update',
     source: 'Faculty',
@@ -172,7 +185,7 @@ export class FacultyController {
   }
 
   @Delete(':id/unavailability/:uid')
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Auditable({
     action: 'faculty.unavailability.delete',
     source: 'Faculty',
@@ -192,13 +205,13 @@ export class FacultyController {
     return { data: await this.faculty.findOne(id) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post()
   async create(@Body() dto: CreateFacultyDto, @Req() req: any) {
     return { data: await this.faculty.create(dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -208,18 +221,15 @@ export class FacultyController {
     return { data: await this.faculty.update(id, dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return { data: await this.faculty.toggleActive(id, req.profile) };
   }
 
-  // ⚠️ NOTE: `@Delete(':id')` still restricted to administrator only.
-  // If you want DHs to delete faculty in their own dept, change this to:
-  //   @Roles('administrator', 'department_head')
-  // The service-side assertOwnership already enforces dept ownership,
-  // so widening the role list is safe if you want it.
-  @Roles('administrator')
+  // Per v21 §D2: DH may delete faculty in their own dept (service-side
+  // assertOwnership enforces dept ownership). Dean retains full access.
+  @Roles('college_dean', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.faculty.remove(id, req.profile);
