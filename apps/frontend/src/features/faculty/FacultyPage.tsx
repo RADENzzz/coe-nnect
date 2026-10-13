@@ -70,8 +70,10 @@ export default function FacultyPage() {
   const [deleteTarget, setDeleteTarget] = useState<FacultyRecord | null>(null);
 
   // ── Auth-derived flags ──
-  const isAdmin = profile?.role === 'administrator';
-  const isDean = profile?.role === 'college_dean';
+  // After the Admin→Dean consolidation, both the dev account and the
+  // College Dean have full faculty management powers (including delete).
+  const isAdminOrDean =
+    profile?.role === 'administrator' || profile?.role === 'college_dean';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
@@ -377,7 +379,7 @@ export default function FacultyPage() {
         onClick: () => toggleMutation.mutate(f.facultyId),
         disabled: toggleMutation.isPending,
       },
-      ...(isAdmin
+      ...(isAdminOrDean
         ? [
             {
               label: 'Delete',
