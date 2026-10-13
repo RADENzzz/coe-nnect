@@ -13,7 +13,7 @@ export const WALKTHROUGHS: Walkthrough[] = [
   {
     id: 'login-dashboard',
     title: 'Login and Dashboard Tour',
-    gif: GIF('01-login-dashboard.gif'),
+    gif: GIF('01-login-dashboard.GIF'),
     duration: '15s',
     category: 'getting-started',
     steps: [
