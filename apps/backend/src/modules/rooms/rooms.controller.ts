@@ -17,6 +17,16 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+/**
+ * Room management.
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean is the top user-facing role.
+ *   - Department Head can edit rooms owned by their own department or
+ *     shared (dept_id IS NULL) rooms — enforced in RoomsService.
+ *
+ * `administrator` is intentionally absent from every @Roles() list.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/rooms')
 export class RoomsController {
@@ -36,13 +46,13 @@ export class RoomsController {
     return { data: await this.rooms.findOne(id) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post()
   async create(@Body() dto: CreateRoomDto, @Req() req: any) {
     return { data: await this.rooms.create(dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -52,13 +62,13 @@ export class RoomsController {
     return { data: await this.rooms.update(id, dto, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return { data: await this.rooms.toggleActive(id, req.profile) };
   }
 
-  @Roles('administrator', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.rooms.remove(id, req.profile);
