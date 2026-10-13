@@ -45,7 +45,7 @@ export const TEAM_GROUPS: TeamGroup[] = [
       {
         name: 'Giel V. Andales',
         role: 'Senior Developer',
-        focus: 'Early Frontend',
+        focus: 'Early Frontend scafolding',
         email: 'giel.andales@wmsu.edu.ph',
         initials: 'GA',
         accent: 'brand',
