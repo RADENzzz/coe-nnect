@@ -21,6 +21,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     UsersModule,
     DepartmentsModule,
     SchedulingModule,
+    SearchModule,
     ConstraintsModule,
     SectionsModule,
     ApprovalsModule,
