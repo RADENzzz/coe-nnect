@@ -160,8 +160,11 @@ const GROUPS: FieldGroup[] = [
 export default function SystemConfigPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.user_metadata?.role === 'administrator'
-    || user?.app_metadata?.role === 'administrator';
+  const profile = useAuthStore((s) => s.profile);
+  // After the Admin→Dean consolidation, both the dev account and the
+  // College Dean can write system settings.
+  const isAdmin =
+    profile?.role === 'administrator' || profile?.role === 'college_dean';
 
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -286,7 +289,7 @@ export default function SystemConfigPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
           <Icon name="info" size={18} className="shrink-0 mt-0.5" />
           <span>
-            Read-only view. Only administrators can change system settings.
+            Read-only view. Only the College Dean can change system settings.
           </span>
         </div>
       )}
