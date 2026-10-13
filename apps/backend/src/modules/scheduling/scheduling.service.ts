@@ -925,8 +925,12 @@ export class SchedulingService {
     });
     if (!found) throw new NotFoundException('Schedule entry not found');
 
-    const isAdmin = user.role === 'administrator';
+    // Keep the `administrator` bypass so the hidden dev account can
+    // always clear a flag (recovery path). The user-facing role with
+    // this power is now `college_dean`.
+    const isDevAccount = user.role === 'administrator';
     const isDean = user.role === 'college_dean';
+
     const isFlagger =
       found.flaggedBy && String(found.flaggedBy) === String(user.userId);
     const isOwnerDH =
@@ -934,7 +938,7 @@ export class SchedulingService {
       user.deptId != null &&
       String(found.deptId) === String(user.deptId);
 
-    if (!isAdmin && !isDean && !isFlagger && !isOwnerDH) {
+    if (!isDevAccount && !isDean && !isFlagger && !isOwnerDH) {
       throw new ForbiddenException(
         'Only the person who flagged this entry, the owning department head, a Dean, or an Administrator can clear the flag.',
       );
@@ -2260,6 +2264,8 @@ export class SchedulingService {
     });
     if (!found) throw new NotFoundException('Schedule entry not found');
 
+    // `administrator` retained for the hidden dev account (recovery).
+    // `college_dean` is the top user-facing role after consolidation.
     if (user.role === 'administrator' || user.role === 'college_dean') {
       return found;
     }
