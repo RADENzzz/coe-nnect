@@ -17,14 +17,27 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 
+/**
+ * User management.
+ *
+ * After the Admin→Dean consolidation:
+ *   - The College Dean is the top user-facing role for user management.
+ *   - The Department Head has read-only access to the directory
+ *     (used by the Chat feature and cross-dept request forms).
+ *
+ * `administrator` is intentionally NOT listed here. The hidden dev
+ * account uses it, but the API surface treats the Dean as the top
+ * role.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('administrator')
+@Roles('college_dean')
 @Controller('v1/users')
 export class UsersController {
   constructor(private service: UsersService) {}
 
+  // Static-prefix route — must be declared before @Get(':id')
   @Get('directory')
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   async findDirectory() {
     const data = await this.service.findDirectory();
     return { data };
