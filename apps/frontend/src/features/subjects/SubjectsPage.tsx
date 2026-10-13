@@ -50,8 +50,10 @@ export default function SubjectsPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
-  const isAdmin = profile?.role === 'administrator';
-  const isDean = profile?.role === 'college_dean';
+  // After the Admin→Dean consolidation, both the dev account and the
+  // College Dean have full subject management powers.
+  const isAdminOrDean =
+    profile?.role === 'administrator' || profile?.role === 'college_dean';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
@@ -502,7 +504,7 @@ export default function SubjectsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {(isAdmin || isDH) && (
+          {(isAdminOrDean || isDH) && (
             <button
               onClick={() => setRestrictionsOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant text-on-surface-variant text-sm font-semibold hover:bg-surface-container-low transition"
@@ -511,7 +513,7 @@ export default function SubjectsPage() {
               Manage Restrictions
             </button>
           )}
-          {isDH || isAdmin ? (
+          {isDH || isAdminOrDean ? (
             <button
               onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
