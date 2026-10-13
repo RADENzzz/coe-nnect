@@ -12,6 +12,15 @@ import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { User } from '../users/entities/user.entity';
 
+/**
+ * Section management service.
+ *
+ * Cross-department protection: a DH can only modify sections whose
+ * program resolves to their own department. The `administrator` role
+ * is still accepted at the top of every ownership check so the hidden
+ * dev account retains full access — it is NOT used for user-facing
+ * authorization. The Dean is the top role.
+ */
 @Injectable()
 export class SectionsService {
   constructor(
@@ -43,13 +52,15 @@ export class SectionsService {
 
     const section = await this.findOne(sectionId);
 
+    // `administrator` retained for the hidden dev account (recovery).
+    // `college_dean` is the top user-facing role after consolidation.
     if (profile.role === 'administrator' || profile.role === 'college_dean') {
       return section;
     }
 
     if (profile.role !== 'department_head') {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can modify sections.',
+        'Only deans and department heads can modify sections.',
       );
     }
 
@@ -70,6 +81,7 @@ export class SectionsService {
     programId: string | null | undefined,
     profile: User,
   ): Promise<void> {
+    // `administrator` retained for the hidden dev account.
     if (profile.role === 'administrator' || profile.role === 'college_dean') {
       return;
     }
