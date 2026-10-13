@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
@@ -31,10 +31,15 @@ export default function TopBar({ label }: TopBarProps) {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
   const profile = useAuthStore((s) => s.profile);
   const logout = useLogout();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const initial = profile?.username?.[0]?.toUpperCase() ?? 'U';
   const pageTitle = usePageTitle();
+  const settingsPath = location.pathname.startsWith('/dean')
+    ? '/dean/settings'
+    : '/settings';
 
   useEffect(() => {
     function handleClickOutside(event: Event) {
@@ -96,6 +101,8 @@ export default function TopBar({ label }: TopBarProps) {
         <NotificationBell />
 
         <button
+          type="button"
+          onClick={() => navigate(settingsPath)}
           className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500"
           aria-label="Settings"
         >

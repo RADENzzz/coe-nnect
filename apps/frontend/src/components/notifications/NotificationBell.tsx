@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import NotificationItem from './NotificationItem';
 import {
@@ -14,6 +14,8 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const basePath = location.pathname.startsWith('/dean') ? '/dean' : '';
 
   const { data: unread = 0 } = useUnreadCount();
   const { data: list, isLoading } = useNotificationsList({ limit: 10 });
@@ -50,12 +52,12 @@ export default function NotificationBell() {
 
   const openInbox = () => {
     setOpen(false);
-    navigate('/notifications');
+    navigate(`${basePath}/notifications`);
   };
 
   const openSettings = () => {
     setOpen(false);
-    navigate('/settings?tab=notifications');
+    navigate(`${basePath}/settings?tab=notifications`);
   };
 
   return (
