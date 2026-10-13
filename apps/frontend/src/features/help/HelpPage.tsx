@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { HelpTOC } from './components/HelpTOC';
 import { GettingStarted } from './sections/GettingStarted';
 import { RoleGuides } from './sections/RoleGuides';
@@ -9,7 +9,6 @@ import { TeamInfo } from './sections/TeamInfo';
 import { VersionInfo } from './sections/VersionInfo';
 import { StatsEasterEgg } from './components/StatsEasterEgg';
 import { useAuthStore } from '../../store/auth.store';
-import { useUiStore } from '../../store/ui.store';
 
 const SECTIONS = [
   { id: 'getting-started',  label: 'Getting Started' },
@@ -25,26 +24,6 @@ export default function HelpPage() {
   const profile = useAuthStore((s) => s.profile);
   const [activeId, setActiveId] = useState<string>('getting-started');
   const [overlayActive, setOverlayActive] = useState(false);
-
-  // ── Sidebar control ──
-  const isSidebarCollapsed = useUiStore((s) => s.isSidebarCollapsed);
-  const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
-
-  // Remember what the sidebar was before the easter egg opens
-  const prevCollapsedRef = useRef<boolean>(isSidebarCollapsed);
-
-  // ── Collapse sidebar while the easter egg is open; restore after ──
-  useEffect(() => {
-    if (overlayActive) {
-      prevCollapsedRef.current = isSidebarCollapsed;
-      setSidebarCollapsed(true);
-    } else {
-      setSidebarCollapsed(prevCollapsedRef.current);
-    }
-    // We intentionally exclude isSidebarCollapsed/setSidebarCollapsed —
-    // only overlayActive should trigger the state change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overlayActive]);
 
   useEffect(() => {
     if (overlayActive) return;

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -20,7 +20,6 @@ function ShellInner() {
   const setLastPath = useUiStore((s) => s.setLastPath);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const location = useLocation();
-  const sidebarStateBeforeHelp = useRef<boolean | null>(null);
 
   const nav = getNavForRole(profile?.role);
 
@@ -33,23 +32,7 @@ function ShellInner() {
     const set = useUiStore.getState().setSidebarCollapsed;
 
     const handle = () => {
-      const isHelpPage =
-        location.pathname === '/help' || location.pathname === '/dean/help';
-
-      if (isHelpPage) {
-        if (sidebarStateBeforeHelp.current === null) {
-          sidebarStateBeforeHelp.current =
-            useUiStore.getState().isSidebarCollapsed;
-        }
-        set(true);
-      } else if (sidebarStateBeforeHelp.current !== null) {
-        set(sidebarStateBeforeHelp.current || mqTablet.matches);
-        sidebarStateBeforeHelp.current = null;
-      } else if (mqTablet.matches) {
-        set(true);
-      } else if (mqDesktop.matches) {
-        set(false);
-      }
+      if (mqTablet.matches || mqDesktop.matches) set(true);
     };
 
     handle();
@@ -60,7 +43,7 @@ function ShellInner() {
       mqTablet.removeEventListener('change', handle);
       mqDesktop.removeEventListener('change', handle);
     };
-  }, [location.pathname]);
+  }, []);
 
   useEffect(() => {
     setLastPath(location.pathname);

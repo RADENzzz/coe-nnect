@@ -13,6 +13,7 @@ export default function Sidebar({ nav }: SidebarProps) {
   const { deptName } = useDepartmentLabel();
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
 
   const subtitle =
     nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
@@ -20,6 +21,8 @@ export default function Sidebar({ nav }: SidebarProps) {
 
   return (
     <nav
+      onMouseEnter={() => setSidebarCollapsed(false)}
+      onMouseLeave={() => setSidebarCollapsed(true)}
       className={clsx(
         'hidden md:flex flex-col h-screen bg-[#5c1219] border-r border-black/10 fixed left-0 top-0 z-50',
         'transition-[width] duration-200 ease-out',
