@@ -466,7 +466,10 @@ const DESIGNATIONS = [
 ];
 
 const USERS = [
-  { email: 'admin@wmsu.edu.ph',    username: 'admin',    role: 'administrator',   dept_code: null,    wmsu_id: null },
+  // Hidden dev-only account. Not shown in the Users UI (see
+  // users.service.ts → isDevAccount). Used for demo recovery.
+  // Login with this account only during development.
+  { email: 'dev-admin@wmsu.edu.ph', username: 'dev-admin', role: 'administrator', dept_code: null, wmsu_id: null },
   { email: 'head.cpe@wmsu.edu.ph', username: 'head.cpe', role: 'department_head', dept_code: 'BSCPE', wmsu_id: 'WMSU-005' },
   { email: 'head.ee@wmsu.edu.ph',  username: 'head.ee',  role: 'department_head', dept_code: 'EE',    wmsu_id: 'WMSU-010' },
   { email: 'head.me@wmsu.edu.ph',  username: 'head.me',  role: 'department_head', dept_code: 'ME',    wmsu_id: 'WMSU-012' },
@@ -977,7 +980,7 @@ async function main() {
   console.log('Demo credentials:');
   console.log(`  Password (all users): ${DEMO_PASSWORD}`);
   console.log('');
-  console.log('  Administrator    admin@wmsu.edu.ph');
+  console.log('  College Dean     dean@wmsu.edu.ph');
   console.log('  CpE Dept Head    head.cpe@wmsu.edu.ph');
   console.log('  EE Dept Head     head.ee@wmsu.edu.ph');
   console.log('  ME Dept Head     head.me@wmsu.edu.ph');

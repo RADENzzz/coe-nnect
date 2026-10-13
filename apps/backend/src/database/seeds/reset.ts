@@ -105,6 +105,14 @@ async function main() {
       .delete()
       .neq('notification_id', NIL_UUID);
     if (e3) console.warn('  notification:', e3.message);
+
+    // Clear per-user trigger preferences so they don't reference
+    // stale trigger keys after a reset.
+    const { error: e4 } = await supabase
+      .from('user_notification_setting')
+      .delete()
+      .neq('trigger_key', '__never_matches__');
+    if (e4) console.warn('  user_notification_setting:', e4.message);
   }
 
   // ── 4. Faculty children
