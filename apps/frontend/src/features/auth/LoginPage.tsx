@@ -8,11 +8,11 @@ import Icon from '../../components/ui/Icon';
    ──────────────────────────────────────────── */
 const DEV_ACCOUNTS = [
   {
-    label: 'Administrator',
-    description: 'Admin Dashboard',
+    label: 'College Dean',
+    description: 'Dean Portal',
     email: import.meta.env.VITE_DEV_ADMIN_EMAIL ?? '',
     password: import.meta.env.VITE_DEV_ADMIN_PASSWORD ?? '',
-    icon: 'admin_panel_settings',
+    icon: 'school',
   },
   {
     label: 'Head / Dean',
@@ -194,18 +194,20 @@ export default function LoginPage() {
         if (!profile) {
           await supabase.auth.signOut();
           throw new Error(
-            'Your account exists but has no profile. Contact the administrator.',
+            'Your account exists but has no profile. Contact the College Dean.',
           );
         }
         role = profile.role;
       }
 
-      // Redirect based on role
+      // Redirect based on role.
+      // After the Admin→Dean consolidation:
+      //   - The dev account (administrator) and the Dean both land
+      //     on /dean/dashboard.
+      //   - Department Heads land on /dashboard.
       if (from) {
         navigate(from, { replace: true });
-      } else if (role === 'administrator') {
-        navigate('/admin/dashboard', { replace: true });
-      } else if (role === 'college_dean') {
+      } else if (role === 'administrator' || role === 'college_dean') {
         navigate('/dean/dashboard', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
