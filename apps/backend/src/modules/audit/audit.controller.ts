@@ -9,17 +9,24 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+/**
+ * Audit trail read endpoint.
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean has full read access to the audit log (inherits
+ *     the admin capability).
+ *   - Department Head does NOT have audit read access.
+ *
+ * The `administrator` role is dropped from the class-level @Roles()
+ * decorator. The hidden dev account does NOT reach this route via
+ * the HTTP API — audit inspection for dev work is done via the
+ * Supabase SQL editor instead.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('administrator', 'college_dean')
+@Roles('college_dean')
 @Controller('v1/audit')
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
-
-  // ─────────────────────────────────────────────
-  // Static-prefix routes MUST come before any `:id`
-  // route. Not an issue here yet, but keeping the
-  // convention consistent with the rest of the code.
-  // ─────────────────────────────────────────────
 
   @Get('actions')
   async actions() {
