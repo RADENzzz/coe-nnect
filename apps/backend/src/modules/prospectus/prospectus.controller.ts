@@ -39,6 +39,18 @@ function callerFromRequest(req: any): ProspectusCaller {
   };
 }
 
+/**
+ * Prospectus management.
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean can manage prospectus entries for any program.
+ *   - Department Head can only manage entries for programs in their
+ *     own department (enforced in ProspectusService).
+ *
+ * `administrator` is intentionally absent from every @Roles() list.
+ * The hidden dev account still bypasses program-ownership checks at
+ * the service layer.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/prospectus')
 export class ProspectusController {
@@ -68,7 +80,7 @@ export class ProspectusController {
   // Writes — must have a @Roles decorator so RolesGuard loads the profile
   // ─────────────────────────────────────────────
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Post()
   async create(@Body() dto: CreateProspectusDto, @Req() req: any) {
     return {
@@ -76,7 +88,7 @@ export class ProspectusController {
     };
   }
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -88,7 +100,7 @@ export class ProspectusController {
     };
   }
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return {
@@ -96,7 +108,7 @@ export class ProspectusController {
     };
   }
 
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('college_dean', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.prospectus.remove(id, callerFromRequest(req));
