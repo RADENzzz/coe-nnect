@@ -20,12 +20,16 @@ export class RoomsService {
 
   /**
    * Ownership rule (B):
-   *   Admin / Dean  → full access to any room
-   *   DH            → may edit rooms that are either:
-   *                     • owned by their own department, OR
-   *                     • shared (dept_id IS NULL)
-   *                   but NOT another department's exclusive room.
-   *   others        → reject (fail-closed)
+   *   Dean  → full access to any room
+   *   DH    → may edit rooms that are either:
+   *             • owned by their own department, OR
+   *             • shared (dept_id IS NULL)
+   *           but NOT another department's exclusive room.
+   *   others → reject (fail-closed)
+   *
+   * NOTE: the `administrator` role is still accepted so the hidden
+   * dev account retains full access. It is NOT used for user-facing
+   * authorization — the Dean is the top role.
    */
   private async assertOwnership(
     roomId: string,
@@ -41,7 +45,7 @@ export class RoomsService {
 
     if (profile.role !== 'department_head') {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can modify rooms.',
+        'Only deans and department heads can modify rooms.',
       );
     }
 
