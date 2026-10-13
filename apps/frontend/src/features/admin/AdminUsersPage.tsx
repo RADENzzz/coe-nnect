@@ -266,6 +266,11 @@ export default function AdminUsersPage() {
     });
   }, [users, searchQuery, roleFilter]);
 
+  const visibleUsers = useMemo(
+    () => users.filter((u) => u.role !== 'administrator'),
+    [users],
+  );
+
   const columns: Column<UserRecord>[] = [
     {
       key: 'user',
