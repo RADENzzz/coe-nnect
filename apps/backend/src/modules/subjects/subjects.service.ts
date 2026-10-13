@@ -27,9 +27,13 @@ export class SubjectsService {
   // ────────────────────────────────────────────
   // Cross-department protection
   //
-  // Admin / Dean → any subject
-  // DH           → only subjects owned by own dept
-  // Others       → reject (fail-closed)
+  // Dean        → any subject
+  // DH          → only subjects owned by own dept
+  // Others      → reject (fail-closed)
+  //
+  // NOTE: the `administrator` role is still accepted here so the
+  // hidden dev account retains full access. It is NOT used for
+  // user-facing authorization — the Dean is the top role.
   // ────────────────────────────────────────────
   private async assertOwnership(
     subjectId: string,
@@ -45,7 +49,7 @@ export class SubjectsService {
 
     if (profile.role !== 'department_head') {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can modify subjects.',
+        'Only deans and department heads can modify subjects.',
       );
     }
 
@@ -173,7 +177,10 @@ export class SubjectsService {
   // S-11 — Subject Restrictions
   //
   // Restrictions link two subjects. A DH can only create/update/delete a
-  // restriction if they own BOTH subjects. Admin/Dean can manage any.
+  // restriction if they own BOTH subjects. Dean can manage any.
+  //
+  // NOTE: the `administrator` role is still accepted (dev account
+  // bypass). It is NOT used for user-facing authorization.
   // ────────────────────────────────────────────
 
   async findAllRestrictions(termId?: string): Promise<SubjectRestriction[]> {
@@ -222,7 +229,7 @@ export class SubjectsService {
       profile.role !== 'college_dean'
     ) {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can manage restrictions.',
+        'Only deans and department heads can manage restrictions.',
       );
     }
 
@@ -284,7 +291,7 @@ export class SubjectsService {
       profile.role !== 'college_dean'
     ) {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can manage restrictions.',
+        'Only deans and department heads can manage restrictions.',
       );
     }
 
@@ -326,7 +333,7 @@ export class SubjectsService {
       profile.role !== 'college_dean'
     ) {
       throw new ForbiddenException(
-        'Only administrators, deans, and department heads can manage restrictions.',
+        'Only deans and department heads can manage restrictions.',
       );
     }
 
