@@ -3,15 +3,13 @@ import LoginPage from './features/auth/LoginPage';
 import DashboardPage from './features/dashboard/DashboardPage';
 import TimetablePage from './features/timetable/TimetablePage';
 import AppShell from './components/layout/AppShell';
-import AdminShell from './components/layout/AdminShell';
-import AdminDashboardPage from './features/admin/AdminDashboardPage';
-import AdminDepartmentsPage from './features/admin/AdminDepartmentsPage';
-import AdminUsersPage from './features/admin/AdminUsersPage';
-import DeanDashboardPage from './features/dean/DeanDashboardPage';
-import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
-import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
 import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import DeanDashboardPage from './features/dean/DeanDashboardPage';
+import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
+import DeanDepartmentsManagePage from './features/dean/DeanDepartmentsManagePage';
+import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
+import AdminUsersPage from './features/admin/AdminUsersPage';
 import SectionsPage from './features/sections/SectionsPage';
 import ApprovalsPage from './features/approvals/ApprovalsPage';
 import SubjectsPage from './features/subjects/SubjectsPage';
@@ -30,58 +28,56 @@ import RequireDesktop from './features/import/components/RequireDesktop';
 import NotificationsInboxPage from './features/notifications/NotificationsInboxPage';
 import SettingsPage from './features/settings/SettingsPage';
 
+/**
+ * Route tree.
+ *
+ * After the Admin→Dean consolidation:
+ *   - The `/admin/*` route group is gone entirely.
+ *   - The `/dean/*` route group absorbs every route that used to live
+ *     under `/admin/*` plus its existing Dean routes.
+ *   - The `administrator` role is routed into `/dean/*` via ROLE_HOME
+ *     and ProtectedRoute fallback logic.
+ *   - The Department Head portal at `/*` is unchanged.
+ */
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
-      {/* ═══════════════ ADMIN ═══════════════ */}
+      {/* ═══════════════ DEAN (also serves the hidden dev account) ═══════════════ */}
       <Route
         element={
-          <ProtectedRoute allowedRoles={['administrator']} redirectTo="/login" />
-        }
-      >
-        <Route path="/admin" element={<AdminShell />}>
-          <Route index element={<Navigate to="/admin/dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboardPage />} />
-          <Route path="departments" element={<AdminDepartmentsPage />} />
-          <Route path="users" element={<AdminUsersPage />} />
-          <Route path="system-settings" element={<SystemConfigPage />} />
-          <Route path="audit-trail" element={<AuditTrailPage />} />
-          <Route path="reports" element={<ReportsHubPage />} />
-          <Route path="reports/workload" element={<FacultyWorkloadPage />} />
-          <Route path="reports/approvals" element={<ApprovalsReportPage />} />
-          <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
-          <Route path="import" element={<ProspectusPdfListPage />} />
-          <Route
-            path="import/:id"
-            element={
-              <RequireDesktop>
-                <ProspectusPdfEditorPage />
-              </RequireDesktop>
-            }
+          <ProtectedRoute
+            allowedRoles={['administrator', 'college_dean']}
+            redirectTo="/login"
           />
-          <Route path="notifications" element={<NotificationsInboxPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-      </Route>
-
-      {/* ═══════════════ DEAN ═══════════════ */}
-      <Route
-        element={
-          <ProtectedRoute allowedRoles={['college_dean']} redirectTo="/login" />
         }
       >
         <Route path="/dean" element={<DeanShell />}>
           <Route index element={<Navigate to="/dean/dashboard" replace />} />
+
+          {/* Dean-specific */}
           <Route path="dashboard" element={<DeanDashboardPage />} />
           <Route path="departments" element={<DeanDepartmentsPage />} />
+          <Route
+            path="departments/manage"
+            element={<DeanDepartmentsManagePage />}
+          />
           <Route path="approvals" element={<DeanApprovalsPage />} />
+          <Route path="timetable" element={<TimetablePage readOnly />} />
+
+          {/* Absorbed from the old Admin portal */}
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="system-settings" element={<SystemConfigPage />} />
+          <Route path="audit-trail" element={<AuditTrailPage />} />
+
+          {/* Reports */}
           <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
           <Route path="reports/approvals" element={<ApprovalsReportPage />} />
-          <Route path="timetable" element={<TimetablePage readOnly />} />
           <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+
+          {/* Prospectus PDF import */}
           <Route path="import" element={<ProspectusPdfListPage />} />
           <Route
             path="import/:id"
@@ -91,6 +87,8 @@ function App() {
               </RequireDesktop>
             }
           />
+
+          {/* Notifications + settings */}
           <Route path="notifications" element={<NotificationsInboxPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
@@ -99,7 +97,10 @@ function App() {
       {/* ═══════════════ DEPARTMENT HEAD ═══════════════ */}
       <Route
         element={
-          <ProtectedRoute allowedRoles={['department_head']} redirectTo="/login" />
+          <ProtectedRoute
+            allowedRoles={['department_head']}
+            redirectTo="/login"
+          />
         }
       >
         <Route path="/" element={<AppShell />}>
@@ -129,6 +130,9 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>
+
+      {/* Legacy /admin/* — redirect anything that hits it */}
+      <Route path="/admin/*" element={<Navigate to="/dean/dashboard" replace />} />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
