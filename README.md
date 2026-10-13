@@ -26,7 +26,7 @@ CoE-NNECT supports academic scheduling for the College of Engineering at Western
 | Jazmine Elaiza L. Luis      | Project Manager                                    |
 | Alrhaden A. Javier          | Lead Developer · System Architect                  |
 | Giel V. Andales             | Senior Developer                                   |
-| Edzel Don V. Tio            | Junior Developer                                   |
+| Edzel Don V. Tio            | Junior Developer · Database Initialization         |
 | Roland C. Velez             | Lead Tester · Assistant Trainer · Junior Archivist |
 | Andre Aga B. Dacumos        | Lead Trainer · Senior Tester                       |
 | Aizzah Arabelle B. Javelosa | Lead Archivist · Assistant System Analyst          |
