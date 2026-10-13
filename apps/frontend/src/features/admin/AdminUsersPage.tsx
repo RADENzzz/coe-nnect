@@ -252,9 +252,14 @@ export default function AdminUsersPage() {
     return d ? `[${d.deptCode}] ${d.deptName}` : `Dept #${id}`;
   };
 
+  const visibleUsers = useMemo(
+    () => users.filter((u) => u.role !== 'administrator'),
+    [users],
+  );
+
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return users.filter((u) => {
+    return visibleUsers.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false;
       if (!q) return true;
       return (
@@ -264,12 +269,7 @@ export default function AdminUsersPage() {
         (u.wmsuId ?? '').toLowerCase().includes(q)
       );
     });
-  }, [users, searchQuery, roleFilter]);
-
-  const visibleUsers = useMemo(
-    () => users.filter((u) => u.role !== 'administrator'),
-    [users],
-  );
+  }, [visibleUsers, searchQuery, roleFilter]);
 
   const columns: Column<UserRecord>[] = [
     {
@@ -338,7 +338,7 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Users</h1>
           <p className="text-on-surface-variant text-sm mt-1">
-            {users.length} user account(s) registered
+            {visibleUsers.length} user account(s) registered
           </p>
         </div>
         <button
@@ -412,7 +412,7 @@ export default function AdminUsersPage() {
         )}
         <div className="ml-auto text-xs text-on-surface-variant">
           Showing <strong className="text-on-surface">{filteredUsers.length}</strong> of{' '}
-          {users.length}
+          {visibleUsers.length}
         </div>
       </div>
 
@@ -423,7 +423,7 @@ export default function AdminUsersPage() {
         rowTitle={(u) => u.username}
         rowSubtitle={(u) => u.email}
         isLoading={isLoading}
-        hasSourceRows={users.length > 0}
+        hasSourceRows={visibleUsers.length > 0}
         emptyMessage="No users yet."
         noMatchMessage="No users match your filters."
         getActions={getActions}
