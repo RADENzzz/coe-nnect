@@ -15,6 +15,16 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 
+/**
+ * Term management.
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean has full term lifecycle control (create, activate,
+ *     deactivate, delete). The Dean inherits the admin capability.
+ *   - Department Head does NOT manage terms.
+ *
+ * `administrator` is intentionally absent from every @Roles() list.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/terms')
 export class TermsController {
@@ -37,28 +47,28 @@ export class TermsController {
   }
 
   @Auditable({ action: 'term.create', source: 'Terms' })
-  @Roles('administrator')
+  @Roles('college_dean')
   @Post()
   async create(@Body() dto: CreateTermDto) {
     return { data: await this.terms.create(dto) };
   }
 
   @Auditable({ action: 'term.deactivate', source: 'Terms' })
-  @Roles('administrator')
+  @Roles('college_dean')
   @Patch(':id/deactivate')
   async deactivate(@Param('id') id: string) {
     return { data: await this.terms.deactivate(id) };
   }
 
   @Auditable({ action: 'term.activate', source: 'Terms' })
-  @Roles('administrator')
+  @Roles('college_dean')
   @Patch(':id/activate')
   async activate(@Param('id') id: string) {
     return { data: await this.terms.activate(id) };
   }
 
   @Auditable({ action: 'term.delete', source: 'Terms' })
-  @Roles('administrator')
+  @Roles('college_dean')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.terms.remove(id);
