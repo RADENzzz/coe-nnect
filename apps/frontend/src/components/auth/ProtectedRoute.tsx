@@ -47,9 +47,10 @@ export default function ProtectedRoute({
 
   // 4. Role check
   if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
-    // Admins go to /admin, Deans to /dean, others to /dashboard
+    // After the Admin→Dean consolidation, the dev account and the
+    // Dean both route into /dean. DHs use /dashboard.
     let fallback = '/dashboard';
-    if (profile.role === 'administrator') fallback = '/admin';
+    if (profile.role === 'administrator') fallback = '/dean';
     if (profile.role === 'college_dean') fallback = '/dean';
     
     return <Navigate to={fallback} replace />;
