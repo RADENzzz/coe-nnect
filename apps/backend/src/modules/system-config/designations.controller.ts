@@ -15,6 +15,15 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+/**
+ * Designation management (FR 7.1.4).
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean can manage designations and release hours.
+ *   - Department Head can read but not write.
+ *
+ * `administrator` is intentionally absent from every @Roles() list.
+ */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/designations')
 export class DesignationsController {
@@ -25,13 +34,13 @@ export class DesignationsController {
     return { data: await this.config.findAllDesignations() };
   }
 
-  @Roles('administrator')
+  @Roles('college_dean')
   @Post()
   async create(@Body() dto: CreateDesignationDto) {
     return { data: await this.config.createDesignation(dto) };
   }
 
-  @Roles('administrator')
+  @Roles('college_dean')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -40,7 +49,7 @@ export class DesignationsController {
     return { data: await this.config.updateDesignation(id, dto) };
   }
 
-  @Roles('administrator')
+  @Roles('college_dean')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.config.removeDesignation(id);
