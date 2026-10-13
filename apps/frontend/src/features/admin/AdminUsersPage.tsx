@@ -36,7 +36,9 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
+  const [roleFilter, setRoleFilter] = useState<
+    'all' | 'college_dean' | 'department_head'
+  >('all');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -388,15 +390,15 @@ export default function AdminUsersPage() {
           <select
             value={roleFilter}
             onChange={(e) =>
-              setRoleFilter(e.target.value as 'all' | UserRole)
+              setRoleFilter(
+                e.target.value as 'all' | 'college_dean' | 'department_head',
+              )
             }
             className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           >
             <option value="all">All roles</option>
-            <option value="administrator">Administrator</option>
             <option value="college_dean">College Dean</option>
             <option value="department_head">Department Head</option>
-            <option value="viewer">Viewer</option>
           </select>
         </div>
         {(searchQuery || roleFilter !== 'all') && (
@@ -506,8 +508,12 @@ export default function AdminUsersPage() {
               >
                 <option value="department_head">Department Head</option>
                 <option value="college_dean">College Dean</option>
-                <option value="administrator">Administrator</option>
-                <option value="viewer">Viewer</option>
+                {mode === 'edit' &&
+                  (form.role === 'administrator' || form.role === 'viewer') && (
+                    <option value={form.role} className="capitalize">
+                      {form.role.replace('_', ' ')}
+                    </option>
+                  )}
               </select>
             </div>
 
