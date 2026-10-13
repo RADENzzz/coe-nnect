@@ -2,7 +2,19 @@ import { Entity, PrimaryColumn, Column, JoinColumn, ManyToOne } from 'typeorm';
 import { Faculty } from '../../faculty/entities/faculty.entity';
 import { Department } from '../../departments/entities/department.entity';
 
-export type UserRole = 'administrator' | 'college_dean' | 'department_head' | 'viewer';
+/**
+ * Kept in sync with the Postgres `user_role` enum.
+ * See common/decorators/roles.decorator.ts for the full explanation.
+ *
+ * The `administrator` value is retained for the hidden dev account.
+ * The `viewer` value is retained for enum sync but has zero active users.
+ * User-facing role assignment is restricted in UsersService/DTOs.
+ */
+export type UserRole =
+  | 'administrator'
+  | 'college_dean'
+  | 'department_head'
+  | 'viewer';
 
 @Entity('users')
 export class User {
@@ -21,7 +33,10 @@ export class User {
   @Column({ name: 'wmsu_id', nullable: true })
   wmsuId: string | null;
 
-  @Column({ type: 'enum', enum: ['administrator', 'college_dean', 'department_head', 'viewer'] })
+  @Column({
+    type: 'enum',
+    enum: ['administrator', 'college_dean', 'department_head', 'viewer'],
+  })
   role: UserRole;
 
   @Column({ name: 'dept_id', type: 'bigint', nullable: true })
@@ -39,7 +54,7 @@ export class User {
   @Column({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
-    // ── Relations (used by AuthService to resolve dept + first name) ──
+  // ── Relations (used by AuthService to resolve dept + first name) ──
   @ManyToOne(() => Department, { nullable: true })
   @JoinColumn({ name: 'dept_id' })
   department: Department | null;
