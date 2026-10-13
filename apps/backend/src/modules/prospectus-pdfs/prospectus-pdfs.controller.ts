@@ -35,9 +35,21 @@ interface RequestWithProfile extends Request {
   profile: User;
 }
 
+/**
+ * Prospectus PDF Workspace.
+ *
+ * After the Admin→Dean consolidation:
+ *   - College Dean has full access to every department's PDFs.
+ *   - Department Head is scoped to their own department (enforced by
+ *     ProspectusPdfsService.assertCanRead/WriteDepartment).
+ *
+ * `administrator` is intentionally absent from the class-level
+ * @Roles() decorator. The hidden dev account still bypasses the
+ * department check at the service layer.
+ */
 @Controller('v1/prospectus-pdfs')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('administrator', 'college_dean', 'department_head')
+@Roles('college_dean', 'department_head')
 export class ProspectusPdfsController {
   constructor(private readonly service: ProspectusPdfsService) {}
 
