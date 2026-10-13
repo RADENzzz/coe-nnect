@@ -74,6 +74,7 @@ function App() {
 
           {/* Absorbed from the old Admin portal */}
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="faculty" element={<FacultyPage />} />
           <Route path="system-settings" element={<SystemConfigPage />} />
           <Route path="audit-trail" element={<AuditTrailPage />} />
 

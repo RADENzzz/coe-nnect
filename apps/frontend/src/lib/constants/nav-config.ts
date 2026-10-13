@@ -55,6 +55,7 @@ const DEAN_NAV: RoleNav = {
     { label: 'Dashboard',          path: '/dean/dashboard',      icon: 'dashboard',        primary: true },
     { label: 'Departments',        path: '/dean/departments',    icon: 'corporate_fare',   primary: true },
     { label: 'Users',              path: '/dean/users',          icon: 'manage_accounts',  primary: true },
+    { label: 'Faculty',            path: '/dean/faculty',        icon: 'groups',           primary: true },
     { label: 'Schedule Approvals', path: '/dean/approvals',      icon: 'pending_actions',  primary: true },
     { label: 'Timetable',          path: '/dean/timetable',      icon: 'calendar_view_month' },
     { label: 'Import Prospectus',  path: '/dean/import',         icon: 'upload_file' },
