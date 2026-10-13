@@ -250,7 +250,7 @@ export default function LoginPage() {
             </div>
             <div>
               <p className="text-sm font-bold tracking-tight text-white">CoE-NNECT</p>
-              <p className="text-[11px] text-white/60">WMSU · College of Engineering</p>
+              <p className="text-[14px] text-white/60">WMSU · College of Engineering</p>
             </div>
           </div>
 
