@@ -21,7 +21,7 @@ export const ROUTES = {
   AUDIT_TRAIL: '/audit-trail',
   USERS: '/users',
   VACANT_SLOTS: '/vacant-slots',
-  CREATE_DEPARTMENT: '/admin/create-department',
+  CREATE_DEPARTMENT: '/dean/departments',
   WORKLOAD_SUMMARY: '/reports/workload',
   REPORTS_HUB: '/reports',
   APPROVALS_REPORT: '/reports/approvals',
