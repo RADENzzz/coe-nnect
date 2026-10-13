@@ -46,16 +46,13 @@ export default function ReportsHubPage() {
   const profile = useAuthStore((s) => s.profile);
   const role = profile?.role ?? 'viewer';
 
-  // Role-based route prefix (matches App.tsx)
+  // After the Admin→Dean consolidation, both the dev account and the
+  // College Dean use the /dean route prefix. The /admin prefix is gone.
   const prefix =
-    role === 'administrator'
-      ? '/admin'
-      : role === 'college_dean'
-      ? '/dean'
-      : '';
+    role === 'administrator' || role === 'college_dean' ? '/dean' : '';
 
-  const isAdmin = role === 'administrator';
-  const isDean = role === 'college_dean';
+  const isAdminOrDean =
+    role === 'administrator' || role === 'college_dean';
   const isDH = role === 'department_head';
 
   // ── Card catalog ──
@@ -113,13 +110,13 @@ export default function ReportsHubPage() {
   ];
 
   // ── Filter to what this role sees ──
+  // `college_dean`-restricted cards are also visible to the dev account.
+  const effectiveRole = isAdminOrDean ? 'college_dean' : role;
   const cards = allCards.filter(
-    (c) => !c.roles || c.roles.includes(role),
+    (c) => !c.roles || c.roles.includes(effectiveRole),
   );
 
-  const subtitle = isAdmin
-    ? 'College-wide reports for faculty workload, room demand, and cross-department activity.'
-    : isDean
+  const subtitle = isAdminOrDean
     ? 'College-wide reports across all engineering departments.'
     : isDH
     ? 'Reports for your department and cross-department activity.'
