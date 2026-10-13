@@ -6,7 +6,12 @@ import {
   MinLength,
   IsBoolean,
 } from 'class-validator';
+import { ASSIGNABLE_ROLES, AssignableRole } from './create-user.dto';
 
+/**
+ * Same assignable-role restriction as CreateUserDto.
+ * Updating a user can only move them between Dean and DH.
+ */
 export class UpdateUserDto {
   @IsOptional()
   @IsString()
@@ -14,9 +19,8 @@ export class UpdateUserDto {
   username?: string;
 
   @IsOptional()
-  @IsString()
-  @IsIn(['administrator', 'college_dean', 'department_head', 'viewer'])
-  role?: string;
+  @IsIn(ASSIGNABLE_ROLES)
+  role?: AssignableRole;
 
   @IsOptional()
   @IsNumberString()
