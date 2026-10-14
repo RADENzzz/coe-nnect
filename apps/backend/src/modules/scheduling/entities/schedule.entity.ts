@@ -106,6 +106,21 @@ export class Schedule {
   @Column({ name: 'flag_reason', type: 'text', nullable: true })
   flagReason: string | null;
 
+    // ── F1b: pending cross-dept faculty approval ──
+  @Column({
+    name: 'pending_faculty_request_id',
+    type: 'bigint',
+    nullable: true,
+  })
+  pendingFacultyRequestId: string | null;
+
+  @Column({
+    name: 'pending_faculty_dept_id',
+    type: 'bigint',
+    nullable: true,
+  })
+  pendingFacultyDeptId: string | null;
+
   @Column({ name: 'created_at', type: 'timestamptz', default: () => 'now()' })
   createdAt: Date;
 
