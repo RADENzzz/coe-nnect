@@ -148,6 +148,9 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
 
+  const hasSystemFaculty = !!raw.faculty;
+  const externalName = raw.externalFacultyName ?? null;
+
   return {
     id: raw.scheduleId,
     subjectId: raw.subjectId,
@@ -156,9 +159,10 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     sectionId: raw.section ?? '',
     sectionCode: raw.section ?? '',
     facultyId: raw.facultyId ?? '',
-    facultyName: raw.faculty
-      ? `${raw.faculty.firstName} ${raw.faculty.lastName}`
-      : 'VL',
+    facultyName: hasSystemFaculty
+      ? `${raw.faculty!.firstName} ${raw.faculty!.lastName}`
+      : externalName ?? 'VL',                          // ← NEW fallback
+    externalFacultyName: externalName,                  // ← NEW
     roomId: raw.roomId ?? '',
     roomNumber: raw.room?.roomNumber ?? '—',
     building: raw.room?.building ?? '',
@@ -189,6 +193,9 @@ function versionEntryToEntry(
   const end = raw.end_time ?? '08:00:00';
   const isLab = raw.load_type === 'laboratory';
 
+  const externalName = raw.external_faculty_name ?? null;
+  const hasSystemFaculty = !!raw.faculty_id;
+
   return {
     id: raw.schedule_id,
     subjectId: raw.subject_id,
@@ -197,7 +204,10 @@ function versionEntryToEntry(
     sectionId: raw.section_id ?? '',
     sectionCode: raw.section_code ?? '',
     facultyId: raw.faculty_id ?? '',
-    facultyName: raw.faculty_name ?? 'VL',
+    facultyName: hasSystemFaculty
+      ? raw.faculty_name ?? 'VL'
+      : externalName ?? raw.faculty_name ?? 'VL',
+    externalFacultyName: externalName,
     roomId: raw.room_id ?? '',
     roomNumber: raw.room_number ?? '—',
     building: raw.building ?? '',
