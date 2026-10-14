@@ -4,6 +4,7 @@ import {
   IsString,
   Matches,
   MinLength,
+  MaxLength,
   ValidateNested,
   ArrayMinSize,
 } from 'class-validator';
@@ -37,6 +38,15 @@ export class PlotMultiDto {
   @IsOptional()
   @IsString()
   facultyId?: string;
+
+  /**
+   * Free-text name of a faculty member outside the system.
+   * Either this OR facultyId is required (enforced at service layer).
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  externalFacultyName?: string;
 
   @IsOptional()
   @IsString()
