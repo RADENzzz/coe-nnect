@@ -2,6 +2,7 @@ import {
   IsString,
   IsOptional,
   IsNumber,
+  IsBoolean,
   Min,
   MaxLength,
   IsNumberString,
@@ -43,6 +44,10 @@ export class CreateSubjectDto {
     'any',
   ])
   requiredRoomType?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isMinor?: boolean;
 
   @IsNumberString()
   deptId: string;
