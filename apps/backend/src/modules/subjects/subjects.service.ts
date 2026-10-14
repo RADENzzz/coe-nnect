@@ -120,6 +120,7 @@ export class SubjectsService {
       lectureUnits: dto.lectureUnits,
       labUnits: dto.labUnits,
       requiredRoomType: (dto.requiredRoomType as any) ?? null,
+      isMinor: dto.isMinor ?? false,
       deptId: dto.deptId,
     });
     return this.repo.save(entity);
@@ -150,6 +151,7 @@ export class SubjectsService {
     if (dto.labUnits !== undefined) found.labUnits = dto.labUnits;
     if (dto.requiredRoomType !== undefined)
       found.requiredRoomType = (dto.requiredRoomType as any) ?? null;
+    if (dto.isMinor !== undefined) found.isMinor = dto.isMinor;
     if (dto.deptId !== undefined) found.deptId = dto.deptId;
 
     if (found.totalUnits !== found.lectureUnits + found.labUnits) {
