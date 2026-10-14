@@ -430,7 +430,7 @@ export class RuleContextBuilder {
     const { data } = await this.db
       .from('faculty_request')
       .select('request_id, faculty_id, subject_id, term_id')
-      .eq('status', 'approved')
+      .in('status', ['pending', 'approved'])
       .eq('faculty_id', facultyId)
       .eq('term_id', termId);
 
