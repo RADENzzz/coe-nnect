@@ -54,6 +54,7 @@ function ClassBlockBase({
   const isLab = entry.loadType === 'laboratory';
   const locked =
     entry.status === 'finalized' || entry.status === 'published';
+  const isExternalFaculty = !!entry.externalFacultyName;
   const isFlagged = !!entry.flagged;
 
   const isCompact = durationMinutes <= 30;
@@ -107,8 +108,10 @@ function ClassBlockBase({
       aria-label={`${entry.subjectCode}${
         entry.sectionCode ? ' ' + entry.sectionCode : ''
       }, ${formatTime(entry.startTime)} to ${formatTime(entry.endTime)}${
-        entry.flagged ? ', flagged for review' : ''
-      }${entry.hasConflict ? ', has conflict' : ''}`}
+        isExternalFaculty ? ', external faculty' : ''
+      }${entry.flagged ? ', flagged for review' : ''}${
+        entry.hasConflict ? ', has conflict' : ''
+      }`}
       className={clsx(
         'rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
@@ -139,6 +142,14 @@ function ClassBlockBase({
             <Icon name="visibility" size={9} />
           </span>
         )}
+        {isExternalFaculty && (
+          <span
+            className="bg-amber-500 text-white rounded px-1 py-px leading-none flex items-center"
+            title={`External faculty: ${entry.facultyName}`}
+          >
+            <Icon name="badge" size={9} />
+          </span>
+        )}
         {isFlagged && (
           <span
             className="bg-rose-600 text-white rounded px-1 py-px leading-none flex items-center"
@@ -161,7 +172,7 @@ function ClassBlockBase({
       <div
         className={clsx(
           'font-bold truncate',
-          (locked || isForeign || isFlagged) && 'pl-5',
+          (locked || isForeign || isFlagged || isExternalFaculty) && 'pl-5',
         )}
       >
         {entry.subjectCode}
@@ -175,8 +186,12 @@ function ClassBlockBase({
       {/* ── Line 2: faculty ── */}
       {showSecondary && (
         <div
-          className="truncate opacity-90"
+          className={clsx(
+            'truncate opacity-90',
+            isExternalFaculty && 'italic',
+          )}
           style={{ fontSize: metrics.blockFontSize - 1 }}
+          title={isExternalFaculty ? 'External faculty' : undefined}
         >
           {entry.facultyName}
         </div>
