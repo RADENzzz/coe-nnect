@@ -3,6 +3,7 @@ import {
   IsString,
   IsIn,
   Matches,
+  MaxLength,
   ValidateIf,
 } from 'class-validator';
 
@@ -35,9 +36,26 @@ export class UpdateScheduleDto {
   @IsString()
   roomId?: string;
 
+  /**
+   * System faculty ID.
+   * Send `null` to explicitly clear the assignment.
+   * Sending a value clears externalFacultyName automatically.
+   */
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsString()
-  facultyId?: string;
+  facultyId?: string | null;
+
+  /**
+   * Free-text name of a faculty member outside the system.
+   * Send `null` to explicitly clear.
+   * Sending a value clears facultyId automatically.
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(120)
+  externalFacultyName?: string | null;
 
   @IsOptional()
   @IsIn(['lecture', 'laboratory', 'other'])
