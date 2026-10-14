@@ -1,5 +1,17 @@
 import { api } from './client';
 
+// ────────────────────────────────────────────
+// Room type union — matches backend enum
+// ────────────────────────────────────────────
+
+export type SubjectRoomType =
+  | 'lecture_room'
+  | 'laboratory'
+  | 'computer_lab'
+  | 'drafting_room'
+  | 'other'
+  | 'any';
+
 export interface SubjectRecord {
   subjectId: string;
   subjectCode: string;
@@ -8,7 +20,7 @@ export interface SubjectRecord {
   lectureUnits: number;
   labUnits: number;
   deptId: string;
-  requiredRoomType: string | null;
+  requiredRoomType: SubjectRoomType | null;
   isActive: boolean;
 }
 
@@ -18,7 +30,7 @@ export interface CreateSubjectInput {
   totalUnits: number;
   lectureUnits: number;
   labUnits: number;
-  requiredRoomType?: string | null;
+  requiredRoomType?: SubjectRoomType | null;
   deptId: string;
 }
 
