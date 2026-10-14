@@ -24,6 +24,7 @@ export interface CreateRoomInput {
   capacity?: number;
   deptId?: string | null;   // null = shared
 }
+
 export async function fetchRooms(
   includeInactive: boolean = false,
 ): Promise<RoomRecord[]> {
@@ -54,4 +55,50 @@ export async function toggleRoomActive(id: string): Promise<RoomRecord> {
 
 export async function deleteRoom(id: string): Promise<void> {
   await api.delete(`/v1/rooms/${id}`);
+}
+
+// ────────────────────────────────────────────
+// F3 — Room preferences
+// ────────────────────────────────────────────
+
+export interface RoomPreferenceRecord {
+  preferenceId: string;
+  roomId: string;
+  deptId: string;
+  deptCode: string;
+  deptName: string;
+  priority: number;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface UpsertRoomPreferenceInput {
+  roomId: string;
+  deptId: string;
+  priority?: number;
+}
+
+export async function fetchRoomPreferences(
+  roomId: string,
+): Promise<RoomPreferenceRecord[]> {
+  const { data } = await api.get('/v1/rooms/preferences', {
+    params: { roomId },
+  });
+  return data.data;
+}
+
+export async function upsertRoomPreference(
+  input: UpsertRoomPreferenceInput,
+): Promise<RoomPreferenceRecord> {
+  const { data } = await api.post('/v1/rooms/preferences', input);
+  return data.data;
+}
+
+export async function deleteRoomPreference(
+  preferenceId: string,
+): Promise<{ success: boolean }> {
+  const { data } = await api.delete(
+    `/v1/rooms/preferences/${preferenceId}`,
+  );
+  return data;
 }
