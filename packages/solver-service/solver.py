@@ -190,12 +190,25 @@ def compute_blocks(
 
 
 def room_accepts_block(room: Room, kind: str, subject: Subject) -> bool:
-    """R-1: room type must match the subject's required_room_type exactly."""
-    if subject.requiredRoomType:
-        return room.roomType == subject.requiredRoomType
-    if kind == "lab":
-        return room.roomType in ("laboratory", "computer_lab")
-    return room.roomType in ("lecture_room", "computer_lab", "laboratory")
+    """R-1: room type rules.
+
+    - Pure lecture subject:  lecture rooms (and labs allowed as fallback)
+    - Pure lab subject:      laboratory / computer_lab
+    - Mixed subject ('any'): the block kind decides
+        - lab block     → laboratory / computer_lab
+        - lecture block → lecture_room / computer_lab / laboratory
+    - No required type set:  same as mixed ('any')
+    """
+    required = (subject.requiredRoomType or "").strip().lower()
+
+    # Mixed subject or unset → kind decides
+    if required in ("", "any"):
+        if kind == "lab":
+            return room.roomType in ("laboratory", "computer_lab")
+        return room.roomType in ("lecture_room", "computer_lab", "laboratory")
+
+    # Pure subject → strict match
+    return room.roomType == subject.requiredRoomType
 
 
 def blocks_overlap(start_a: int, dur_a: int, start_b: int, dur_b: int) -> bool:
