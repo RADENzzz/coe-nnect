@@ -101,6 +101,15 @@ export interface RoomDeficit {
   suggestedExtraRooms: number;
 }
 
+export interface BlockedMinorSummary {
+  subjectId: string;
+  subjectCode: string;
+  title: string;
+  yearLevel: number | null;
+  semester: string | null;
+  programCode: string | null;
+}
+
 export interface AutoGenerateResult {
   success: boolean;
   message?: string;
@@ -110,15 +119,25 @@ export interface AutoGenerateResult {
   failures?: Array<{ ruleId: string; ruleName: string; reason: string }>;
   unscheduled?: UnscheduledBlock[];
   roomDeficits?: RoomDeficit[];
+
+  /** Set when auto-generate refused to run because unplotted minors exist. */
+  blockedByUnplottedMinors?: boolean;
+  unplottedMinors?: BlockedMinorSummary[];
 }
 
 export async function autoGenerateSchedule(
   termId: string,
   deptId: string,
+  options?: { acknowledgeUnplottedMinors?: boolean },
 ): Promise<AutoGenerateResult> {
   const { data } = await api.post(
     '/v1/schedules/auto-generate',
-    { termId, deptId },
+    {
+      termId,
+      deptId,
+      acknowledgeUnplottedMinors:
+        options?.acknowledgeUnplottedMinors === true,
+    },
     { timeout: 120_000 },
   );
   return data.data;
