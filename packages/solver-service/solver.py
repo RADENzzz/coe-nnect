@@ -109,6 +109,11 @@ class Config(BaseModel):
     labMinutesPerUnit: int = 180
     labMaxConsecutiveMinutes: int = 180
 
+class RoomPreference(BaseModel):
+    """F3: a department's soft preference for a shared room."""
+    deptId: str
+    roomId: str
+    priority: int = 1
 
 class SolveRequest(BaseModel):
     termId: str
@@ -119,11 +124,12 @@ class SolveRequest(BaseModel):
     faculty: List[Faculty]
     qualifications: List[Qualification]
     preferences: List[Preference] = []
-    unavailability: List[UnavailabilityBlock] = []  # ← H-14
+    unavailability: List[UnavailabilityBlock] = []
     rooms: List[Room]
     timeSlots: List[TimeSlot]
     config: Config
     existingSchedule: List[ExistingScheduleBlock] = []
+    roomPreferences: List[RoomPreference] = []   # ← NEW (F3)
 
 
 # ═══════════════════════════════════════════
@@ -507,6 +513,39 @@ def solve_schedule(req: SolveRequest) -> dict:
         objective_terms.append(10 * sum(lunch_penalties))
     if pref_penalties:
         objective_terms.append(5 * sum(pref_penalties))
+
+    # ── F3: room preferences ──
+    # Reward placements in a dept-preferred room.
+    # Priority 1 = small nudge; priority 3 = strong push.
+    # CP-SAT minimizes, so we subtract to reward.
+    if req.roomPreferences:
+        pref_lookup: Dict[tuple, int] = {}
+        for p in req.roomPreferences:
+            pref_lookup[(p.deptId, p.roomId)] = p.priority
+
+        room_pref_reward = 0
+        reward_count = 0
+        for k, v in X.items():
+            _, _, _, _, _, _, room_id, _ = k
+            weight = pref_lookup.get((req.deptId, room_id))
+            if weight:
+                room_pref_reward += v * weight
+                reward_count += 1
+
+        # ⚠️ Test the Python int (reward_count), not the CP-SAT
+        # linear expression (room_pref_reward). Testing the expression
+        # as a bool triggers a RecursionError inside OR-Tools.
+        if reward_count > 0:
+            objective_terms.append(-2 * room_pref_reward)
+            print(
+                f"[solver] F3: {len(req.roomPreferences)} room preference(s), "
+                f"{reward_count} candidate placements rewarded"
+            )
+        else:
+            print(
+                f"[solver] F3: {len(req.roomPreferences)} room preference(s), "
+                f"0 candidate placements matched any scheduled block"
+            )
 
     if objective_terms:
         model.Minimize(sum(objective_terms))
