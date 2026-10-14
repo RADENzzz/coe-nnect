@@ -159,6 +159,10 @@ export default function PlotSubjectModal({
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const [pendingConfirm, setPendingConfirm] = useState<null | {
+    payloadKind: 'single' | 'multi';
+  }>(null);
+
   const [filterDept, setFilterDept] = useState('');
   const [filterYear, setFilterYear] = useState('');
   const [filterSem, setFilterSem] = useState('');
@@ -167,6 +171,34 @@ export default function PlotSubjectModal({
   const selectedSubject = subjects.find((s) => s.subjectId === form.subjectId);
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
+
+    /**
+   * F1b: detect a cross-department faculty pick in "system" mode.
+   * The backend will auto-create a pending faculty_request and block
+   * finalization until the other DH approves. Surface this to the DH
+   * before they submit.
+   */
+  const selectedFaculty = faculty.find(
+    (f) => f.facultyId === form.facultyId,
+  );
+
+  const isCrossDeptSelection = useMemo(() => {
+    if (facultyMode !== 'system') return false;
+    if (!selectedFaculty?.deptId) return false;
+    if (!selectedSubject?.deptId) return false;
+    return (
+      String(selectedFaculty.deptId) !== String(selectedSubject.deptId)
+    );
+  }, [facultyMode, selectedFaculty, selectedSubject]);
+
+  // Look up the faculty's department name for a nicer hint
+  const crossDeptName = useMemo(() => {
+    if (!isCrossDeptSelection || !selectedFaculty?.deptId) return null;
+    const d = departments.find(
+      (x) => String(x.deptId) === String(selectedFaculty.deptId),
+    );
+    return d ? `[${d.deptCode}] ${d.deptName}` : null;
+  }, [isCrossDeptSelection, selectedFaculty, departments]);
 
   /**
    * F2 — Section auto-filter by subject year.
@@ -549,31 +581,13 @@ export default function PlotSubjectModal({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submitting) return;
-
-    const hasSystemFaculty =
-      facultyMode === 'system' && !!form.facultyId;
-    const hasExternalFaculty =
-      facultyMode === 'external' && form.externalFacultyName.trim().length > 0;
-
-    if (!hasSystemFaculty && !hasExternalFaculty) {
-      return; // submit button should be disabled anyway
-    }
-
+    /**
+   * Build and fire the plot payload. Split out from handleSubmit so we
+   * can gate it behind the F1b cross-dept confirmation.
+   */
+  const fireSubmit = async () => {
     // ── Multi-session path ──
     if (mode === 'multi') {
-      if (multiCount === 0) {
-        alert('Pick at least one day.');
-        return;
-      }
-      if (sessionStatus.limit != null && multiCount > sessionStatus.remaining) {
-        alert(
-          `This would exceed the ${sessionStatus.limit}-session limit for this subject and section. You can plot at most ${sessionStatus.remaining} more session${sessionStatus.remaining === 1 ? '' : 's'}.`,
-        );
-        return;
-      }
       setSubmitting(true);
       const extName = form.externalFacultyName.trim();
       plotMultiMutation.mutate({
@@ -596,8 +610,6 @@ export default function PlotSubjectModal({
     }
 
     // ── Single-session path ──
-    if (sessionStatus.exceeded) return;
-
     setSubmitting(true);
     try {
       const fresh = await validatePlot({
@@ -630,9 +642,7 @@ export default function PlotSubjectModal({
           endTime: form.endTime,
           roomId: form.roomId || undefined,
           facultyId:
-            facultyMode === 'system'
-              ? form.facultyId || null
-              : null,
+            facultyMode === 'system' ? form.facultyId || null : null,
           externalFacultyName:
             facultyMode === 'external'
               ? form.externalFacultyName.trim() || null
@@ -663,6 +673,30 @@ export default function PlotSubjectModal({
       console.error('Pre-flight validate failed:', err);
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+
+    const hasSystemFaculty = facultyMode === 'system' && !!form.facultyId;
+    const hasExternalFaculty =
+      facultyMode === 'external' && form.externalFacultyName.trim().length > 0;
+
+    if (!hasSystemFaculty && !hasExternalFaculty) {
+      return;
+    }
+
+    // ── F1b: intercept cross-dept submissions ──
+    if (isCrossDeptSelection && !isEditMode) {
+      setPendingConfirm({
+        payloadKind: mode === 'multi' ? 'multi' : 'single',
+      });
+      return;
+    }
+
+    // Regular submission
+    await fireSubmit();
   };
 
   if (!open) return null;
@@ -1085,6 +1119,29 @@ export default function PlotSubjectModal({
                   </p>
                 </>
               )}
+
+              {/* F1b: cross-dept warning — inside the Faculty column */}
+              {isCrossDeptSelection && (
+                <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
+                  <Icon
+                    name="hourglass_top"
+                    size={14}
+                    className="shrink-0 mt-0.5"
+                  />
+                  <div>
+                    <p className="font-semibold">
+                      Cross-department faculty
+                    </p>
+                    <p className="mt-0.5 leading-tight">
+                      This faculty is from{' '}
+                      <strong>{crossDeptName ?? 'another department'}</strong>.
+                      Plotting will create a pending approval request.
+                      Finalization is blocked until that department head
+                      approves.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -1379,8 +1436,12 @@ export default function PlotSubjectModal({
                 </>
               ) : mode === 'multi' ? (
                 <>
-                  <Icon name="add" size={16} />
-                  Plot {multiCount || 0} Session
+                  <Icon
+                    name={isCrossDeptSelection ? 'send' : 'add'}
+                    size={16}
+                  />
+                  {isCrossDeptSelection ? 'Request & Plot' : 'Plot'}{' '}
+                  {multiCount || 0} Session
                   {multiCount === 1 ? '' : 's'}
                 </>
               ) : sessionStatus.exceeded ? (
@@ -1390,14 +1451,108 @@ export default function PlotSubjectModal({
                 </>
               ) : (
                 <>
-                  <Icon name={isEditMode ? 'save' : 'add'} size={16} />
-                  {isEditMode ? 'Save Changes' : 'Plot Subject'}
+                  <Icon
+                    name={
+                      isEditMode
+                        ? 'save'
+                        : isCrossDeptSelection
+                        ? 'send'
+                        : 'add'
+                    }
+                    size={16}
+                  />
+                  {isEditMode
+                    ? 'Save Changes'
+                    : isCrossDeptSelection
+                    ? 'Request & Plot'
+                    : 'Plot Subject'}
                 </>
               )}
             </button>
           </div>
         </form>
       </div>
+
+      {/* ── F1b: cross-department confirmation ── */}
+      {pendingConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !submitting && setPendingConfirm(null)}
+          />
+          <div className="relative w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <Icon
+                name="hourglass_top"
+                filled
+                size={24}
+                className="text-amber-600 shrink-0 mt-0.5"
+              />
+              <div>
+                <h3 className="text-base font-bold text-on-surface">
+                  Cross-department faculty request
+                </h3>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  You're about to plot{' '}
+                  <strong>{selectedSubject?.subjectCode}</strong> using{' '}
+                  <strong>
+                    {selectedFaculty?.lastName}, {selectedFaculty?.firstName}
+                  </strong>{' '}
+                  from{' '}
+                  <strong>
+                    {crossDeptName ?? 'another department'}
+                  </strong>
+                  .
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 space-y-1.5">
+              <p className="font-semibold">What happens next:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>
+                  A <strong>pending approval request</strong> is created.
+                </li>
+                <li>
+                  The faculty's department head is notified on their
+                  Approvals page.
+                </li>
+                <li>
+                  The class is plotted in <strong>draft</strong> status
+                  immediately — no wait.
+                </li>
+                <li>
+                  It <strong>cannot be finalized</strong> until that
+                  department approves.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingConfirm(null)}
+                disabled={submitting}
+                className="px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low rounded-lg transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setPendingConfirm(null);
+                  await fireSubmit();
+                }}
+                disabled={submitting}
+                className="px-5 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary disabled:opacity-50 transition flex items-center gap-2"
+              >
+                <Icon name="send" size={16} />
+                Send request & plot
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+} 
