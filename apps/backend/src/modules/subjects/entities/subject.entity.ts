@@ -26,10 +26,27 @@ export class Subject {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-    @Column({
+  /**
+   * Room type constraint for the subject.
+   *
+   * - 'lecture_room' / 'laboratory' / 'computer_lab' / 'drafting_room' / 'other'
+   *     → strict: every block must use this room type.
+   * - 'any' → mixed lec+lab subjects. The block kind decides:
+   *       lecture blocks → lecture_room / drafting_room / computer_lab / laboratory
+   *       lab blocks     → laboratory / computer_lab
+   * - null → treated the same as 'any' by the engine and solver.
+   */
+  @Column({
     name: 'required_room_type',
     type: 'enum',
-    enum: ['lecture_room', 'laboratory', 'computer_lab', 'drafting_room', 'other'],
+    enum: [
+      'lecture_room',
+      'laboratory',
+      'computer_lab',
+      'drafting_room',
+      'other',
+      'any',
+    ],
     enumName: 'room_type',
     nullable: true,
   })
