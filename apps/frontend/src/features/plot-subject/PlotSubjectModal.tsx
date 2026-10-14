@@ -103,12 +103,15 @@ const EMPTY_FORM = {
   subjectId: '',
   section: '',
   facultyId: '',
+  externalFacultyName: '',
   roomId: '',
   dayOfWeek: 'Monday',
   startTime: '08:00',
   endTime: '09:30',
   loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
 };
+
+type FacultyMode = 'system' | 'external';
 
 /** Per-day time slot for multi-session mode. */
 interface MultiDayRow {
@@ -151,7 +154,7 @@ export default function PlotSubjectModal({
       endTime: '09:30',
     })),
   );
-
+  const [facultyMode, setFacultyMode] = useState<FacultyMode>('system');
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -271,6 +274,7 @@ export default function PlotSubjectModal({
     if (!open) {
       setForm(EMPTY_FORM);
       setMode('single');
+      setFacultyMode('system');
       setMultiDays(
         DAYS.map((day) => ({
           day,
@@ -288,11 +292,13 @@ export default function PlotSubjectModal({
       return;
     }
     if (editing) {
-      setMode('single');
+      const hasExternal = !!editing.externalFacultyName;
+      setFacultyMode(hasExternal ? 'external' : 'system');
       setForm({
         subjectId: editing.subjectId,
         section: editing.sectionCode ?? '',
         facultyId: editing.facultyId ?? '',
+        externalFacultyName: editing.externalFacultyName ?? '',   // ← NEW
         roomId: editing.roomId ?? '',
         dayOfWeek: DAY_ABBR_TO_FULL[editing.day] ?? 'Monday',
         startTime: editing.startTime,
@@ -460,7 +466,8 @@ export default function PlotSubjectModal({
         const result = await validatePlot({
           termId,
           subjectId: form.subjectId,
-          facultyId: form.facultyId || undefined,
+          facultyId:
+            facultyMode === 'system' ? form.facultyId || undefined : undefined,
           roomId: form.roomId || undefined,
           section: form.section || undefined,
           dayOfWeek: form.dayOfWeek,
@@ -477,7 +484,7 @@ export default function PlotSubjectModal({
     }, 400);
 
     return () => clearTimeout(timeout);
-  }, [open, form, termId, editing?.id, mode]);
+  }, [open, form, termId, editing?.id, mode, facultyMode]);
 
   const plotMutation = useMutation({
     mutationFn: (payload: PlotSubjectPayload) => plotSubject(payload),
@@ -517,7 +524,8 @@ export default function PlotSubjectModal({
       startTime: string;
       endTime: string;
       roomId?: string;
-      facultyId?: string;
+      facultyId?: string | null;
+      externalFacultyName?: string | null;
       section?: string | null;
       loadType?: 'lecture' | 'laboratory' | 'other';
     }) => updateSchedule(payload.id, payload),
@@ -543,8 +551,16 @@ export default function PlotSubjectModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.facultyId) return;
     if (submitting) return;
+
+    const hasSystemFaculty =
+      facultyMode === 'system' && !!form.facultyId;
+    const hasExternalFaculty =
+      facultyMode === 'external' && form.externalFacultyName.trim().length > 0;
+
+    if (!hasSystemFaculty && !hasExternalFaculty) {
+      return; // submit button should be disabled anyway
+    }
 
     // ── Multi-session path ──
     if (mode === 'multi') {
@@ -559,10 +575,14 @@ export default function PlotSubjectModal({
         return;
       }
       setSubmitting(true);
+      const extName = form.externalFacultyName.trim();
       plotMultiMutation.mutate({
         termId,
         subjectId: form.subjectId,
-        facultyId: form.facultyId || undefined,
+        facultyId:
+          facultyMode === 'system' ? form.facultyId || undefined : undefined,
+        externalFacultyName:
+          facultyMode === 'external' && extName ? extName : undefined,
         roomId: form.roomId || undefined,
         section: form.section || undefined,
         loadType: form.loadType,
@@ -583,7 +603,8 @@ export default function PlotSubjectModal({
       const fresh = await validatePlot({
         termId,
         subjectId: form.subjectId,
-        facultyId: form.facultyId || undefined,
+        facultyId:
+          facultyMode === 'system' ? form.facultyId || undefined : undefined,
         roomId: form.roomId || undefined,
         section: form.section || undefined,
         dayOfWeek: form.dayOfWeek,
@@ -602,22 +623,34 @@ export default function PlotSubjectModal({
       }
 
       if (isEditMode && editing) {
-        // ── EDIT 2 + 3: send section (null if cleared) and loadType ──
         updateMutation.mutate({
           id: editing.id,
           dayOfWeek: form.dayOfWeek,
           startTime: form.startTime,
           endTime: form.endTime,
           roomId: form.roomId || undefined,
-          facultyId: form.facultyId || undefined,
+          facultyId:
+            facultyMode === 'system'
+              ? form.facultyId || null
+              : null,
+          externalFacultyName:
+            facultyMode === 'external'
+              ? form.externalFacultyName.trim() || null
+              : null,
           section: form.section === '' ? null : form.section,
           loadType: form.loadType,
         });
       } else {
+        const extName = form.externalFacultyName.trim();
         plotMutation.mutate({
           termId,
           subjectId: form.subjectId,
-          facultyId: form.facultyId || undefined,
+          facultyId:
+            facultyMode === 'system'
+              ? form.facultyId || undefined
+              : undefined,
+          externalFacultyName:
+            facultyMode === 'external' && extName ? extName : undefined,
           roomId: form.roomId || undefined,
           section: form.section || undefined,
           loadType: form.loadType,
@@ -634,12 +667,16 @@ export default function PlotSubjectModal({
 
   if (!open) return null;
 
+  const hasFaculty =
+    (facultyMode === 'system' && !!form.facultyId) ||
+    (facultyMode === 'external' && form.externalFacultyName.trim().length > 0);
+
   const multiSubmitDisabled =
     submitting ||
     plotMultiMutation.isPending ||
     !form.subjectId ||
     !form.roomId ||
-    !form.facultyId ||
+    !hasFaculty ||
     multiCount === 0 ||
     (sessionStatus.limit != null && multiCount > sessionStatus.remaining);
 
@@ -649,7 +686,7 @@ export default function PlotSubjectModal({
     updateMutation.isPending ||
     !form.subjectId ||
     !form.roomId ||
-    !form.facultyId ||
+    !hasFaculty ||
     (touched && (validation?.hardConflicts.length ?? 0) > 0) ||
     sessionStatus.exceeded;
 
@@ -965,25 +1002,91 @@ export default function PlotSubjectModal({
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Faculty *
               </label>
-              <select
-                name="facultyId"
-                required
-                value={form.facultyId}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+
+              {/* Mode toggle */}
+              <div
+                role="tablist"
+                aria-label="Faculty source"
+                className="inline-flex w-full rounded-lg border border-surface-variant bg-surface-container-low p-0.5 mb-2"
               >
-                <option value="">Select a faculty…</option>
-                {facultyGroups.map(([label, facs]) => (
-                  <optgroup key={label} label={label}>
-                    {facs.map((f) => (
-                      <option key={f.facultyId} value={f.facultyId}>
-                        {f.lastName}, {f.firstName}
-                      </option>
+                <button
+                  role="tab"
+                  aria-selected={facultyMode === 'system'}
+                  type="button"
+                  onClick={() => setFacultyMode('system')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    facultyMode === 'system'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="badge" size={14} />
+                  System faculty
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={facultyMode === 'external'}
+                  type="button"
+                  onClick={() => setFacultyMode('external')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    facultyMode === 'external'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="person_edit" size={14} />
+                  External
+                </button>
+              </div>
+
+              {/* System mode: dropdown */}
+              {facultyMode === 'system' && (
+                <>
+                  <select
+                    name="facultyId"
+                    value={form.facultyId}
+                    onChange={handleChange}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Select a faculty…</option>
+                    {facultyGroups.map(([label, facs]) => (
+                      <optgroup key={label} label={label}>
+                        {facs.map((f) => (
+                          <option key={f.facultyId} value={f.facultyId}>
+                            {f.lastName}, {f.firstName}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
+                  </select>
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    Use this for faculty in the system. Overload, qualification,
+                    and preference checks will apply.
+                  </p>
+                </>
+              )}
+
+              {/* External mode: text input */}
+              {facultyMode === 'external' && (
+                <>
+                  <input
+                    type="text"
+                    name="externalFacultyName"
+                    value={form.externalFacultyName}
+                    onChange={handleChange}
+                    placeholder="e.g. Prof. Juan Dela Cruz (Math Dept)"
+                    maxLength={120}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  />
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    For professors outside the system (Math, GenEd, EPIC,
+                    visiting lecturers). No overload or qualification checks
+                    will apply.
+                  </p>
+                </>
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Room *
