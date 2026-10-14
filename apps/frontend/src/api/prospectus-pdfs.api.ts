@@ -142,6 +142,14 @@ export interface ImportConfirmInput {
   }[];
 }
 
+export interface SynthesizedCode {
+  subjectCode: string;
+  title: string;
+  yearLevel: number;
+  semester: string;
+  origin: 'explicit' | 'synthesized' | 'loose';
+}
+
 export interface ImportConfirmResult {
   subjectsCreated: number;
   subjectsExisting: number;
@@ -156,6 +164,7 @@ export interface ImportConfirmResult {
     existing: number;
   }[];
   warnings: string[];
+  synthesizedCodes: SynthesizedCode[];
 }
 
 export async function confirmImport(
