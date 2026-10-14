@@ -525,25 +525,42 @@ export class ProspectusPdfsService {
         }
 
         // Upsert subject
-        let subject = await this.subjectRepo.findOne({
-          where: { subjectCode: code },
-        });
-        if (!subject) {
-          subject = this.subjectRepo.create({
-            subjectCode: code,
-            title,
-            totalUnits: total,
-            lectureUnits: lec,
-            labUnits: lab,
-            deptId: pdf.departmentId,
-            isActive: true,
-            requiredRoomType: null,
+        // Determine the correct room type for this subject.
+        // Mixed lec + lab → 'any' (kind decides per block).
+        // Pure lecture → null (defaults to 'any' behavior in engine/solver).
+        // Pure lab → null (defaults to 'any' behavior in engine/solver).
+        // DH can set an explicit room type later via the Subjects page.
+        const isMixed = lec > 0 && lab > 0;
+        const inferredRoomType: string | null = isMixed ? 'any' : null;
+
+        // Upsert subject
+          let subject = await this.subjectRepo.findOne({
+            where: { subjectCode: code },
           });
-          subject = await this.subjectRepo.save(subject);
-          subjectsCreated++;
-        } else {
-          subjectsExisting++;
-        }
+          if (!subject) {
+            subject = this.subjectRepo.create({
+              subjectCode: code,
+              title,
+              totalUnits: total,
+              lectureUnits: lec,
+              labUnits: lab,
+              deptId: pdf.departmentId,
+              isActive: true,
+              requiredRoomType: inferredRoomType,
+            });
+            subject = await this.subjectRepo.save(subject);
+            subjectsCreated++;
+          } else {
+            // Existing subject — update the room type if this PDF reveals it's
+            // mixed and the current value is a strict room (not 'any').
+            // Never overwrite a DH's explicit 'any' or leave a stale strict value.
+            const current = subject.requiredRoomType ?? null;
+            if (isMixed && current !== 'any') {
+              subject.requiredRoomType = 'any';
+              await this.subjectRepo.save(subject);
+            }
+            subjectsExisting++;
+          }
 
         // Upsert prospectus entry
         const existingEntry = await this.prospectusRepo.findOne({
