@@ -14,10 +14,12 @@ import {
   abandonAutoGenerate,
   getPendingAutoGenerate,
   fetchVersion,
+  fetchUnplottedMinors,
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
   type ScheduleVersionEntry,
+  type UnplottedMinor,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -43,6 +45,7 @@ import { fetchAllProspectus } from '../../api/prospectus.api';
 import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
+import UnplottedMinorsPanel from './components/UnplottedMinorsPanel';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -176,10 +179,6 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   };
 }
 
-/**
- * Convert a snapshot entry to a ScheduleEntry for rendering. Snapshot
- * entries are denormalized — we don't need to resolve any relations.
- */
 function versionEntryToEntry(
   raw: ScheduleVersionEntry,
   versionContext: { versionId: string; versionNumber: number },
@@ -261,9 +260,15 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const queryClient = useQueryClient();
 
   const [plotOpen, setPlotOpen] = useState(false);
+  const [plotSubjectPresetId, setPlotSubjectPresetId] = useState<string | null>(
+    null,
+  );
   const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
   const [editEntry, setEditEntry] = useState<ScheduleEntry | null>(null);
+
+  // ── Minor subjects panel ──
+  const [minorsPanelOpen, setMinorsPanelOpen] = useState(false);
 
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
@@ -389,6 +394,21 @@ export default function TimetablePage({ readOnly = false }: Props) {
     staleTime: 60 * 1000,
   });
 
+  // ── Unplotted minor subjects ──
+  // Only for DHs (they own the dept) and only when not viewing a version.
+  const minorsDeptId = isDepartmentHead ? myDeptId : viewDeptId || myDeptId;
+  const { data: unplottedMinors = [] } = useQuery<UnplottedMinor[]>({
+    queryKey: ['unplotted-minors', activeTerm?.termId, minorsDeptId],
+    queryFn: () => fetchUnplottedMinors(activeTerm!.termId, minorsDeptId),
+    enabled:
+      !!activeTerm?.termId &&
+      !!minorsDeptId &&
+      !activeVersion &&
+      !!user,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+
   const autoDraftCount = useMemo(() => {
     if (!schedules) return 0;
     return schedules.filter(
@@ -472,7 +492,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   });
 
   // ── The entries we actually render. ──
-  // When a version is active, we render the snapshot; otherwise, live.
   const allEntries = useMemo(() => {
     if (activeVersion && versionDetail?.snapshot) {
       const ctx = {
@@ -615,8 +634,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     queryClient.invalidateQueries({
       queryKey: ['unscheduled', activeTerm.termId],
     });
+    queryClient.invalidateQueries({
+      queryKey: ['unplotted-minors', activeTerm.termId, minorsDeptId],
+    });
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate, minorsDeptId]);
 
   const handleDiscardPreview = useCallback(async () => {
     if (!activeTerm) return;
@@ -637,8 +659,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     queryClient.invalidateQueries({
       queryKey: ['unscheduled', activeTerm.termId],
     });
+    queryClient.invalidateQueries({
+      queryKey: ['unplotted-minors', activeTerm.termId, minorsDeptId],
+    });
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate, minorsDeptId]);
 
   const {
     moveEntry: handleMove,
@@ -678,6 +703,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const handlePickFromStack = useCallback((entry: ScheduleEntry) => {
     setStackOpen(null);
     setSelectedEntry(entry);
+  }, []);
+
+  /**
+   * Open the Plot Subject modal pre-selected to a specific subject.
+   * Called from the unplotted-minors panel.
+   */
+  const handlePlotMinor = useCallback((subjectId: string) => {
+    setMinorsPanelOpen(false);
+    setEditEntry(null);
+    setPlotSubjectPresetId(subjectId);
+    setPlotOpen(true);
   }, []);
 
   const performAutoGenerate = useCallback(async () => {
@@ -895,7 +931,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     entries.length === 1 ? 'entry' : 'entries'
   }`;
 
-  // readOnly is force-true when viewing a historical version.
   const writable = !readOnly && !activeVersion;
 
   const versionContext = activeVersion
@@ -905,6 +940,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
         capturedAt: activeVersion.capturedAt,
       }
     : null;
+  // Show the unplotted-minors banner only when we have real minors and
+  // the user can act on them (writable, not viewing a version).
+  const showMinorsBanner =
+    writable && unplottedMinors.length > 0 && !isLoading && !error;
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
@@ -964,7 +1003,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
           {writable && activeTerm && (
             <button
-              onClick={() => setPlotOpen(true)}
+              onClick={() => {
+                setPlotSubjectPresetId(null);
+                setPlotOpen(true);
+              }}
               disabled={isGenerating}
               title={isGenerating ? 'Wait for the current generation to finish' : undefined}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
@@ -984,6 +1026,52 @@ export default function TimetablePage({ readOnly = false }: Props) {
           capturedAt={activeVersion.capturedAt}
           onExit={handleExitVersionView}
         />
+      )}
+
+      {/* Unplotted minor subjects banner */}
+      {showMinorsBanner && (
+        <div className="mb-4 rounded-xl border-2 border-purple-300 bg-purple-50 px-4 py-3 flex items-start gap-3">
+          <Icon
+            name="warning"
+            filled
+            size={20}
+            className="text-purple-600 shrink-0 mt-0.5"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-purple-900">
+                {unplottedMinors.length} minor subject
+                {unplottedMinors.length === 1 ? '' : 's'} not yet plotted
+              </p>
+              <button
+                type="button"
+                onClick={() => setMinorsPanelOpen(true)}
+                className="text-xs font-semibold text-purple-800 hover:text-purple-900 underline"
+              >
+                View list
+              </button>
+            </div>
+            <p className="text-xs text-purple-800 mt-0.5">
+              Plot these <strong>before</strong> running auto-generate so the
+              solver can schedule around them.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {unplottedMinors.slice(0, 6).map((m) => (
+                <span
+                  key={m.subjectId}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[11px] font-mono"
+                >
+                  {m.subjectCode}
+                </span>
+              ))}
+              {unplottedMinors.length > 6 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[11px]">
+                  +{unplottedMinors.length - 6} more
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Someone else is generating */}
@@ -1419,9 +1507,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
           onClose={() => {
             setPlotOpen(false);
             setEditEntry(null);
+            setPlotSubjectPresetId(null);
           }}
           termId={activeTerm.termId}
           editing={editEntry}
+          presetSubjectId={plotSubjectPresetId ?? undefined}
           departments={departments.map((d) => ({
             deptId: String(d.deptId),
             deptCode: d.deptCode,
@@ -1511,6 +1601,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
         }}
         versionA={compareA}
         versionB={compareB}
+      />
+
+      {/* Unplotted minors slide-over panel */}
+      <UnplottedMinorsPanel
+        open={minorsPanelOpen}
+        onClose={() => setMinorsPanelOpen(false)}
+        minors={unplottedMinors}
+        onPlot={(subjectId) => handlePlotMinor(subjectId)}
       />
 
       {/* Generic alert modal */}
