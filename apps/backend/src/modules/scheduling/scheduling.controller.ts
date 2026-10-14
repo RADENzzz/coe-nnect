@@ -107,6 +107,7 @@ export class SchedulingController {
       dto.termId,
       dto.deptId,
       req.user.id,
+      { acknowledgeUnplottedMinors: dto.acknowledgeUnplottedMinors === true },
     );
     return { data };
   }
