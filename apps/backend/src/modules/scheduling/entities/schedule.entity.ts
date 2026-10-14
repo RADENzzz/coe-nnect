@@ -37,6 +37,15 @@ export class Schedule {
   @Column({ name: 'faculty_id', type: 'bigint', nullable: true })
   facultyId: string | null;
 
+  /**
+   * F1: free-text name of a faculty member outside the system
+   * (Math/GenEd/EPIC professors, visiting lecturers, etc.).
+   * Exactly one of `facultyId` and `externalFacultyName` should be
+   * set — enforced by chk_schedule_faculty_or_external.
+   */
+  @Column({ name: 'external_faculty_name', type: 'text', nullable: true })
+  externalFacultyName: string | null;
+
   @Column({ name: 'room_id', type: 'bigint', nullable: true })
   roomId: string | null;
 
