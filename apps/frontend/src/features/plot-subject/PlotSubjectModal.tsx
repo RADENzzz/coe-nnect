@@ -94,6 +94,7 @@ interface Props {
     subjectId: string;
     loadType: 'lecture' | 'laboratory' | 'other';
   }>;
+  presetSubjectId?: string;
 }
 
 type PlotMode = 'single' | 'multi';
@@ -127,6 +128,7 @@ export default function PlotSubjectModal({
   editing = null,
   departments = [],
   existingCounts = [],
+  presetSubjectId,
 }: Props) {
   const queryClient = useQueryClient();
   const profile = useAuthStore((s) => s.profile);
@@ -259,7 +261,11 @@ export default function PlotSubjectModal({
       setFilterYear('');
       setFilterSem('');
     } else {
-      setForm(EMPTY_FORM);
+      // ── Fresh form, optional preset subject ──
+      setForm({
+        ...EMPTY_FORM,
+        subjectId: presetSubjectId ?? '',
+      });
       setMode('single');
       setMultiDays(
         DAYS.map((day) => ({
@@ -272,12 +278,14 @@ export default function PlotSubjectModal({
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
-      setFilterDept(defaultDept);
+      // When opening with a preset, drop the dept filter so the preset
+      // subject doesn't get auto-cleared by the validity guard below.
+      setFilterDept(presetSubjectId ? '' : defaultDept);
       setFilterYear('');
       setFilterSem('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editing, myDeptId, profile?.role]);
+  }, [open, editing, myDeptId, profile?.role, presetSubjectId]);
 
   useEffect(() => {
     if (!selectedSubject) return;
