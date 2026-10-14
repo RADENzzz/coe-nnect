@@ -17,6 +17,7 @@ import Modal from '../../components/ui/Modal';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
+import RoomPreferencesModal from './components/RoomPreferencesModal';
 
 const ROOM_TYPES: { value: RoomType; label: string }[] = [
   { value: 'lecture_room', label: 'Lecture Room' },
@@ -28,7 +29,10 @@ const ROOM_TYPES: { value: RoomType; label: string }[] = [
 
 type Mode = 'create' | 'edit';
 
-const TYPE_TONE: Record<RoomType, 'info' | 'warning' | 'purple' | 'success' | 'neutral'> = {
+const TYPE_TONE: Record<
+  RoomType,
+  'info' | 'warning' | 'purple' | 'success' | 'neutral'
+> = {
   lecture_room: 'info',
   laboratory: 'warning',
   computer_lab: 'purple',
@@ -41,8 +45,6 @@ export default function RoomsPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
-  // After the Admin→Dean consolidation, both the dev account and the
-  // College Dean have full room management powers.
   const isAdminOrDean =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
   const isDH = profile?.role === 'department_head';
@@ -64,6 +66,11 @@ export default function RoomsPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all');
   const [deleteTarget, setDeleteTarget] = useState<RoomRecord | null>(null);
 
+  // ── F3: preferences modal ──
+  const [preferencesTarget, setPreferencesTarget] = useState<RoomRecord | null>(
+    null,
+  );
+
   const { data: rooms = [], isLoading } = useQuery({
     queryKey: ['rooms', { includeInactive: true }],
     queryFn: () => fetchRooms(true),
@@ -76,13 +83,10 @@ export default function RoomsPage() {
     enabled: !!user,
   });
 
-  // ── Foreign detection (rule B) ──
-  // A DH can edit own-dept rooms AND shared rooms.
-  // Only another dept's *exclusive* room is off-limits.
   const isForeign = useCallback(
     (r: RoomRecord): boolean => {
       if (!isDH) return false;
-      if (!r.deptId) return false; // shared → editable
+      if (!r.deptId) return false;
       return String(r.deptId) !== myDeptId;
     },
     [isDH, myDeptId],
@@ -266,6 +270,7 @@ export default function RoomsPage() {
       cellClassName: 'text-on-surface-variant text-xs font-mono',
       render: (r) => {
         const foreign = isForeign(r);
+        const shared = !r.deptId;
         return (
           <span className="inline-flex items-center gap-1.5">
             {foreign && (
@@ -273,6 +278,14 @@ export default function RoomsPage() {
                 className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
                 title="Another department's room — read only"
               />
+            )}
+            {shared && (
+              <span
+                className="inline-flex items-center gap-1 text-primary"
+                title="Shared room"
+              >
+                <Icon name="groups" size={12} />
+              </span>
             )}
             <span className={foreign ? 'text-slate-500' : ''}>
               {deptName(r.deptId)}
@@ -297,7 +310,19 @@ export default function RoomsPage() {
 
   const getActions = (r: RoomRecord): RowAction[] => {
     if (isForeign(r)) return [];
-    return [
+
+    const actions: RowAction[] = [];
+
+    // F3: preferences are only meaningful for shared rooms
+    if (!r.deptId && (isDH || isAdminOrDean)) {
+      actions.push({
+        label: 'Preferences',
+        icon: 'star',
+        onClick: () => setPreferencesTarget(r),
+      });
+    }
+
+    actions.push(
       { label: 'Edit', icon: 'edit', onClick: () => openEdit(r) },
       {
         label: r.isActive ? 'Deactivate' : 'Activate',
@@ -312,7 +337,9 @@ export default function RoomsPage() {
         onClick: () => setDeleteTarget(r),
         disabled: deleteMutation.isPending,
       },
-    ];
+    );
+
+    return actions;
   };
 
   return (
@@ -353,7 +380,11 @@ export default function RoomsPage() {
             You can manage shared rooms and rooms owned by your department.
             Rooms marked with an{' '}
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
-            amber dot belong to another department and are read-only.
+            amber dot belong to another department and are read-only. Shared
+            rooms show a{' '}
+            <Icon name="groups" size={12} className="inline align-middle" />{' '}
+            icon — use <strong>Preferences</strong> to tell the solver which
+            shared rooms your department prefers.
           </span>
         </div>
       )}
@@ -407,7 +438,8 @@ export default function RoomsPage() {
           </button>
         )}
         <div className="ml-auto text-xs text-on-surface-variant">
-          Showing <strong className="text-on-surface">{filteredRooms.length}</strong> of{' '}
+          Showing{' '}
+          <strong className="text-on-surface">{filteredRooms.length}</strong> of{' '}
           {rooms.length}
         </div>
       </div>
@@ -593,7 +625,9 @@ export default function RoomsPage() {
             </button>
             <button
               type="button"
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.roomId)}
+              onClick={() =>
+                deleteTarget && deleteMutation.mutate(deleteTarget.roomId)
+              }
               disabled={deleteMutation.isPending}
               className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
             >
@@ -607,6 +641,13 @@ export default function RoomsPage() {
           {deleteTarget?.building})? This action cannot be undone.
         </p>
       </Modal>
+
+      {/* F3: room preferences modal */}
+      <RoomPreferencesModal
+        open={!!preferencesTarget}
+        onClose={() => setPreferencesTarget(null)}
+        room={preferencesTarget}
+      />
     </div>
   );
 }
