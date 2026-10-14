@@ -10,6 +10,7 @@ export interface ScheduleEntry {
   sectionCode: string;
   facultyId: string;
   facultyName: string;
+  externalFacultyName: string | null;
   roomId: string;
   roomNumber: string;
   building: string;
