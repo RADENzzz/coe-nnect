@@ -4,6 +4,7 @@ import {
   IsNumberString,
   IsIn,
   Matches,
+  MaxLength,
 } from 'class-validator';
 
 export class PlotSubjectDto {
@@ -13,8 +14,23 @@ export class PlotSubjectDto {
   @IsNumberString()
   subjectId: string;
 
+  /**
+   * System faculty ID. Either this OR externalFacultyName is required.
+   * Enforced at the service layer.
+   */
+  @IsOptional()
   @IsNumberString()
-  facultyId: string;
+  facultyId?: string;
+
+  /**
+   * Free-text name of a faculty member outside the system
+   * (Math/GenEd/EPIC professors, visiting lecturers, etc.).
+   * Either this OR facultyId is required.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  externalFacultyName?: string;
 
   @IsOptional()
   @IsNumberString()
