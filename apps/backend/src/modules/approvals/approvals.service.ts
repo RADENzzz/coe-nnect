@@ -12,6 +12,7 @@ import { RespondFacultyRequestDto } from './dto/respond-faculty-request.dto';
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
+import { SupabaseService } from '../../database/supabase.service';
 
 @Injectable()
 export class ApprovalsService {
@@ -22,6 +23,7 @@ export class ApprovalsService {
     private readonly userRepo: Repository<User>,
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
+    private readonly supabase: SupabaseService,
   ) {}
 
   async findAllForCurrentUser(userId: string): Promise<FacultyRequest[]> {
@@ -144,6 +146,9 @@ export class ApprovalsService {
     found.respondedAt = new Date();
     const saved = await this.repo.save(found);
 
+    // ── F1b: also unblock any gated schedule rows ──
+    await this.resolvePendingScheduleRows(String(saved.requestId));
+
     // ═══ Notification: request cancelled ═══
     const targetDHs = await this.recipients.departmentHeadsOf(
       String(saved.targetDeptId),
@@ -208,6 +213,9 @@ export class ApprovalsService {
     found.responseRemarks = remarks ?? null;
     const saved = await this.repo.save(found);
 
+    // ── F1b: unblock any schedule rows gated by this request ──
+    await this.resolvePendingScheduleRows(String(saved.requestId));
+
     // ═══ Notification: approved OR rejected ═══
     const requestingDHs = await this.recipients.departmentHeadsOf(
       String(saved.requestingDeptId),
@@ -234,5 +242,37 @@ export class ApprovalsService {
     });
 
     return saved;
+  }
+    /**
+   * F1b: when a faculty_request is approved or rejected, clear the
+   * pending gate on any schedule rows linked to it.
+   */
+  private async resolvePendingScheduleRows(
+    requestId: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.supabase
+        .getAdminClient()
+        .from('schedule')
+        .update({
+          pending_faculty_request_id: null,
+          pending_faculty_dept_id: null,
+        })
+        .eq('pending_faculty_request_id', requestId);
+
+      if (error) {
+        // Non-fatal — the gate stays until the DH retries the status
+        // change. Log and move on.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `F1b: failed to clear pending gate for request ${requestId}: ${error.message}`,
+        );
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `F1b: unexpected error clearing gate for ${requestId}: ${(err as Error).message}`,
+      );
+    }
   }
 }
