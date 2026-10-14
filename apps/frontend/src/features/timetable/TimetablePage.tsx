@@ -20,6 +20,7 @@ import {
   type ScheduleVersionSummary,
   type ScheduleVersionEntry,
   type UnplottedMinor,
+  type BlockedMinorSummary,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -289,6 +290,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
   const [serverSideGenerating, setServerSideGenerating] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const [blockedMinors, setBlockedMinors] = useState<{
+    message: string;
+    minors: BlockedMinorSummary[];
+  } | null>(null);
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
 
   // ── Version state ──
@@ -716,59 +721,85 @@ export default function TimetablePage({ readOnly = false }: Props) {
     setPlotOpen(true);
   }, []);
 
-  const performAutoGenerate = useCallback(async () => {
-    if (!activeTerm || !myDeptId) return;
-    try {
-      await abandonAutoGenerate(activeTerm.termId);
-    } catch {
-      // Ignore
-    }
-    setAutoGenerating(true);
-    try {
-      const result = await autoGenerateSchedule(activeTerm.termId, myDeptId);
-      if (!result.success) {
-        if (result.roomDeficits && result.roomDeficits.length > 0) {
+    const performAutoGenerate = useCallback(
+    async (options?: { acknowledgeUnplottedMinors?: boolean }) => {
+      if (!activeTerm || !myDeptId) return;
+      try {
+        await abandonAutoGenerate(activeTerm.termId);
+      } catch {
+        // Ignore
+      }
+      setAutoGenerating(true);
+      try {
+        const result = await autoGenerateSchedule(
+          activeTerm.termId,
+          myDeptId,
+          options,
+        );
+
+        if (!result.success) {
+          // ── Blocked by unplotted minors? ──
+          if (
+            result.blockedByUnplottedMinors &&
+            result.unplottedMinors &&
+            result.unplottedMinors.length > 0
+          ) {
+            setBlockedMinors({
+              message: result.message ?? '',
+              minors: result.unplottedMinors,
+            });
+            return;
+          }
+
+          // ── Room deficits ──
+          if (result.roomDeficits && result.roomDeficits.length > 0) {
+            setAlertState({
+              title: 'Not enough rooms',
+              subtitle: result.message,
+              tone: 'error',
+              items: result.roomDeficits.map((d) => ({
+                ruleId: d.roomType,
+                message: `Need ${d.neededHours}h, have ${d.availableHours}h (short by ${d.shortByHours}h) — add ${d.suggestedExtraRooms} more room${d.suggestedExtraRooms === 1 ? '' : 's'}`,
+                tone: 'error' as const,
+              })),
+            });
+            return;
+          }
+
+          // ── Generic failure ──
           setAlertState({
-            title: 'Not enough rooms',
-            subtitle: result.message,
+            title: 'Auto-generation failed',
+            subtitle: result.message ?? 'Unknown error',
             tone: 'error',
-            items: result.roomDeficits.map((d) => ({
-              ruleId: d.roomType,
-              message: `Need ${d.neededHours}h, have ${d.availableHours}h (short by ${d.shortByHours}h) — add ${d.suggestedExtraRooms} more room${d.suggestedExtraRooms === 1 ? '' : 's'}`,
+            items: (result.failures ?? []).slice(0, 20).map((f) => ({
+              ruleId: f.ruleId,
+              message: f.reason,
               tone: 'error' as const,
             })),
           });
           return;
         }
-        setAlertState({
-          title: 'Auto-generation failed',
-          subtitle: result.message ?? 'Unknown error',
-          tone: 'error',
-          items: (result.failures ?? []).slice(0, 20).map((f) => ({
-            ruleId: f.ruleId,
-            message: f.reason,
-            tone: 'error' as const,
-          })),
+
+        // ── Success ──
+        await queryClient.invalidateQueries({
+          queryKey: ['schedules', activeTerm.termId],
         });
-        return;
+        const fresh = await fetchSchedules(activeTerm.termId);
+        setAutoPreview(fresh.map(toEntry));
+        setAutoUnscheduled(result.unscheduled ?? []);
+        refetchPendingAutoGenerate();
+      } catch (err) {
+        setAlertState({
+          title: 'Auto-generate failed',
+          tone: 'error',
+          items: [{ message: (err as Error).message, tone: 'error' }],
+        });
+      } finally {
+        setAutoGenerating(false);
       }
-      await queryClient.invalidateQueries({
-        queryKey: ['schedules', activeTerm.termId],
-      });
-      const fresh = await fetchSchedules(activeTerm.termId);
-      setAutoPreview(fresh.map(toEntry));
-      setAutoUnscheduled(result.unscheduled ?? []);
-      refetchPendingAutoGenerate();
-    } catch (err) {
-      setAlertState({
-        title: 'Auto-generate failed',
-        tone: 'error',
-        items: [{ message: (err as Error).message, tone: 'error' }],
-      });
-    } finally {
-      setAutoGenerating(false);
-    }
-  }, [activeTerm, myDeptId, queryClient, refetchPendingAutoGenerate]);
+    },
+    [activeTerm, myDeptId, queryClient, refetchPendingAutoGenerate],
+  );
 
   const handleAutoGenerate = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
@@ -784,6 +815,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     await performAutoGenerate();
   }, [performAutoGenerate]);
 
+  
   // ── Version handlers ──
   const handleViewVersion = useCallback(
     (version: ScheduleVersionSummary) => {
@@ -1755,7 +1787,111 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </p>
         </div>
       </Modal>
+            {/* Blocked by unplotted minors */}
+      <Modal
+        open={!!blockedMinors}
+        onClose={() => setBlockedMinors(null)}
+        title="Minor subjects not yet plotted"
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setBlockedMinors(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBlockedMinors(null);
+                setMinorsPanelOpen(true);
+              }}
+              className="px-4 py-2 text-sm font-semibold border border-surface-variant rounded-lg hover:bg-surface-container-low transition"
+            >
+              Plot them now
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setBlockedMinors(null);
+                await performAutoGenerate({
+                  acknowledgeUnplottedMinors: true,
+                });
+              }}
+              className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+            >
+              Skip and generate anyway
+            </button>
+          </>
+        }
+      >
+        {blockedMinors && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <Icon
+                name="warning"
+                filled
+                size={20}
+                className="text-amber-700 shrink-0 mt-0.5"
+              />
+              <div className="text-sm text-amber-900">
+                <p className="font-semibold">
+                  {blockedMinors.minors.length} minor subject
+                  {blockedMinors.minors.length === 1 ? '' : 's'} in the
+                  prospectus {blockedMinors.minors.length === 1 ? 'has' : 'have'}{' '}
+                  not been plotted yet.
+                </p>
+                <p className="text-xs text-amber-800 mt-1">
+                  Minor subjects are treated as fixed obstacles. Generating
+                  without them will place department subjects in slots those
+                  minors might later need — you may have to re-plot things
+                  afterward.
+                </p>
+              </div>
+            </div>
 
+            <div className="max-h-72 overflow-y-auto rounded-lg border border-surface-variant divide-y divide-surface-variant">
+              {blockedMinors.minors.map((m) => (
+                <div
+                  key={m.subjectId}
+                  className="px-3 py-2.5 flex items-start gap-3"
+                >
+                  <span className="inline-block w-2 h-2 rounded-full bg-purple-500 shrink-0 mt-1.5" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-primary text-xs">
+                        {m.subjectCode}
+                      </span>
+                      {m.yearLevel != null && (
+                        <span className="text-[10px] text-on-surface-variant font-mono">
+                          Y{m.yearLevel}
+                          {m.semester ? ` · ${m.semester}` : ''}
+                        </span>
+                      )}
+                      {m.programCode && (
+                        <span className="text-[10px] text-on-surface-variant">
+                          · {m.programCode}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-on-surface mt-0.5 truncate">
+                      {m.title}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-slate-500">
+              <strong>Recommended:</strong> plot these first so the solver
+              schedules around them. Or skip and re-plot later if you need to
+              see a rough schedule now.
+            </p>
+          </div>
+        )}
+      </Modal>
       {!activeVersion && unscheduledRecords.length > 0 && !autoPreview && (
         <div className="fixed bottom-4 right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
           <details className="bg-white border border-amber-200 shadow-lg rounded-lg overflow-hidden">
