@@ -32,10 +32,8 @@ const ROOM_TYPES: Array<{ value: '' | SubjectRoomType; label: string }> = [
 ];
 
 type Mode = 'create' | 'edit';
-type RoomTypeFilter =
-  | ''
-  | SubjectRoomType
-  | 'none';
+type RoomTypeFilter = '' | SubjectRoomType | 'none';
+type MinorFilter = 'all' | 'minor' | 'regular';
 type ComponentFilter = 'all' | 'lecture_only' | 'lab_only' | 'mixed';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
@@ -67,7 +65,6 @@ export default function SubjectsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
 
-  // ── Filters (URL-synced) ──
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(
     () => searchParams.get('q') ?? '',
@@ -76,6 +73,7 @@ export default function SubjectsPage() {
 
   const deptFilter = searchParams.get('dept') ?? '';
   const roomFilter = (searchParams.get('room') ?? '') as RoomTypeFilter;
+  const minorFilter = (searchParams.get('minor') ?? 'all') as MinorFilter;
   const compFilter = (searchParams.get('comp') ?? 'all') as ComponentFilter;
   const statusFilter = (searchParams.get('status') ?? 'all') as StatusFilter;
   const sortKey = (searchParams.get('sort') ?? 'code') as SortKey;
@@ -124,10 +122,10 @@ export default function SubjectsPage() {
     !!searchInput ||
     !!deptFilter ||
     !!roomFilter ||
+    minorFilter !== 'all' ||
     compFilter !== 'all' ||
     statusFilter !== 'all';
 
-  // ── Data ──
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects', { includeInactive: true }],
     queryFn: () => fetchSubjects(true),
@@ -174,6 +172,9 @@ export default function SubjectsPage() {
       } else if (roomFilter) {
         if (s.requiredRoomType !== roomFilter) return false;
       }
+
+      if (minorFilter === 'minor' && !s.isMinor) return false;
+      if (minorFilter === 'regular' && s.isMinor) return false;
 
       const lec = Number(s.lectureUnits ?? 0);
       const lab = Number(s.labUnits ?? 0);
@@ -228,6 +229,7 @@ export default function SubjectsPage() {
     debouncedSearch,
     deptFilter,
     roomFilter,
+    minorFilter,
     compFilter,
     statusFilter,
     sortKey,
@@ -290,6 +292,7 @@ export default function SubjectsPage() {
     labUnits: '',
     requiredRoomType: '' as '' | SubjectRoomType,
     deptId: '',
+    isMinor: false,
   });
 
   const closeForm = () => {
@@ -302,6 +305,7 @@ export default function SubjectsPage() {
       labUnits: '',
       requiredRoomType: '',
       deptId: '',
+      isMinor: false,
     });
     setError(null);
   };
@@ -316,6 +320,7 @@ export default function SubjectsPage() {
       labUnits: '',
       requiredRoomType: '',
       deptId: isDH && myDeptId ? myDeptId : '',
+      isMinor: false,
     });
     setError(null);
     setSuccess(null);
@@ -331,6 +336,7 @@ export default function SubjectsPage() {
       labUnits: String(s.labUnits ?? 0),
       requiredRoomType: (s.requiredRoomType ?? '') as '' | SubjectRoomType,
       deptId: s.deptId ?? '',
+      isMinor: s.isMinor ?? false,
     });
     setError(null);
     setSuccess(null);
@@ -342,12 +348,9 @@ export default function SubjectsPage() {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  // ── Live hints ──
   const lectureUnitsNum = Number(form.lectureUnits || 0);
   const labUnitsNum = Number(form.labUnits || 0);
   const isMixed = lectureUnitsNum > 0 && labUnitsNum > 0;
-  const roomTypeMismatch =
-    isMixed && form.requiredRoomType !== '' && form.requiredRoomType !== 'any';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -363,7 +366,6 @@ export default function SubjectsPage() {
       return;
     }
 
-    // Auto-suggest: mixed subject → force 'any' regardless of what was picked
     let requiredRoomType: SubjectRoomType | null =
       form.requiredRoomType === '' ? null : form.requiredRoomType;
     if (lecture > 0 && lab > 0) {
@@ -377,6 +379,7 @@ export default function SubjectsPage() {
       lectureUnits: lecture,
       labUnits: lab,
       requiredRoomType,
+      isMinor: form.isMinor,
       deptId: form.deptId,
     };
 
@@ -439,7 +442,17 @@ export default function SubjectsPage() {
       header: <SortHeader label="Code" sortKeyName="code" />,
       cardVariant: 'title',
       cellClassName: 'font-bold font-mono text-primary',
-      render: (s) => s.subjectCode,
+      render: (s) => (
+        <span className="inline-flex items-center gap-1.5">
+          {s.isMinor && (
+            <span
+              title="Minor subject — taught by another department or college"
+              className="inline-block w-2 h-2 rounded-full bg-purple-500 shrink-0"
+            />
+          )}
+          {s.subjectCode}
+        </span>
+      ),
     },
     {
       key: 'title',
@@ -525,7 +538,8 @@ export default function SubjectsPage() {
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Subjects</h1>
           <p className="text-on-surface-variant text-sm mt-1">
-            {subjects.length} subject(s) registered
+            {subjects.length} subject(s) registered ·{' '}
+            {subjects.filter((s) => s.isMinor).length} minor
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -558,7 +572,8 @@ export default function SubjectsPage() {
           </p>
           <p className="text-blue-800 text-xs mt-0.5">
             Add your department's subjects here first, then map them to programs in
-            the Prospectus.
+            the Prospectus. Mark subjects taught by another department as{' '}
+            <strong>minor</strong>.
           </p>
         </div>
         <Link
@@ -645,6 +660,21 @@ export default function SubjectsPage() {
                     </option>
                   );
                 })}
+            </select>
+          </div>
+
+          <div className="min-w-[150px]">
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Type
+            </label>
+            <select
+              value={minorFilter}
+              onChange={(e) => setFilter('minor', e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="all">All subjects</option>
+              <option value="minor">Minor only</option>
+              <option value="regular">Regular only</option>
             </select>
           </div>
 
@@ -860,6 +890,34 @@ export default function SubjectsPage() {
                 Pick "Any" for subjects with both lecture and lab units.
               </p>
             </div>
+
+            {/* ── NEW: Minor subject checkbox ── */}
+            <div className="md:col-span-2">
+              <label className="flex items-start gap-3 cursor-pointer select-none rounded-lg border border-surface-variant bg-surface-container-low p-3 hover:bg-surface-container transition">
+                <input
+                  type="checkbox"
+                  checked={form.isMinor}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      isMinor: e.target.checked,
+                    }))
+                  }
+                  className="accent-[#5c1219] w-4 h-4 mt-0.5"
+                />
+                <div className="flex-1">
+                  <span className="text-sm font-semibold text-on-surface">
+                    Minor subject (taught by another department or college)
+                  </span>
+                  <p className="text-[11px] text-on-surface-variant mt-0.5">
+                    Minor subjects are plotted manually{' '}
+                    <strong>before</strong> running auto-generate. The solver
+                    treats them as fixed obstacles. Examples: Math, GenEd, PE,
+                    EPIC, NSTP.
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
 
           {isMixed && (
@@ -875,6 +933,40 @@ export default function SubjectsPage() {
               </div>
             </div>
           )}
+
+          {form.isMinor && (
+            <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-purple-50 text-purple-900 border border-purple-200">
+              <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Minor subject</p>
+                <p className="mt-0.5">
+                  This subject will show a purple dot in the table and appear
+                  in the "unplotted minors" indicator on the Timetable page.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
+            <button
+              type="button"
+              onClick={closeForm}
+              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+            >
+              {createMutation.isPending || updateMutation.isPending
+                ? 'Saving...'
+                : mode === 'create'
+                ? 'Create Subject'
+                : 'Save Changes'}
+            </button>
+          </div>
         </form>
       </Modal>
 
