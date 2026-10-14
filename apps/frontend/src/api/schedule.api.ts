@@ -9,6 +9,7 @@ export interface RawSchedule {
   termId: string;
   subjectId: string;
   facultyId: string | null;
+  externalFacultyName: string | null;
   roomId: string | null;
   timeslotId: string | null;
   section: string | null;
@@ -235,6 +236,7 @@ export interface PlotSubjectPayload {
   termId: string;
   subjectId: string;
   facultyId?: string;
+  externalFacultyName?: string;
   roomId?: string;
   section?: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
@@ -248,6 +250,7 @@ export interface ValidatePlotPayload {
   termId: string;
   subjectId: string;
   facultyId?: string;
+  externalFacultyName?: string;
   roomId?: string;
   section?: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
@@ -312,6 +315,7 @@ export interface PlotMultiPayload {
   termId: string;
   subjectId: string;
   facultyId?: string;
+  externalFacultyName?: string;
   roomId?: string;
   section?: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
@@ -330,16 +334,18 @@ export interface UpdateSchedulePayload {
   startTime?: string;
   endTime?: string;
   roomId?: string;
-  facultyId?: string;
   /**
-   * Section code, e.g. "CpE-1A".
-   * Send `null` to explicitly clear the section assignment.
+   * System faculty ID. Send `null` to explicitly clear.
+   * Sending a value clears `externalFacultyName` server-side.
    */
+  facultyId?: string | null;
+  /**
+   * Free-text name of a faculty member outside the system.
+   * Send `null` to explicitly clear.
+   * Sending a value clears `facultyId` server-side.
+   */
+  externalFacultyName?: string | null;
   section?: string | null;
-  /**
-   * Section ID (bigint as string). Takes precedence over `section` if both
-   * are sent. Send `null` to explicitly clear.
-   */
   sectionId?: string | null;
   loadType?: 'lecture' | 'laboratory' | 'other';
 }
@@ -430,6 +436,7 @@ export interface ScheduleVersionEntry {
   subject_title: string | null;
   faculty_id: string | null;
   faculty_name: string | null;
+  external_faculty_name: string | null;
   room_id: string | null;
   room_number: string | null;
   building: string | null;
