@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import {
@@ -9,19 +10,32 @@ import {
 import type {
   ProspectusPdfTable,
   SemesterType,
+  ImportResult,
+  SynthesizedCode,
 } from '../types';
-import type { ImportResult } from '../types';
 
 interface ImportProspectusDialogProps {
   open: boolean;
   onClose: () => void;
   pdfId: string;
   tables: ProspectusPdfTable[];
-  programs: { programId: string; programCode: string; programName: string; deptId: string }[];
+  programs: {
+    programId: string;
+    programCode: string;
+    programName: string;
+    deptId: string;
+  }[];
   departmentId: string;
 }
 
 type Step = 'select' | 'review' | 'result';
+
+/**
+ * Same permissive pattern as the backend.
+ * Determines "explicit" (looks like a real code) vs "loose" (accepted anyway).
+ */
+const SUBJECT_CODE_RE =
+  /^[A-Za-z][A-Za-z0-9&.\-]{1,11}(?:\s+[A-Za-z0-9&.\-]{1,16}){0,4}$/;
 
 interface ReviewRow {
   key: string;
@@ -35,11 +49,11 @@ interface ReviewRow {
   lab: string;
   total: string;
   status: 'new' | 'exists' | 'invalid';
+  /** 'explicit' = looks like a real code; 'loose' = will be imported anyway; 'missing' = blank cell */
+  codeOrigin: 'explicit' | 'loose' | 'missing';
   warning?: string;
   checked: boolean;
 }
-
-
 
 export default function ImportProspectusDialog({
   open,
@@ -71,8 +85,6 @@ export default function ImportProspectusDialog({
     );
   }, [programs, departmentId]);
 
-  // Auto-select the first visible program when the list changes
-  // and the current selection isn't in it.
   useEffect(() => {
     if (visiblePrograms.length === 0) return;
     const stillValid = visiblePrograms.some(
@@ -92,7 +104,6 @@ export default function ImportProspectusDialog({
     });
   };
 
-  
   const handleExtract = async () => {
     setError(null);
     setExtracting(true);
@@ -109,17 +120,30 @@ export default function ImportProspectusDialog({
           const lec = parseIntSafe(sub.lec);
           const lab = parseIntSafe(sub.lab);
           const total = parseIntSafe(sub.total);
+
           let status: ReviewRow['status'] = 'new';
+          let codeOrigin: ReviewRow['codeOrigin'] = 'explicit';
           let warning: string | undefined;
-          if (!code || !code.match(/^[A-Za-z&]{2,10}(\s+[A-Za-z0-9]+)*\s*\d+/)) {
+
+          // Classify the code
+          if (!code) {
+            codeOrigin = 'missing';
+          } else if (!SUBJECT_CODE_RE.test(code)) {
+            codeOrigin = 'loose';
+          }
+
+          // Only "invalid" status is now: no title, or bad math.
+          // Blank/loose codes are importable.
+          if (!sub.title || !sub.title.trim()) {
             status = 'invalid';
-            warning = 'Missing or invalid subject code';
+            warning = 'Missing subject title';
           } else if (lec + lab !== total) {
             status = 'invalid';
             warning = `lec+lab≠total (${lec}+${lab}≠${total})`;
           }
+
           rows.push({
-            key: `${region.table_id}::${code}::${rows.length}`,
+            key: `${region.table_id}::${code || 'BLANK'}::${rows.length}`,
             tableId: region.table_id,
             yearLevel: table.yearLevel,
             semester: table.semester,
@@ -130,6 +154,7 @@ export default function ImportProspectusDialog({
             lab: sub.lab,
             total: sub.total,
             status,
+            codeOrigin,
             warning,
             checked: status === 'new',
           });
@@ -203,6 +228,12 @@ export default function ImportProspectusDialog({
   ).length;
   const existingCount = reviewRows.filter(
     (r) => r.status === 'exists',
+  ).length;
+  const placeholderCount = reviewRows.filter(
+    (r) => r.checked && r.codeOrigin === 'missing',
+  ).length;
+  const looseCount = reviewRows.filter(
+    (r) => r.checked && r.codeOrigin === 'loose',
   ).length;
 
   return (
@@ -325,6 +356,7 @@ export default function ImportProspectusDialog({
         <div className="space-y-4">
           <div className="text-sm text-on-surface-variant">
             Review extracted subjects. Uncheck any you don't want to import.
+            Blank or loose codes will be imported with placeholders or as-is.
           </div>
 
           <div className="max-h-[400px] overflow-auto border border-surface-variant rounded-lg">
@@ -332,24 +364,12 @@ export default function ImportProspectusDialog({
               <thead className="bg-surface-container-low sticky top-0">
                 <tr>
                   <th className="w-8 px-2 py-2"></th>
-                  <th className="text-left px-2 py-2 font-semibold">
-                    Code
-                  </th>
-                  <th className="text-left px-2 py-2 font-semibold">
-                    Title
-                  </th>
-                  <th className="text-right px-2 py-2 font-semibold">
-                    Lec
-                  </th>
-                  <th className="text-right px-2 py-2 font-semibold">
-                    Lab
-                  </th>
-                  <th className="text-right px-2 py-2 font-semibold">
-                    Total
-                  </th>
-                  <th className="text-left px-2 py-2 font-semibold">
-                    Status
-                  </th>
+                  <th className="text-left px-2 py-2 font-semibold">Code</th>
+                  <th className="text-left px-2 py-2 font-semibold">Title</th>
+                  <th className="text-right px-2 py-2 font-semibold">Lec</th>
+                  <th className="text-right px-2 py-2 font-semibold">Lab</th>
+                  <th className="text-right px-2 py-2 font-semibold">Total</th>
+                  <th className="text-left px-2 py-2 font-semibold">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -378,9 +398,30 @@ export default function ImportProspectusDialog({
                       />
                     </td>
                     <td className="px-2 py-1.5 font-mono font-semibold">
-                      {row.code || '—'}
+                      <div className="flex items-center gap-1.5">
+                        {row.codeOrigin === 'missing' && (
+                          <span
+                            className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[9px] font-bold uppercase tracking-wider"
+                            title="Blank code — will be assigned a placeholder"
+                          >
+                            Blank
+                          </span>
+                        )}
+                        {row.codeOrigin === 'loose' && (
+                          <span
+                            className="px-1.5 py-0.5 rounded bg-orange-200 text-orange-900 text-[9px] font-bold uppercase tracking-wider"
+                            title="Code doesn't match the standard pattern — will be imported as-is"
+                          >
+                            Loose
+                          </span>
+                        )}
+                        <span>{row.code || '—'}</span>
+                      </div>
                     </td>
-                    <td className="px-2 py-1.5 max-w-[240px] truncate" title={row.title}>
+                    <td
+                      className="px-2 py-1.5 max-w-[240px] truncate"
+                      title={row.title}
+                    >
                       {row.title || '—'}
                     </td>
                     <td className="px-2 py-1.5 text-right font-mono">
@@ -429,6 +470,20 @@ export default function ImportProspectusDialog({
             {existingCount > 0 && (
               <> · {existingCount} already in the system</>
             )}
+            {placeholderCount > 0 && (
+              <>
+                {' '}
+                · <strong className="text-amber-700">{placeholderCount}</strong>{' '}
+                with blank codes (get placeholders)
+              </>
+            )}
+            {looseCount > 0 && (
+              <>
+                {' '}
+                · <strong className="text-orange-700">{looseCount}</strong> with
+                loose codes
+              </>
+            )}
           </div>
         </div>
       )}
@@ -441,19 +496,101 @@ export default function ImportProspectusDialog({
               <span className="font-semibold">Import complete</span>
             </div>
             <ul className="text-sm space-y-1 pl-6">
-              <li>{result.subjectsCreated} new subject{result.subjectsCreated === 1 ? '' : 's'} created</li>
-              <li>{result.prospectusCreated} prospectus entr{result.prospectusCreated === 1 ? 'y' : 'ies'} added</li>
+              <li>
+                {result.subjectsCreated} new subject
+                {result.subjectsCreated === 1 ? '' : 's'} created
+              </li>
+              <li>
+                {result.prospectusCreated} prospectus entr
+                {result.prospectusCreated === 1 ? 'y' : 'ies'} added
+              </li>
               {result.subjectsExisting > 0 && (
-                <li>{result.subjectsExisting} subject{result.subjectsExisting === 1 ? '' : 's'} already existed</li>
+                <li>
+                  {result.subjectsExisting} subject
+                  {result.subjectsExisting === 1 ? '' : 's'} already existed
+                </li>
               )}
               {result.prospectusSkipped > 0 && (
-                <li>{result.prospectusSkipped} prospectus entr{result.prospectusSkipped === 1 ? 'y' : 'ies'} skipped (already present)</li>
+                <li>
+                  {result.prospectusSkipped} prospectus entr
+                  {result.prospectusSkipped === 1 ? 'y' : 'ies'} skipped
+                  (already present)
+                </li>
               )}
               {result.skippedRows > 0 && (
-                <li>{result.skippedRows} row{result.skippedRows === 1 ? '' : 's'} skipped (invalid data)</li>
+                <li>
+                  {result.skippedRows} row
+                  {result.skippedRows === 1 ? '' : 's'} skipped (invalid data)
+                </li>
               )}
             </ul>
           </div>
+
+          {/* ── NEW: synthesized/loose codes panel ── */}
+          {result.synthesizedCodes && result.synthesizedCodes.length > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon
+                  name="warning"
+                  filled
+                  size={20}
+                  className="text-amber-700 shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {result.synthesizedCodes.length} subject
+                    {result.synthesizedCodes.length === 1 ? '' : 's'} imported
+                    with a placeholder or loose code
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    Edit these on the Subjects page to assign real codes when
+                    you know them.
+                  </p>
+
+                  <ul className="mt-3 space-y-2 max-h-72 overflow-y-auto">
+                    {result.synthesizedCodes.map((sc: SynthesizedCode) => (
+                      <li
+                        key={sc.subjectCode}
+                        className="flex items-start gap-3 p-2 rounded border border-amber-200 bg-white"
+                      >
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded shrink-0 ${
+                            sc.origin === 'synthesized'
+                              ? 'bg-amber-200 text-amber-900'
+                              : 'bg-orange-200 text-orange-900'
+                          }`}
+                        >
+                          {sc.origin === 'synthesized'
+                            ? 'Placeholder'
+                            : 'Loose'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-primary text-xs">
+                              {sc.subjectCode}
+                            </span>
+                            <span className="text-[10px] text-on-surface-variant font-mono">
+                              Y{sc.yearLevel} · {sc.semester}
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface truncate mt-0.5">
+                            {sc.title}
+                          </p>
+                        </div>
+                        <Link
+                          to="/subjects"
+                          className="text-[11px] font-semibold text-primary hover:underline whitespace-nowrap shrink-0"
+                          onClick={handleClose}
+                        >
+                          Edit →
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {result.warnings.length > 0 && (
             <div className="p-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-xs">
@@ -473,7 +610,6 @@ export default function ImportProspectusDialog({
 
 function parseIntSafe(v: string | undefined): number {
   if (!v) return 0;
-  // Strip parentheses, spaces, and any non-numeric chars.
   const cleaned = String(v).replace(/[^0-9.-]/g, '');
   if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
   const n = parseFloat(cleaned);
