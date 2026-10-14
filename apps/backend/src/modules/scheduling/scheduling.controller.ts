@@ -61,6 +61,16 @@ export class SchedulingController {
     return { data };
   }
 
+  @Get('unplotted-minors')
+  @Roles('college_dean', 'department_head')
+  async unplottedMinors(
+    @Query('termId') termId: string,
+    @Query('deptId') deptId: string,
+  ) {
+    const data = await this.service.findUnplottedMinors(termId, deptId);
+    return { data };
+  }
+
   @Get('active-term')
   async getActiveTerm() {
     const data = await this.service.getActiveTerm();
