@@ -1143,7 +1143,12 @@ export class SchedulingService {
   // AUTOSOLVER
   // ════════════════════════════════════════════
 
-  async autoGenerate(termId: string, deptId: string, userId: string) {
+  async autoGenerate(
+    termId: string,
+    deptId: string,
+    userId: string,
+    options: { acknowledgeUnplottedMinors?: boolean } = {},
+  ) {
     this.logger.log(
       `Auto-generate requested: term=${termId} dept=${deptId} by=${userId}`,
     );
@@ -1171,6 +1176,51 @@ export class SchedulingService {
           'An auto-generate is already running for this term. ' +
           'Please wait for it to finish, then try again.',
       };
+    }
+
+    // ── Pre-flight: unplotted minors check ──
+    // Minor subjects are fixed obstacles. Generating without them
+    // produces a schedule that would break when they're plotted later.
+    // Refuse unless the caller explicitly acknowledges the risk.
+    if (!options.acknowledgeUnplottedMinors) {
+      try {
+        const unplottedMinors = await this.findUnplottedMinors(
+          termId,
+          deptId,
+        );
+        if (unplottedMinors.length > 0) {
+          this.logger.warn(
+            `Auto-generate blocked: ${unplottedMinors.length} unplotted minor(s) for term=${termId} dept=${deptId}`,
+          );
+
+          // Release the lock immediately — we're not running the solver.
+          await this.releaseAutoGenerateLock(termId, userId);
+
+          return {
+            success: false,
+            blockedByUnplottedMinors: true,
+            message:
+              `${unplottedMinors.length} minor subject${
+                unplottedMinors.length === 1 ? '' : 's'
+              } in the prospectus have not been plotted yet. ` +
+              `Plot them first, or confirm to generate without them.`,
+            unplottedMinors: unplottedMinors.map((m) => ({
+              subjectId: m.subjectId,
+              subjectCode: m.subjectCode,
+              title: m.title,
+              yearLevel: m.yearLevel,
+              semester: m.semester,
+              programCode: m.programCode,
+            })),
+          };
+        }
+      } catch (err) {
+        // Fail open — don't block generation because the check itself
+        // errored. Log and continue.
+        this.logger.warn(
+          `Unplotted-minors pre-flight check failed (continuing): ${(err as Error).message}`,
+        );
+      }
     }
 
     this.autoGenerateInFlight.add(termId);
