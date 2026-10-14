@@ -1862,7 +1862,21 @@ export class SchedulingService {
     }>;
     hint: string;
   } {
+    // ═══════════════════════════════════════════════════════════════
+    // Sufficiency analysis — per (roomType, kind) demand vs supply.
+    //
+    // 'any' subjects contribute demand to two pools:
+    //   - their lecture blocks  → 'lecture_room' pool
+    //   - their lab blocks      → 'laboratory' pool
+    //
+    // Pure subjects contribute to their exact room type.
+    // ═══════════════════════════════════════════════════════════════
+
     const demandByType = new Map<string, number>();
+
+    const addDemand = (roomType: string, hours: number) => {
+      demandByType.set(roomType, (demandByType.get(roomType) ?? 0) + hours);
+    };
 
     for (const subj of problem.subjects) {
       const blocks = this.computeBlocksForSufficiency(subj, problem.config);
@@ -1878,19 +1892,25 @@ export class SchedulingService {
 
       if (sectionsTaking === 0) continue;
 
-      for (const block of blocks) {
-        let roomType: string | null = subj.requiredRoomType;
-        if (!roomType) continue;
+      const required = (subj.requiredRoomType ?? '').trim().toLowerCase();
 
+      for (const block of blocks) {
         const hours = (block.durationMinutes / 60) * sectionsTaking;
-        demandByType.set(
-          roomType,
-          (demandByType.get(roomType) ?? 0) + hours,
-        );
+
+        // Mixed / unset → kind decides
+        if (required === '' || required === 'any') {
+          if (block.kind === 'lab') {
+            addDemand('laboratory', hours);
+          } else {
+            addDemand('lecture_room', hours);
+          }
+          continue;
+        }
+
+        // Pure subject → exact room type
+        addDemand(subj.requiredRoomType as string, hours);
       }
     }
-
-    
 
     const startMin = this.timeToMinutes(problem.config.operatingHoursStart);
     const endMin = this.timeToMinutes(problem.config.operatingHoursEnd);
@@ -1898,19 +1918,48 @@ export class SchedulingService {
     const operatingDays = 6;
     const hoursPerWeekPerRoom = hoursPerDay * operatingDays;
 
+    // ═══════════════════════════════════════════════════════════════
+    // Supply — count rooms that can serve each pool.
+    //
+    // Lecture pool: lecture_room + drafting_room + computer_lab + laboratory
+    // Lab pool:     laboratory + computer_lab
+    //
+    // (This mirrors the solver's room_accepts_block permissive behavior.)
+    // ═══════════════════════════════════════════════════════════════
 
+    const lectureCapable = new Set([
+      'lecture_room',
+      'drafting_room',
+      'computer_lab',
+      'laboratory',
+    ]);
+    const labCapable = new Set(['laboratory', 'computer_lab']);
 
-    
-    const supplyByType = new Map<string, { rooms: number; hours: number }>();
-    for (const room of problem.rooms) {
-      const entry = supplyByType.get(room.roomType) ?? {
-        rooms: 0,
-        hours: 0,
-      };
-      entry.rooms += 1;
-      entry.hours += hoursPerWeekPerRoom;
-      supplyByType.set(room.roomType, entry);
+    const countRooms = (capable: Set<string>) =>
+      problem.rooms.filter((r: any) =>
+        capable.has(String(r.roomType)),
+      ).length;
+
+    // Supply in weekly room-hours per pool
+    const supplyByType = new Map<string, number>();
+
+    const pools: Array<{ key: string; capable: Set<string> }> = [
+      { key: 'lecture_room', capable: lectureCapable },
+      { key: 'laboratory', capable: labCapable },
+      // Pure-subject exact types still get their own pool
+      { key: 'computer_lab', capable: new Set(['computer_lab']) },
+      { key: 'drafting_room', capable: new Set(['drafting_room']) },
+      { key: 'other', capable: new Set(['other']) },
+    ];
+
+    for (const { key, capable } of pools) {
+      const rooms = countRooms(capable);
+      supplyByType.set(key, rooms * hoursPerWeekPerRoom);
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Compare demand against supply, but only for pools that have demand.
+    // ═══════════════════════════════════════════════════════════════
 
     const deficits: Array<{
       roomType: string;
@@ -1921,8 +1970,15 @@ export class SchedulingService {
     }> = [];
 
     for (const [roomType, demandHours] of demandByType.entries()) {
-      const supply = supplyByType.get(roomType);
-      const availableHours = supply?.hours ?? 0;
+      // If we don't have an explicit pool for this type (custom / 'other'),
+      // treat the raw room type as its own supply pool.
+      let availableHours = supplyByType.get(roomType);
+      if (availableHours === undefined) {
+        const rooms = problem.rooms.filter(
+          (r: any) => String(r.roomType) === roomType,
+        ).length;
+        availableHours = rooms * hoursPerWeekPerRoom;
+      }
 
       if (demandHours > availableHours) {
         const shortByHours = demandHours - availableHours;
@@ -1945,7 +2001,7 @@ export class SchedulingService {
     if (!sufficient) {
       const parts = deficits.map(
         (d) =>
-          `${d.suggestedExtraRooms} more ${d.roomType} room(s) ` +
+          `${d.suggestedExtraRooms} more ${d.roomType.replace('_', ' ')} room(s) ` +
           `(need ${d.neededHours}h, have ${d.availableHours}h)`,
       );
       hint = `Not enough rooms: ${parts.join('; ')}.`;
