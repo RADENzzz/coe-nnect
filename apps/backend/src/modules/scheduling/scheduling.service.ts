@@ -437,9 +437,43 @@ export class SchedulingService {
     }
     if (dto.roomId !== undefined) found.roomId = dto.roomId;
     if (dto.facultyId !== undefined) found.facultyId = dto.facultyId;
-    if (dto.section !== undefined) {
-      found.section = dto.section ?? null;
-      found.sectionId = await this.resolveSectionId(dto.section);
+    if (dto.loadType !== undefined) found.loadType = dto.loadType;
+
+    // ── Section handling — sectionId takes precedence, supports explicit clear ──
+    if (dto.sectionId !== undefined) {
+      if (dto.sectionId === null || dto.sectionId === '') {
+        // Explicit clear via sectionId
+        found.sectionId = null;
+        found.section = null;
+      } else {
+        const sec = await this.sectionRepo.findOne({
+          where: { sectionId: dto.sectionId },
+          select: ['sectionId', 'sectionCode'],
+        });
+        if (!sec) {
+          throw new BadRequestException(
+            `Section with id "${dto.sectionId}" not found.`,
+          );
+        }
+        found.sectionId = sec.sectionId;
+        found.section = sec.sectionCode;
+      }
+    } else if (dto.section !== undefined) {
+      if (dto.section === null || dto.section === '') {
+        // Explicit clear via section code
+        found.section = null;
+        found.sectionId = null;
+      } else {
+        // Set (or change) — fail loud if the code doesn't resolve
+        const resolved = await this.resolveSectionId(dto.section);
+        if (!resolved) {
+          throw new BadRequestException(
+            `Section "${dto.section}" not found. It may have been deleted or renamed.`,
+          );
+        }
+        found.section = dto.section;
+        found.sectionId = resolved;
+      }
     }
 
     return this.scheduleRepo.save(found);
