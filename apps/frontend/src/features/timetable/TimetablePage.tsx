@@ -158,6 +158,8 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     subjectTitle: raw.subject?.title ?? '',
     sectionId: raw.section ?? '',
     sectionCode: raw.section ?? '',
+    pendingFacultyRequestId: raw.pendingFacultyRequestId ?? null,
+    pendingFacultyDeptId: raw.pendingFacultyDeptId ?? null,
     facultyId: raw.facultyId ?? '',
     facultyName: hasSystemFaculty
       ? `${raw.faculty!.firstName} ${raw.faculty!.lastName}`
@@ -202,6 +204,8 @@ function versionEntryToEntry(
     subjectCode: raw.subject_code ?? '—',
     subjectTitle: raw.subject_title ?? '',
     sectionId: raw.section_id ?? '',
+    pendingFacultyRequestId: null, 
+    pendingFacultyDeptId: null,
     sectionCode: raw.section_code ?? '',
     facultyId: raw.faculty_id ?? '',
     facultyName: hasSystemFaculty
