@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,   // ← add
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,12 +11,15 @@ import { Room } from './entities/room.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 import { User } from '../users/entities/user.entity';
+import { RoomPreference } from './entities/room-preference.entity';
 
 @Injectable()
 export class RoomsService {
   constructor(
     @InjectRepository(Room)
     private readonly repo: Repository<Room>,
+    @InjectRepository(RoomPreference)
+    private readonly preferenceRepo: Repository<RoomPreference>,
   ) {}
 
   /**
@@ -149,6 +153,140 @@ export class RoomsService {
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, profile);
     await this.repo.remove(found);
+    return { success: true };
+  }
+
+    // ════════════════════════════════════════════
+  // ROOM PREFERENCES (F3)
+  // ════════════════════════════════════════════
+
+  /**
+   * List preferences for a specific room. Dean sees all;
+   * DH sees their own dept's row plus an aggregate count.
+   */
+  async findPreferencesForRoom(
+    roomId: string,
+    user: any,
+  ): Promise<
+    Array<{
+      preferenceId: string;
+      roomId: string;
+      deptId: string;
+      deptCode: string;
+      deptName: string;
+      priority: number;
+      createdBy: string | null;
+      createdAt: Date;
+    }>
+  > {
+    const rows = await this.preferenceRepo
+      .createQueryBuilder('rp')
+      .leftJoinAndSelect('rp.department', 'd')
+      .where('rp.room_id = :roomId', { roomId })
+      .orderBy('rp.priority', 'DESC')
+      .addOrderBy('d.dept_code', 'ASC')
+      .getMany();
+
+    return rows.map((r) => ({
+      preferenceId: r.preferenceId,
+      roomId: r.roomId,
+      deptId: r.deptId,
+      deptCode: r.department?.deptCode ?? '?',
+      deptName: r.department?.deptName ?? '?',
+      priority: r.priority,
+      createdBy: r.createdBy,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /**
+   * List all preferences for a department. Used by the solver
+   * payload builder.
+   */
+  async findPreferencesForDept(deptId: string): Promise<RoomPreference[]> {
+    return this.preferenceRepo.find({
+      where: { deptId },
+      order: { priority: 'DESC' },
+    });
+  }
+
+  /**
+   * Create or update a preference. Enforces:
+   *   - Room must be shared (dept_id IS NULL)
+   *   - DH must own the dept they're preferring for
+   */
+  async upsertPreference(
+    dto: { roomId: string; deptId: string; priority?: number },
+    user: any,
+  ): Promise<RoomPreference> {
+    // Ownership: DH can only act for their own department
+    if (
+      user.role === 'department_head' &&
+      String(user.deptId) !== String(dto.deptId)
+    ) {
+      throw new ForbiddenException(
+        'You can only set preferences for your own department.',
+      );
+    }
+
+    // Room must exist
+    const room = await this.repo.findOne({
+      where: { roomId: dto.roomId },
+      select: ['roomId', 'deptId', 'roomNumber'],
+    });
+    if (!room) {
+      throw new NotFoundException(`Room ${dto.roomId} not found`);
+    }
+    
+
+    // Owned rooms can't be preferred — fail loud
+    if (room.deptId !== null) {
+      throw new BadRequestException(
+        `Room ${room.roomNumber} is owned by another department and cannot be preferred.`,
+      );
+    } 
+
+    const existing = await this.preferenceRepo.findOne({
+      where: { roomId: dto.roomId, deptId: dto.deptId },
+    });
+
+    if (existing) {
+      if (dto.priority !== undefined) {
+        existing.priority = dto.priority;
+      }
+      return this.preferenceRepo.save(existing);
+    }
+
+    const entity = this.preferenceRepo.create({
+      roomId: dto.roomId,
+      deptId: dto.deptId,
+      priority: dto.priority ?? 1,
+      createdBy: user.userId ?? null,
+    });
+    return this.preferenceRepo.save(entity);
+  }
+
+  /**
+   * Remove a preference. DH can only remove their own dept's row.
+   */
+  async removePreference(id: string, user: any): Promise<{ success: boolean }> {
+    const found = await this.preferenceRepo.findOne({
+      where: { preferenceId: id },
+    });
+    if (!found) {
+      throw new NotFoundException(`Preference ${id} not found`);
+    }
+
+    if (
+      user.role === 'department_head' &&
+      String(user.deptId) !== String(found.deptId)
+    ) {
+      throw new ForbiddenException(
+        'You can only remove preferences for your own department.',
+      );
+    }
+
+    await this.preferenceRepo.remove(found);
     return { success: true };
   }
 }
