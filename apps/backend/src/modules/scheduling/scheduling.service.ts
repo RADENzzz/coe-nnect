@@ -1601,6 +1601,19 @@ export class SchedulingService {
       throw new BadRequestException('No active rooms available');
     }
 
+        // ── F3: room preferences ──
+    const { data: roomPreferences, error: prefErr } = await db
+      .from('room_preference')
+      .select('room_id, dept_id, priority')
+      .eq('dept_id', deptId);
+
+    if (prefErr) {
+      // Non-fatal: log and continue without preferences
+      this.logger.warn(
+        `Failed to load room preferences for dept ${deptId}: ${prefErr.message}`,
+      );
+    }
+
     const { data: existingScheduleRows, error: existErr } = await db
       .from('schedule')
       .select(
@@ -1695,6 +1708,11 @@ export class SchedulingService {
         roomType: r.room_type,
         capacity: r.capacity ?? null,
         deptId: r.dept_id ? String(r.dept_id) : null,
+      })),
+      roomPreferences: (roomPreferences ?? []).map((p) => ({    // ← NEW
+        deptId: String(p.dept_id),
+        roomId: String(p.room_id),
+        priority: Number(p.priority ?? 1),
       })),
       timeSlots,
       config: {
