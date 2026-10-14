@@ -13,6 +13,7 @@ import {
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
+import { CreateRoomPreferenceDto } from './dto/room-preference.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -32,6 +33,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 export class RoomsController {
   constructor(private readonly rooms: RoomsService) {}
 
+  // ════════════════════════════════════════════
+  // STATIC-PREFIX ROUTES (must precede :id)
+  // ════════════════════════════════════════════
+
   @Get()
   async findAll(@Query('includeInactive') includeInactive?: string) {
     const data =
@@ -40,6 +45,38 @@ export class RoomsController {
         : await this.rooms.findAll();
     return { data };
   }
+
+  // ── ROOM PREFERENCES (F3) ──
+
+  @Get('preferences')
+  @Roles('college_dean', 'department_head')
+  async listPreferences(@Query('roomId') roomId: string, @Req() req: any) {
+    const data = await this.rooms.findPreferencesForRoom(
+      roomId,
+      req.profile,
+    );
+    return { data };
+  }
+
+  @Post('preferences')
+  @Roles('college_dean', 'department_head')
+  async upsertPreference(
+    @Body() dto: CreateRoomPreferenceDto,
+    @Req() req: any,
+  ) {
+    const data = await this.rooms.upsertPreference(dto, req.profile);
+    return { data };
+  }
+
+  @Delete('preferences/:id')
+  @Roles('college_dean', 'department_head')
+  async removePreference(@Param('id') id: string, @Req() req: any) {
+    return this.rooms.removePreference(id, req.profile);
+  }
+
+  // ════════════════════════════════════════════
+  // PARAMETERIZED :id ROUTES (must come after)
+  // ════════════════════════════════════════════
 
   @Get(':id')
   async findOne(@Param('id') id: string) {
