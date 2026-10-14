@@ -151,6 +151,14 @@ export const COLUMN_ORDER: ColumnRole[] = [
   'total',
 ];
 
+export interface SynthesizedCode {
+  subjectCode: string;
+  title: string;
+  yearLevel: number;
+  semester: string;
+  origin: 'explicit' | 'synthesized' | 'loose';
+}
+
 export interface ImportResult {
   subjectsCreated: number;
   subjectsExisting: number;
@@ -165,6 +173,7 @@ export interface ImportResult {
     existing: number;
   }[];
   warnings: string[];
+  synthesizedCodes: SynthesizedCode[];
 }
 
 export interface ProgramOption {
