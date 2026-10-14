@@ -306,15 +306,28 @@ export async function plotMulti(
   return data.data;
 }
 
+export interface UpdateSchedulePayload {
+  dayOfWeek?: string;
+  startTime?: string;
+  endTime?: string;
+  roomId?: string;
+  facultyId?: string;
+  /**
+   * Section code, e.g. "CpE-1A".
+   * Send `null` to explicitly clear the section assignment.
+   */
+  section?: string | null;
+  /**
+   * Section ID (bigint as string). Takes precedence over `section` if both
+   * are sent. Send `null` to explicitly clear.
+   */
+  sectionId?: string | null;
+  loadType?: 'lecture' | 'laboratory' | 'other';
+}
+
 export async function updateSchedule(
   id: string,
-  payload: {
-    dayOfWeek?: string;
-    startTime?: string;
-    endTime?: string;
-    roomId?: string;
-    facultyId?: string;
-  },
+  payload: UpdateSchedulePayload,
 ): Promise<RawSchedule> {
   const { data } = await api.patch(`/v1/schedules/${id}`, payload);
   return data.data;
