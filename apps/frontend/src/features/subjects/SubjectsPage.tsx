@@ -10,6 +10,7 @@ import {
   deleteSubject,
   type SubjectRecord,
   type CreateSubjectInput,
+  type SubjectRoomType,
 } from '../../api/subjects.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
@@ -20,8 +21,9 @@ import { ActiveBadge } from '../../components/ui/StatusBadge';
 import RestrictionsPanel from './components/RestrictionsPanel';
 import { Link } from 'react-router-dom';
 
-const ROOM_TYPES = [
-  { value: '', label: '— any —' },
+const ROOM_TYPES: Array<{ value: '' | SubjectRoomType; label: string }> = [
+  { value: '', label: '— none —' },
+  { value: 'any', label: 'Any (mixed lec + lab)' },
   { value: 'lecture_room', label: 'Lecture Room' },
   { value: 'laboratory', label: 'Laboratory' },
   { value: 'computer_lab', label: 'Computer Lab' },
@@ -30,7 +32,10 @@ const ROOM_TYPES = [
 ];
 
 type Mode = 'create' | 'edit';
-type RoomTypeFilter = '' | 'lecture_room' | 'laboratory' | 'computer_lab' | 'drafting_room' | 'other' | 'none';
+type RoomTypeFilter =
+  | ''
+  | SubjectRoomType
+  | 'none';
 type ComponentFilter = 'all' | 'lecture_only' | 'lab_only' | 'mixed';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
@@ -50,8 +55,6 @@ export default function SubjectsPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
-  // After the Admin→Dean consolidation, both the dev account and the
-  // College Dean have full subject management powers.
   const isAdminOrDean =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
   const isDH = profile?.role === 'department_head';
@@ -146,7 +149,6 @@ export default function SubjectsPage() {
     return counts;
   }, [subjects]);
 
-  // ── Ownership ──
   const isForeign = useCallback(
     (s: SubjectRecord): boolean => {
       if (!isDH) return false;
@@ -155,7 +157,6 @@ export default function SubjectsPage() {
     [isDH, myDeptId],
   );
 
-  // ── Filtering + sorting ──
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
 
@@ -247,8 +248,13 @@ export default function SubjectsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: Partial<CreateSubjectInput> }) =>
-      updateSubject(id, input),
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: Partial<CreateSubjectInput>;
+    }) => updateSubject(id, input),
     onSuccess: (s) => {
       setSuccess(`Subject "${s.subjectCode}" updated.`);
       closeForm();
@@ -282,7 +288,7 @@ export default function SubjectsPage() {
     title: '',
     lectureUnits: '',
     labUnits: '',
-    requiredRoomType: '',
+    requiredRoomType: '' as '' | SubjectRoomType,
     deptId: '',
   });
 
@@ -323,7 +329,7 @@ export default function SubjectsPage() {
       title: s.title,
       lectureUnits: String(s.lectureUnits ?? 0),
       labUnits: String(s.labUnits ?? 0),
-      requiredRoomType: s.requiredRoomType ?? '',
+      requiredRoomType: (s.requiredRoomType ?? '') as '' | SubjectRoomType,
       deptId: s.deptId ?? '',
     });
     setError(null);
@@ -335,6 +341,13 @@ export default function SubjectsPage() {
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
+
+  // ── Live hints ──
+  const lectureUnitsNum = Number(form.lectureUnits || 0);
+  const labUnitsNum = Number(form.labUnits || 0);
+  const isMixed = lectureUnitsNum > 0 && labUnitsNum > 0;
+  const roomTypeMismatch =
+    isMixed && form.requiredRoomType !== '' && form.requiredRoomType !== 'any';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -350,13 +363,20 @@ export default function SubjectsPage() {
       return;
     }
 
+    // Auto-suggest: mixed subject → force 'any' regardless of what was picked
+    let requiredRoomType: SubjectRoomType | null =
+      form.requiredRoomType === '' ? null : form.requiredRoomType;
+    if (lecture > 0 && lab > 0) {
+      requiredRoomType = 'any';
+    }
+
     const payload: CreateSubjectInput = {
       subjectCode: form.subjectCode.trim(),
       title: form.title.trim(),
       totalUnits: total,
       lectureUnits: lecture,
       labUnits: lab,
-      requiredRoomType: form.requiredRoomType || null,
+      requiredRoomType,
       deptId: form.deptId,
     };
 
@@ -400,7 +420,19 @@ export default function SubjectsPage() {
     </button>
   );
 
-  // ── Columns ──
+  const renderRoomType = (s: SubjectRecord) => {
+    if (!s.requiredRoomType) return '—';
+    if (s.requiredRoomType === 'any') {
+      return (
+        <span className="inline-flex items-center gap-1 text-primary">
+          <Icon name="swap_horiz" size={12} />
+          any
+        </span>
+      );
+    }
+    return s.requiredRoomType.replace('_', ' ');
+  };
+
   const columns: Column<SubjectRecord>[] = [
     {
       key: 'code',
@@ -451,8 +483,7 @@ export default function SubjectsPage() {
       header: <SortHeader label="Room Type" sortKeyName="roomType" />,
       cardVariant: 'meta',
       cellClassName: 'text-on-surface-variant text-xs',
-      render: (s) =>
-        s.requiredRoomType ? s.requiredRoomType.replace('_', ' ') : '—',
+      render: renderRoomType,
     },
     {
       key: 'status',
@@ -468,12 +499,6 @@ export default function SubjectsPage() {
     },
   ];
 
-  /**
-   * Actions per row.
-   * Admin/Dean → full actions on every row.
-   * DH (own)   → full actions.
-   * DH (foreign) → no actions.
-   */
   const getActions = (s: SubjectRecord): RowAction[] => {
     if (isForeign(s)) return [];
     return [
@@ -567,7 +592,7 @@ export default function SubjectsPage() {
         </div>
       )}
 
-      {/* Filter panel (unchanged) */}
+      {/* Filter panel */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[240px]">
@@ -623,7 +648,7 @@ export default function SubjectsPage() {
             </select>
           </div>
 
-          <div className="min-w-[150px]">
+          <div className="min-w-[180px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Room Type
             </label>
@@ -634,6 +659,7 @@ export default function SubjectsPage() {
             >
               <option value="">Any room type</option>
               <option value="none">No specific room</option>
+              <option value="any">Any (mixed)</option>
               <option value="lecture_room">Lecture Room</option>
               <option value="laboratory">Laboratory</option>
               <option value="computer_lab">Computer Lab</option>
@@ -809,7 +835,7 @@ export default function SubjectsPage() {
               <p className="text-xs text-on-surface-variant">
                 Total units:{' '}
                 <strong className="text-on-surface">
-                  {Number(form.lectureUnits || 0) + Number(form.labUnits || 0)}
+                  {lectureUnitsNum + labUnitsNum}
                 </strong>
               </p>
             </div>
@@ -830,31 +856,25 @@ export default function SubjectsPage() {
                 ))}
               </select>
               <p className="text-[10px] text-on-surface-variant mt-1">
-                Leave as "any" if the subject can be scheduled in any room.
+                Leave as "— none —" if the subject can be scheduled in any room.
+                Pick "Any" for subjects with both lecture and lab units.
               </p>
             </div>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
-            <button
-              type="button"
-              onClick={closeForm}
-              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
-            >
-              {createMutation.isPending || updateMutation.isPending
-                ? 'Saving...'
-                : mode === 'create'
-                ? 'Create Subject'
-                : 'Save Changes'}
-            </button>
-          </div>
+          {isMixed && (
+            <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-blue-50 text-blue-900 border border-blue-200">
+              <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Mixed subject detected</p>
+                <p className="mt-0.5">
+                  This subject has both lecture and lab units. Room type will
+                  be set to <strong>Any</strong> on save — lecture blocks go in
+                  lecture rooms, lab blocks go in labs.
+                </p>
+              </div>
+            </div>
+          )}
         </form>
       </Modal>
 
