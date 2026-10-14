@@ -143,10 +143,21 @@ export class SchedulingService {
 
     const engineResult = this.constraints.evaluate(context);
 
+    // ── F1b: F-8 is not meaningful during pre-flight validate ──
+    // The plot path auto-creates the cross-department faculty_request.
+    // The validate path is read-only and cannot. Filter F-8 out so the
+    // DH isn't blocked by a rule the plot path itself will satisfy.
+    const filteredHard = engineResult.hardConflicts.filter(
+      (c) => c.ruleId !== 'F-8',
+    );
+    const filteredSoft = engineResult.softWarnings.filter(
+      (c) => c.ruleId !== 'F-8',
+    );
+
     return {
-      valid: engineResult.valid,
-      hardConflicts: engineResult.hardConflicts,
-      softWarnings: engineResult.softWarnings,
+      valid: filteredHard.length === 0,
+      hardConflicts: filteredHard,
+      softWarnings: filteredSoft,
       alternatives: [],
     };
   }
@@ -223,6 +234,16 @@ export class SchedulingService {
       }
     }
 
+    // ── F1b: create the cross-dept request BEFORE the engine runs
+    //          so F-8 sees the pending request in the context ──
+    const gate = await this.ensureCrossDeptFacultyRequest({
+      facultyId: dto.facultyId,
+      subjectDeptId,
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      user,
+    });
+
     const context = await this.ruleContextBuilder.build({
       termId: dto.termId,
       subjectId: dto.subjectId,
@@ -238,6 +259,24 @@ export class SchedulingService {
     const engineResult = this.constraints.evaluate(context);
 
     if (!engineResult.valid) {
+      // ── F1b: roll back the gate if the engine rejects ──
+      if (gate) {
+        try {
+          const db = this.supabase.getAdminClient();
+          await db
+            .from('faculty_request')
+            .delete()
+            .eq('request_id', gate.requestId);
+          this.logger.log(
+            `F1b: rolled back request ${gate.requestId} after engine rejection`,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `F1b: rollback of request ${gate.requestId} failed: ${(err as Error).message}`,
+          );
+        }
+      }
+
       const reasons = engineResult.hardConflicts
         .map((c) => `${c.ruleId}: ${c.reason}`)
         .join('\n');
@@ -263,6 +302,8 @@ export class SchedulingService {
       section: dto.section ?? null,
       sectionId,
       deptId: subjectDeptId,
+      pendingFacultyRequestId: gate?.requestId ?? null,
+      pendingFacultyDeptId: gate?.facultyDeptId ?? null,
       loadType: dto.loadType ?? null,
       dayOfWeek: dto.dayOfWeek as any,
       startTime:
@@ -271,6 +312,35 @@ export class SchedulingService {
       status: 'draft',
     });
     const saved = await this.scheduleRepo.save(entry);
+
+    // ── F1b: notify the faculty's dept head ──
+    if (gate) {
+      try {
+        const targetDHs = await this.recipients.departmentHeadsOf(
+          gate.facultyDeptId,
+        );
+        const subject = subjectRow as any;
+        await this.dispatcher.dispatch('faculty_request.created', {
+          recipientUserIds: targetDHs,
+          title: 'Cross-department faculty request',
+          body:
+            `A faculty member from your department is scheduled for ` +
+            `a subject from another department. Approve or reject on the Approvals page.`,
+          entityType: 'faculty_request',
+          entityId: gate.requestId,
+          payload: {
+            requestId: gate.requestId,
+            termId: dto.termId,
+            subjectId: dto.subjectId,
+            facultyId: dto.facultyId,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `F1b: notification failed: ${(err as Error).message}`,
+        );
+      }
+    }
 
     // Fire-and-forget overload check — only for system faculty
     if (dto.facultyId) {
@@ -327,6 +397,15 @@ export class SchedulingService {
       }
     }
 
+    // ── F1b: create the cross-dept request BEFORE the engine runs ──
+    const gate = await this.ensureCrossDeptFacultyRequest({
+      facultyId: dto.facultyId,
+      subjectDeptId,
+      termId: dto.termId,
+      subjectId: dto.subjectId,
+      user,
+    });
+
     const errors: Array<{ dayOfWeek: string; reason: string }> = [];
 
     for (const session of dto.sessions) {
@@ -380,6 +459,24 @@ export class SchedulingService {
     }
 
     if (errors.length > 0) {
+      // ── F1b: roll back the gate if the engine rejected ──
+      if (gate) {
+        try {
+          const db = this.supabase.getAdminClient();
+          await db
+            .from('faculty_request')
+            .delete()
+            .eq('request_id', gate.requestId);
+          this.logger.log(
+            `F1b: rolled back request ${gate.requestId} after engine rejection`,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `F1b: rollback of request ${gate.requestId} failed: ${(err as Error).message}`,
+          );
+        }
+      }
+
       const summary = errors.map((e) => e.reason).join('\n');
       throw new BadRequestException(
         `Cannot plot — hard conflicts detected:\n${summary}`,
@@ -393,6 +490,7 @@ export class SchedulingService {
       );
     }
 
+
     const rows = dto.sessions.map((s) => ({
       termId: dto.termId,
       subjectId: dto.subjectId,
@@ -403,6 +501,8 @@ export class SchedulingService {
       section: dto.section ?? null,
       sectionId,
       deptId: subjectDeptId,
+      pendingFacultyRequestId: gate?.requestId ?? null,
+      pendingFacultyDeptId: gate?.facultyDeptId ?? null,
       loadType: dto.loadType ?? null,
       dayOfWeek: s.dayOfWeek as DayOfWeek,
       startTime: s.startTime.length === 5 ? `${s.startTime}:00` : s.startTime,
@@ -482,6 +582,9 @@ export class SchedulingService {
       );
     }
 
+    // ── Track the pre-edit gate so we can clean up if it's no longer needed ──
+    const previousRequestId = found.pendingFacultyRequestId;
+
     if (sysFacultySet) {
       // Setting a system faculty → clears external
       found.facultyId = dto.facultyId as string;
@@ -499,6 +602,28 @@ export class SchedulingService {
     ) {
       // Explicit clear of external faculty
       found.externalFacultyName = null;
+    }
+
+    // ── F1b: if the faculty source changed, re-evaluate the gate ──
+    // Cases where the gate is no longer needed:
+    //   - faculty is now external (no system faculty → no dept to approve)
+    //   - faculty is cleared entirely
+    //   - faculty changed to one from the same dept as the subject
+    //
+    // We compute the NEW gate state below and reconcile after save.
+    let needsGateRefresh = false;
+
+    if (!found.facultyId) {
+      // No system faculty anymore → gate no longer needed
+      needsGateRefresh = true;
+    } else if (found.facultyId !== (dto.facultyId ?? null)) {
+      // Faculty changed — re-check whether it's still cross-dept
+      needsGateRefresh = true;
+    }
+
+    if (needsGateRefresh) {
+      found.pendingFacultyRequestId = null;
+      found.pendingFacultyDeptId = null;
     }
 
     // ── Section handling — sectionId takes precedence, supports explicit clear ──
@@ -538,8 +663,71 @@ export class SchedulingService {
       }
     }
 
-    return this.scheduleRepo.save(found);
-  }
+    const saved = await this.scheduleRepo.save(found);
+
+    // ── F1b: cancel the old request if we dropped the gate ──
+    if (
+      previousRequestId &&
+      previousRequestId !== saved.pendingFacultyRequestId
+    ) {
+      await this.cancelOrphanedFacultyRequest(previousRequestId);
+    }
+
+    // ── F1b: if the new faculty is cross-dept, ensure a fresh gate ──
+    if (!saved.pendingFacultyRequestId && saved.facultyId) {
+      const { data: subjRow } = await this.supabase
+        .getAdminClient()
+        .from('subject')
+        .select('dept_id')
+        .eq('subject_id', saved.subjectId)
+        .maybeSingle();
+      const subjectDeptId = subjRow?.dept_id ? String(subjRow.dept_id) : null;
+
+      if (subjectDeptId) {
+        const gate = await this.ensureCrossDeptFacultyRequest({
+          facultyId: saved.facultyId,
+          subjectDeptId,
+          termId: saved.termId,
+          subjectId: saved.subjectId,
+          user,
+        });
+
+        if (gate) {
+          saved.pendingFacultyRequestId = gate.requestId;
+          saved.pendingFacultyDeptId = gate.facultyDeptId;
+          await this.scheduleRepo.save(saved);
+
+          try {
+            const targetDHs = await this.recipients.departmentHeadsOf(
+              gate.facultyDeptId,
+            );
+            await this.dispatcher.dispatch('faculty_request.created', {
+              recipientUserIds: targetDHs,
+              title: 'Cross-department faculty request',
+              body:
+                'A schedule edit created a new cross-department faculty ' +
+                'assignment. Approve or reject on the Approvals page.',
+              entityType: 'faculty_request',
+              entityId: gate.requestId,
+              payload: {
+                requestId: gate.requestId,
+                termId: saved.termId,
+                subjectId: saved.subjectId,
+                facultyId: saved.facultyId,
+                reason: 'schedule_edit',
+              },
+            });
+          } catch (err) {
+            this.logger.warn(
+              `F1b update: notification failed: ${(err as Error).message}`,
+            );
+          }
+        }
+      }
+    }
+
+    return saved;
+  } 
 
   /**
    * Update a schedule entry's status.
@@ -558,6 +746,14 @@ export class SchedulingService {
     user: any,
   ): Promise<Schedule> {
     const found = await this.assertOwnership(id, user);
+
+        // ── F1b: cannot finalize while pending cross-dept approval ──
+    if (status === 'finalized' && found.pendingFacultyRequestId) {
+      throw new BadRequestException(
+        'This entry has a pending cross-department faculty approval. ' +
+          'Wait for approval before finalizing.',
+      );
+    }
 
     const previousStatus = found.status;
     const isBecomingFinalized =
@@ -608,7 +804,15 @@ export class SchedulingService {
       );
     }
 
+    const requestId = found.pendingFacultyRequestId;
+
     await this.scheduleRepo.delete(id);
+
+    // ── F1b: if we just orphaned a pending cross-dept request, cancel it ──
+    if (requestId) {
+      await this.cancelOrphanedFacultyRequest(requestId);
+    }
+
     return { success: true };
   }
 
@@ -991,6 +1195,8 @@ export class SchedulingService {
       `Schedule ${id} flagged by ${user.userId} (role=${user.role}, dept=${user.deptId}): ${reason}`,
     );
     const saved = await this.scheduleRepo.save(found);
+
+    
 
     // ═══ Notification: flagged ═══
     const ownerDHs = await this.recipients.departmentHeadsOfSchedule(id);
@@ -2703,6 +2909,243 @@ export class SchedulingService {
     } catch (err) {
       this.logger.warn(
         `checkFacultyOverload(${facultyId}) failed: ${(err as Error).message}`,
+      );
+    }
+  }
+    /**
+   * F1b: detect cross-department faculty and, if the actor is a DH
+   * plotting a subject owned by their own dept with a faculty from
+   * another dept, create (or reuse) a faculty_request in 'pending'
+   * status.
+   *
+   * Returns:
+   *   - null → no gate needed (same dept, dean/admin, or external faculty)
+   *   - { requestId, facultyDeptId } → schedule rows should be marked
+   *     as pending approval from that dept
+   */
+  private async ensureCrossDeptFacultyRequest(params: {
+    facultyId: string | null | undefined;
+    subjectDeptId: string | null;
+    termId: string;
+    subjectId: string;
+    user: any;
+  }): Promise<{ requestId: string; facultyDeptId: string } | null> {
+    const { facultyId, subjectDeptId, termId, subjectId, user } = params;
+
+    // No system faculty → no gate
+    if (!facultyId) return null;
+
+    // Dean / admin bypass
+    if (
+      user?.role === 'college_dean' ||
+      user?.role === 'administrator'
+    ) {
+      return null;
+    }
+
+    // Need a subject dept to compare against
+    if (!subjectDeptId) return null;
+
+    const db = this.supabase.getAdminClient();
+
+    // Look up the faculty's dept
+    const { data: fac } = await db
+      .from('faculty')
+      .select('faculty_id, dept_id')
+      .eq('faculty_id', facultyId)
+      .maybeSingle();
+
+    if (!fac?.dept_id) return null;
+    const facultyDeptId = String(fac.dept_id);
+
+    // Same dept → no gate
+    if (facultyDeptId === String(subjectDeptId)) return null;
+
+    // Cross-dept → look for an existing approved or pending request
+// F1b (2B): one-shot approval semantics. We reuse a *pending* request
+// (the DH is still mid-workflow), but never an *approved* one — that
+// approval was already consumed by whatever row it was linked to.
+const { data: existing } = await db
+  .from('faculty_request')
+  .select('request_id, status')
+  .eq('faculty_id', facultyId)
+  .eq('subject_id', subjectId)
+  .eq('term_id', termId)
+  .eq('status', 'pending')
+  .maybeSingle();
+
+if (existing) {
+  return {
+    requestId: String(existing.request_id),
+    facultyDeptId,
+  };
+}
+
+// No pending request → check for any live schedule rows that are
+// already approved. If we find one, the request is "consumed" and we
+// create a fresh one. If none, the row was orphaned and the approved
+// request will already have been cancelled by cancelOrphanedFacultyRequest.
+
+    // Create a new pending request on behalf of the DH.
+    //
+    // NOTE: faculty_request has three NOT NULL columns we must fill:
+    //   - requesting_dept_id → the DH's dept
+    //   - target_dept_id     → the faculty's dept
+    //   - reason             → a human-readable label
+    //
+    // `target_dept_id` is the crux — without it, the insert fails and
+    // F-8 never sees a matching request.
+    const requestingDeptId = user?.deptId
+      ? String(user.deptId)
+      : subjectDeptId; // fallback: the subject's own dept
+
+    const { data: created, error } = await db
+      .from('faculty_request')
+      .insert({
+        faculty_id: facultyId,
+        subject_id: subjectId,
+        term_id: termId,
+        requesting_dept_id: requestingDeptId,
+        target_dept_id: facultyDeptId,
+        reason:
+          'Auto-created by cross-department faculty gate: ' +
+          'a subject owned by another department was plotted with ' +
+          'a faculty member from your department.',
+        status: 'pending',
+        created_by: user?.userId ?? null,
+      })
+      .select('request_id')
+      .single();
+
+    if (error || !created) {
+      this.logger.warn(
+        `F1b: failed to create faculty_request: ${error?.message}`,
+      );
+      return null;
+    }
+
+    this.logger.log(
+      `F1b: created request ${created.request_id} ` +
+        `(requesting=${requestingDeptId}, target=${facultyDeptId}, ` +
+        `faculty=${facultyId}, subject=${subjectId}, term=${termId})`,
+    );
+
+    return {
+      requestId: String(created.request_id),
+      facultyDeptId,
+    };
+  }
+    /**
+   * F1b: when a schedule row is deleted, its linked faculty_request may
+   * become orphaned. If no other schedule rows still reference it AND
+   * it's still pending, cancel it so it disappears from the Approvals
+   * queue.
+   *
+   * Approved / rejected requests are left alone — they're already
+   * resolved and serve as historical record.
+   */
+  private async cancelOrphanedFacultyRequest(
+    requestId: string,
+  ): Promise<void> {
+    try {
+      const db = this.supabase.getAdminClient();
+
+      // Any remaining schedule rows linked to this request?
+      const { data: remaining, error: countErr } = await db
+        .from('schedule')
+        .select('schedule_id')
+        .eq('pending_faculty_request_id', requestId)
+        .limit(1);
+
+      if (countErr) {
+        this.logger.warn(
+          `F1b cleanup: failed to count remaining rows for request ${requestId}: ${countErr.message}`,
+        );
+        return;
+      }
+
+      if (remaining && remaining.length > 0) {
+        // Still has dependents — leave the request alone
+        return;
+      }
+
+      // Orphaned. Check its current status before cancelling.
+      const { data: req, error: reqErr } = await db
+        .from('faculty_request')
+        .select('request_id, status')
+        .eq('request_id', requestId)
+        .maybeSingle();
+
+      if (reqErr || !req) {
+        this.logger.warn(
+          `F1b cleanup: request ${requestId} not found or lookup failed: ${reqErr?.message}`,
+        );
+        return;
+      }
+
+      // F1b (2B + 3B): cancel pending OR approved requests when orphaned.
+      // Rejected/cancelled are already terminal — leave them alone.
+      if (req.status !== 'pending' && req.status !== 'approved') {
+        return;
+      }
+
+      // Cancel it
+      const { error: updateErr } = await db
+        .from('faculty_request')
+        .update({
+          status: 'cancelled',
+          responded_at: new Date().toISOString(),
+          response_remarks:
+            'Auto-cancelled: the linked schedule entry was deleted.',
+        })
+        .eq('request_id', requestId);
+
+      if (updateErr) {
+        this.logger.warn(
+          `F1b cleanup: failed to cancel request ${requestId}: ${updateErr.message}`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `F1b cleanup: cancelled orphaned request ${requestId} (schedule row deleted)`,
+      );
+
+      // Notify the target DH that the request is cancelled
+      try {
+        // Look up the target dept from the request
+        const { data: fullReq } = await db
+          .from('faculty_request')
+          .select('target_dept_id')
+          .eq('request_id', requestId)
+          .maybeSingle();
+
+        if (fullReq?.target_dept_id) {
+          const targetDHs = await this.recipients.departmentHeadsOf(
+            String(fullReq.target_dept_id),
+          );
+          await this.dispatcher.dispatch('request.cancelled', {
+            recipientUserIds: targetDHs,
+            title: 'Cross-dept request cancelled',
+            body:
+              'A cross-department faculty request was auto-cancelled ' +
+              'because the linked class was deleted.',
+            entityType: 'faculty_request',
+            entityId: requestId,
+            payload: {
+              reason: 'schedule_deleted',
+              requestId,
+            },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(
+          `F1b cleanup: cancellation notification failed: ${(err as Error).message}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `F1b cleanup: unexpected error for request ${requestId}: ${(err as Error).message}`,
       );
     }
   }
