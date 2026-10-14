@@ -21,6 +21,7 @@ export interface SubjectRecord {
   labUnits: number;
   deptId: string;
   requiredRoomType: SubjectRoomType | null;
+  isMinor: boolean;
   isActive: boolean;
 }
 
@@ -31,6 +32,7 @@ export interface CreateSubjectInput {
   lectureUnits: number;
   labUnits: number;
   requiredRoomType?: SubjectRoomType | null;
+  isMinor?: boolean;
   deptId: string;
 }
 
