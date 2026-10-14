@@ -13,6 +13,8 @@ export interface ScheduleEntry {
   externalFacultyName: string | null;
   roomId: string;
   roomNumber: string;
+  pendingFacultyRequestId: string | null;
+  pendingFacultyDeptId: string | null;
   building: string;
   day: Day;
   startTime: string;
