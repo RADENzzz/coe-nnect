@@ -362,6 +362,31 @@ export async function fetchFlagged(termId: string): Promise<RawSchedule[]> {
 }
 
 // ────────────────────────────────────────────
+// Minor subjects — unplotted detection
+// ────────────────────────────────────────────
+
+export interface UnplottedMinor {
+  subjectId: string;
+  subjectCode: string;
+  title: string;
+  deptId: string | null;
+  yearLevel: number | null;
+  semester: string | null;
+  programId: string | null;
+  programCode: string | null;
+}
+
+export async function fetchUnplottedMinors(
+  termId: string,
+  deptId: string,
+): Promise<UnplottedMinor[]> {
+  const { data } = await api.get('/v1/schedules/unplotted-minors', {
+    params: { termId, deptId },
+  });
+  return data.data;
+}
+
+// ────────────────────────────────────────────
 // Schedule Version — FR 5.1.8(a)
 // ────────────────────────────────────────────
 
