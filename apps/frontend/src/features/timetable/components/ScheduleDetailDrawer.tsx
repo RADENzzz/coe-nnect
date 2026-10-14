@@ -321,6 +321,11 @@ export default function ScheduleDetailDrawer({
                 >
                   {STATUS_LABELS[entry.status ?? 'draft']}
                 </span>
+                {entry.externalFacultyName && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase bg-amber-100 text-amber-800">
+                    Ext. Faculty
+                  </span>
+                )}
               </div>
               <h3 className="text-base font-semibold text-on-surface">
                 {entry.subjectTitle || '—'}
@@ -333,11 +338,35 @@ export default function ScheduleDetailDrawer({
                 label="Section"
                 value={entry.sectionCode || '—'}
               />
-              <DetailRow
-                icon="person"
-                label="Faculty"
-                value={entry.facultyName}
-              />
+              {entry.externalFacultyName ? (
+                <div className="flex items-start gap-3">
+                  <Icon
+                    name="person"
+                    size={18}
+                    className="text-amber-600 mt-0.5 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                        Faculty
+                      </p>
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wider">
+                        <Icon name="badge" size={10} />
+                        External
+                      </span>
+                    </div>
+                    <p className="text-sm text-amber-900 italic break-words">
+                      {entry.facultyName}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <DetailRow
+                  icon="person"
+                  label="Faculty"
+                  value={entry.facultyName}
+                />
+              )}
               <DetailRow
                 icon="meeting_room"
                 label="Room"
