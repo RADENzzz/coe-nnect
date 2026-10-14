@@ -13,6 +13,8 @@ export interface RawSchedule {
   roomId: string | null;
   timeslotId: string | null;
   section: string | null;
+  pendingFacultyRequestId: string | null;
+  pendingFacultyDeptId: string | null;
   loadType: 'lecture' | 'laboratory' | 'other' | null;
   status: 'draft' | 'review' | 'finalized' | 'published';
   dayOfWeek: string | null;
