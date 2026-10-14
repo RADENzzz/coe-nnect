@@ -55,17 +55,20 @@ function ClassBlockBase({
   const locked =
     entry.status === 'finalized' || entry.status === 'published';
   const isExternalFaculty = !!entry.externalFacultyName;
+  const isPending = !!entry.pendingFacultyRequestId;
   const isFlagged = !!entry.flagged;
 
   const isCompact = durationMinutes <= 30;
   const isNarrow = laneCount >= 3;
   const showSecondary = metrics.showSecondaryLines && !isCompact && !isNarrow;
 
-  // Ring priority: conflict > warning > flagged > foreign
+  // Ring priority: conflict > warning > pending > flagged > foreign
   const ringClass = entry.hasConflict
     ? 'ring-2 ring-red-500 animate-pulse'
     : entry.hasWarning
     ? 'ring-2 ring-amber-400'
+    : isPending
+    ? 'ring-2 ring-amber-500 animate-pulse'
     : isFlagged
     ? 'ring-2 ring-rose-500'
     : isForeign
@@ -109,9 +112,9 @@ function ClassBlockBase({
         entry.sectionCode ? ' ' + entry.sectionCode : ''
       }, ${formatTime(entry.startTime)} to ${formatTime(entry.endTime)}${
         isExternalFaculty ? ', external faculty' : ''
-      }${entry.flagged ? ', flagged for review' : ''}${
-        entry.hasConflict ? ', has conflict' : ''
-      }`}
+      }${isPending ? ', pending cross-department approval' : ''}${
+        entry.flagged ? ', flagged for review' : ''
+      }${entry.hasConflict ? ', has conflict' : ''}`}
       className={clsx(
         'rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
@@ -160,6 +163,15 @@ function ClassBlockBase({
         )}
       </div>
 
+      {isPending && (
+          <span
+            className="bg-amber-600 text-white rounded px-1 py-px leading-none flex items-center"
+            title="Pending cross-department faculty approval"
+          >
+            <Icon name="hourglass_top" size={9} />
+          </span>
+        )}
+
       {/* ── Top-right overlap counter ── */}
       {overlapCount > 1 && (
         <span className="absolute top-0.5 right-1 bg-black/70 text-white text-[9px] font-bold rounded px-1 py-px leading-none pointer-events-none">
@@ -172,7 +184,12 @@ function ClassBlockBase({
       <div
         className={clsx(
           'font-bold truncate',
-          (locked || isForeign || isFlagged || isExternalFaculty) && 'pl-5',
+          (locked ||
+            isForeign ||
+            isFlagged ||
+            isExternalFaculty ||
+            isPending) &&
+            'pl-5',
         )}
       >
         {entry.subjectCode}
