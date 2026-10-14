@@ -159,10 +159,58 @@ export default function PlotSubjectModal({
   const [filterDept, setFilterDept] = useState('');
   const [filterYear, setFilterYear] = useState('');
   const [filterSem, setFilterSem] = useState('');
+  const [sectionYearOverride, setSectionYearOverride] = useState(false);
 
   const selectedSubject = subjects.find((s) => s.subjectId === form.subjectId);
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
+
+  /**
+   * F2 — Section auto-filter by subject year.
+   *
+   * Pull the year levels the subject maps to in the prospectus. If the
+   * subject maps to exactly one year (the common case), narrow the
+   * Section dropdown to sections of that year. If it maps to multiple
+   * years (cross-listed subject), don't filter — show a hint instead.
+   *
+   * Edit mode skips this — the existing section is authoritative, and
+   * filtering would hide the currently-selected value.
+   */
+  const subjectYearLevels = useMemo(() => {
+    if (!selectedSubject) return [] as number[];
+    const years = selectedSubject.prospectusYears ?? [];
+    return Array.from(new Set(years.map((y) => y.yearLevel))).sort(
+      (a, b) => a - b,
+    );
+  }, [selectedSubject]);
+
+  const autoYearFilter = useMemo<number | null>(() => {
+    if (isEditMode) return null;
+    if (subjectYearLevels.length !== 1) return null;
+    return subjectYearLevels[0];
+  }, [isEditMode, subjectYearLevels]);
+
+  const sectionsForDisplay = useMemo(() => {
+    const activeSections = sections.filter((s) => s.isActive);
+    if (sectionYearOverride) return activeSections;
+    if (autoYearFilter == null) return activeSections;
+    return activeSections.filter((s) => s.yearLevel === autoYearFilter);
+  }, [sections, autoYearFilter, sectionYearOverride]);
+
+  // If the auto-filter would hide the current selection (e.g., DH
+  // switched subject after picking a section), clear it.
+  useEffect(() => {
+    if (isEditMode) return;
+    if (autoYearFilter == null || sectionYearOverride) return;
+    if (!form.section) return;
+    const stillVisible = sectionsForDisplay.some(
+      (s) => s.sectionCode === form.section,
+    );
+    if (!stillVisible) {
+      setForm((prev) => ({ ...prev, section: '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoYearFilter, sectionYearOverride, sectionsForDisplay, isEditMode]);
 
   const startOptions = useMemo(() => TIME_OPTIONS.slice(0, -1), []);
 
@@ -788,17 +836,57 @@ export default function PlotSubjectModal({
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
                 <option value="">— none —</option>
-                {sections
-                  .filter((s) => s.isActive)
-                  .map((s) => (
-                    <option key={s.sectionId} value={s.sectionCode}>
-                      {s.sectionCode}
-                      {s.studentCount != null
-                        ? ` (${s.studentCount} students)`
-                        : ''}
-                    </option>
-                  ))}
+                {sectionsForDisplay.map((s) => (
+                  <option key={s.sectionId} value={s.sectionCode}>
+                    {s.sectionCode}
+                    {s.yearLevel != null ? ` — Y${s.yearLevel}` : ''}
+                    {s.studentCount != null
+                      ? ` (${s.studentCount} students)`
+                      : ''}
+                  </option>
+                ))}
               </select>
+
+              {/* F2: auto-filter hint + override */}
+              {autoYearFilter != null && !sectionYearOverride && (
+                <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
+                  <Icon name="filter_alt" size={11} />
+                  Filtered to <strong>Year {autoYearFilter}</strong> based on
+                  this subject's prospectus.
+                  <button
+                    type="button"
+                    onClick={() => setSectionYearOverride(true)}
+                    className="text-primary hover:underline font-semibold"
+                  >
+                    Show all years
+                  </button>
+                </p>
+              )}
+
+              {autoYearFilter == null &&
+                !isEditMode &&
+                subjectYearLevels.length > 1 && (
+                  <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
+                    <Icon name="info" size={11} />
+                    This subject spans{' '}
+                    {subjectYearLevels.map((y) => `Y${y}`).join(' / ')} — showing
+                    all sections.
+                  </p>
+                )}
+
+              {sectionYearOverride && autoYearFilter != null && (
+                <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
+                  <Icon name="filter_alt_off" size={11} />
+                  Showing all years.
+                  <button
+                    type="button"
+                    onClick={() => setSectionYearOverride(false)}
+                    className="text-primary hover:underline font-semibold"
+                  >
+                    Re-filter to Y{autoYearFilter}
+                  </button>
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
