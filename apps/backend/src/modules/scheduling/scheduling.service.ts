@@ -166,9 +166,19 @@ export class SchedulingService {
   // ════════════════════════════════════════════
 
   async plot(dto: PlotSubjectDto, user?: any): Promise<Schedule> {
-    if (!dto.facultyId) {
+    // ── F1: at least one faculty source, never both ──
+    const hasSystemFaculty = !!dto.facultyId;
+    const extTrimmed = dto.externalFacultyName?.trim() ?? '';
+    const hasExternalFaculty = extTrimmed.length > 0;
+
+    if (!hasSystemFaculty && !hasExternalFaculty) {
       throw new BadRequestException(
-        'facultyId is required to plot a subject.',
+        'Either facultyId or externalFacultyName is required to plot a subject.',
+      );
+    }
+    if (hasSystemFaculty && hasExternalFaculty) {
+      throw new BadRequestException(
+        'Cannot set both facultyId and externalFacultyName. Pick one.',
       );
     }
 
@@ -247,6 +257,7 @@ export class SchedulingService {
       termId: dto.termId,
       subjectId: dto.subjectId,
       facultyId: dto.facultyId ?? null,
+      externalFacultyName: hasExternalFaculty ? extTrimmed : null,
       roomId: dto.roomId ?? null,
       timeslotId: null,
       section: dto.section ?? null,
@@ -261,7 +272,7 @@ export class SchedulingService {
     });
     const saved = await this.scheduleRepo.save(entry);
 
-    // Fire-and-forget overload check
+    // Fire-and-forget overload check — only for system faculty
     if (dto.facultyId) {
       void this.checkFacultyOverload(dto.facultyId, dto.termId);
     }
@@ -270,9 +281,22 @@ export class SchedulingService {
   }
 
   async plotMulti(dto: PlotMultiDto, user?: any): Promise<Schedule[]> {
-    if (!dto.facultyId) {
-      throw new BadRequestException('facultyId is required.');
+    // ── F1: at least one faculty source, never both ──
+    const hasSystemFaculty = !!dto.facultyId;
+    const extTrimmed = dto.externalFacultyName?.trim() ?? '';
+    const hasExternalFaculty = extTrimmed.length > 0;
+
+    if (!hasSystemFaculty && !hasExternalFaculty) {
+      throw new BadRequestException(
+        'Either facultyId or externalFacultyName is required.',
+      );
     }
+    if (hasSystemFaculty && hasExternalFaculty) {
+      throw new BadRequestException(
+        'Cannot set both facultyId and externalFacultyName. Pick one.',
+      );
+    }
+
     if (!dto.sessions || dto.sessions.length === 0) {
       throw new BadRequestException('At least one session is required.');
     }
@@ -373,6 +397,7 @@ export class SchedulingService {
       termId: dto.termId,
       subjectId: dto.subjectId,
       facultyId: dto.facultyId ?? null,
+      externalFacultyName: hasExternalFaculty ? extTrimmed : null,
       roomId: dto.roomId ?? null,
       timeslotId: null,
       section: dto.section ?? null,
@@ -388,7 +413,7 @@ export class SchedulingService {
     const created = this.scheduleRepo.create(rows);
     const saved = await this.scheduleRepo.save(created);
 
-    // Fire-and-forget overload check
+    // Fire-and-forget overload check — only for system faculty
     if (dto.facultyId) {
       void this.checkFacultyOverload(dto.facultyId, dto.termId);
     }
@@ -436,8 +461,45 @@ export class SchedulingService {
       found.endTime = normalizeTime(dto.endTime) ?? null;
     }
     if (dto.roomId !== undefined) found.roomId = dto.roomId;
-    if (dto.facultyId !== undefined) found.facultyId = dto.facultyId;
     if (dto.loadType !== undefined) found.loadType = dto.loadType;
+
+    // ── F1: faculty source — system OR external, never both ──
+    const sysFacultyProvided = dto.facultyId !== undefined;
+    const extFacultyProvided = dto.externalFacultyName !== undefined;
+
+    // Compute what the caller is trying to SET (non-empty, non-null)
+    const sysFacultySet =
+      sysFacultyProvided &&
+      dto.facultyId !== null &&
+      dto.facultyId !== '';
+    const extRaw = (dto.externalFacultyName ?? '').trim();
+    const extFacultySet = extFacultyProvided && extRaw !== '';
+
+    // Reject if both are being set simultaneously
+    if (sysFacultySet && extFacultySet) {
+      throw new BadRequestException(
+        'Cannot set both facultyId and externalFacultyName. Pick one.',
+      );
+    }
+
+    if (sysFacultySet) {
+      // Setting a system faculty → clears external
+      found.facultyId = dto.facultyId as string;
+      found.externalFacultyName = null;
+    } else if (extFacultySet) {
+      // Setting an external name → clears system faculty
+      found.externalFacultyName = extRaw;
+      found.facultyId = null;
+    } else if (sysFacultyProvided && dto.facultyId === null) {
+      // Explicit clear of system faculty
+      found.facultyId = null;
+    } else if (
+      extFacultyProvided &&
+      (dto.externalFacultyName === null || extRaw === '')
+    ) {
+      // Explicit clear of external faculty
+      found.externalFacultyName = null;
+    }
 
     // ── Section handling — sectionId takes precedence, supports explicit clear ──
     if (dto.sectionId !== undefined) {
@@ -588,9 +650,10 @@ export class SchedulingService {
         subject_code: e.subject?.subjectCode ?? null,
         subject_title: e.subject?.title ?? null,
         faculty_id: e.facultyId ?? null,
+        external_faculty_name: e.externalFacultyName ?? null,
         faculty_name: e.faculty
           ? `${e.faculty.firstName} ${e.faculty.lastName}`
-          : null,
+          : e.externalFacultyName ?? null,
         room_id: e.roomId ?? null,
         room_number: e.room?.roomNumber ?? null,
         building: e.room?.building ?? null,
