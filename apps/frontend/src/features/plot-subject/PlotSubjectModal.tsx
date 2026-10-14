@@ -453,6 +453,7 @@ export default function PlotSubjectModal({
     },
   });
 
+  // ── EDIT 1: extended payload type ──
   const updateMutation = useMutation({
     mutationFn: (payload: {
       id: string;
@@ -461,6 +462,8 @@ export default function PlotSubjectModal({
       endTime: string;
       roomId?: string;
       facultyId?: string;
+      section?: string | null;
+      loadType?: 'lecture' | 'laboratory' | 'other';
     }) => updateSchedule(payload.id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
@@ -543,6 +546,7 @@ export default function PlotSubjectModal({
       }
 
       if (isEditMode && editing) {
+        // ── EDIT 2 + 3: send section (null if cleared) and loadType ──
         updateMutation.mutate({
           id: editing.id,
           dayOfWeek: form.dayOfWeek,
@@ -550,6 +554,8 @@ export default function PlotSubjectModal({
           endTime: form.endTime,
           roomId: form.roomId || undefined,
           facultyId: form.facultyId || undefined,
+          section: form.section === '' ? null : form.section,
+          loadType: form.loadType,
         });
       } else {
         plotMutation.mutate({
@@ -591,7 +597,8 @@ export default function PlotSubjectModal({
     (touched && (validation?.hardConflicts.length ?? 0) > 0) ||
     sessionStatus.exceeded;
 
-  const submitDisabled = mode === 'multi' ? multiSubmitDisabled : singleSubmitDisabled;
+  const submitDisabled =
+    mode === 'multi' ? multiSubmitDisabled : singleSubmitDisabled;
 
   const hasActiveFilter = filterDept || filterYear || filterSem;
 
@@ -1008,7 +1015,7 @@ export default function PlotSubjectModal({
               </div>
 
               <ul className="divide-y divide-surface-variant">
-                {multiDays.map((row, idx) => (
+                {multiDays.map((row) => (
                   <li
                     key={row.day}
                     className="py-2.5 flex flex-wrap items-center gap-3"
@@ -1045,13 +1052,9 @@ export default function PlotSubjectModal({
                             onChange={(v) =>
                               updateDayTime(row.day, 'endTime', v)
                             }
-                            options={
-                              idx >= 0
-                                ? TIME_OPTIONS.slice(
-                                    TIME_OPTIONS.indexOf(row.startTime) + 1,
-                                  )
-                                : TIME_OPTIONS
-                            }
+                            options={TIME_OPTIONS.slice(
+                              TIME_OPTIONS.indexOf(row.startTime) + 1,
+                            )}
                             ariaLabel={`${row.day} end time`}
                           />
                         </div>
