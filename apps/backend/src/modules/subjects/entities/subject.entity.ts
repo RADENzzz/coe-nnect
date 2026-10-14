@@ -27,13 +27,19 @@ export class Subject {
   isActive: boolean;
 
   /**
+   * True if the subject is taught by another department or college
+   * (Math, GenEd, PE, EPIC, NSTP, etc.). Minor subjects are plotted
+   * manually first and treated as fixed obstacles by auto-generate.
+   */
+  @Column({ name: 'is_minor', type: 'boolean', default: false })
+  isMinor: boolean;
+
+  /**
    * Room type constraint for the subject.
    *
    * - 'lecture_room' / 'laboratory' / 'computer_lab' / 'drafting_room' / 'other'
    *     → strict: every block must use this room type.
-   * - 'any' → mixed lec+lab subjects. The block kind decides:
-   *       lecture blocks → lecture_room / drafting_room / computer_lab / laboratory
-   *       lab blocks     → laboratory / computer_lab
+   * - 'any' → mixed lec+lab subjects. The block kind decides.
    * - null → treated the same as 'any' by the engine and solver.
    */
   @Column({
