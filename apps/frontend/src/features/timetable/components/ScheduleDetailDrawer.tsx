@@ -271,6 +271,27 @@ export default function ScheduleDetailDrawer({
             </div>
           )}
 
+                    {/* ── F1b: pending cross-dept approval banner ── */}
+          {entry.pendingFacultyRequestId && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
+              <Icon
+                name="hourglass_top"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">
+                  Pending cross-department approval
+                </p>
+                <p className="mt-0.5">
+                  This entry uses a faculty member from another department.
+                  Finalization is blocked until the request is approved.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* ── Flag banner ── */}
           {entry.flagged && (
             <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
