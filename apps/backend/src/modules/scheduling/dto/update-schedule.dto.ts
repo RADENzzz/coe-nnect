@@ -3,6 +3,7 @@ import {
   IsString,
   IsIn,
   Matches,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateScheduleDto {
@@ -39,6 +40,25 @@ export class UpdateScheduleDto {
   facultyId?: string;
 
   @IsOptional()
+  @IsIn(['lecture', 'laboratory', 'other'])
+  loadType?: 'lecture' | 'laboratory' | 'other';
+
+  /**
+   * Section code, e.g. "CpE-1A".
+   * Send `null` to explicitly clear the section assignment.
+   */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsString()
-  section?: string;   // ← THE MISSING LINE
+  section?: string | null;
+
+  /**
+   * Section ID (bigint as string).
+   * If provided, takes precedence over `section`.
+   * Send `null` to explicitly clear.
+   */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  sectionId?: string | null;
 }
