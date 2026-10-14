@@ -103,7 +103,7 @@ async function main() {
     const { error: e3 } = await supabase
       .from('notification')
       .delete()
-      .neq('notification_id', NIL_UUID);
+      .neq('notification_id', 0);
     if (e3) console.warn('  notification:', e3.message);
 
     // Clear per-user trigger preferences so they don't reference
