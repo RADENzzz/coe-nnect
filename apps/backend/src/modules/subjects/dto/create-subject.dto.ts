@@ -34,7 +34,14 @@ export class CreateSubjectDto {
   labUnits: number;
 
   @IsOptional()
-  @IsIn(['lecture_room', 'laboratory', 'computer_lab', 'drafting_room', 'other'])
+  @IsIn([
+    'lecture_room',
+    'laboratory',
+    'computer_lab',
+    'drafting_room',
+    'other',
+    'any',
+  ])
   requiredRoomType?: string | null;
 
   @IsNumberString()
