@@ -1004,6 +1004,141 @@ export class SchedulingService {
     return qb.getMany();
   }
 
+
+  // ════════════════════════════════════════════
+  // MINOR SUBJECTS — unplotted detection
+  // ════════════════════════════════════════════
+
+  /**
+   * Find minor subjects (subject.is_minor = true) that appear in the
+   * term's prospectus for the active department but have no schedule
+   * rows yet.
+   *
+   * Used by:
+   *   - The Timetable page banner
+   *   - The auto-generate pre-flight check (Drop C)
+   */
+  async findUnplottedMinors(
+    termId: string,
+    deptId: string,
+  ): Promise<
+    Array<{
+      subjectId: string;
+      subjectCode: string;
+      title: string;
+      deptId: string | null;
+      yearLevel: number | null;
+      semester: string | null;
+      programId: string | null;
+      programCode: string | null;
+    }>
+  > {
+    const db = this.supabase.getAdminClient();
+
+    // ── 1. Resolve term semester ──
+    const { data: term } = await db
+      .from('term')
+      .select('semester')
+      .eq('term_id', termId)
+      .maybeSingle();
+
+    if (!term?.semester) {
+      // No semester on the term → cannot determine prospectus scope.
+      // Return empty (caller can decide whether to warn).
+      return [];
+    }
+    const semester = term.semester;
+
+    // ── 2. Programs in this department ──
+    const { data: programs } = await db
+      .from('program')
+      .select('program_id, program_code')
+      .eq('dept_id', deptId)
+      .eq('is_active', true);
+
+    const programIds = (programs ?? []).map((p) => String(p.program_id));
+    if (programIds.length === 0) return [];
+
+    // ── 3. Prospectus entries for this semester ──
+    const { data: prospectusRows } = await db
+      .from('prospectus')
+      .select('subject_id, year_level, semester, program_id')
+      .in('program_id', programIds)
+      .eq('is_active', true)
+      .eq('semester', semester);
+
+    const prospectusSubjectIds = Array.from(
+      new Set((prospectusRows ?? []).map((p) => String(p.subject_id))),
+    );
+    if (prospectusSubjectIds.length === 0) return [];
+
+    // ── 4. Minor subjects in those prospectus entries ──
+    const { data: minorSubjects } = await db
+      .from('subject')
+      .select('subject_id, subject_code, title, dept_id, is_minor')
+      .in('subject_id', prospectusSubjectIds)
+      .eq('is_minor', true)
+      .eq('is_active', true);
+
+    if (!minorSubjects || minorSubjects.length === 0) return [];
+
+    // ── 5. Which of those already have schedule rows? ──
+    const { data: plotted } = await db
+      .from('schedule')
+      .select('subject_id')
+      .eq('term_id', termId)
+      .in(
+        'subject_id',
+        minorSubjects.map((s) => String(s.subject_id)),
+      );
+
+    const plottedIds = new Set(
+      (plotted ?? []).map((r) => String(r.subject_id)),
+    );
+
+    // ── 6. Assemble output ──
+    const programCodeById = new Map(
+      (programs ?? []).map((p) => [
+        String(p.program_id),
+        p.program_code as string,
+      ]),
+    );
+
+    const result: Array<{
+      subjectId: string;
+      subjectCode: string;
+      title: string;
+      deptId: string | null;
+      yearLevel: number | null;
+      semester: string | null;
+      programId: string | null;
+      programCode: string | null;
+    }> = [];
+
+    for (const subj of minorSubjects) {
+      if (plottedIds.has(String(subj.subject_id))) continue;
+
+      const ctx = (prospectusRows ?? []).find(
+        (p) => String(p.subject_id) === String(subj.subject_id),
+      );
+      result.push({
+        subjectId: String(subj.subject_id),
+        subjectCode: subj.subject_code ?? '?',
+        title: subj.title ?? '',
+        deptId: subj.dept_id ? String(subj.dept_id) : null,
+        yearLevel: ctx?.year_level ?? null,
+        semester: ctx?.semester ?? null,
+        programId: ctx?.program_id ? String(ctx.program_id) : null,
+        programCode: ctx?.program_id
+          ? programCodeById.get(String(ctx.program_id)) ?? null
+          : null,
+      });
+    }
+
+    result.sort((a, b) => a.subjectCode.localeCompare(b.subjectCode));
+    return result;
+  }
+
   // ════════════════════════════════════════════
   // AUTOSOLVER
   // ════════════════════════════════════════════
