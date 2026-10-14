@@ -45,7 +45,25 @@ interface UserProfile {
   deptId?: string | null;
 }
 
-const SUBJECT_CODE_RE = /^[A-Za-z&]{2,10}(\s+[A-Za-z0-9]+)*\s*\d+[A-Za-z0-9.\-]*$/;
+/**
+ * Permissive subject code pattern.
+ *
+ * Accepts:
+ *   - Classic: "CPE 121", "MATH 100", "PATHFit 1"
+ *   - Pure-word: "PHILCON", "EPIC", "CWTS"
+ *   - Compound: "CPE NETWORK 1", "GE ELECTIVE 3"
+ *   - Ampersand: "R&D 101"
+ *   - Trailing qualifiers: "CPE 121-A"
+ *
+ * Rules:
+ *   - First chunk: 2–12 chars, letters + digits + . - & (must start with a letter)
+ *   - Up to 4 additional space-separated chunks, 1–16 chars each
+ *
+ * Anything that matches this but isn't a "real" code gets flagged as a
+ * warning in the import result rather than being rejected.
+ */
+const SUBJECT_CODE_RE =
+  /^[A-Za-z][A-Za-z0-9&.\-]{1,11}(?:\s+[A-Za-z0-9&.\-]{1,16}){0,4}$/;
 
 @Injectable()
 export class ProspectusPdfsService {
@@ -392,11 +410,14 @@ export class ProspectusPdfsService {
         ? `Year ${table.yearLevel} ${table.semester}`
         : `Table ${r.table_id}`;
       r.subjects.forEach((s, i) => {
-        if (!s.code) {
-          warnings.push(`${label} row ${i + 1}: missing subject code`);
-        } else if (!SUBJECT_CODE_RE.test(s.code)) {
+        const code = (s.code ?? '').trim();
+        if (!code) {
           warnings.push(
-            `${label} row ${i + 1}: "${s.code}" doesn't look like a subject code`,
+            `${label} row ${i + 1}: no code (will be imported with a placeholder)`,
+          );
+        } else if (!SUBJECT_CODE_RE.test(code)) {
+          warnings.push(
+            `${label} row ${i + 1}: "${code}" doesn't match the code pattern (will be imported as-is)`,
           );
         }
       });
@@ -428,6 +449,13 @@ export class ProspectusPdfsService {
       existing: number;
     }[];
     warnings: string[];
+    synthesizedCodes: Array<{
+      subjectCode: string;
+      title: string;
+      yearLevel: number;
+      semester: string;
+      origin: 'explicit' | 'synthesized' | 'loose';
+    }>;
   }> {
     const pdf = await this.findOne(pdfId, user);
     this.assertCanWriteDepartment(user, pdf.departmentId);
@@ -482,6 +510,13 @@ export class ProspectusPdfsService {
     let prospectusSkipped = 0;
     let skippedRows = 0;
     const warnings: string[] = [];
+    const synthesizedCodes: Array<{
+      subjectCode: string;
+      title: string;
+      yearLevel: number;
+      semester: string;
+      origin: 'explicit' | 'synthesized' | 'loose';
+    }> = [];
     const byTable: {
       table_id: string;
       subject_count: number;
@@ -500,17 +535,42 @@ export class ProspectusPdfsService {
       let skipped = 0;
       let existing = 0;
 
+      let rowIndexInTable = 0;
+
       for (const sub of region.subjects) {
-        const code = (sub.code ?? '').trim();
-        if (!code || !SUBJECT_CODE_RE.test(code)) {
-          skipped++;
-          continue;
-        }
+        const rawCode = (sub.code ?? '').trim();
         const title = (sub.title ?? '').trim();
+
+        // Title is mandatory — without it we can't create a meaningful subject
         if (!title) {
           skipped++;
+          rowIndexInTable++;
           continue;
         }
+
+        // ── Code resolution ──
+        let code: string;
+        let codeOrigin: 'explicit' | 'synthesized' | 'loose' = 'explicit';
+
+        if (!rawCode) {
+          // Blank cell → synthesize a placeholder
+          code = this.synthesizeSubjectCode(table, title, rowIndexInTable);
+          codeOrigin = 'synthesized';
+          warnings.push(
+            `Year ${table.yearLevel} ${table.semester}: no code for "${title}" — assigned placeholder "${code}". Edit the subject to give it a real code.`,
+          );
+        } else if (!SUBJECT_CODE_RE.test(rawCode)) {
+          // Present but doesn't match — accept anyway, uppercase, and flag
+          code = rawCode.toUpperCase();
+          codeOrigin = 'loose';
+          warnings.push(
+            `Year ${table.yearLevel} ${table.semester}: "${rawCode}" doesn't match the code pattern but was imported as "${code}". Verify the code.`,
+          );
+        } else {
+          code = rawCode;
+        }
+
+        rowIndexInTable++;
 
         const lec = this.parseIntSafe(sub.lec);
         const lab = this.parseIntSafe(sub.lab);
@@ -524,45 +584,53 @@ export class ProspectusPdfsService {
           continue;
         }
 
-        // Upsert subject
-        // Determine the correct room type for this subject.
-        // Mixed lec + lab → 'any' (kind decides per block).
-        // Pure lecture → null (defaults to 'any' behavior in engine/solver).
-        // Pure lab → null (defaults to 'any' behavior in engine/solver).
-        // DH can set an explicit room type later via the Subjects page.
+        // ── Room type inference (mixed → 'any') ──
         const isMixed = lec > 0 && lab > 0;
         const inferredRoomType: string | null = isMixed ? 'any' : null;
 
-        // Upsert subject
-          let subject = await this.subjectRepo.findOne({
-            where: { subjectCode: code },
-          });
-          if (!subject) {
-            subject = this.subjectRepo.create({
-              subjectCode: code,
-              title,
-              totalUnits: total,
-              lectureUnits: lec,
-              labUnits: lab,
-              deptId: pdf.departmentId,
-              isActive: true,
-              requiredRoomType: inferredRoomType,
-            });
-            subject = await this.subjectRepo.save(subject);
-            subjectsCreated++;
-          } else {
-            // Existing subject — update the room type if this PDF reveals it's
-            // mixed and the current value is a strict room (not 'any').
-            // Never overwrite a DH's explicit 'any' or leave a stale strict value.
-            const current = subject.requiredRoomType ?? null;
-            if (isMixed && current !== 'any') {
-              subject.requiredRoomType = 'any';
-              await this.subjectRepo.save(subject);
-            }
-            subjectsExisting++;
-          }
+        // ── Upsert subject ──
+        let subject = await this.subjectRepo.findOne({
+          where: { subjectCode: code },
+        });
 
-        // Upsert prospectus entry
+        if (!subject) {
+          subject = this.subjectRepo.create({
+            subjectCode: code,
+            title,
+            totalUnits: total,
+            lectureUnits: lec,
+            labUnits: lab,
+            deptId: pdf.departmentId,
+            isActive: true,
+            isMinor: false,
+            requiredRoomType: inferredRoomType,
+          });
+          subject = await this.subjectRepo.save(subject);
+          subjectsCreated++;
+        } else {
+          // Existing subject — update the room type if this PDF reveals it's
+          // mixed and the current value is a strict room (not 'any').
+          // Never overwrite a DH's explicit 'any' or leave a stale strict value.
+          const current = subject.requiredRoomType ?? null;
+          if (isMixed && current !== 'any') {
+            subject.requiredRoomType = 'any';
+            await this.subjectRepo.save(subject);
+          }
+          subjectsExisting++;
+        }
+
+        // Track synthesized/loose codes for the response payload
+        if (codeOrigin !== 'explicit') {
+          synthesizedCodes.push({
+            subjectCode: code,
+            title,
+            yearLevel: table.yearLevel,
+            semester: table.semester,
+            origin: codeOrigin,
+          });
+        }
+
+        // ── Upsert prospectus entry ──
         const existingEntry = await this.prospectusRepo.findOne({
           where: {
             programId,
@@ -655,6 +723,7 @@ export class ProspectusPdfsService {
       skippedRows,
       byTable,
       warnings,
+      synthesizedCodes,
     };
   }
 
@@ -730,6 +799,37 @@ export class ProspectusPdfsService {
     if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
     const n = parseFloat(cleaned);
     return Number.isFinite(n) ? Math.round(n) : 0;
+  }
+
+  /**
+   * Generate a placeholder subject code when the PDF row has no code.
+   *
+   * Example: "GEC Elective 3" in Year 2, 2nd Semester, row 8 becomes
+   *          "TBD-GECE-Y2S2-08"
+   *
+   * The DH can edit the subject later to fix the code — the TBD prefix
+   * makes it easy to find.
+   */
+  private synthesizeSubjectCode(
+    table: ProspectusPdfTable,
+    title: string,
+    indexWithinTable: number,
+  ): string {
+    const initials =
+      title
+        .replace(/[^A-Za-z\s]/g, '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => w[0].toUpperCase())
+        .join('')
+        .slice(0, 4) || 'ELEC';
+
+    const year = table.yearLevel;
+    const sem =
+      table.semester === '1st' ? '1' : table.semester === '2nd' ? '2' : 'S';
+    const counter = String(indexWithinTable + 1).padStart(2, '0');
+
+    return `TBD-${initials}-Y${year}S${sem}-${counter}`;
   }
 
   private assertCanReadDepartment(
