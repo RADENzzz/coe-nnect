@@ -269,7 +269,48 @@ function GridBody({
   // ── Time axis: use boundaries so 19:00 has a labeled row ──
   const timeBoundaries = useMemo(() => generateSlotBoundaries(), []);
   const boundaryCount = timeBoundaries.length;
+  function CurrentTimeIndicator({
+  dayIndex,
+  dayWidth,
+  slotHeight,
+  gridHeight,
+}: {
+  dayIndex: number;
+  dayWidth: number;
+  slotHeight: number;
+  gridHeight: number;
+}) {
+  const [now, setNow] = useState(() => new Date());
 
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const minutesSince7am =
+    now.getHours() * 60 + now.getMinutes() - 7 * 60;
+  if (minutesSince7am < 0 || minutesSince7am > 12 * 60) return null;
+
+  const top = (minutesSince7am / 30) * slotHeight;
+  if (top > gridHeight) return null;
+
+  return (
+    <div
+      aria-hidden
+      className="absolute pointer-events-none"
+      style={{
+        left: dayIndex * dayWidth,
+        top,
+        width: dayWidth,
+        height: 2,
+        zIndex: 25,
+      }}
+    >
+      <div className="absolute left-0 right-0 h-0.5 bg-red-500" />
+      <div className="absolute -left-1 -top-1 w-2.5 h-2.5 rounded-full bg-red-500" />
+    </div>
+  );  
+}
   return (
     <DragDropProvider onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden flex flex-col h-full min-h-0">
@@ -294,10 +335,7 @@ function GridBody({
                 return (
                   <div
                     key={day}
-                    style={{
-                      width: metrics.dayWidth,
-                      minWidth: metrics.dayWidth,
-                    }}
+                    style={{ width: metrics.dayWidth, minWidth: metrics.dayWidth }}
                     className={
                       'py-2.5 text-center text-xs border-b border-l border-surface-variant first:border-l-0 ' +
                       (isToday
@@ -315,6 +353,7 @@ function GridBody({
                 );
               })}
             </div>
+
 
             {/* Main grid body */}
             <div className="flex" style={{ height: metrics.gridHeight }}>
@@ -358,6 +397,15 @@ function GridBody({
                       pointerEvents: 'none',
                       zIndex: 0,
                     }}
+                  />
+                )}
+                {/* Current time indicator */}
+                {todayIdx >= 0 && (
+                  <CurrentTimeIndicator
+                    dayIndex={todayIdx}
+                    dayWidth={metrics.dayWidth}
+                    slotHeight={metrics.slotHeight}
+                    gridHeight={metrics.gridHeight}
                   />
                 )}
 
@@ -439,4 +487,5 @@ function GridBody({
       </div>
     </DragDropProvider>
   );
+
 }
