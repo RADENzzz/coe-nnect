@@ -1809,6 +1809,21 @@ export class SchedulingService {
       .in('faculty_id', facultyIds)
       .in('subject_id', cpeSubjectIdList);
 
+        // ── H-14: unavailability for the dept's faculty ──
+    // Loaded once; term-scoped rows AND term-agnostic rows.
+    // The solver forbids any candidate that overlaps a blocked window.
+    const { data: unavailabilityRows, error: unavailErr } = await db
+      .from('faculty_unavailability')
+      .select('faculty_id, day_of_week, start_time, end_time, reason, term_id')
+      .in('faculty_id', facultyIds)
+      .or(`term_id.eq.${termId},term_id.is.null`);
+
+    if (unavailErr) {
+      this.logger.warn(
+        `Failed to load unavailability for solver: ${unavailErr.message}`,
+      );
+    }
+
     const { data: preferences } = await db
       .from('faculty_preference')
       .select(
@@ -1972,6 +1987,15 @@ export class SchedulingService {
         day: row.day_of_week ?? 'Monday',
         startTime: row.start_time ?? '00:00',
         endTime: row.end_time ?? '00:00',
+      })),
+
+      // ── H-14: faculty unavailability (solver hard constraint) ──
+      unavailability: (unavailabilityRows ?? []).map((u) => ({
+        facultyId: String(u.faculty_id),
+        dayOfWeek: u.day_of_week,
+        startTime: u.start_time,
+        endTime: u.end_time,
+        reason: u.reason ?? undefined,
       })),
     };
   }
