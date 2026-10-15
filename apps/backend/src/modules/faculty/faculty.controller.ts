@@ -23,6 +23,7 @@ import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto'
 import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto';
 import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
 import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
+import { FacultyStatusSummaryQueryDto } from './dto/faculty-status-summary.dto';
 
 /**
  * Faculty management.
@@ -53,6 +54,15 @@ export class FacultyController {
       includeInactive === 'true'
         ? await this.faculty.findAllIncludingInactive()
         : await this.faculty.findAll();
+    return { data };
+  }
+
+  // ── FR 3.1.3 — Bulk status summary (static prefix, before :id) ──
+
+  @Get('status-summary')
+  @Roles('college_dean', 'department_head')
+  async getStatusSummary(@Query() query: FacultyStatusSummaryQueryDto) {
+    const data = await this.faculty.getStatusSummary(query.deptId);
     return { data };
   }
 
@@ -227,8 +237,6 @@ export class FacultyController {
     return { data: await this.faculty.toggleActive(id, req.profile) };
   }
 
-  // Per v21 §D2: DH may delete faculty in their own dept (service-side
-  // assertOwnership enforces dept ownership). Dean retains full access.
   @Roles('college_dean', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
