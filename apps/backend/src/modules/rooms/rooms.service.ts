@@ -3,7 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
-  BadRequestException,   // ← add
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -156,7 +156,7 @@ export class RoomsService {
     return { success: true };
   }
 
-    // ════════════════════════════════════════════
+  // ════════════════════════════════════════════
   // ROOM PREFERENCES (F3)
   // ════════════════════════════════════════════
 
@@ -184,6 +184,49 @@ export class RoomsService {
       .leftJoinAndSelect('rp.department', 'd')
       .where('rp.room_id = :roomId', { roomId })
       .orderBy('rp.priority', 'DESC')
+      .addOrderBy('d.dept_code', 'ASC')
+      .getMany();
+
+    return rows.map((r) => ({
+      preferenceId: r.preferenceId,
+      roomId: r.roomId,
+      deptId: r.deptId,
+      deptCode: r.department?.deptCode ?? '?',
+      deptName: r.department?.deptName ?? '?',
+      priority: r.priority,
+      createdBy: r.createdBy,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /**
+   * Bulk list: every preference across every shared room.
+   *
+   * Used by:
+   *   - The Rooms page "Preferred" tile (count + row flag)
+   *   - Any future per-dept preference audit
+   *
+   * NOT dept-scoped — everyone with role access sees the full set.
+   * The dataset is small (departments × shared rooms), so we return
+   * everything in one call rather than fanning out per room.
+   */
+  async findAllPreferences(): Promise<
+    Array<{
+      preferenceId: string;
+      roomId: string;
+      deptId: string;
+      deptCode: string;
+      deptName: string;
+      priority: number;
+      createdBy: string | null;
+      createdAt: Date;
+    }>
+  > {
+    const rows = await this.preferenceRepo
+      .createQueryBuilder('rp')
+      .leftJoinAndSelect('rp.department', 'd')
+      .orderBy('rp.room_id', 'ASC')
+      .addOrderBy('rp.priority', 'DESC')
       .addOrderBy('d.dept_code', 'ASC')
       .getMany();
 
@@ -237,14 +280,13 @@ export class RoomsService {
     if (!room) {
       throw new NotFoundException(`Room ${dto.roomId} not found`);
     }
-    
 
     // Owned rooms can't be preferred — fail loud
     if (room.deptId !== null) {
       throw new BadRequestException(
         `Room ${room.roomNumber} is owned by another department and cannot be preferred.`,
       );
-    } 
+    }
 
     const existing = await this.preferenceRepo.findOne({
       where: { roomId: dto.roomId, deptId: dto.deptId },
