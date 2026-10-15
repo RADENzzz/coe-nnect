@@ -85,9 +85,11 @@
 }
 
 @layer components {
-  .card {
-    @apply bg-white border border-slate-200 rounded-none shadow-card;
-  }
+.card {
+  @apply bg-white border border-slate-200 rounded-none;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04),
+              0 1px 3px 0 rgba(15, 23, 42, 0.06);
+}
 
   .card-header {
     @apply border-b border-slate-100 px-5 py-4;
@@ -295,6 +297,8 @@
     .easter-egg-tap-pulse { animation: none; }
   }
 
+  
+
   .animate-fade-in { animation: fade-in 250ms ease-out; }
   .animate-fade-up { animation: fade-up 400ms cubic-bezier(0.2, 0.9, 0.3, 1); }
   .animate-slide-in { animation: slide-in 350ms cubic-bezier(0.2, 0.9, 0.3, 1); }
@@ -336,8 +340,12 @@
     .animate-shimmer,
     .animate-chat-in,
     .animate-drawer-in,
-    .animate-backdrop-in {
-      animation: none !important;
+    .animate-backdrop-in,  
+    .animate-badge-pop,
+    .animate-slide-up,
+    .animate-toast-in,
+    .animate-toast-out {
+    animation: none !important;
     }
   }
 }
@@ -787,4 +795,207 @@
   .disco-overlay .disco-floor-glow {
     animation: none !important;
   }
+
+  /* ═══════════════════════════════════════════════
+   Additions — 2026-04
+   Small, additive utilities to support newer
+   components. No existing rules are overridden.
+   ═══════════════════════════════════════════════ */
+
+/* ── Selection color (brand-tinted) ── */
+::selection {
+  background-color: rgba(92, 18, 25, 0.18);
+  color: inherit;
+}
+
+/* ── Scrollbar gutter stability ──
+   Prevents layout jump when we lock body scroll
+   (modal, drawer, mobile menu). */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* ── Skeleton helper ──
+   Usage: <div class="skeleton h-4 w-32" /> */
+.skeleton {
+  background-color: #f1f5f9;
+  border-radius: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(241, 245, 249, 0) 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(241, 245, 249, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Badge pop — for unread/notification badges ── */
+@keyframes badge-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.animate-badge-pop {
+  animation: badge-pop 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── Slide up — for mobile bottom sheets, chat drawer ── */
+@keyframes slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 240ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* ── Toast — enter / exit ── */
+@keyframes toast-in {
+  from { transform: translateY(-12px) scale(0.96); opacity: 0; }
+  to   { transform: translateY(0)     scale(1);    opacity: 1; }
+}
+@keyframes toast-out {
+  from { transform: translateY(0)     scale(1);    opacity: 1; }
+  to   { transform: translateY(-8px)  scale(0.98); opacity: 0; }
+}
+.animate-toast-in {
+  animation: toast-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.animate-toast-out {
+  animation: toast-out 180ms ease-in forwards;
+}
+
+/* ── Focus ring on dark surfaces ──
+   Tailwind's default `focus-visible:ring` uses light colors that vanish
+   on burgundy. Use this class on focusable elements inside the sidebar. */
+.focus-ring-on-dark {
+  outline: none;
+}
+.focus-ring-on-dark:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.75);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Line clamp utilities ──
+   Tailwind ships @tailwindcss/line-clamp in v3.3+, but if it's not
+   enabled, these cover the common cases. */
+.line-clamp-1,
+.line-clamp-2,
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-1 { -webkit-line-clamp: 1; }
+.line-clamp-2 { -webkit-line-clamp: 2; }
+.line-clamp-3 { -webkit-line-clamp: 3; }
+
+/* ── Sticky-table edge shadow ──
+   Adds a soft shadow to the right edge of a sticky actions column,
+   matching the enhancement suggested in ResponsiveTable. */
+.sticky-actions-shadow {
+  box-shadow: -1px 0 0 0 rgba(226, 232, 240, 1);
+}
+
+/* ── Underline-on-hover shortcut ── */
+.hover-underline {
+  text-decoration: none;
+}
+.hover-underline:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Text rendering for narrow columns ── */
+.text-balance {
+  text-wrap: balance;
+}
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* ── Container that hides scrollbar but stays scrollable ── */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Fade mask on the edges of a horizontal scroller ──
+   For mobile quick-action strips. */
+.fade-edge-x {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 12px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 12px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+}
+
+/* ── High-contrast preference ──
+   Strengthen borders for users who opt into more contrast. */
+@media (prefers-contrast: more) {
+  body {
+    border-color: #0f172a;
+  }
+  .card,
+  .btn-secondary,
+  .btn-danger,
+  .input {
+    border-width: 2px;
+  }
+  .badge {
+    border-width: 2px;
+  }
+}
+
+/* ── Reduced motion for the new animations ── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-badge-pop,
+  .animate-slide-up,
+  .animate-toast-in,
+  .animate-toast-out,
+  .skeleton::after {
+    animation: none !important;
+  }
+  .skeleton::after {
+    display: none;
+  }
+}
+
+/* ── Print styles ──
+   Small nicety for printing timetables. */
+@media print {
+  body {
+    background: #fff;
+    font-size: 12px;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
 }
