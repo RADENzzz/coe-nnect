@@ -1,8 +1,13 @@
+import { motion, useReducedMotion } from 'motion/react';
+import { SpotlightCard, Stagger, StaggerItem } from '../components/animations';
+
 interface Props {
   role: string | null;
 }
 
 export function RoleGuides({ role }: Props) {
+  const reduce = useReducedMotion();
+
   const guides = [
     {
       id: 'dean',
@@ -42,55 +47,55 @@ export function RoleGuides({ role }: Props) {
             (g.id === 'dean' && role === 'college_dean') ||
             (g.id === 'dh' && role === 'department_head');
           return (
-            <div
+            <motion.div
               key={g.id}
-              className={
-                'animate-fade-up group relative overflow-hidden border p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ' +
-                (isActive
-                  ? 'border-brand-700 bg-brand-50 shadow-sm'
-                  : 'border-slate-200 bg-white hover:border-brand-300')
-              }
-              style={{
-                animationDelay: `${idx * 100}ms`,
-                animationFillMode: 'both',
-              }}
+              initial={reduce ? false : { opacity: 0, y: 14 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ duration: 0.45, delay: idx * 0.08 }}
             >
-              {isActive && (
-                <div className="animate-shimmer absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-brand-700 via-brand-500 to-brand-700 bg-[length:200%_100%]" />
-              )}
-
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-900">
-                  {g.title}
-                </div>
-                {isActive && (
-                  <span className="flex items-center gap-1 rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
-                    <span className="material-symbols-outlined text-[12px]">
-                      person
-                    </span>
-                    You
-                  </span>
+              <SpotlightCard
+                className={
+                  'h-full border p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ' +
+                  (isActive
+                    ? 'border-brand-700 bg-brand-50 shadow-sm'
+                    : 'border-slate-200 bg-white hover:border-brand-300')
+                }
+              >
+                {isActive && !reduce && (
+                  <motion.div
+                    className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-brand-700 via-brand-500 to-brand-700 bg-[length:200%_100%]"
+                    animate={{ backgroundPosition: ['0% 0', '200% 0'] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                  />
                 )}
-              </div>
 
-              <ul className="space-y-1.5 text-xs leading-relaxed text-slate-600">
-                {g.items.map((item, i) => (
-                  <li
-                    key={i}
-                    className="animate-fade-up flex gap-2"
-                    style={{
-                      animationDelay: `${idx * 100 + i * 40}ms`,
-                      animationFillMode: 'both',
-                    }}
-                  >
-                    <span className="material-symbols-outlined text-[14px] text-brand-700 transition-transform duration-200 group-hover:scale-110">
-                      check
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {g.title}
+                  </div>
+                  {isActive && (
+                    <span className="flex items-center gap-1 rounded-full bg-brand-700 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
+                      <span className="material-symbols-outlined text-[12px]">
+                        person
+                      </span>
+                      You
                     </span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                  )}
+                </div>
+
+                <Stagger className="space-y-1.5 text-xs leading-relaxed text-slate-600" step={0.04}>
+                  {g.items.map((item, i) => (
+                    <StaggerItem key={i} className="flex gap-2">
+                      <span className="material-symbols-outlined text-[14px] text-brand-700 transition-transform duration-200 group-hover:scale-110">
+                        check
+                      </span>
+                      <span>{item}</span>
+                    </StaggerItem>
+                  ))}
+                </Stagger>
+              </SpotlightCard>
+            </motion.div>
           );
         })}
       </div>
