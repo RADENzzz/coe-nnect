@@ -103,15 +103,6 @@ export default function ScheduleDetailDrawer({
 
   // ─────────────────────────────────────────────────────────────
   // F4.1 — Cross-page invalidation.
-  //
-  // Any mutation in the drawer can affect:
-  //   - ['schedules', termId]      → the timetable grid/drawer itself
-  //   - ['faculty-requests']       → approvals page (orphan cleanup,
-  //                                  request resolution)
-  //   - ['flagged']                → dashboard "Flagged" tile
-  //   - ['unplotted-minors', ...]  → minors banner
-  //   - ['dashboard']              → tile counts
-  //   - ['schedule-version-...']   → version drawer freshness
   // ─────────────────────────────────────────────────────────────
   const invalidateAfterMutation = () => {
     queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
@@ -219,6 +210,10 @@ export default function ScheduleDetailDrawer({
   const locked = isLocked(entry.status);
   const writable = !readOnly && !isForeignEntry;
   const canFlag = !readOnly;
+
+  // Prefer external room display when set (matches grid block behavior)
+  const isExternalRoom = !!entry.externalRoomName;
+  const hasInternalRoom = !!(entry.roomNumber && entry.roomNumber !== '—');
 
   return (
     <>
@@ -359,6 +354,11 @@ export default function ScheduleDetailDrawer({
                     Ext. Faculty
                   </span>
                 )}
+                {isExternalRoom && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase bg-amber-100 text-amber-800">
+                    Ext. Room
+                  </span>
+                )}
               </div>
               <h3 className="text-base font-semibold text-on-surface">
                 {entry.subjectTitle || '—'}
@@ -400,15 +400,48 @@ export default function ScheduleDetailDrawer({
                   value={entry.facultyName}
                 />
               )}
-              <DetailRow
-                icon="meeting_room"
-                label="Room"
-                value={
-                  entry.roomNumber && entry.roomNumber !== '—'
-                    ? `${entry.roomNumber}${entry.building ? ` · ${entry.building}` : ''}`
-                    : '—'
-                }
-              />
+
+              {/* ── Room row — external takes priority ── */}
+              {isExternalRoom ? (
+                <div className="flex items-start gap-3">
+                  <Icon
+                    name="home_work"
+                    size={18}
+                    className="text-amber-600 mt-0.5 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                        Room
+                      </p>
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wider">
+                        <Icon name="home_work" size={10} />
+                        External
+                      </span>
+                    </div>
+                    <p className="text-sm text-amber-900 italic break-words">
+                      {entry.externalRoomName}
+                    </p>
+                    {hasInternalRoom && (
+                      <p className="text-[10px] text-on-surface-variant mt-0.5">
+                        Also uses Room {entry.roomNumber}
+                        {entry.building ? ` · ${entry.building}` : ''}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <DetailRow
+                  icon="meeting_room"
+                  label="Room"
+                  value={
+                    entry.roomNumber && entry.roomNumber !== '—'
+                      ? `${entry.roomNumber}${entry.building ? ` · ${entry.building}` : ''}`
+                      : '—'
+                  }
+                />
+              )}
+
               <DetailRow icon="calendar_today" label="Day" value={entry.day} />
               <DetailRow
                 icon="schedule"
