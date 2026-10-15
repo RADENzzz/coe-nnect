@@ -1463,6 +1463,7 @@ export class SchedulingService {
       subjectCode: string;
       title: string;
       isMinor: boolean;
+      sourceDept: string | null;
       programId: string;
       programCode: string | null;
       yearLevel: number;
@@ -1570,7 +1571,11 @@ export class SchedulingService {
       .in('subject_id', prospectusSubjectIds)
       .eq('is_active', true);
 
-    // External subjects (source_dept set) → excluded from coverage (Q5)
+    // Coverage includes ALL subjects in the prospectus — external subjects
+    // included. A subject with `source_dept` set is still a required slot
+    // the department must plan for (usually plotted manually with an
+    // external faculty/room, or cross-listed from another college). The
+    // DH needs to see it if it's unplotted.
     const subjectById = new Map<
       string,
       {
@@ -1578,17 +1583,18 @@ export class SchedulingService {
         subjectCode: string;
         title: string;
         isMinor: boolean;
+        sourceDept: string | null;
         lectureUnits: number;
         labUnits: number;
       }
     >();
     for (const s of subjectRows ?? []) {
-      if (s.source_dept) continue; // skip external
       subjectById.set(String(s.subject_id), {
         subjectId: String(s.subject_id),
         subjectCode: s.subject_code ?? '?',
         title: s.title ?? '',
         isMinor: !!s.is_minor,
+        sourceDept: (s as any).source_dept ?? null,      // ← NEW
         lectureUnits: Number(s.lecture_units ?? 0),
         labUnits: Number(s.lab_units ?? 0),
       });
@@ -1693,6 +1699,7 @@ export class SchedulingService {
       subjectCode: string;
       title: string;
       isMinor: boolean;
+      sourceDept: string | null;          // ← ADD THIS LINE
       programId: string;
       programCode: string | null;
       yearLevel: number;
@@ -1727,6 +1734,7 @@ export class SchedulingService {
         subjectCode: s.subjectCode,
         title: s.title,
         isMinor: s.isMinor,
+        sourceDept: s.sourceDept,
         programId: e.programId,
         programCode: programCodeById.get(e.programId) ?? null,
         yearLevel: e.yearLevel,
