@@ -1,9 +1,8 @@
+import { motion } from 'motion/react';
 import { TeamCard } from '../components/TeamCard';
 import { TEAM_GROUPS, CLIENT } from '../data/team';
-import {
-  EASTER_EGG_TOTAL_TAPS,
-  useEasterEggStore,
-} from '../store/easter-egg.store';
+import { useEasterEggStore, EASTER_EGG_TOTAL_TAPS } from '../store/easter-egg.store';
+import { SpotlightCard, Stagger, StaggerItem } from '../components/animations';
 
 export function TeamInfo() {
   const registerTap = useEasterEggStore((s) => s.registerTap);
@@ -20,13 +19,12 @@ export function TeamInfo() {
 
       <div className="space-y-8">
         {TEAM_GROUPS.map((group, groupIdx) => (
-          <div
+          <motion.div
             key={group.id}
-            className="animate-fade-up"
-            style={{
-              animationDelay: `${groupIdx * 100}ms`,
-              animationFillMode: 'both',
-            }}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-40px' }}
+            transition={{ duration: 0.5, delay: groupIdx * 0.08 }}
           >
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <div>
@@ -48,7 +46,6 @@ export function TeamInfo() {
                   key={m.name}
                   member={m}
                   index={i}
-                  // ⭐ Easter egg trigger on Alrhaden's card only
                   onTap={
                     m.name === 'Alrhaden A. Javier'
                       ? () => registerTap()
@@ -62,53 +59,39 @@ export function TeamInfo() {
                 />
               ))}
             </div>
-          </div>
+          </motion.div>
         ))}
 
-        {/* Client — highlighted separately */}
-        <div
-          className="animate-fade-up border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5"
-          style={{ animationDelay: '500ms', animationFillMode: 'both' }}
+        {/* Client */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.5, delay: 0.2 }}
         >
-          <div className="mb-3 flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px] text-brand-700">
-              handshake
-            </span>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-800">
-              Project Client
-            </h3>
-          </div>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-700 text-base font-semibold text-white">
-              {CLIENT.initials}
+          <SpotlightCard className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px] text-brand-700">
+                handshake
+              </span>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-800">
+                Project Client
+              </h3>
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-base font-semibold text-slate-900">
-                {CLIENT.name}
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-700 text-base font-semibold text-white">
+                {CLIENT.initials}
               </div>
-              <div className="text-xs text-slate-500">{CLIENT.role}</div>
-              <div className="mt-1 text-xs text-slate-600">{CLIENT.focus}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-base font-semibold text-slate-900">
+                  {CLIENT.name}
+                </div>
+                <div className="text-xs text-slate-500">{CLIENT.role}</div>
+                <div className="mt-1 text-xs text-slate-600">{CLIENT.focus}</div>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Department attribution */}
-        <div
-          className="animate-fade-up mt-8 border-t border-slate-200 pt-6 text-center text-xs text-slate-500"
-          style={{ animationDelay: '600ms', animationFillMode: 'both' }}
-        >
-          <p>
-            Developed under the{' '}
-            <span className="font-medium text-slate-700">
-              Department of Computer Engineering
-            </span>
-            <br />
-            College of Engineering · Western Mindanao State University
-          </p>
-          <p className="mt-2 text-[11px] text-slate-400">
-            CPE SD 3 — Management Information System · Academic Year 2026–2027
-          </p>
-        </div>
+          </SpotlightCard>
+        </motion.div>
       </div>
     </div>
   );
