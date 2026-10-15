@@ -11,6 +11,14 @@ export interface RawSchedule {
   facultyId: string | null;
   externalFacultyName: string | null;
   roomId: string | null;
+  /**
+   * External room name (2026-10-15).
+   *
+   * Set when the row's room is not in the internal `room` table —
+   * e.g. a minor subject taught in another college's room, or a
+   * temporary space during renovations. May coexist with roomId.
+   */
+  externalRoomName: string | null;
   timeslotId: string | null;
   section: string | null;
   pendingFacultyRequestId: string | null;
@@ -240,6 +248,12 @@ export interface PlotSubjectPayload {
   facultyId?: string;
   externalFacultyName?: string;
   roomId?: string;
+  /**
+   * Free-text label for a room outside the internal table.
+   * May coexist with `roomId` — the CHECK constraint only requires
+   * at least one room identifier.
+   */
+  externalRoomName?: string;
   section?: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
   dayOfWeek: string;
@@ -254,6 +268,7 @@ export interface ValidatePlotPayload {
   facultyId?: string;
   externalFacultyName?: string;
   roomId?: string;
+  externalRoomName?: string;
   section?: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
   dayOfWeek: string;
@@ -319,6 +334,7 @@ export interface PlotMultiPayload {
   facultyId?: string;
   externalFacultyName?: string;
   roomId?: string;
+  externalRoomName?: string;
   section?: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
   sessions: PlotMultiSessionPayload[];
@@ -335,7 +351,13 @@ export interface UpdateSchedulePayload {
   dayOfWeek?: string;
   startTime?: string;
   endTime?: string;
-  roomId?: string;
+  roomId?: string | null;
+  /**
+   * External room name.
+   * Send a value to set. Send `null` to explicitly clear.
+   * May coexist with roomId — the backend keeps both.
+   */
+  externalRoomName?: string | null;
   /**
    * System faculty ID. Send `null` to explicitly clear.
    * Sending a value clears `externalFacultyName` server-side.
@@ -440,6 +462,11 @@ export interface ScheduleVersionEntry {
   faculty_name: string | null;
   external_faculty_name: string | null;
   room_id: string | null;
+  /**
+   * External room name captured in the version snapshot
+   * (2026-10-15). Read-only display only.
+   */
+  external_room_name: string | null;
   room_number: string | null;
   building: string | null;
   day_of_week: string | null;
