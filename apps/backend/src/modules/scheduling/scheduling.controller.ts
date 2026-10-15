@@ -71,6 +71,16 @@ export class SchedulingController {
     return { data };
   }
 
+  @Get('coverage')
+  @Roles('college_dean', 'department_head')
+  async coverage(
+    @Query('termId') termId: string,
+    @Query('deptId') deptId: string,
+  ) {
+    const data = await this.service.getCoverage(termId, deptId);
+    return { data };
+  }
+
   @Get('active-term')
   async getActiveTerm() {
     const data = await this.service.getActiveTerm();
