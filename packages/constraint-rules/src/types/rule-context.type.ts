@@ -89,6 +89,15 @@ export interface ScheduleEntryContext {
   subjectId: string;
   facultyId: string | null;
   roomId: string | null;
+  /**
+   * External room name (2026-10-15).
+   *
+   * When set, this row's room is not in the internal `room` table —
+   * e.g. another college's room for a minor subject, or a temporary
+   * space during renovations. H-2 (Room Overlap) must not match this
+   * row against a candidate; H-3 (Section Overlap) still applies.
+   */
+  externalRoomName?: string | null;
   section: string | null;
   loadType: 'lecture' | 'laboratory' | 'other' | null;
   dayOfWeek: string;
@@ -182,6 +191,16 @@ export interface RuleContext {
   section: SectionContext;
   faculty: FacultyContext | null;
   room: RoomContext | null;
+  /**
+   * External room name for the CANDIDATE being validated (2026-10-15).
+   *
+   * When set, the row has no internal `room` object — room rules
+   * (R-1, R-3, R-4, S-5, S-6, S-8, S-10) and H-2 (Room Overlap)
+   * must early-return 'pass'. H-3 (Section Overlap) still applies.
+   *
+   * Populated by RuleContextBuilder from the plot/validate payload.
+   */
+  externalRoomName?: string | null;
   timeSlot: TimeSlotContext;
   /** The session type being plotted. Gates lab-only rules. */
   loadType: 'lecture' | 'laboratory' | 'other' | null;
