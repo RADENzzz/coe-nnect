@@ -150,6 +150,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
 
   const hasSystemFaculty = !!raw.faculty;
   const externalName = raw.externalFacultyName ?? null;
+  const externalRoom = raw.externalRoomName ?? null;
 
   return {
     id: raw.scheduleId,
@@ -167,6 +168,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     externalFacultyName: externalName,
     roomId: raw.roomId ?? '',
     roomNumber: raw.room?.roomNumber ?? '—',
+    externalRoomName: externalRoom,
     building: raw.room?.building ?? '',
     day: DAY_MAP[day] ?? 'MON',
     startTime: start.slice(0, 5),
@@ -196,6 +198,7 @@ function versionEntryToEntry(
   const isLab = raw.load_type === 'laboratory';
 
   const externalName = raw.external_faculty_name ?? null;
+  const externalRoom = raw.external_room_name ?? null;
   const hasSystemFaculty = !!raw.faculty_id;
 
   return {
@@ -214,6 +217,7 @@ function versionEntryToEntry(
     externalFacultyName: externalName,
     roomId: raw.room_id ?? '',
     roomNumber: raw.room_number ?? '—',
+    externalRoomName: externalRoom,
     building: raw.building ?? '',
     day: DAY_MAP[day] ?? 'MON',
     startTime: start.slice(0, 5),
