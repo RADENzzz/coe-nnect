@@ -4,11 +4,15 @@ import type { SaveState } from '../hooks/useAutosave';
 interface SaveStatusIndicatorProps {
   state: SaveState;
   error?: string | null;
+  onRetry?: () => void;
+  onDismiss?: () => void;
 }
 
 export default function SaveStatusIndicator({
   state,
   error,
+  onRetry,
+  onDismiss,
 }: SaveStatusIndicatorProps) {
   if (state === 'idle') return null;
 
@@ -35,11 +39,32 @@ export default function SaveStatusIndicator({
 
   return (
     <span
-      className={`${base} bg-red-100 text-red-800`}
+      className={`${base} bg-red-100 text-red-800 pr-1`}
       title={error ?? 'Save failed'}
+      role="alert"
     >
       <Icon name="error" size={12} />
-      Save failed
+      <span className="mr-1">Save failed</span>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="ml-1 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-200 hover:bg-red-300 rounded"
+          title="Retry save"
+        >
+          Retry
+        </button>
+      )}
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="ml-1 p-0.5 hover:bg-red-200 rounded"
+          aria-label="Dismiss"
+        >
+          <Icon name="close" size={10} />
+        </button>
+      )}
     </span>
   );
 }
