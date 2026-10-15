@@ -38,7 +38,7 @@ export const TEAM_GROUPS: TeamGroup[] = [
         name: 'Alrhaden A. Javier',
         role: 'Lead Developer · System Architect',
         focus: 'Sys. Architecture, Backend & Frontend, Constraint engine, solver integration, API design',
-        email: 'alrhaden.javier@wmsu.edu.ph',
+        email: 'alrhaden1@gmail.com',
         initials: 'AJ',
         accent: 'brand',
       },
