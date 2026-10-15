@@ -244,6 +244,8 @@ export default function SubjectsPage() {
       setSuccess(`Subject "${s.subjectCode}" created.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['subjects'] });
+      qc.invalidateQueries({ queryKey: ['coverage'] });
+      qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
