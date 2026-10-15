@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import AuthProvider from './components/auth/AuthProvider';
 import './styles/globals.css';
+import 'animate.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
