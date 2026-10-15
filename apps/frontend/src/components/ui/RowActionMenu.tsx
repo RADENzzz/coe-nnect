@@ -131,7 +131,7 @@ export default function RowActionMenu({
         <div
           ref={popoverRef}
           role="menu"
-          className="absolute right-0 top-full mt-1 z-30 min-w-[180px] bg-white border border-slate-200 shadow-lg py-1"
+          className="absolute right-0 top-full mt-1 z-[200] min-w-[180px] bg-white border border-slate-200 shadow-lg py-1"
         >
           {actions.map((action, idx) => (
             <button
