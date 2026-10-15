@@ -93,6 +93,7 @@ export default function RoomPreferencesModal({
       setError(null);
       await refetch();
       qc.invalidateQueries({ queryKey: ['rooms'] });
+      qc.invalidateQueries({ queryKey: ['room-preferences'] });
     },
     onError: (err: any) =>
       setError(
@@ -107,6 +108,7 @@ export default function RoomPreferencesModal({
       setDeleteTarget(null);
       await refetch();
       qc.invalidateQueries({ queryKey: ['rooms'] });
+      qc.invalidateQueries({ queryKey: ['room-preferences'] });
     },
     onError: (err: any) =>
       setError(
