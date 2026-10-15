@@ -32,9 +32,29 @@ export class UpdateScheduleDto {
   })
   endTime?: string;
 
+  /**
+   * Internal room ID. Send `null` to explicitly clear.
+   */
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsString()
-  roomId?: string;
+  roomId?: string | null;
+
+  /**
+   * Free-text external room label.
+   *
+   * Send a value to set (clears nothing on room_id — both may coexist).
+   * Send `null` to clear.
+   *
+   * When both roomId and externalRoomName are null, room rules fall
+   * back to "no room" behavior — the CHECK constraint on the table
+   * still requires at least one of (room_id, external_room_name, remarks).
+   */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  @MaxLength(120)
+  externalRoomName?: string | null;
 
   /**
    * System faculty ID.
