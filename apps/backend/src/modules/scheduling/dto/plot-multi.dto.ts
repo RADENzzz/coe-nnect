@@ -48,9 +48,19 @@ export class PlotMultiDto {
   @MaxLength(120)
   externalFacultyName?: string;
 
+  /** Internal room ID. Either this OR externalRoomName. */
   @IsOptional()
   @IsString()
   roomId?: string;
+
+  /**
+   * Free-text label for a room outside the internal `room` table.
+   * Either this OR roomId. May coexist with roomId.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  externalRoomName?: string;
 
   @IsOptional()
   @IsString()
