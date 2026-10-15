@@ -31,6 +31,7 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.0;
 const PAGE_PADDING_PX = 24;
 const MIN_ROW_HEIGHT_PT = 6;
+const MAX_TABLES = 12;
 
 export default function ProspectusPdfEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -52,6 +53,7 @@ export default function ProspectusPdfEditorPage() {
   } | null>(null);
   const [hasAutoFitted, setHasAutoFitted] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [howToOpen, setHowToOpen] = useState(false);
   const canvasScrollRef = useRef<HTMLDivElement>(null);
 
   const { data: pdfRecord, isLoading: metaLoading } = useQuery({
@@ -79,7 +81,7 @@ export default function ProspectusPdfEditorPage() {
     [pdfRecord],
   );
 
-    const {
+  const {
     tables,
     setTables,
     selection,
@@ -100,8 +102,10 @@ export default function ProspectusPdfEditorPage() {
     error: saveError,
     queue: queueSave,
     commit: commitSave,
+    cancel: cancelSave,
   } = useCommitAutosave<{ tableId: string; patch: any }>({
     maxIdleMs: 5000,
+    warnOnUnload: true,
     save: async ({ tableId, patch }) => {
       await updateProspectusPdfTable(id!, tableId, patch);
       await qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
@@ -112,10 +116,8 @@ export default function ProspectusPdfEditorPage() {
     setTables(initialTables);
   }, [initialTables, setTables]);
 
-  // Commit pending autosave whenever the user exits edit mode.
-  // Also collapse the global sidebar the FIRST time editing starts.
-  // We never auto-expand — the user re-opens the sidebar with the
-  // chevron button when they want it back.
+  // Commit pending autosave when the user exits edit mode.
+  // Collapse the sidebar the first time editing starts.
   const prevEditingRef = useRef<string>('none');
   useEffect(() => {
     const currentKey =
@@ -129,13 +131,8 @@ export default function ProspectusPdfEditorPage() {
       const wasEditing = prevEditingRef.current !== 'none';
       const isEditing = currentKey !== 'none';
 
-      if (wasEditing) {
-        void commitSave();
-      }
+      if (wasEditing) void commitSave();
 
-      // On entering edit: collapse the sidebar and nudge the zoom in
-      // slightly so rows are easier to work with. We never zoom back
-      // out automatically — user controls that with the toolbar.
       if (isEditing) {
         setSidebarCollapsed(true);
         setZoom((z) => (z < 1.5 ? 1.5 : z));
@@ -145,12 +142,13 @@ export default function ProspectusPdfEditorPage() {
     }
   }, [editing, commitSave, setSidebarCollapsed]);
 
-  // Restore the sidebar when leaving the editor page.
+  // Restore sidebar on unmount
   useEffect(() => {
     return () => {
       setSidebarCollapsed(false);
+      cancelSave();
     };
-  }, [setSidebarCollapsed]);
+  }, [setSidebarCollapsed, cancelSave]);
 
   const pageView = useMemo(() => {
     if (!textLayer) return null;
@@ -158,7 +156,6 @@ export default function ProspectusPdfEditorPage() {
   }, [textLayer, zoom]);
 
   // ── Zoom helpers ──
-
   const fitPageToContainer = useCallback(() => {
     if (!textLayer || !canvasScrollRef.current) return;
     const container = canvasScrollRef.current;
@@ -220,8 +217,14 @@ export default function ProspectusPdfEditorPage() {
 
           const scrollLeft = centerInContentX - cw / 2;
           const scrollTop = centerInContentY - ch / 2;
-          const maxScrollLeft = Math.max(0, PAGE_PADDING_PX * 2 + canvasWpx - cw);
-          const maxScrollTop = Math.max(0, PAGE_PADDING_PX * 2 + canvasHpx - ch);
+          const maxScrollLeft = Math.max(
+            0,
+            PAGE_PADDING_PX * 2 + canvasWpx - cw,
+          );
+          const maxScrollTop = Math.max(
+            0,
+            PAGE_PADDING_PX * 2 + canvasHpx - ch,
+          );
 
           container.scrollTo({
             left: Math.max(0, Math.min(maxScrollLeft, scrollLeft)),
@@ -248,6 +251,84 @@ export default function ProspectusPdfEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex]);
 
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      const inInput =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target.isContentEditable;
+      if (inInput) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          setPageIndex((p) => Math.max(0, p - 1));
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          setPageIndex((p) =>
+            Math.min((pdfRecord?.pageCount ?? 1) - 1, p + 1),
+          );
+          break;
+        case '+':
+        case '=':
+          e.preventDefault();
+          setZoom((z) => Math.min(MAX_ZOOM, z + 0.15));
+          break;
+        case '-':
+        case '_':
+          e.preventDefault();
+          setZoom((z) => Math.max(MIN_ZOOM, z - 0.15));
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          fitPageToContainer();
+          break;
+        case '0':
+          e.preventDefault();
+          setZoom(1.0);
+          requestAnimationFrame(() =>
+            canvasScrollRef.current?.scrollTo({
+              left: 0,
+              top: 0,
+              behavior: 'smooth',
+            }),
+          );
+          break;
+        case 'Escape':
+          if (drawingMode.kind !== 'idle') {
+            e.preventDefault();
+            setDrawingMode({ kind: 'idle' });
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [pdfRecord?.pageCount, drawingMode.kind, fitPageToContainer, setDrawingMode]);
+
+  // ── Ctrl + wheel zoom ──
+  useEffect(() => {
+    const el = canvasScrollRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const dir = e.deltaY > 0 ? -1 : 1;
+      setZoom((z) => {
+        const next = z + dir * 0.1;
+        return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next));
+      });
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
+
   // ── Row height formula ──
   const computeNewRowHeight = useCallback(
     (regionHeight: number, currentRowCount: number): number => {
@@ -258,7 +339,6 @@ export default function ProspectusPdfEditorPage() {
   );
 
   // ── Handlers ──
-
   const handleRegionDrawn = useCallback(
     async (rect: {
       x_start_pt: number;
@@ -272,7 +352,6 @@ export default function ProspectusPdfEditorPage() {
       const columns = makeDefaultColumns(rect.x_start_pt, rect.x_end_pt);
       const regionHeight = rect.y_end_pt - rect.y_start_pt;
 
-      // Auto-create row 1
       const firstRowHeight = computeNewRowHeight(regionHeight, 0);
       const firstRow: RowBox = {
         row_id: `r_${Date.now().toString(36)}_${Math.random()
@@ -296,7 +375,7 @@ export default function ProspectusPdfEditorPage() {
         });
         upsertTable(created);
         setSelection({ kind: 'table', tableId: created.tableId });
-        setEditing({ kind: 'none' }); // locked by default
+        setEditing({ kind: 'none' });
         setDrawingMode({ kind: 'idle' });
         qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
       } catch (err) {
@@ -338,7 +417,6 @@ export default function ProspectusPdfEditorPage() {
       const regionYEnd = Number(table.regionYEndPt);
       const regionHeight = regionYEnd - regionYStart;
 
-      // Position: below the last row's bottommost point
       const sorted = [...table.rows].sort((a, b) => b.y_top_pt - a.y_top_pt);
       const lastRow =
         sorted.length > 0 ? sorted[sorted.length - 1] : null;
@@ -349,11 +427,9 @@ export default function ProspectusPdfEditorPage() {
 
       let newRegionYStart = regionYStart;
 
-      // Auto-grow: if new row would overflow, extend the region downward
       if (newBottom < regionYStart) {
         const needed = regionYStart - newBottom;
         newRegionYStart = Math.max(0, regionYStart - needed);
-        // Reset the row to fit the expanded region
         newBottom = newTop - newHeight;
         if (newBottom < newRegionYStart) {
           newBottom = newRegionYStart;
@@ -482,6 +558,21 @@ export default function ProspectusPdfEditorPage() {
     return tables.find((t) => t.tableId === selection.tableId) ?? null;
   }, [selection, tables]);
 
+  // ── Sorted tables for quick-nav ──
+  const sortedTablesForNav = useMemo(
+    () =>
+      [...tables].sort((a, b) => {
+        if (a.yearLevel !== b.yearLevel) return a.yearLevel - b.yearLevel;
+        const order: Record<string, number> = {
+          '1st': 1,
+          '2nd': 2,
+          summer: 3,
+        };
+        return (order[a.semester] ?? 9) - (order[b.semester] ?? 9);
+      }),
+    [tables],
+  );
+
   if (metaLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-on-surface-variant">
@@ -508,6 +599,13 @@ export default function ProspectusPdfEditorPage() {
       ? 'cursor-crosshair'
       : '';
 
+  const editingLabel =
+    editing.kind === 'none'
+      ? null
+      : editing.kind === 'table'
+      ? 'Editing region'
+      : 'Editing row';
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -524,21 +622,41 @@ export default function ProspectusPdfEditorPage() {
             <h1 className="text-xl font-bold text-on-surface truncate">
               {pdfRecord.originalFilename}
             </h1>
-            <SaveStatusIndicator state={saveState} error={saveError} />
+            {editingLabel && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                {editingLabel}
+              </span>
+            )}
+            <SaveStatusIndicator
+              state={saveState}
+              error={saveError}
+              onRetry={() => void commitSave()}
+              onDismiss={() => void cancelSave()}
+            />
           </div>
           <p className="text-on-surface-variant text-xs mt-0.5">
             {pdfRecord.pageCount} page
             {pdfRecord.pageCount === 1 ? '' : 's'} ·{' '}
-            {tables.length} of 12 tables mapped
+            {tables.length} of {MAX_TABLES} tables mapped
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setHowToOpen(true)}
+            className="p-2 rounded-lg border border-surface-variant hover:bg-surface-container-low transition"
+            title="How to use this editor"
+            aria-label="Help"
+          >
+            <Icon name="help" size={16} />
+          </button>
+
+          <button
             onClick={() => setDrawingMode({ kind: 'focusing' })}
             disabled={drawingMode.kind !== 'idle'}
             className="px-3 py-2 rounded-lg border border-surface-variant text-sm font-semibold hover:bg-surface-container-low transition disabled:opacity-50 flex items-center gap-1.5"
-            title="Draw a rectangle to zoom into that area"
+            title="Draw a rectangle to zoom (or press F)"
           >
             <Icon name="center_focus_strong" size={16} />
             Focus
@@ -582,12 +700,20 @@ export default function ProspectusPdfEditorPage() {
                 <strong>
                   Year {drawingMode.yearLevel} {drawingMode.semester}
                 </strong>{' '}
-                semester. Row 1 will be created automatically.
+                semester. Row 1 will be created automatically. Press{' '}
+                <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/60 rounded">
+                  Esc
+                </kbd>{' '}
+                to cancel.
               </>
             )}
             {drawingMode.kind === 'focusing' && (
               <>
-                Drag a rectangle to <strong>zoom into that area</strong>.
+                Drag a rectangle to <strong>zoom into that area</strong>. Press{' '}
+                <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/60 rounded">
+                  Esc
+                </kbd>{' '}
+                to cancel.
               </>
             )}
           </div>
@@ -607,6 +733,7 @@ export default function ProspectusPdfEditorPage() {
             onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
             disabled={pageIndex === 0}
             className="p-2 rounded hover:bg-surface-container-high disabled:opacity-30"
+            title="Previous page (←)"
           >
             <Icon name="chevron_left" size={18} />
           </button>
@@ -619,6 +746,7 @@ export default function ProspectusPdfEditorPage() {
             }
             disabled={pageIndex >= totalPages - 1}
             className="p-2 rounded hover:bg-surface-container-high disabled:opacity-30"
+            title="Next page (→)"
           >
             <Icon name="chevron_right" size={18} />
           </button>
@@ -630,15 +758,17 @@ export default function ProspectusPdfEditorPage() {
           <button
             onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.1))}
             className="p-2 rounded hover:bg-surface-container-high"
+            title="Zoom out (-)"
           >
             <Icon name="zoom_out" size={18} />
           </button>
-          <span className="text-xs font-mono w-14 text-center">
+          <span className="text-xs font-mono w-14 text-center tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
           <button
             onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + 0.1))}
             className="p-2 rounded hover:bg-surface-container-high"
+            title="Zoom in (+)"
           >
             <Icon name="zoom_in" size={18} />
           </button>
@@ -646,7 +776,7 @@ export default function ProspectusPdfEditorPage() {
           <button
             onClick={fitPageToContainer}
             className="p-2 rounded hover:bg-surface-container-high"
-            title="Fit page to screen"
+            title="Fit page to screen (F)"
           >
             <Icon name="fit_screen" size={18} />
           </button>
@@ -662,10 +792,32 @@ export default function ProspectusPdfEditorPage() {
               );
             }}
             className="p-2 rounded hover:bg-surface-container-high"
-            title="Reset to 100%"
+            title="Reset to 100% (0)"
           >
             <Icon name="restart_alt" size={18} />
           </button>
+        </div>
+
+        <div className="ml-auto text-[10px] text-on-surface-variant hidden lg:flex items-center gap-3">
+          <span>
+            <kbd className="px-1 py-0.5 font-mono border border-surface-variant rounded bg-surface-container-low">
+              ←→
+            </kbd>{' '}
+            pages
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 font-mono border border-surface-variant rounded bg-surface-container-low">
+              +/-
+            </kbd>{' '}
+            zoom
+          </span>
+          <span>
+            <kbd className="px-1 py-0.5 font-mono border border-surface-variant rounded bg-surface-container-low">
+              Ctrl
+            </kbd>
+            {' + '}
+            wheel
+          </span>
         </div>
       </div>
 
@@ -732,43 +884,129 @@ export default function ProspectusPdfEditorPage() {
 
         {/* Sidebar */}
         <div className="space-y-3">
+          {/* Table quick-nav */}
+          {sortedTablesForNav.length > 0 && (
+            <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-semibold text-on-surface">
+                  Mapped tables
+                </div>
+                <span className="text-[10px] text-on-surface-variant font-mono">
+                  {sortedTablesForNav.length}/{MAX_TABLES}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {sortedTablesForNav.map((t) => {
+                  const active =
+                    selection.kind !== 'none' &&
+                    selection.tableId === t.tableId;
+                  return (
+                    <button
+                      key={t.tableId}
+                      onClick={() => {
+                        setPageIndex(t.regionPageIndex);
+                        setSelection({
+                          kind: 'table',
+                          tableId: t.tableId,
+                        });
+                        const rect = {
+                          x_start_pt: Number(t.regionXStartPt),
+                          x_end_pt: Number(t.regionXEndPt),
+                          y_start_pt: Number(t.regionYStartPt),
+                          y_end_pt: Number(t.regionYEndPt),
+                        };
+                        setTimeout(() => focusOnRect(rect), 80);
+                      }}
+                      className={`text-left px-2 py-1.5 rounded border text-[11px] transition ${
+                        active
+                          ? 'border-primary bg-primary/10 text-primary font-semibold'
+                          : 'border-surface-variant hover:bg-surface-container-low'
+                      }`}
+                    >
+                      <div className="font-bold">
+                        Y{t.yearLevel} · {t.semester}
+                      </div>
+                      <div className="text-[10px] opacity-70">
+                        p.{t.regionPageIndex + 1} · {t.rows.length} row
+                        {t.rows.length === 1 ? '' : 's'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <LiveExtractionPreview
             table={selectedTable}
             textItems={textLayer?.items ?? null}
           />
-
-          <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-3 text-xs text-on-surface-variant space-y-2">
-            <div className="font-semibold text-on-surface">How to use</div>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>
-                Click <strong>Add Table</strong> → pick Year + Semester.
-              </li>
-              <li>Drag a rectangle over that semester's table.</li>
-              <li>Row 1 is created automatically.</li>
-              <li>
-                Click <strong>+ Add row</strong> inside the region to add
-                more rows.
-              </li>
-              <li>
-                To move/resize a row, click its <strong>number badge</strong>{' '}
-                to unlock edit mode.
-              </li>
-              <li>
-                To move/resize the region, click its <strong>label chip</strong>{' '}
-                (the "Year X · Sem" header).
-              </li>
-              <li>
-                Drag the color-coded column handles to align with the PDF
-                columns.
-              </li>
-              <li>
-                Click <strong>Focus</strong> and drag over an area to zoom
-                into it.
-              </li>
-            </ol>
-          </div>
         </div>
       </div>
+
+      {/* How-to modal */}
+      <Modal
+        open={howToOpen}
+        onClose={() => setHowToOpen(false)}
+        title="How to use this editor"
+        size="md"
+        footer={
+          <button
+            onClick={() => setHowToOpen(false)}
+            className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:opacity-90 transition"
+          >
+            Got it
+          </button>
+        }
+      >
+        <ol className="list-decimal list-inside space-y-2 text-sm text-on-surface-variant">
+          <li>
+            Click <strong className="text-on-surface">Add Table</strong> →
+            pick Year + Semester.
+          </li>
+          <li>
+            Drag a rectangle over that semester's table in the PDF.
+          </li>
+          <li>Row 1 is created automatically.</li>
+          <li>
+            Click <strong className="text-on-surface">+ Add row</strong>{' '}
+            inside the region to add more rows.
+          </li>
+          <li>
+            Click a row's <strong className="text-on-surface">number badge</strong>{' '}
+            to unlock edit mode for moving/resizing.
+          </li>
+          <li>
+            Click the region's{' '}
+            <strong className="text-on-surface">label chip</strong> ("Year X ·
+            Sem") to edit the region bounds.
+          </li>
+          <li>
+            Drag the color-coded column handles to align with the PDF
+            columns.
+          </li>
+          <li>
+            Click <strong className="text-on-surface">Focus</strong> and drag
+            over an area to zoom into it.
+          </li>
+          <li>
+            Press <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">Esc</kbd>{' '}
+            at any time to cancel a draw in progress.
+          </li>
+          <li>
+            Press{' '}
+            <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">
+              Ctrl
+            </kbd>
+            {' + '}
+            <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">
+              wheel
+            </kbd>{' '}
+            to zoom. <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">F</kbd> to fit,{' '}
+            <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">0</kbd> to reset.
+          </li>
+        </ol>
+      </Modal>
 
       <AddTableDialog
         open={addTableOpen}
@@ -789,13 +1027,13 @@ export default function ProspectusPdfEditorPage() {
           <>
             <button
               onClick={() => setDeleteTableId(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Cancel
             </button>
             <button
               onClick={confirmDeleteTable}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition"
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg"
             >
               Delete
             </button>
@@ -816,13 +1054,13 @@ export default function ProspectusPdfEditorPage() {
           <>
             <button
               onClick={() => setDeleteRowTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Cancel
             </button>
             <button
               onClick={confirmDeleteRow}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition"
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg"
             >
               Delete
             </button>
@@ -833,6 +1071,7 @@ export default function ProspectusPdfEditorPage() {
           Remove this subject row from the table?
         </p>
       </Modal>
+
       <ImportProspectusDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
