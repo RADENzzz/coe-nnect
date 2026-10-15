@@ -4,18 +4,6 @@ import type { RuleResult } from '../../types/rule-result.type';
 
 const LAB_ROOM_TYPES = ['laboratory', 'computer_lab'];
 
-/**
- * S-5: A subject with a laboratory component should be plotted into a
- * laboratory or computer_lab. Fires only for laboratory sessions.
- *
- * This is a soft complement to R-1: R-1 fails hard when the subject
- * has `required_room_type` set and the room type doesn't match. S-5
- * warns even when R-1 wouldn't — as long as the session is a lab and
- * the room isn't lab-ish.
- *
- * Source: PM's taxonomy, Warning flag "Lab subjects should be
- * prioritized for lab rooms."
- */
 export const labPriorityRule: ConstraintRule = {
   id: 'S-5',
   name: 'Lab Priority for Lab Rooms',
@@ -25,9 +13,10 @@ export const labPriorityRule: ConstraintRule = {
   category: 'room',
 
   validate(ctx: RuleContext): RuleResult {
-    const { subject, room, loadType } = ctx;
+    // External room → no priority opinion.
+    if (ctx.externalRoomName) return { status: 'pass' };
 
-    // Only applies to lab sessions with a room assigned.
+    const { subject, room, loadType } = ctx;
     if (loadType !== 'laboratory') return { status: 'pass' };
     if (!room) return { status: 'pass' };
     if (subject.labUnits <= 0) return { status: 'pass' };
@@ -39,11 +28,7 @@ export const labPriorityRule: ConstraintRule = {
     return {
       status: 'warn',
       reason: `${subject.subjectCode} is a laboratory session but room ${room.roomNumber} is a ${room.roomType.replace('_', ' ')}. Lab rooms are preferred.`,
-      metadata: {
-        subjectId: subject.subjectId,
-        roomId: room.roomId,
-        roomType: room.roomType,
-      },
+      metadata: { subjectId: subject.subjectId, roomId: room.roomId, roomType: room.roomType },
     };
   },
 };
