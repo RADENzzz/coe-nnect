@@ -3,25 +3,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 interface UseAutosaveOptions<T> {
-  /** Debounce delay in ms. Default 800. */
   delay?: number;
-  /** Async saver. Must throw on failure. */
   save: (payload: T) => Promise<void>;
-  /** Show "Saved" indicator for this many ms before fading. Default 1500. */
   savedDisplayMs?: number;
+  /** When true, warn the user on tab close if there are pending changes. */
+  warnOnUnload?: boolean;
 }
 
-/**
- * Debounced autosave with optimistic UI. Returns a `queue` function
- * that schedules a save with the latest payload, plus a state machine.
- *
- * Rapid calls within the debounce window collapse to a single save with
- * the most recent payload.
- */
 export function useAutosave<T>({
   delay = 800,
   save,
   savedDisplayMs = 1500,
+  warnOnUnload = true,
 }: UseAutosaveOptions<T>) {
   const [state, setState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -53,10 +46,7 @@ export function useAutosave<T>({
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       savingRef.current = false;
-      // If another payload was queued while we were saving, run again.
-      if (latestPayload.current !== null) {
-        void run();
-      }
+      if (latestPayload.current !== null) void run();
     }
   }, [save, savedDisplayMs]);
 
@@ -64,9 +54,7 @@ export function useAutosave<T>({
     (payload: T) => {
       latestPayload.current = payload;
       if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        void run();
-      }, delay);
+      timerRef.current = window.setTimeout(() => void run(), delay);
     },
     [delay, run],
   );
@@ -76,33 +64,45 @@ export function useAutosave<T>({
     await run();
   }, [run]);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      if (fadeRef.current) window.clearTimeout(fadeRef.current);
-    };
+  const cancel = useCallback(() => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    latestPayload.current = null;
   }, []);
 
-  return { state, error, queue, flush };
+  // Warn on tab close if there's unsaved state
+  useEffect(() => {
+    if (!warnOnUnload) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (state === 'saving' || latestPayload.current !== null) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [warnOnUnload, state]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      if (fadeRef.current) window.clearTimeout(fadeRef.current);
+    },
+    [],
+  );
+
+  return { state, error, queue, flush, cancel };
 }
 
 interface UseCommitAutosaveOptions<T> {
-  /** Debounce delay after last change, as a safety net. Default 5000. */
   maxIdleMs?: number;
-  /** Async saver. Must throw on failure. */
   save: (payload: T) => Promise<void>;
+  warnOnUnload?: boolean;
 }
 
-/**
- * Autosave that fires ONLY when the user explicitly commits
- * (calls `commit()`) or after a long idle safety timeout.
- *
- * Use this for editing flows where rapid mid-drag saves are
- * undesirable — e.g. table/row editors.
- */
 export function useCommitAutosave<T>({
   maxIdleMs = 5000,
   save,
+  warnOnUnload = true,
 }: UseCommitAutosaveOptions<T>) {
   const [state, setState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -140,33 +140,54 @@ export function useCommitAutosave<T>({
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       inFlightRef.current = false;
-      if (pendingRef.current !== null) {
-        void runSave();
-      }
+      if (pendingRef.current !== null) void runSave();
     }
   }, [save]);
 
-  /**
-   * Stage a payload. It will be saved when:
-   *   - `commit()` is called, OR
-   *   - maxIdleMs elapses with no further `queue()` or `commit()` calls
-   */
   const queue = useCallback(
     (payload: T) => {
       pendingRef.current = payload;
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = window.setTimeout(() => {
-        void runSave();
-      }, maxIdleMs);
+      idleTimerRef.current = window.setTimeout(
+        () => void runSave(),
+        maxIdleMs,
+      );
     },
     [maxIdleMs, runSave],
   );
 
-  /** Save immediately. Use on deselect, page close, etc. */
   const commit = useCallback(async () => {
     await runSave();
   }, [runSave]);
 
-  /** Current state. */
-  return { state, error, queue, commit };
+  const cancel = useCallback(() => {
+    if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    pendingRef.current = null;
+    setState('idle');
+    setError(null);
+  }, []);
+
+  // Auto-commit on tab hide / unload
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === 'hidden') void runSave();
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [runSave]);
+
+  // Warn on tab close
+  useEffect(() => {
+    if (!warnOnUnload) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (state === 'saving' || pendingRef.current !== null) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [warnOnUnload, state]);
+
+  return { state, error, queue, commit, cancel };
 }
