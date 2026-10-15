@@ -60,7 +60,6 @@ export default function ApprovalsPage() {
 
   const [cancelTarget, setCancelTarget] = useState<FacultyRequest | null>(null);
 
-  // ── Form state ──
   const [targetDeptId, setTargetDeptId] = useState('');
   const [facultyMode, setFacultyMode] = useState<'any' | 'specific'>('any');
   const [specificFacultyId, setSpecificFacultyId] = useState('');
@@ -86,7 +85,6 @@ export default function ApprovalsPage() {
     if (!showForm) resetForm();
   }, [showForm, resetForm]);
 
-  // ── Queries ──
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ['faculty-requests'],
     queryFn: fetchFacultyRequests,
@@ -105,7 +103,6 @@ export default function ApprovalsPage() {
     enabled: !!user,
   });
 
-  // Faculty — always loaded while form is open (for filtering by target dept)
   const { data: facultyList = [] } = useQuery({
     queryKey: ['faculty'],
     queryFn: () => fetchFaculty(false),
@@ -113,7 +110,6 @@ export default function ApprovalsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Subjects — always loaded while form is open
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
@@ -121,7 +117,6 @@ export default function ApprovalsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Programs — needed to scope the prospectus to the REQUESTING dept
   const { data: programs = [] } = useQuery({
     queryKey: ['programs'],
     queryFn: fetchPrograms,
@@ -129,7 +124,6 @@ export default function ApprovalsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Prospectus — for the "from prospectus" subject source
   const { data: prospectus = [] } = useQuery({
     queryKey: ['prospectus-all'],
     queryFn: fetchAllProspectus,
@@ -137,7 +131,6 @@ export default function ApprovalsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Derived: programs belonging to MY requesting department ──
   const myProgramIds = useMemo(() => {
     if (!myDeptId) return [];
     return programs
@@ -145,7 +138,6 @@ export default function ApprovalsPage() {
       .map((p) => String(p.programId));
   }, [programs, myDeptId]);
 
-  // ── Derived: prospectus entries scoped to my department's programs ──
   const myProspectus = useMemo(() => {
     if (myProgramIds.length === 0) return [];
     return prospectus.filter((p) =>
@@ -153,7 +145,6 @@ export default function ApprovalsPage() {
     );
   }, [prospectus, myProgramIds]);
 
-  // ── Derived: distinct year levels in my prospectus ──
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     for (const p of myProspectus) {
@@ -162,7 +153,6 @@ export default function ApprovalsPage() {
     return Array.from(years).sort((a, b) => a - b);
   }, [myProspectus]);
 
-  // ── Derived: faculty filtered to the target department ──
   const facultyInTargetDept = useMemo(() => {
     if (!targetDeptId) return [];
     return facultyList.filter(
@@ -170,13 +160,10 @@ export default function ApprovalsPage() {
     );
   }, [facultyList, targetDeptId]);
 
-  // ── Derived: subjects, based on subject source ──
   const availableSubjects = useMemo(() => {
     if (subjectSource === 'all') {
-      // Option C: all active subjects, searchable
       return subjects.filter((s) => s.isActive);
     }
-    // From prospectus: filter to my department's programs + selected year
     if (!selectedYear) return [];
     const subjectIdsForYear = new Set(
       myProspectus
@@ -188,7 +175,6 @@ export default function ApprovalsPage() {
     );
   }, [subjectSource, subjects, myProspectus, selectedYear]);
 
-  // ── Option builders ──
   const facultyOptions = useMemo<SearchableOption[]>(
     () =>
       facultyInTargetDept.map((f) => ({
@@ -209,7 +195,6 @@ export default function ApprovalsPage() {
     [availableSubjects],
   );
 
-  // ── Reset dependent fields when upstream choices change ──
   useEffect(() => {
     setSpecificFacultyId('');
   }, [targetDeptId]);
@@ -218,14 +203,33 @@ export default function ApprovalsPage() {
     setSubjectId('');
   }, [subjectSource, selectedYear]);
 
-  // ── Mutations ──
+  // ─────────────────────────────────────────────────────────────
+  // F4.1 — Cross-page invalidation.
+  //
+  // Approving a cross-dept request clears the "pending" gate on
+  // schedule rows (via ApprovalsService.resolvePendingScheduleRows).
+  // That means:
+  //   - ['faculty-requests']  → this page
+  //   - ['schedules']          → the timetable that owns those rows
+  //                              (invalidating without termId hits
+  //                              every cached term query)
+  //   - ['dashboard']          → counts on the DH/Dean dashboard
+  //   - ['flagged']            → if a flagged row was affected
+  // ─────────────────────────────────────────────────────────────
+  const invalidateAfterMutation = () => {
+    qc.invalidateQueries({ queryKey: ['faculty-requests'] });
+    qc.invalidateQueries({ queryKey: ['schedules'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['flagged'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: createFacultyRequest,
     onSuccess: () => {
       setSuccess('Request submitted for approval.');
       resetForm();
       setShowForm(false);
-      qc.invalidateQueries({ queryKey: ['faculty-requests'] });
+      invalidateAfterMutation();
     },
     onError: (err: any) => {
       setError(
@@ -241,7 +245,7 @@ export default function ApprovalsPage() {
       setSuccess('Request approved.');
       setRespondTarget(null);
       setRespondRemarks('');
-      qc.invalidateQueries({ queryKey: ['faculty-requests'] });
+      invalidateAfterMutation();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Approve failed'),
@@ -254,7 +258,7 @@ export default function ApprovalsPage() {
       setSuccess('Request rejected.');
       setRespondTarget(null);
       setRespondRemarks('');
-      qc.invalidateQueries({ queryKey: ['faculty-requests'] });
+      invalidateAfterMutation();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Reject failed'),
@@ -265,13 +269,12 @@ export default function ApprovalsPage() {
     onSuccess: () => {
       setSuccess('Request cancelled.');
       setCancelTarget(null);
-      qc.invalidateQueries({ queryKey: ['faculty-requests'] });
+      invalidateAfterMutation();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Cancel failed'),
   });
 
-  // ── Permissions ──
   const isAdminOrDean =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
 
@@ -293,7 +296,6 @@ export default function ApprovalsPage() {
     [isAdminOrDean, profile?.dept_id],
   );
 
-  // ── Filtering ──
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return requests.filter((r) => {
@@ -316,7 +318,6 @@ export default function ApprovalsPage() {
     });
   }, [requests, filter, searchQuery, scopeFilter, canRespondTo, canCancel]);
 
-  // ── Counts ──
   const counts = useMemo(() => {
     const pending = requests.filter((r) => r.status === 'pending');
     return {
@@ -330,7 +331,6 @@ export default function ApprovalsPage() {
     };
   }, [requests, canRespondTo, canCancel]);
 
-  // ── Submit handler ──
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -375,7 +375,6 @@ export default function ApprovalsPage() {
     return s ? `[${s.subjectCode}] ${s.title}` : `#${id}`;
   };
 
-  // ── Columns ──
   const columns: Column<FacultyRequest>[] = [
     {
       key: 'request',
@@ -480,7 +479,6 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">
@@ -514,7 +512,6 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {/* Quick-scope split */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
           onClick={() => setScopeFilter('all')}
@@ -574,7 +571,6 @@ export default function ApprovalsPage() {
         </button>
       </div>
 
-      {/* Search + filter panel */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4">
         <div className="flex flex-wrap items-end gap-3 mb-3">
           <div className="flex-1 min-w-[240px]">
@@ -659,7 +655,6 @@ export default function ApprovalsPage() {
         getActions={getActions}
       />
 
-      {/* ─── Create Request Modal (with cascading filters) ─── */}
       <Modal
         open={showForm}
         onClose={() => setShowForm(false)}
@@ -668,7 +663,6 @@ export default function ApprovalsPage() {
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* ── Section 1: Who do you need? ── */}
           <section className="space-y-3">
             <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-surface-variant pb-1.5">
               Who do you need?
@@ -749,7 +743,6 @@ export default function ApprovalsPage() {
             )}
           </section>
 
-          {/* ── Section 2: What do they need to teach? ── */}
           <section className="space-y-3">
             <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-surface-variant pb-1.5">
               What do they need to teach?
@@ -833,7 +826,6 @@ export default function ApprovalsPage() {
             </div>
           </section>
 
-          {/* ── Section 3: Reason ── */}
           <section className="space-y-3">
             <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider border-b border-surface-variant pb-1.5">
               Why do you need this?
@@ -877,7 +869,6 @@ export default function ApprovalsPage() {
         </form>
       </Modal>
 
-      {/* Respond modal */}
       <Modal
         open={!!respondTarget}
         onClose={() => {
@@ -953,7 +944,6 @@ export default function ApprovalsPage() {
         />
       </Modal>
 
-      {/* Cancel confirm */}
       <Modal
         open={!!cancelTarget}
         onClose={() => setCancelTarget(null)}
