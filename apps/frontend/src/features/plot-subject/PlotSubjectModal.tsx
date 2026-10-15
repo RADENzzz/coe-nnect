@@ -98,6 +98,8 @@ interface Props {
 }
 
 type PlotMode = 'single' | 'multi';
+type FacultyMode = 'system' | 'external';
+type RoomMode = 'system' | 'external';
 
 const EMPTY_FORM = {
   subjectId: '',
@@ -105,13 +107,12 @@ const EMPTY_FORM = {
   facultyId: '',
   externalFacultyName: '',
   roomId: '',
+  externalRoomName: '',
   dayOfWeek: 'Monday',
   startTime: '08:00',
   endTime: '09:30',
   loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
 };
-
-type FacultyMode = 'system' | 'external';
 
 interface MultiDayRow {
   day: (typeof DAYS)[number];
@@ -154,6 +155,7 @@ export default function PlotSubjectModal({
     })),
   );
   const [facultyMode, setFacultyMode] = useState<FacultyMode>('system');
+  const [roomMode, setRoomMode] = useState<RoomMode>('system');
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -191,6 +193,29 @@ export default function PlotSubjectModal({
     );
     return d ? `[${d.deptCode}] ${d.deptName}` : null;
   }, [isCrossDeptSelection, selectedFaculty, departments]);
+
+  /**
+   * When the subject is a minor (taught by another department/college),
+   * the room is usually not in our internal `room` table. Auto-default
+   * the room mode to 'external' when a minor subject is selected and
+   * the user hasn't already picked an internal room.
+   *
+   * The user can still override by picking 'From list' — a minor
+   * subject occasionally meets in a room we do manage.
+   */
+  useEffect(() => {
+    if (isEditMode) return; // don't auto-flip during edit
+    if (!selectedSubject) return;
+    // Minor heuristic: deptId differs from the DH's own dept
+    const isMinorSubject =
+      !!selectedSubject.deptId &&
+      !!myDeptId &&
+      String(selectedSubject.deptId) !== myDeptId;
+    if (isMinorSubject && !form.roomId) {
+      setRoomMode('external');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject?.subjectId, isEditMode]);
 
   const subjectYearLevels = useMemo(() => {
     if (!selectedSubject) return [] as number[];
@@ -286,6 +311,7 @@ export default function PlotSubjectModal({
       setForm(EMPTY_FORM);
       setMode('single');
       setFacultyMode('system');
+      setRoomMode('system');
       setMultiDays(
         DAYS.map((day) => ({
           day,
@@ -303,14 +329,17 @@ export default function PlotSubjectModal({
       return;
     }
     if (editing) {
-      const hasExternal = !!editing.externalFacultyName;
-      setFacultyMode(hasExternal ? 'external' : 'system');
+      const hasExternalFaculty = !!editing.externalFacultyName;
+      const hasExternalRoom = !!editing.externalRoomName;
+      setFacultyMode(hasExternalFaculty ? 'external' : 'system');
+      setRoomMode(hasExternalRoom && !editing.roomId ? 'external' : 'system');
       setForm({
         subjectId: editing.subjectId,
         section: editing.sectionCode ?? '',
         facultyId: editing.facultyId ?? '',
         externalFacultyName: editing.externalFacultyName ?? '',
         roomId: editing.roomId ?? '',
+        externalRoomName: editing.externalRoomName ?? '',
         dayOfWeek: DAY_ABBR_TO_FULL[editing.day] ?? 'Monday',
         startTime: editing.startTime,
         endTime: editing.endTime,
@@ -331,6 +360,7 @@ export default function PlotSubjectModal({
         subjectId: presetSubjectId ?? '',
       });
       setMode('single');
+      setRoomMode('system');
       setMultiDays(
         DAYS.map((day) => ({
           day,
@@ -463,7 +493,9 @@ export default function PlotSubjectModal({
 
   useEffect(() => {
     if (mode !== 'single') return;
-    if (!open || !form.subjectId || !form.roomId || !form.dayOfWeek) return;
+    if (!open || !form.subjectId) return;
+    if (!form.roomId && !form.externalRoomName) return;
+    if (!form.dayOfWeek) return;
 
     setTouched(true);
     const timeout = setTimeout(async () => {
@@ -473,7 +505,11 @@ export default function PlotSubjectModal({
           subjectId: form.subjectId,
           facultyId:
             facultyMode === 'system' ? form.facultyId || undefined : undefined,
-          roomId: form.roomId || undefined,
+          roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
+          externalRoomName:
+            roomMode === 'external'
+              ? form.externalRoomName.trim() || undefined
+              : undefined,
           section: form.section || undefined,
           dayOfWeek: form.dayOfWeek,
           startTime: form.startTime,
@@ -489,18 +525,8 @@ export default function PlotSubjectModal({
     }, 400);
 
     return () => clearTimeout(timeout);
-  }, [open, form, termId, editing?.id, mode, facultyMode]);
+  }, [open, form, termId, editing?.id, mode, facultyMode, roomMode]);
 
-  // ─────────────────────────────────────────────────────────────
-  // F4.1 — Cross-page invalidation.
-  //
-  // A plot/edit/delete in one tab affects queries that live on
-  // other pages: the Approvals page watches ['faculty-requests'];
-  // the Dashboard watches ['dashboard']; the timetable watches
-  // ['schedules', termId], ['unplotted-minors', ...], ['flagged'].
-  //
-  // Invalidate them all so no page needs a manual refresh.
-  // ─────────────────────────────────────────────────────────────
   const invalidateAfterMutation = () => {
     queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
     queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
@@ -544,7 +570,8 @@ export default function PlotSubjectModal({
       dayOfWeek: string;
       startTime: string;
       endTime: string;
-      roomId?: string;
+      roomId?: string | null;
+      externalRoomName?: string | null;
       facultyId?: string | null;
       externalFacultyName?: string | null;
       section?: string | null;
@@ -571,6 +598,8 @@ export default function PlotSubjectModal({
   };
 
   const fireSubmit = async () => {
+    const extRoomTrimmed = form.externalRoomName.trim();
+
     if (mode === 'multi') {
       setSubmitting(true);
       const extName = form.externalFacultyName.trim();
@@ -581,7 +610,11 @@ export default function PlotSubjectModal({
           facultyMode === 'system' ? form.facultyId || undefined : undefined,
         externalFacultyName:
           facultyMode === 'external' && extName ? extName : undefined,
-        roomId: form.roomId || undefined,
+        roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
+        externalRoomName:
+          roomMode === 'external' && extRoomTrimmed
+            ? extRoomTrimmed
+            : undefined,
         section: form.section || undefined,
         loadType: form.loadType,
         sessions: enabledDays.map((d) => ({
@@ -600,7 +633,11 @@ export default function PlotSubjectModal({
         subjectId: form.subjectId,
         facultyId:
           facultyMode === 'system' ? form.facultyId || undefined : undefined,
-        roomId: form.roomId || undefined,
+        roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
+        externalRoomName:
+          roomMode === 'external' && extRoomTrimmed
+            ? extRoomTrimmed
+            : undefined,
         section: form.section || undefined,
         dayOfWeek: form.dayOfWeek,
         startTime: form.startTime,
@@ -623,7 +660,11 @@ export default function PlotSubjectModal({
           dayOfWeek: form.dayOfWeek,
           startTime: form.startTime,
           endTime: form.endTime,
-          roomId: form.roomId || undefined,
+          roomId: roomMode === 'system' ? form.roomId || null : null,
+          externalRoomName:
+            roomMode === 'external'
+              ? extRoomTrimmed || null
+              : null,
           facultyId:
             facultyMode === 'system' ? form.facultyId || null : null,
           externalFacultyName:
@@ -644,7 +685,11 @@ export default function PlotSubjectModal({
               : undefined,
           externalFacultyName:
             facultyMode === 'external' && extName ? extName : undefined,
-          roomId: form.roomId || undefined,
+          roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
+          externalRoomName:
+            roomMode === 'external' && extRoomTrimmed
+              ? extRoomTrimmed
+              : undefined,
           section: form.section || undefined,
           loadType: form.loadType,
           dayOfWeek: form.dayOfWeek,
@@ -670,6 +715,14 @@ export default function PlotSubjectModal({
       return;
     }
 
+    const hasRoom =
+      (roomMode === 'system' && !!form.roomId) ||
+      (roomMode === 'external' && form.externalRoomName.trim().length > 0);
+
+    if (!hasRoom) {
+      return;
+    }
+
     if (isCrossDeptSelection && !isEditMode) {
       setPendingConfirm({
         payloadKind: mode === 'multi' ? 'multi' : 'single',
@@ -686,11 +739,15 @@ export default function PlotSubjectModal({
     (facultyMode === 'system' && !!form.facultyId) ||
     (facultyMode === 'external' && form.externalFacultyName.trim().length > 0);
 
+  const hasRoom =
+    (roomMode === 'system' && !!form.roomId) ||
+    (roomMode === 'external' && form.externalRoomName.trim().length > 0);
+
   const multiSubmitDisabled =
     submitting ||
     plotMultiMutation.isPending ||
     !form.subjectId ||
-    !form.roomId ||
+    !hasRoom ||
     !hasFaculty ||
     multiCount === 0 ||
     (sessionStatus.limit != null && multiCount > sessionStatus.remaining);
@@ -700,7 +757,7 @@ export default function PlotSubjectModal({
     plotMutation.isPending ||
     updateMutation.isPending ||
     !form.subjectId ||
-    !form.roomId ||
+    !hasRoom ||
     !hasFaculty ||
     (touched && (validation?.hardConflicts.length ?? 0) > 0) ||
     sessionStatus.exceeded;
@@ -1118,20 +1175,82 @@ export default function PlotSubjectModal({
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Room *
               </label>
-              <select
-                name="roomId"
-                required
-                value={form.roomId}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+
+              <div
+                role="tablist"
+                aria-label="Room source"
+                className="inline-flex w-full rounded-lg border border-surface-variant bg-surface-container-low p-0.5 mb-2"
               >
-                <option value="">Select a room…</option>
-                {rooms.map((r) => (
-                  <option key={r.roomId} value={r.roomId}>
-                    Room {r.roomNumber} ({r.roomType.replace('_', ' ')})
-                  </option>
-                ))}
-              </select>
+                <button
+                  role="tab"
+                  aria-selected={roomMode === 'system'}
+                  type="button"
+                  onClick={() => setRoomMode('system')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    roomMode === 'system'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="meeting_room" size={14} />
+                  From list
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={roomMode === 'external'}
+                  type="button"
+                  onClick={() => setRoomMode('external')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                    roomMode === 'external'
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="home_work" size={14} />
+                  External
+                </button>
+              </div>
+
+              {roomMode === 'system' && (
+                <>
+                  <select
+                    name="roomId"
+                    value={form.roomId}
+                    onChange={handleChange}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Select a room…</option>
+                    {rooms.map((r) => (
+                      <option key={r.roomId} value={r.roomId}>
+                        Room {r.roomNumber} ({r.roomType.replace('_', ' ')})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    Room type and overlap rules apply. Use this for rooms we
+                    manage.
+                  </p>
+                </>
+              )}
+
+              {roomMode === 'external' && (
+                <>
+                  <input
+                    type="text"
+                    name="externalRoomName"
+                    value={form.externalRoomName}
+                    onChange={handleChange}
+                    placeholder="e.g. Math Building Room 204"
+                    maxLength={120}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  />
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    For rooms outside the system (another college's room,
+                    renovation overflow, off-site). Room rules skip — the
+                    section is still reserved for this time.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
