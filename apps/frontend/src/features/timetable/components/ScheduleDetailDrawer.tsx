@@ -110,6 +110,7 @@ export default function ScheduleDetailDrawer({
     queryClient.invalidateQueries({ queryKey: ['flagged'] });
     queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
     queryClient.invalidateQueries({ queryKey: ['schedule-versions'] });
+    queryClient.invalidateQueries({ queryKey: ['coverage'] });
   };
 
   const deleteMutation = useMutation({
