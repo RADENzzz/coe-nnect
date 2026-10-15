@@ -444,6 +444,8 @@ export interface CoverageMissingItem {
   subjectCode: string;
   title: string;
   isMinor: boolean;
+  /** NEW — 'Liberal Arts', 'Math', etc. null when owned by this dept. */
+  sourceDept: string | null;
   programId: string;
   programCode: string | null;
   yearLevel: number;
