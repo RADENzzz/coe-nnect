@@ -178,6 +178,18 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
             </div>
           )}
 
+          {/* Explainer — helps the DH understand what S-11 does */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900 flex items-start gap-2">
+            <Icon name="info" size={16} className="shrink-0 mt-0.5" />
+            <div>
+              <strong>Soft warning (rule S-11).</strong> When two subjects
+              listed here are plotted in the same time slot for the same
+              section, the engine emits an amber warning. It doesn't block
+              the plot. Use this for Capstone 1 vs Capstone 2, Practicum vs
+              lectures, or any pair that shouldn't overlap.
+            </div>
+          </div>
+
           {/* Add new restriction */}
           <form
             onSubmit={handleAdd}
