@@ -55,6 +55,7 @@ function ClassBlockBase({
   const locked =
     entry.status === 'finalized' || entry.status === 'published';
   const isExternalFaculty = !!entry.externalFacultyName;
+  const isExternalRoom = !!entry.externalRoomName;
   const isPending = !!entry.pendingFacultyRequestId;
   const isFlagged = !!entry.flagged;
 
@@ -74,10 +75,6 @@ function ClassBlockBase({
     : isForeign
     ? 'ring-2 ring-slate-300 ring-offset-1'
     : '';
-
-  // Top-left badge: locked > foreign > flagged (only one badge)
-  // But we want the flag icon to also show if the block is flagged.
-  // We prioritize lock/foreign as the leftmost icon, and add flag as secondary.
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -100,6 +97,15 @@ function ClassBlockBase({
     }
   };
 
+  // Badge padding — pl is 5 when any left-side badge is present
+  const hasAnyBadge =
+    locked ||
+    isForeign ||
+    isFlagged ||
+    isExternalFaculty ||
+    isExternalRoom ||
+    isPending;
+
   return (
     <div
       ref={ref}
@@ -112,9 +118,11 @@ function ClassBlockBase({
         entry.sectionCode ? ' ' + entry.sectionCode : ''
       }, ${formatTime(entry.startTime)} to ${formatTime(entry.endTime)}${
         isExternalFaculty ? ', external faculty' : ''
-      }${isPending ? ', pending cross-department approval' : ''}${
-        entry.flagged ? ', flagged for review' : ''
-      }${entry.hasConflict ? ', has conflict' : ''}`}
+      }${isExternalRoom ? `, external room ${entry.externalRoomName}` : ''}${
+        isPending ? ', pending cross-department approval' : ''
+      }${entry.flagged ? ', flagged for review' : ''}${
+        entry.hasConflict ? ', has conflict' : ''
+      }`}
       className={clsx(
         'rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
@@ -127,7 +135,9 @@ function ClassBlockBase({
       )}
     >
       {/* ── Top-left badges ──
-          Priority: locked/foreign (leftmost), then flag badge to the right */}
+          Priority: locked/foreign (leftmost), then flag,
+          then external faculty, then external room */}
+
       <div className="absolute top-0.5 left-1 flex items-center gap-0.5 pointer-events-none">
         {locked && (
           <span
@@ -153,6 +163,14 @@ function ClassBlockBase({
             <Icon name="badge" size={9} />
           </span>
         )}
+        {isExternalRoom && (
+          <span
+            className="bg-amber-500 text-white rounded px-1 py-px leading-none flex items-center"
+            title={`External room: ${entry.externalRoomName}`}
+          >
+            <Icon name="home_work" size={9} />
+          </span>
+        )}
         {isFlagged && (
           <span
             className="bg-rose-600 text-white rounded px-1 py-px leading-none flex items-center"
@@ -164,13 +182,13 @@ function ClassBlockBase({
       </div>
 
       {isPending && (
-          <span
-            className="bg-amber-600 text-white rounded px-1 py-px leading-none flex items-center"
-            title="Pending cross-department faculty approval"
-          >
-            <Icon name="hourglass_top" size={9} />
-          </span>
-        )}
+        <span
+          className="bg-amber-600 text-white rounded px-1 py-px leading-none flex items-center"
+          title="Pending cross-department faculty approval"
+        >
+          <Icon name="hourglass_top" size={9} />
+        </span>
+      )}
 
       {/* ── Top-right overlap counter ── */}
       {overlapCount > 1 && (
@@ -179,17 +197,11 @@ function ClassBlockBase({
         </span>
       )}
 
-      {/* ── Line 1: subject code + section ──
-          Left padding needs to account for badges */}
+      {/* ── Line 1: subject code + section ── */}
       <div
         className={clsx(
           'font-bold truncate',
-          (locked ||
-            isForeign ||
-            isFlagged ||
-            isExternalFaculty ||
-            isPending) &&
-            'pl-5',
+          hasAnyBadge && 'pl-5',
         )}
       >
         {entry.subjectCode}
@@ -211,6 +223,20 @@ function ClassBlockBase({
           title={isExternalFaculty ? 'External faculty' : undefined}
         >
           {entry.facultyName}
+        </div>
+      )}
+
+      {/* ── Line 2b: room (external takes priority when set) ── */}
+      {showSecondary && (isExternalRoom || (entry.roomNumber && entry.roomNumber !== '—')) && (
+        <div
+          className={clsx(
+            'truncate',
+            isExternalRoom ? 'opacity-95 italic' : 'opacity-80',
+          )}
+          style={{ fontSize: metrics.blockFontSize - 1 }}
+          title={isExternalRoom ? 'External room' : undefined}
+        >
+          {isExternalRoom ? entry.externalRoomName : entry.roomNumber}
         </div>
       )}
 
