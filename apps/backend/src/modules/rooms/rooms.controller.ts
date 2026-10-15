@@ -48,6 +48,21 @@ export class RoomsController {
 
   // ── ROOM PREFERENCES (F3) ──
 
+  /**
+   * Bulk endpoint: every preference across every shared room.
+   * Used by the Rooms page to compute the "Preferred" tile count and
+   * to flag preferred rows, in one round-trip.
+   *
+   * MUST be declared before `preferences/:id` and before the `:id`
+   * catchall — Nest resolves in declaration order.
+   */
+  @Get('preferences/all')
+  @Roles('college_dean', 'department_head')
+  async listAllPreferences() {
+    const data = await this.rooms.findAllPreferences();
+    return { data };
+  }
+
   @Get('preferences')
   @Roles('college_dean', 'department_head')
   async listPreferences(@Query('roomId') roomId: string, @Req() req: any) {
