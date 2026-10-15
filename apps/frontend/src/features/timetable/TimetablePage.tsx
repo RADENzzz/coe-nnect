@@ -665,7 +665,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
       });
       queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
       queryClient.invalidateQueries({ queryKey: ['flagged'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
     [queryClient, minorsDeptId],
   );
