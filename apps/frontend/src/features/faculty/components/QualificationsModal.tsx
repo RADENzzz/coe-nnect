@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchFacultyQualifications,
@@ -25,6 +25,9 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [removeTarget, setRemoveTarget] = useState<FacultyQualification | null>(null);
+  const [search, setSearch] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: quals = [], isLoading } = useQuery({
     queryKey: ['faculty-qualifications', faculty?.facultyId],
@@ -46,6 +49,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
         queryKey: ['faculty-qualifications', faculty?.facultyId],
       });
       setSelectedSubjectId('');
+      setSearch('');
       setError(null);
     },
     onError: (err: any) =>
@@ -65,14 +69,43 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       setError(err?.response?.data?.message ?? err.message ?? 'Failed to remove'),
   });
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   // Filter out subjects already qualified
   const existingIds = new Set(quals.map((q) => String(q.subjectId)));
-  const availableSubjects = subjects.filter(
-    (s) => !existingIds.has(String(s.subjectId)) && s.isActive,
+  const availableSubjects = useMemo(
+    () =>
+      subjects.filter(
+        (s) => !existingIds.has(String(s.subjectId)) && s.isActive,
+      ),
+    [subjects, quals],
   );
 
-  const sortedQuals = [...quals].sort((a, b) =>
-    (a.subject?.subjectCode ?? '').localeCompare(b.subject?.subjectCode ?? ''),
+  const filteredSubjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return availableSubjects;
+    return availableSubjects.filter(
+      (s) =>
+        s.subjectCode.toLowerCase().includes(q) ||
+        s.title.toLowerCase().includes(q),
+    );
+  }, [availableSubjects, search]);
+
+  const sortedQuals = useMemo(
+    () =>
+      [...quals].sort((a, b) =>
+        (a.subject?.subjectCode ?? '').localeCompare(b.subject?.subjectCode ?? ''),
+      ),
+    [quals],
   );
 
   const columns: Column<FacultyQualification>[] = [
@@ -142,7 +175,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
           >
             Close
           </button>
@@ -150,8 +183,9 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       >
         <div className="space-y-5">
           {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm">
-              {error}
+            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg flex items-start gap-2">
+              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -180,24 +214,79 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             </div>
           </div>
 
-          {/* Add new */}
+          {/* Add new — searchable dropdown */}
           <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-            <div className="flex-1">
+            <div className="flex-1 relative" ref={dropdownRef}>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
                 Add Subject
               </label>
-              <select
-                value={selectedSubjectId}
-                onChange={(e) => setSelectedSubjectId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">Select a subject…</option>
-                {availableSubjects.map((s) => (
-                  <option key={s.subjectId} value={s.subjectId}>
-                    [{s.subjectCode}] {s.title}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <Icon
+                  name="search"
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setDropdownOpen(true);
+                  }}
+                  onFocus={() => setDropdownOpen(true)}
+                  placeholder="Search by code or title…"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      setSelectedSubjectId('');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                )}
+              </div>
+
+              {dropdownOpen && (
+                <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  {filteredSubjects.length === 0 ? (
+                    <div className="px-3 py-4 text-xs text-slate-500 text-center">
+                      {availableSubjects.length === 0
+                        ? 'All subjects already qualified.'
+                        : 'No subjects match your search.'}
+                    </div>
+                  ) : (
+                    filteredSubjects.slice(0, 50).map((s) => (
+                      <button
+                        key={s.subjectId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSubjectId(s.subjectId);
+                          setSearch(`[${s.subjectCode}] ${s.title}`);
+                          setDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-primary/5 transition border-b border-slate-100 last:border-0"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-primary">
+                            {s.subjectCode}
+                          </span>
+                          <span className="text-sm text-slate-800 truncate">
+                            {s.title}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {Number(s.lectureUnits)}L + {Number(s.labUnits)}Lab units
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
             <button
               onClick={() => {
@@ -211,6 +300,18 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             </button>
           </div>
 
+          {/* List header */}
+          {quals.length > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Qualified Subjects
+              </p>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-primary/10 text-primary rounded-full">
+                {quals.length}
+              </span>
+            </div>
+          )}
+
           {/* List */}
           <ResponsiveTable
             columns={columns}
@@ -220,7 +321,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             rowSubtitle={(q) => q.subject?.title ?? ''}
             isLoading={isLoading}
             hasSourceRows={quals.length > 0}
-            emptyMessage="No qualifications yet."
+            emptyMessage="No qualifications yet. Add one above to restrict this faculty to specific subjects."
             noMatchMessage="No qualifications match your filters."
             getActions={getActions}
           />
@@ -238,7 +339,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             <button
               type="button"
               onClick={() => setRemoveTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Cancel
             </button>
@@ -248,8 +349,11 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
                 removeTarget && removeMutation.mutate(removeTarget.qualId)
               }
               disabled={removeMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
+              {removeMutation.isPending && (
+                <Icon name="progress_activity" size={14} className="animate-spin" />
+              )}
               {removeMutation.isPending ? 'Removing…' : 'Remove'}
             </button>
           </>
