@@ -49,6 +49,25 @@ export class Schedule {
   @Column({ name: 'room_id', type: 'bigint', nullable: true })
   roomId: string | null;
 
+  /**
+   * External room support (2026-10-15).
+   *
+   * Free-text label used when the row's room is not in the `room`
+   * table — e.g. another college's room for a minor subject, or a
+   * temporary space during renovations.
+   *
+   * When set:
+   *   - Room rules (R-1, R-3, R-4, S-5, S-6, S-8, S-10) skip.
+   *   - H-2 (Room Overlap) skips.
+   *   - H-3 (Section Overlap) still fires — the section is busy.
+   *
+   * May coexist with roomId (re-plot case); the CHECK constraint
+   * `chk_schedule_room_or_external` guarantees at least one of
+   * room_id / external_room_name / remarks is present.
+   */
+  @Column({ name: 'external_room_name', type: 'text', nullable: true })
+  externalRoomName: string | null;
+
   @Column({ name: 'timeslot_id', type: 'bigint', nullable: true })
   timeslotId: string | null;
 
@@ -93,7 +112,7 @@ export class Schedule {
   })
   status: ScheduleStatus;
 
-  // ── NEW: Flag system ──
+  // ── Flag system ──
   @Column({ type: 'boolean', default: false })
   flagged: boolean;
 
@@ -106,7 +125,7 @@ export class Schedule {
   @Column({ name: 'flag_reason', type: 'text', nullable: true })
   flagReason: string | null;
 
-    // ── F1b: pending cross-dept faculty approval ──
+  // ── F1b: pending cross-dept faculty approval ──
   @Column({
     name: 'pending_faculty_request_id',
     type: 'bigint',
