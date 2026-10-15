@@ -108,6 +108,7 @@ class Config(BaseModel):
     defaultRequiredHours: int = 18
     labMinutesPerUnit: int = 180
     labMaxConsecutiveMinutes: int = 180
+    consecutiveBlockPenalty: int = 0
 
 class RoomPreference(BaseModel):
     """F3: a department's soft preference for a shared room."""
@@ -547,7 +548,65 @@ def solve_schedule(req: SolveRequest) -> dict:
                 f"0 candidate placements matched any scheduled block"
             )
 
+    # ── SOFT: H-4 consecutive-block penalty ──
+    # Penalize placements that produce 3+ consecutive 30-min buckets
+    # for the same faculty on the same day.
+    #
+    # Approach: for each (faculty, day), build a bucketed slot index
+    # (like add_bucketed_exclusion). If 3+ candidates could co-occupy
+    # an adjacent run, add a soft penalty on the "extra" variables.
+    #
+    # We use CP-SAT linear sums only — no variable multiplication.
+    consecutive_penalty_weight = 3  # soft nudge, well below unscheduled=1000
+    max_consec_min = req.config.maxConsecutiveHours * 60
+    consecutive_penalty_terms = []
+
+    # Rebuild a slot index for faculty (same as add_bucketed_exclusion)
+    fac_slot_index: Dict[tuple, List] = defaultdict(list)
+    for (fac_id, day), entries in fac_day.items():
+        for (v, start, dur) in entries:
+            slot = start
+            while slot < start + dur:
+                fac_slot_index[(fac_id, day, slot)].append(v)
+                slot += 30
+
+    # For each (faculty, day), find 30-min windows where 3+ consecutive
+    # slots are occupied. Count via "consecutive triple" detection.
+    # Simple approach: penalize the SUM of variables in every
+    # 3-consecutive-slot window that exceeds the max consecutive limit.
+    seen_windows = set()
+    for (fac_id, day, slot), vars_list in fac_slot_index.items():
+        # A "3-slot window" starting at this slot covers [slot, slot+90)
+        window_key = (fac_id, day, slot)
+        if window_key in seen_windows:
+            continue
+        seen_windows.add(window_key)
+
+        # Gather all candidates that touch any slot in this 90-min window
+        window_vars = set()
+        for offset in (0, 30, 60):
+            window_vars.update(
+                fac_slot_index.get((fac_id, day, slot + offset), [])
+            )
+
+        # If 3+ candidates could fit consecutively here, add a small
+        # penalty per candidate. This won't forbid the placement — just
+        # disincentivizes it.
+        if len(window_vars) >= 3:
+            for v in window_vars:
+                consecutive_penalty_terms.append(v)
+
+    if consecutive_penalty_terms:
+        objective_terms.append(
+            consecutive_penalty_weight * sum(consecutive_penalty_terms)
+        )
+        print(
+            f"[solver] H-4: {len(consecutive_penalty_terms)} candidate(s) "
+            f"penalized for consecutive-block risk"
+        )
+    
     if objective_terms:
+        
         model.Minimize(sum(objective_terms))
 
     # ── SOLVE ──
