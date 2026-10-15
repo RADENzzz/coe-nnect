@@ -13,6 +13,14 @@ export interface ScheduleEntry {
   externalFacultyName: string | null;
   roomId: string;
   roomNumber: string;
+  /**
+   * External room name (2026-10-15).
+   *
+   * Set when the row's room is not in the internal `room` table.
+   * The grid and drawer show this in place of `roomNumber`.
+   * May be null when the row uses only an internal room.
+   */
+  externalRoomName: string | null;
   pendingFacultyRequestId: string | null;
   pendingFacultyDeptId: string | null;
   building: string;
