@@ -403,7 +403,7 @@ export class SchedulingService {
       }
     }
 
-    // ── F1b: create the cross-dept request BEFORE the engine runs ──
+
     // ── F1b: create the cross-dept request BEFORE the engine runs ──
     const gate = await this.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
@@ -1699,7 +1699,7 @@ export class SchedulingService {
       subjectCode: string;
       title: string;
       isMinor: boolean;
-      sourceDept: string | null;          // ← ADD THIS LINE
+      sourceDept: string | null;
       programId: string;
       programCode: string | null;
       yearLevel: number;
@@ -2150,9 +2150,6 @@ export class SchedulingService {
     }
 
     const termSemester = termRow.semester;
-    this.logger.log(
-      `Filtering prospectus by semester='${termSemester}' for term ${termId}`,
-    );
     this.logger.log(
       `Filtering prospectus by semester='${termSemester}' for term ${termId}`,
     );
