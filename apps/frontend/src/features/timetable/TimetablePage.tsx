@@ -15,12 +15,14 @@ import {
   getPendingAutoGenerate,
   fetchVersion,
   fetchUnplottedMinors,
+  fetchCoverage,
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
   type ScheduleVersionEntry,
   type UnplottedMinor,
   type BlockedMinorSummary,
+  type CoverageReport,
 } from '../../api/schedule.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -46,7 +48,7 @@ import { fetchAllProspectus } from '../../api/prospectus.api';
 import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
-import UnplottedMinorsPanel from './components/UnplottedMinorsPanel';
+import CoveragePanel from './components/CoveragePanel';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -292,7 +294,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
 
-  const [minorsPanelOpen, setMinorsPanelOpen] = useState(false);
+  const [coveragePanelOpen, setCoveragePanelOpen] = useState(false);
 
   const isDepartmentHead = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
@@ -429,6 +431,20 @@ export default function TimetablePage({ readOnly = false }: Props) {
       !!minorsDeptId &&
       !activeVersion &&
       !!user,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+
+  // ── Coverage indicator (Q4 = global always, dept-wide) ──
+  const coverageDeptId = isDepartmentHead ? myDeptId : viewDeptId || myDeptId;
+  const {
+    data: coverage,
+    isLoading: coverageLoading,
+  } = useQuery<CoverageReport>({
+    queryKey: ['coverage', activeTerm?.termId, coverageDeptId],
+    queryFn: () => fetchCoverage(activeTerm!.termId, coverageDeptId),
+    enabled:
+      !!activeTerm?.termId && !!coverageDeptId && !activeVersion && !!user,
     refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
@@ -667,6 +683,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       queryClient.invalidateQueries({
         queryKey: ['unplotted-minors', termId, minorsDeptId],
       });
+      queryClient.invalidateQueries({ queryKey: ['coverage'] });
       queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
       queryClient.invalidateQueries({ queryKey: ['flagged'] });
     },
@@ -748,7 +765,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, []);
 
   const handlePlotMinor = useCallback((subjectId: string) => {
-    setMinorsPanelOpen(false);
+    setCoveragePanelOpen(false);
     setEditEntryId(null);
     setPlotSubjectPresetId(subjectId);
     setPlotOpen(true);
@@ -1000,8 +1017,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
       }
     : null;
 
-  const showMinorsBanner =
-    writable && unplottedMinors.length > 0 && !isLoading && !error;
+  const showCoverageBanner =
+    writable &&
+    !!coverage &&
+    coverage.totals.missing > 0 &&
+    !isLoading &&
+    !error;
+
+  const coveragePercent = coverage?.totals.percent ?? 100;
+  const showCoveragePill =
+    !!coverage && coverage.termSemester !== null && !isLoading && !error;
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
@@ -1036,6 +1061,34 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 </span>
               )}
             </div>
+          )}
+
+          {/* ── Coverage pill (always visible when computable) ── */}
+          {showCoveragePill && (
+            <button
+              type="button"
+              onClick={() => setCoveragePanelOpen(true)}
+              title="View prospectus coverage"
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition ${
+                coveragePercent >= 100
+                  ? 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
+                  : coveragePercent >= 80
+                  ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  : 'border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100'
+              }`}
+            >
+              <Icon name="checklist" size={13} />
+              <span className="tabular-nums">
+                {coverage?.totals.plotted}/{coverage?.totals.expected}
+              </span>
+              <span className="opacity-70">·</span>
+              <span className="tabular-nums">{coveragePercent}%</span>
+              {coverage && coverage.totals.missing > 0 && (
+                <span className="ml-1 text-[10px] px-1.5 py-px rounded-full bg-white/60 font-bold">
+                  {coverage.totals.missing} left
+                </span>
+              )}
+            </button>
           )}
 
           {activeTerm && !activeVersion && (
@@ -1084,44 +1137,80 @@ export default function TimetablePage({ readOnly = false }: Props) {
         />
       )}
 
-      {showMinorsBanner && (
-        <div className="mb-4 rounded-xl border-2 border-purple-300 bg-purple-50 px-4 py-3 flex items-start gap-3">
+            {showCoverageBanner && coverage && (
+        <div
+          className={`mb-4 rounded-xl border-2 px-4 py-3 flex items-start gap-3 ${
+            coverage.totals.missing > 0
+              ? 'border-amber-300 bg-amber-50'
+              : 'border-green-300 bg-green-50'
+          }`}
+        >
           <Icon
-            name="warning"
+            name={coverage.totals.missing > 0 ? 'warning' : 'check_circle'}
             filled
             size={20}
-            className="text-purple-600 shrink-0 mt-0.5"
+            className={
+              coverage.totals.missing > 0
+                ? 'text-amber-600 shrink-0 mt-0.5'
+                : 'text-green-600 shrink-0 mt-0.5'
+            }
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm font-semibold text-purple-900">
-                {unplottedMinors.length} minor subject
-                {unplottedMinors.length === 1 ? '' : 's'} not yet plotted
+              <p
+                className={`text-sm font-semibold ${
+                  coverage.totals.missing > 0
+                    ? 'text-amber-900'
+                    : 'text-green-900'
+                }`}
+              >
+                {coverage.totals.missing} prospectus slot
+                {coverage.totals.missing === 1 ? '' : 's'} not yet plotted
+                {' '}
+                <span className="font-normal opacity-80">
+                  ({coverage.totals.plotted} of {coverage.totals.expected}{' '}
+                  done · {coverage.totals.percent}%)
+                </span>
               </p>
               <button
                 type="button"
-                onClick={() => setMinorsPanelOpen(true)}
-                className="text-xs font-semibold text-purple-800 hover:text-purple-900 underline"
+                onClick={() => setCoveragePanelOpen(true)}
+                className="text-xs font-semibold underline text-on-surface-variant hover:text-on-surface"
               >
                 View list
               </button>
             </div>
-            <p className="text-xs text-purple-800 mt-0.5">
-              Plot these <strong>before</strong> running auto-generate so the
-              solver can schedule around them.
+            <p className="text-xs text-on-surface-variant mt-0.5">
+              Missing{' '}
+              {coverage.missing.filter((m) => m.isMinor).length} minor
+              {coverage.missing.filter((m) => m.isMinor).length === 1
+                ? ''
+                : 's'}{' '}
+              ·{' '}
+              {coverage.missing.filter((m) => !m.isMinor).length} major
+              {coverage.missing.filter((m) => !m.isMinor).length === 1
+                ? ''
+                : 's'}
+              . Plot minors first so the solver can schedule around them.
             </p>
             <div className="mt-2 flex flex-wrap gap-1">
-              {unplottedMinors.slice(0, 6).map((m) => (
+              {coverage.missing.slice(0, 6).map((m) => (
                 <span
-                  key={m.subjectId}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[11px] font-mono"
+                  key={`${m.subjectId}::${m.sectionId}`}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono ${
+                    m.isMinor
+                      ? 'bg-purple-100 text-purple-900'
+                      : 'bg-rose-100 text-rose-900'
+                  }`}
                 >
                   {m.subjectCode}
+                  <span className="opacity-60">·</span>
+                  {m.sectionCode}
                 </span>
               ))}
-              {unplottedMinors.length > 6 && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-100 text-purple-900 text-[11px]">
-                  +{unplottedMinors.length - 6} more
+              {coverage.missing.length > 6 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px]">
+                  +{coverage.missing.length - 6} more
                 </span>
               )}
             </div>
@@ -1650,10 +1739,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
         versionB={compareB}
       />
 
-      <UnplottedMinorsPanel
-        open={minorsPanelOpen}
-        onClose={() => setMinorsPanelOpen(false)}
-        minors={unplottedMinors}
+      <CoveragePanel
+        open={coveragePanelOpen}
+        onClose={() => setCoveragePanelOpen(false)}
+        coverage={coverage ?? null}
+        isLoading={coverageLoading}
         onPlot={(subjectId) => handlePlotMinor(subjectId)}
       />
 
@@ -1819,7 +1909,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               type="button"
               onClick={() => {
                 setBlockedMinors(null);
-                setMinorsPanelOpen(true);
+                setCoveragePanelOpen(true);
               }}
               className="px-4 py-2 text-sm font-semibold border border-surface-variant rounded-lg hover:bg-surface-container-low transition"
             >
