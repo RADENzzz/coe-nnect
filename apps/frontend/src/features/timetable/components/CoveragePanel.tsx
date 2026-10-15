@@ -191,6 +191,14 @@ export default function CoveragePanel({
                               Minor
                             </span>
                           )}
+                          {m.sourceDept && (
+                            <span
+                              className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-px rounded bg-amber-100 text-amber-800"
+                              title={`Taught by ${m.sourceDept}`}
+                            >
+                              {m.sourceDept}
+                            </span>
+                          )}
                           {m.loadTypes.length > 0 && (
                             <span className="text-[10px] text-on-surface-variant font-mono">
                               {m.loadTypes
