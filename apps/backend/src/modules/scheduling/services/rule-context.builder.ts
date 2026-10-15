@@ -25,6 +25,15 @@ export interface BuildContextInput {
   endTime: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
   excludeScheduleId?: string;
+
+  /**
+   * External room name (2026-10-15).
+   *
+   * When set, the candidate plot has no internal room. Room rules
+   * (R-1, R-3, R-4, S-5, S-6, S-8, S-10) and H-2 (Room Overlap)
+   * must early-return 'pass'.
+   */
+  externalRoomName?: string;
 }
 
 @Injectable()
@@ -86,6 +95,9 @@ export class RuleContextBuilder {
       approvedFacultyRequests,
       config,
       excludeScheduleId: input.excludeScheduleId,
+
+      // ── External room (2026-10-15) ──
+      externalRoomName: input.externalRoomName ?? null,
     };
   }
 
@@ -167,8 +179,6 @@ export class RuleContextBuilder {
           }))
         : undefined;
 
-    // ── H-14: faculty unavailability ──
-    // Load blocks that apply to this term OR are term-agnostic.
     const { data: unavailRows, error: unavailErr } = await this.db
       .from('faculty_unavailability')
       .select(
@@ -206,8 +216,6 @@ export class RuleContextBuilder {
         ? Number(data.required_hours)
         : Math.max(0, 18 - releaseHours);
 
-    // Compute the faculty's term-wide assigned hours and units.
-    // Sums across ALL rows in the term for this faculty.
     const { data: assigned, error: assignedErr } = await this.db
       .from('schedule')
       .select(
@@ -246,7 +254,7 @@ export class RuleContextBuilder {
       assignedHours,
       assignedUnits,
       preferences,
-      unavailability,   // ← H-14
+      unavailability,
     };
   }
 
@@ -279,7 +287,7 @@ export class RuleContextBuilder {
     const { data, error } = await this.db
       .from('schedule')
       .select(
-        'schedule_id, term_id, subject_id, faculty_id, room_id, section, load_type, day_of_week, start_time, end_time',
+        'schedule_id, term_id, subject_id, faculty_id, room_id, external_room_name, section, load_type, day_of_week, start_time, end_time',
       )
       .eq('term_id', termId)
       .eq('day_of_week', dayOfWeek);
@@ -295,6 +303,7 @@ export class RuleContextBuilder {
       subjectId: String(row.subject_id),
       facultyId: row.faculty_id ? String(row.faculty_id) : null,
       roomId: row.room_id ? String(row.room_id) : null,
+      externalRoomName: (row as any).external_room_name ?? null,  // ← NEW
       section: row.section ?? null,
       loadType: row.load_type ?? null,
       dayOfWeek: row.day_of_week ?? dayOfWeek,
