@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   DrawingMode,
   DraftRect,
@@ -55,6 +55,8 @@ interface MappingOverlayProps {
   onRowDelete: (tableId: string, rowId: string) => void;
   onRowSelect: (tableId: string, rowId: string) => void;
   onAddRow: (tableId: string) => void;
+  /** Called when the user cancels an in-progress draw (Escape). */
+  onCancelDrawing?: () => void;
 }
 
 export default function MappingOverlay({
@@ -77,6 +79,7 @@ export default function MappingOverlay({
   onRowDelete,
   onRowSelect,
   onAddRow,
+  onCancelDrawing,
 }: MappingOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<DraftRect | null>(null);
@@ -90,6 +93,31 @@ export default function MappingOverlay({
     },
     [],
   );
+
+  // ── Escape cancels an in-progress drag ──
+  useEffect(() => {
+    if (!draft) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        dragStart.current = null;
+        setDraft(null);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [draft]);
+
+  // ── Draft dimensions in PDF points, for the inline label ──
+  const draftSizePt = useMemo(() => {
+    if (!draft) return null;
+    const pdf = screenRectToPdf(draft, pageView);
+    const w = pdf.x_end_pt - pdf.x_start_pt;
+    const h = pdf.y_end_pt - pdf.y_start_pt;
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return null;
+    return { w, h };
+  }, [draft, pageView]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (drawingMode.kind === 'idle') {
@@ -165,6 +193,14 @@ export default function MappingOverlay({
     setDraft(null);
   };
 
+  // Cancel via right-click / context menu (some users find this natural)
+  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!draft) return;
+    e.preventDefault();
+    dragStart.current = null;
+    setDraft(null);
+  };
+
   const visibleTables = tables.filter(
     (t) => t.regionPageIndex === pageIndex,
   );
@@ -180,6 +216,9 @@ export default function MappingOverlay({
       ? 'border-amber-500 bg-amber-300/20'
       : 'border-primary bg-primary/10';
 
+  const draftHint =
+    drawingMode.kind === 'focusing' ? 'Zoom to area' : 'Mark table';
+
   return (
     <div
       ref={containerRef}
@@ -189,6 +228,7 @@ export default function MappingOverlay({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onContextMenu={onContextMenu}
     >
       {visibleTables.map((table) => (
         <TableRegion
@@ -248,9 +288,10 @@ export default function MappingOverlay({
         />
       ))}
 
+      {/* Draft rectangle */}
       {draft && (
         <div
-          className={`absolute border-2 pointer-events-none ${draftColor}`}
+          className={`absolute border-2 pointer-events-none flex items-center justify-center ${draftColor}`}
           style={{
             left: draft.left,
             top: draft.top,
@@ -258,7 +299,25 @@ export default function MappingOverlay({
             height: draft.height,
             zIndex: 50,
           }}
-        />
+        >
+          {/* Inline dimension label — only when the draft is big enough */}
+          {draftSizePt && draft.width > 90 && draft.height > 28 && (
+            <div className="px-2 py-1 rounded bg-slate-900/90 text-white text-[10px] font-mono whitespace-nowrap shadow-lg flex items-center gap-1.5">
+              <span className="font-bold">{draftHint}</span>
+              <span className="opacity-60">·</span>
+              <span>
+                {draftSizePt.w.toFixed(1)} × {draftSizePt.h.toFixed(1)} pt
+              </span>
+            </div>
+          )}
+
+          {/* Corner hint — visible even on small drafts */}
+          {draft.width > 40 && draft.height > 40 && (
+            <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] text-slate-500 whitespace-nowrap bg-white/90 px-1.5 py-0.5 rounded shadow-sm">
+              Press <kbd className="font-mono">Esc</kbd> to cancel
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
