@@ -3,11 +3,6 @@ import type { RuleContext } from '../../types/rule-context.type';
 import type { RuleResult } from '../../types/rule-result.type';
 import { timesOverlap, toMinutes } from '../../utils/time.util';
 
-/**
- * H-2: A room cannot be booked by two classes whose time ranges overlap
- * on the same day. Compares against `existingSchedule` and skips the
- * row being edited via `excludeScheduleId`.
- */
 export const roomOverlapRule: ConstraintRule = {
   id: 'H-2',
   name: 'Room Overlap',
@@ -19,6 +14,9 @@ export const roomOverlapRule: ConstraintRule = {
   validate(ctx: RuleContext): RuleResult {
     const { room, timeSlot, existingSchedule, excludeScheduleId } = ctx;
 
+    // Candidate has an external room → no internal room to collide with.
+    if (ctx.externalRoomName) return { status: 'pass' };
+
     if (!room) return { status: 'pass' };
 
     const candidateStart = toMinutes(timeSlot.startTime);
@@ -26,6 +24,11 @@ export const roomOverlapRule: ConstraintRule = {
 
     for (const row of existingSchedule) {
       if (excludeScheduleId && row.scheduleId === excludeScheduleId) continue;
+
+      // Existing row has no internal room → cannot collide.
+      if (!row.roomId) continue;
+      if (row.externalRoomName) continue;
+
       if (row.roomId !== room.roomId) continue;
       if (row.dayOfWeek !== timeSlot.dayOfWeek) continue;
 
@@ -36,10 +39,7 @@ export const roomOverlapRule: ConstraintRule = {
         return {
           status: 'fail',
           reason: `Room ${room.roomNumber} is already booked on ${timeSlot.dayOfWeek} from ${row.startTime} to ${row.endTime}.`,
-          metadata: {
-            conflictingScheduleId: row.scheduleId,
-            roomId: room.roomId,
-          },
+          metadata: { conflictingScheduleId: row.scheduleId, roomId: room.roomId },
         };
       }
     }
