@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/ui/Icon';
 import type {
   CoverageReport,
@@ -10,11 +10,11 @@ interface Props {
   onClose: () => void;
   coverage: CoverageReport | null;
   isLoading: boolean;
-  /** Called when user clicks "Plot" on a missing subject. */
   onPlot: (subjectId: string) => void;
 }
 
 type Tab = 'all' | 'major' | 'minor';
+type SortMode = 'section' | 'code';
 
 export default function CoveragePanel({
   open,
@@ -24,8 +24,21 @@ export default function CoveragePanel({
   onPlot,
 }: Props) {
   const [tab, setTab] = useState<Tab>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('section');
 
-  if (!open) return null;
+  // Escape closes; body scroll lock
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [open, onClose]);
 
   const totals = coverage?.totals ?? {
     expected: 0,
@@ -38,27 +51,49 @@ export default function CoveragePanel({
   const missingMajor = missing.filter((m) => !m.isMinor);
   const missingMinor = missing.filter((m) => m.isMinor);
 
-  const visible =
-    tab === 'major' ? missingMajor : tab === 'minor' ? missingMinor : missing;
-
-  // Group by section for cleaner display
-  const grouped = new Map<string, CoverageMissingItem[]>();
-  for (const m of visible) {
-    if (!grouped.has(m.sectionCode)) grouped.set(m.sectionCode, []);
-    grouped.get(m.sectionCode)!.push(m);
-  }
-  const groupEntries = Array.from(grouped.entries()).sort((a, b) =>
-    a[0].localeCompare(b[0]),
+  const visible = useMemo(
+    () =>
+      tab === 'major' ? missingMajor : tab === 'minor' ? missingMinor : missing,
+    [tab, missingMajor, missingMinor, missing],
   );
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, CoverageMissingItem[]>();
+    for (const m of visible) {
+      const key = sortMode === 'section' ? m.sectionCode : m.subjectCode[0] ?? '?';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(m);
+    }
+    // Sort items inside each group
+    for (const list of map.values()) {
+      if (sortMode === 'section') {
+        list.sort((a, b) => a.subjectCode.localeCompare(b.subjectCode));
+      } else {
+        list.sort((a, b) =>
+          `${a.sectionCode}-${a.subjectCode}`.localeCompare(
+            `${b.sectionCode}-${b.subjectCode}`,
+          ),
+        );
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [visible, sortMode]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-40 flex">
       <div
-        className="absolute inset-0 bg-black/30"
+        className="absolute inset-0 bg-black/30 animate-backdrop-in"
         onClick={onClose}
         aria-hidden
       />
-      <div className="relative ml-auto w-full max-w-md h-full bg-surface-container-lowest shadow-2xl flex flex-col">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Prospectus coverage"
+        className="relative ml-auto w-full max-w-md h-full bg-surface-container-lowest shadow-2xl flex flex-col animate-slide-in"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-surface-variant">
           <div className="min-w-0">
@@ -92,30 +127,43 @@ export default function CoveragePanel({
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs + sort */}
         {!isLoading && missing.length > 0 && (
-          <div className="flex gap-1 px-4 pt-3 border-b border-surface-variant">
-            {(
-              [
-                ['all', 'All', missing.length],
-                ['major', 'Major', missingMajor.length],
-                ['minor', 'Minor', missingMinor.length],
-              ] as Array<[Tab, string, number]>
-            ).map(([key, label, count]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                className={`px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition ${
-                  tab === key
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                {label}
-                <span className="ml-1.5 text-[10px] opacity-70">({count})</span>
-              </button>
-            ))}
+          <div className="flex items-center justify-between gap-2 px-4 pt-3 border-b border-surface-variant">
+            <div className="flex gap-1">
+              {(
+                [
+                  ['all', 'All', missing.length],
+                  ['major', 'Major', missingMajor.length],
+                  ['minor', 'Minor', missingMinor.length],
+                ] as Array<[Tab, string, number]>
+              ).map(([key, label, count]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  className={`px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition ${
+                    tab === key
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  {label}
+                  <span className="ml-1.5 text-[10px] opacity-70">
+                    ({count})
+                  </span>
+                </button>
+              ))}
+            </div>
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className="text-[10px] bg-surface-container-low border border-surface-variant rounded px-1.5 py-1 text-on-surface-variant focus:outline-none focus:border-primary"
+              title="Sort mode"
+            >
+              <option value="section">By section</option>
+              <option value="code">By code</option>
+            </select>
           </div>
         )}
 
@@ -159,11 +207,13 @@ export default function CoveragePanel({
           )}
 
           {!isLoading &&
-            groupEntries.map(([sectionCode, items]) => (
-              <div key={sectionCode}>
+            grouped.map(([groupKey, items]) => (
+              <div key={groupKey}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-on-surface uppercase tracking-wider">
-                    {sectionCode}
+                    {sortMode === 'section'
+                      ? groupKey
+                      : `Codes starting with ${groupKey}`}
                   </span>
                   <span className="text-[10px] text-on-surface-variant">
                     {items.length} missing
@@ -202,7 +252,9 @@ export default function CoveragePanel({
                           {m.loadTypes.length > 0 && (
                             <span className="text-[10px] text-on-surface-variant font-mono">
                               {m.loadTypes
-                                .map((lt) => (lt === 'lecture' ? 'LEC' : 'LAB'))
+                                .map((lt) =>
+                                  lt === 'lecture' ? 'LEC' : 'LAB',
+                                )
                                 .join(' + ')}
                             </span>
                           )}
@@ -213,6 +265,7 @@ export default function CoveragePanel({
                         <p className="text-[10px] text-on-surface-variant mt-0.5">
                           Y{m.yearLevel}
                           {m.programCode ? ` · ${m.programCode}` : ''}
+                          {sortMode === 'code' ? ` · ${m.sectionCode}` : ''}
                         </p>
                       </div>
                       <button
@@ -233,9 +286,9 @@ export default function CoveragePanel({
         <div className="border-t border-surface-variant p-3 text-[11px] text-on-surface-variant flex items-start gap-1.5">
           <Icon name="info" size={12} className="shrink-0 mt-0.5" />
           <span>
-            Expected count is computed per (subject, section) pair — one
-            entry per section that must take the subject. External subjects
-            from other colleges are excluded.
+            Expected count is computed per (subject, section) pair — one entry
+            per section that must take the subject. External subjects from
+            other colleges are excluded.
           </span>
         </div>
       </div>
