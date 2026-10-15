@@ -9,6 +9,10 @@ type Viewport = 'ok' | 'tablet-portrait' | 'phone';
 
 function detectViewport(): Viewport {
   if (typeof window === 'undefined') return 'ok';
+  // Testing bypass
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('force') === '1') return 'ok';
+
   const w = window.innerWidth;
   if (w >= MIN_WIDTH_PX) return 'ok';
   if (w >= TABLET_MIN_PX) return 'tablet-portrait';
