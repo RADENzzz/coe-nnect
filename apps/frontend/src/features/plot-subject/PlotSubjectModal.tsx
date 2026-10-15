@@ -532,6 +532,7 @@ export default function PlotSubjectModal({
     queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
     queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
     queryClient.invalidateQueries({ queryKey: ['flagged'] });
+    queryClient.invalidateQueries({ queryKey: ['coverage'] });
   };
 
   const plotMutation = useMutation({
