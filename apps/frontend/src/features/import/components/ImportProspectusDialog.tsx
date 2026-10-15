@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
-import {
-  extractFromPdf,
-  confirmImport,
-} from '@/api/prospectus-pdfs.api';
+import { extractFromPdf, confirmImport } from '@/api/prospectus-pdfs.api';
 import type {
   ProspectusPdfTable,
   SemesterType,
@@ -30,10 +27,6 @@ interface ImportProspectusDialogProps {
 
 type Step = 'select' | 'review' | 'result';
 
-/**
- * Same permissive pattern as the backend.
- * Determines "explicit" (looks like a real code) vs "loose" (accepted anyway).
- */
 const SUBJECT_CODE_RE =
   /^[A-Za-z][A-Za-z0-9&.\-]{1,11}(?:\s+[A-Za-z0-9&.\-]{1,16}){0,4}$/;
 
@@ -49,7 +42,6 @@ interface ReviewRow {
   lab: string;
   total: string;
   status: 'new' | 'exists' | 'invalid';
-  /** 'explicit' = looks like a real code; 'loose' = will be imported anyway; 'missing' = blank cell */
   codeOrigin: 'explicit' | 'loose' | 'missing';
   warning?: string;
   checked: boolean;
@@ -76,6 +68,7 @@ export default function ImportProspectusDialog({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [filter, setFilter] = useState('');
 
   const visiblePrograms = useMemo(() => {
     if (!programs || programs.length === 0) return [];
@@ -90,9 +83,7 @@ export default function ImportProspectusDialog({
     const stillValid = visiblePrograms.some(
       (p) => String(p.programId) === String(programId),
     );
-    if (!stillValid) {
-      setProgramId(String(visiblePrograms[0].programId));
-    }
+    if (!stillValid) setProgramId(String(visiblePrograms[0].programId));
   }, [visiblePrograms, programId]);
 
   const toggleTable = (tableId: string) => {
@@ -108,9 +99,9 @@ export default function ImportProspectusDialog({
     setError(null);
     setExtracting(true);
     try {
-      const result = await extractFromPdf(pdfId, [...selectedTableIds]);
+      const res = await extractFromPdf(pdfId, [...selectedTableIds]);
       const rows: ReviewRow[] = [];
-      for (const region of result.regions) {
+      for (const region of res.regions) {
         const table = tables.find(
           (t) => String(t.tableId) === region.table_id,
         );
@@ -125,15 +116,9 @@ export default function ImportProspectusDialog({
           let codeOrigin: ReviewRow['codeOrigin'] = 'explicit';
           let warning: string | undefined;
 
-          // Classify the code
-          if (!code) {
-            codeOrigin = 'missing';
-          } else if (!SUBJECT_CODE_RE.test(code)) {
-            codeOrigin = 'loose';
-          }
+          if (!code) codeOrigin = 'missing';
+          else if (!SUBJECT_CODE_RE.test(code)) codeOrigin = 'loose';
 
-          // Only "invalid" status is now: no title, or bad math.
-          // Blank/loose codes are importable.
           if (!sub.title || !sub.title.trim()) {
             status = 'invalid';
             warning = 'Missing subject title';
@@ -161,7 +146,7 @@ export default function ImportProspectusDialog({
         }
       }
       setReviewRows(rows);
-      setWarnings(result.warnings);
+      setWarnings(res.warnings);
       setStep('review');
     } catch (err: any) {
       setError(err?.response?.data?.message ?? 'Extraction failed');
@@ -220,11 +205,16 @@ export default function ImportProspectusDialog({
       setResult(null);
       setError(null);
       setProgramId('');
+      setFilter('');
     }, 200);
   };
 
+  // ── Derived stats ──
   const readyCount = reviewRows.filter(
     (r) => r.checked && r.status === 'new',
+  ).length;
+  const invalidCount = reviewRows.filter(
+    (r) => r.status === 'invalid',
   ).length;
   const existingCount = reviewRows.filter(
     (r) => r.status === 'exists',
@@ -235,6 +225,62 @@ export default function ImportProspectusDialog({
   const looseCount = reviewRows.filter(
     (r) => r.checked && r.codeOrigin === 'loose',
   ).length;
+
+  // ── Filtered + grouped rows for the review step ──
+  const filteredReviewRows = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return reviewRows;
+    return reviewRows.filter(
+      (r) =>
+        r.code.toLowerCase().includes(q) ||
+        r.title.toLowerCase().includes(q),
+    );
+  }, [reviewRows, filter]);
+
+  const rowsByTable = useMemo(() => {
+    const m = new Map<string, ReviewRow[]>();
+    for (const r of filteredReviewRows) {
+      const list = m.get(r.tableId) ?? [];
+      list.push(r);
+      m.set(r.tableId, list);
+    }
+    return m;
+  }, [filteredReviewRows]);
+
+  const [collapsedTables, setCollapsedTables] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const toggleTableCollapsed = (tableId: string) => {
+    setCollapsedTables((prev) => {
+      const next = new Set(prev);
+      if (next.has(tableId)) next.delete(tableId);
+      else next.add(tableId);
+      return next;
+    });
+  };
+
+  // ── Bulk select helpers ──
+  const allSelectableChecked = useMemo(() => {
+    const selectable = reviewRows.filter((r) => r.status === 'new');
+    return (
+      selectable.length > 0 &&
+      selectable.every((r) => r.checked)
+    );
+  }, [reviewRows]);
+
+  const someSelectableChecked = useMemo(() => {
+    const selectable = reviewRows.filter((r) => r.status === 'new');
+    return selectable.some((r) => r.checked);
+  }, [reviewRows]);
+
+  const setAllChecked = (checked: boolean) => {
+    setReviewRows((prev) =>
+      prev.map((r) =>
+        r.status === 'new' ? { ...r, checked } : r,
+      ),
+    );
+  };
 
   return (
     <Modal
@@ -247,15 +293,24 @@ export default function ImportProspectusDialog({
           <>
             <button
               onClick={handleClose}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Cancel
             </button>
             <button
               onClick={handleExtract}
-              disabled={extracting || selectedTableIds.size === 0 || !programId}
-              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50"
+              disabled={
+                extracting || selectedTableIds.size === 0 || !programId
+              }
+              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
+              {extracting && (
+                <Icon
+                  name="progress_activity"
+                  size={14}
+                  className="animate-spin"
+                />
+              )}
               {extracting ? 'Extracting…' : 'Extract'}
             </button>
           </>
@@ -264,15 +319,22 @@ export default function ImportProspectusDialog({
             <button
               onClick={() => setStep('select')}
               disabled={importing}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Back
             </button>
             <button
               onClick={handleImport}
               disabled={importing || readyCount === 0}
-              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50"
+              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
+              {importing && (
+                <Icon
+                  name="progress_activity"
+                  size={14}
+                  className="animate-spin"
+                />
+              )}
               {importing
                 ? 'Importing…'
                 : `Import ${readyCount} subject${readyCount === 1 ? '' : 's'}`}
@@ -281,7 +343,7 @@ export default function ImportProspectusDialog({
         ) : (
           <button
             onClick={handleClose}
-            className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition"
+            className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg"
           >
             Close
           </button>
@@ -289,8 +351,16 @@ export default function ImportProspectusDialog({
       }
     >
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-          {error}
+        <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
+          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-600 hover:text-red-800"
+            aria-label="Dismiss"
+          >
+            <Icon name="close" size={14} />
+          </button>
         </div>
       )}
 
@@ -317,9 +387,30 @@ export default function ImportProspectusDialog({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-              Tables to Import
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                Tables to Import
+              </label>
+              {tables.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allSelected =
+                      selectedTableIds.size === tables.length;
+                    setSelectedTableIds(
+                      allSelected
+                        ? new Set()
+                        : new Set(tables.map((t) => t.tableId)),
+                    );
+                  }}
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                >
+                  {selectedTableIds.size === tables.length
+                    ? 'Deselect all'
+                    : 'Select all'}
+                </button>
+              )}
+            </div>
             <div className="space-y-2 max-h-[300px] overflow-y-auto border border-surface-variant rounded-lg p-2">
               {tables.length === 0 && (
                 <p className="text-sm text-on-surface-variant text-center py-4">
@@ -335,7 +426,7 @@ export default function ImportProspectusDialog({
                     type="checkbox"
                     checked={selectedTableIds.has(t.tableId)}
                     onChange={() => toggleTable(t.tableId)}
-                    className="w-4 h-4"
+                    className="w-4 h-4 accent-primary"
                   />
                   <div className="flex-1">
                     <div className="text-sm font-semibold">
@@ -359,96 +450,180 @@ export default function ImportProspectusDialog({
             Blank or loose codes will be imported with placeholders or as-is.
           </div>
 
+          {/* Filter + bulk controls */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Icon
+                name="search"
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <input
+                type="text"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter by code or title…"
+                className="w-full pl-9 pr-3 py-2 text-sm bg-surface-container-low border border-surface-variant rounded-lg focus:outline-none focus:border-primary"
+              />
+            </div>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none px-3 py-2 border border-surface-variant rounded-lg hover:bg-surface-container-low">
+              <input
+                type="checkbox"
+                checked={allSelectableChecked}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelectableChecked && !allSelectableChecked;
+                }}
+                onChange={(e) => setAllChecked(e.target.checked)}
+                className="w-4 h-4 accent-primary"
+              />
+              Select all
+            </label>
+          </div>
+
+          {/* Grouped rows */}
           <div className="max-h-[400px] overflow-auto border border-surface-variant rounded-lg">
-            <table className="w-full text-xs">
-              <thead className="bg-surface-container-low sticky top-0">
-                <tr>
-                  <th className="w-8 px-2 py-2"></th>
-                  <th className="text-left px-2 py-2 font-semibold">Code</th>
-                  <th className="text-left px-2 py-2 font-semibold">Title</th>
-                  <th className="text-right px-2 py-2 font-semibold">Lec</th>
-                  <th className="text-right px-2 py-2 font-semibold">Lab</th>
-                  <th className="text-right px-2 py-2 font-semibold">Total</th>
-                  <th className="text-left px-2 py-2 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reviewRows.map((row) => (
-                  <tr
-                    key={row.key}
-                    className={`border-t border-surface-variant ${
-                      row.status === 'invalid' ? 'bg-amber-50' : ''
-                    }`}
+            {[...rowsByTable.entries()].map(([tableId, rows]) => {
+              const table = tables.find(
+                (t) => String(t.tableId) === String(tableId),
+              );
+              const collapsed = collapsedTables.has(tableId);
+              const checkedCount = rows.filter((r) => r.checked).length;
+              return (
+                <div key={tableId} className="border-b border-surface-variant last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => toggleTableCollapsed(tableId)}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-surface-container-low hover:bg-surface-container-high transition sticky top-0 z-10"
                   >
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="checkbox"
-                        checked={row.checked}
-                        disabled={row.status === 'invalid'}
-                        onChange={(e) =>
-                          setReviewRows((prev) =>
-                            prev.map((r) =>
-                              r.key === row.key
-                                ? { ...r, checked: e.target.checked }
-                                : r,
-                            ),
-                          )
-                        }
-                        className="w-4 h-4"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 font-mono font-semibold">
-                      <div className="flex items-center gap-1.5">
-                        {row.codeOrigin === 'missing' && (
-                          <span
-                            className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[9px] font-bold uppercase tracking-wider"
-                            title="Blank code — will be assigned a placeholder"
+                    <Icon
+                      name={collapsed ? 'chevron_right' : 'expand_more'}
+                      size={16}
+                      className="text-slate-500"
+                    />
+                    <span className="text-xs font-bold text-slate-900">
+                      Year {table?.yearLevel ?? '?'} · {table?.semester ?? '?'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-normal">
+                      {rows.length} row{rows.length === 1 ? '' : 's'}
+                    </span>
+                    <span className="ml-auto text-[10px] text-primary font-semibold">
+                      {checkedCount} selected
+                    </span>
+                  </button>
+                  {!collapsed && (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-500">
+                          <th className="w-8 px-2 py-1.5"></th>
+                          <th className="text-left px-2 py-1.5 font-semibold">
+                            Code
+                          </th>
+                          <th className="text-left px-2 py-1.5 font-semibold">
+                            Title
+                          </th>
+                          <th className="text-right px-2 py-1.5 font-semibold">
+                            Lec
+                          </th>
+                          <th className="text-right px-2 py-1.5 font-semibold">
+                            Lab
+                          </th>
+                          <th className="text-right px-2 py-1.5 font-semibold">
+                            Total
+                          </th>
+                          <th className="text-left px-2 py-1.5 font-semibold">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr
+                            key={row.key}
+                            className={`border-t border-surface-variant ${
+                              row.status === 'invalid' ? 'bg-amber-50' : ''
+                            }`}
                           >
-                            Blank
-                          </span>
-                        )}
-                        {row.codeOrigin === 'loose' && (
-                          <span
-                            className="px-1.5 py-0.5 rounded bg-orange-200 text-orange-900 text-[9px] font-bold uppercase tracking-wider"
-                            title="Code doesn't match the standard pattern — will be imported as-is"
-                          >
-                            Loose
-                          </span>
-                        )}
-                        <span>{row.code || '—'}</span>
-                      </div>
-                    </td>
-                    <td
-                      className="px-2 py-1.5 max-w-[240px] truncate"
-                      title={row.title}
-                    >
-                      {row.title || '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-mono">
-                      {row.lec || '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-mono">
-                      {row.lab || '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-mono">
-                      {row.total || '—'}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {row.status === 'invalid' && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-semibold">
-                          Invalid
-                        </span>
-                      )}
-                      {row.status === 'new' && (
-                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-semibold">
-                          New
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="checkbox"
+                                checked={row.checked}
+                                disabled={row.status === 'invalid'}
+                                onChange={(e) =>
+                                  setReviewRows((prev) =>
+                                    prev.map((r) =>
+                                      r.key === row.key
+                                        ? { ...r, checked: e.target.checked }
+                                        : r,
+                                    ),
+                                  )
+                                }
+                                className="w-4 h-4 accent-primary"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 font-mono font-semibold">
+                              <div className="flex items-center gap-1.5">
+                                {row.codeOrigin === 'missing' && (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[9px] font-bold uppercase tracking-wider"
+                                    title="Blank code — will be assigned a placeholder"
+                                  >
+                                    Blank
+                                  </span>
+                                )}
+                                {row.codeOrigin === 'loose' && (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded bg-orange-200 text-orange-900 text-[9px] font-bold uppercase tracking-wider"
+                                    title="Code doesn't match the standard pattern — will be imported as-is"
+                                  >
+                                    Loose
+                                  </span>
+                                )}
+                                <span>{row.code || '—'}</span>
+                              </div>
+                            </td>
+                            <td
+                              className="px-2 py-1.5 max-w-[240px] truncate"
+                              title={row.title}
+                            >
+                              {row.title || '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono">
+                              {row.lec || '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono">
+                              {row.lab || '—'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono">
+                              {row.total || '—'}
+                            </td>
+                            <td className="px-2 py-1.5">
+                              {row.status === 'invalid' && (
+                                <span
+                                  className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-semibold"
+                                  title={row.warning}
+                                >
+                                  Invalid
+                                </span>
+                              )}
+                              {row.status === 'new' && (
+                                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-semibold">
+                                  New
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+            {rowsByTable.size === 0 && (
+              <div className="py-8 text-center text-sm text-on-surface-variant">
+                No rows match your filter.
+              </div>
+            )}
           </div>
 
           {warnings.length > 0 && (
@@ -464,25 +639,29 @@ export default function ImportProspectusDialog({
             </div>
           )}
 
-          <div className="text-xs text-on-surface-variant">
-            Ready to import: <strong>{readyCount}</strong> subject
-            {readyCount === 1 ? '' : 's'}
+          <div className="text-xs text-on-surface-variant flex flex-wrap gap-x-3 gap-y-1">
+            <span>
+              Ready: <strong className="text-primary">{readyCount}</strong>
+            </span>
             {existingCount > 0 && (
-              <> · {existingCount} already in the system</>
+              <span>
+                · Existing: <strong>{existingCount}</strong>
+              </span>
+            )}
+            {invalidCount > 0 && (
+              <span>
+                · Invalid: <strong className="text-amber-700">{invalidCount}</strong>
+              </span>
             )}
             {placeholderCount > 0 && (
-              <>
-                {' '}
-                · <strong className="text-amber-700">{placeholderCount}</strong>{' '}
-                with blank codes (get placeholders)
-              </>
+              <span>
+                · Placeholder codes: <strong className="text-amber-700">{placeholderCount}</strong>
+              </span>
             )}
             {looseCount > 0 && (
-              <>
-                {' '}
-                · <strong className="text-orange-700">{looseCount}</strong> with
-                loose codes
-              </>
+              <span>
+                · Loose codes: <strong className="text-orange-700">{looseCount}</strong>
+              </span>
             )}
           </div>
         </div>
@@ -526,7 +705,6 @@ export default function ImportProspectusDialog({
             </ul>
           </div>
 
-          {/* ── NEW: synthesized/loose codes panel ── */}
           {result.synthesizedCodes && result.synthesizedCodes.length > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
               <div className="flex items-start gap-3">
@@ -614,4 +792,4 @@ function parseIntSafe(v: string | undefined): number {
   if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
   const n = parseFloat(cleaned);
   return Number.isFinite(n) ? Math.round(n) : 0;
-}
+} 
