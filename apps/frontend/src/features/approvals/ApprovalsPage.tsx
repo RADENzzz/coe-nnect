@@ -219,7 +219,6 @@ export default function ApprovalsPage() {
   const invalidateAfterMutation = () => {
     qc.invalidateQueries({ queryKey: ['faculty-requests'] });
     qc.invalidateQueries({ queryKey: ['schedules'] });
-    qc.invalidateQueries({ queryKey: ['dashboard'] });
     qc.invalidateQueries({ queryKey: ['flagged'] });
   };
 
