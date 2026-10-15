@@ -1,64 +1,65 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { FAQ as FAQ_ITEMS } from '../data/faq';
+import { AccordionItem } from '../components/animations';
 
 export function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
+  const [allOpen, setAllOpen] = useState(false);
+
+  const openSet = useMemo(() => {
+    if (allOpen) return new Set(FAQ_ITEMS.map((_, i) => i));
+    return new Set(open == null ? [] : [open]);
+  }, [allOpen, open]);
 
   return (
     <div>
-      <h2 className="mb-4 text-xl font-semibold text-slate-900">
-        Frequently Asked Questions
-      </h2>
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <h2 className="text-xl font-semibold text-slate-900">
+          Frequently Asked Questions
+        </h2>
+        <button
+          type="button"
+          onClick={() => {
+            setAllOpen((v) => !v);
+            setOpen(null);
+          }}
+          className="text-xs font-medium text-brand-700 hover:underline"
+        >
+          {allOpen ? 'Collapse all' : 'Expand all'}
+        </button>
+      </div>
       <p className="mb-6 text-sm leading-relaxed text-slate-700">
         Quick answers to common questions about the system.
       </p>
 
       <div className="divide-y divide-slate-200 border border-slate-200 bg-white">
-        {FAQ_ITEMS.map((item, i) => {
-          const isOpen = open === i;
-          return (
-            <div
-              key={i}
-              className="animate-fade-up"
-              style={{
-                animationDelay: `${i * 30}ms`,
-                animationFillMode: 'both',
+        {FAQ_ITEMS.map((item, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 8 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-40px' }}
+            transition={{ duration: 0.35, delay: i * 0.03 }}
+          >
+            <AccordionItem
+              open={openSet.has(i)}
+              onToggle={() => {
+                setAllOpen(false);
+                setOpen(openSet.has(i) ? null : i);
               }}
-            >
-              <button
-                type="button"
-                onClick={() => setOpen(isOpen ? null : i)}
-                className="group flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-slate-50"
-              >
+              header={
                 <span className="text-sm font-medium text-slate-900">
                   {item.q}
                 </span>
-                <span
-                  className={
-                    'material-symbols-outlined text-[20px] text-slate-400 transition-all duration-300 group-hover:text-brand-700 ' +
-                    (isOpen ? 'rotate-180' : 'rotate-0')
-                  }
-                >
-                  {isOpen ? 'expand_less' : 'expand_more'}
-                </span>
-              </button>
-              <div
-                className={
-                  'grid overflow-hidden transition-all duration-300 ease-out ' +
-                  (isOpen
-                    ? 'grid-rows-[1fr] opacity-100'
-                    : 'grid-rows-[0fr] opacity-0')
-                }
-              >
-                <div className="overflow-hidden border-t border-slate-100 bg-slate-50">
-                  <div className="px-4 py-3 text-sm leading-relaxed text-slate-700">
-                    {item.a}
-                  </div>
-                </div>
+              }
+            >
+              <div className="text-sm leading-relaxed text-slate-700">
+                {item.a}
               </div>
-            </div>
-          );
-        })}
+            </AccordionItem>
+          </motion.div>
+        ))}
       </div>
     </div>
   );
