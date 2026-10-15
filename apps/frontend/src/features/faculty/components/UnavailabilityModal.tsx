@@ -102,19 +102,6 @@ export default function UnavailabilityModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, termId]);
 
-  // When the user edits the grid, any block they cut out of an existing
-  // one should be treated as a remove + add. Simplest approach: track
-  // a diff.
-  const baseline = useMemo<GridBlock[]>(
-    () =>
-      visibleExisting.map((u) => ({
-        day: u.dayOfWeek,
-        startMin: toMinutes(u.startTime),
-        endMin: toMinutes(u.endTime),
-      })),
-    [visibleExisting],
-  );
-
   // ── Mutations ──
   const addMutation = useMutation({
     mutationFn: (payload: {
@@ -136,25 +123,28 @@ export default function UnavailabilityModal({
 
   const saving = addMutation.isPending || removeMutation.isPending;
 
-  // ── Save handler: compute diff between baseline and draftBlocks ──
+  // ── Save handler: replace-all strategy ──
   const handleSave = async () => {
     setError(null);
 
-    // 1. Remove any existing block that has no equivalent in draftBlocks
-    //    or whose range shrank.
-    // Simplest reliable strategy: remove every existing block, then add
-    // every draft block. Not ideal for IDP-synced rows, but those are
-    // greyed out below and not editable, so they never appear in draft
-    // after a manual edit.
-    const localExisting = visibleExisting.filter((u) => u.source === 'local');
+    // 1. Remove every existing LOCAL row — regardless of whether it's
+    //    hidden via `removedIds`.
+    //
+    //    FIX: use the raw `existing` array, not `visibleExisting`.
+    //    `visibleExisting` filters out rows the user marked with the ✕
+    //    button; if we computed the delete list from it, those rows
+    //    would never be deleted from the backend — the deletion would
+    //    silently fail to persist.
+    const localExisting = existing.filter((u) => u.source === 'local');
 
     try {
       await Promise.all(
         localExisting.map((u) => removeMutation.mutateAsync(u.unavailabilityId)),
       );
 
-      // 2. Add all draft blocks (except IDP ones — those are preserved)
-      const idpBlocks = visibleExisting.filter((u) => u.source === 'idp');
+      // 2. Re-add every draft block, except ones already covered by an
+      //    IDP-synced row (those are preserved and not editable here).
+      const idpBlocks = existing.filter((u) => u.source === 'idp');
       const idpAsGrid: GridBlock[] = idpBlocks.map((u) => ({
         day: u.dayOfWeek,
         startMin: toMinutes(u.startTime),
