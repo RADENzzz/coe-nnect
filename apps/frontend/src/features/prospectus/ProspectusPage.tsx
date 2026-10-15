@@ -130,10 +130,13 @@ export default function ProspectusPage() {
 
   // ── Mutations ──
   const toggleMutation = useMutation({
+    
     mutationFn: toggleProspectusActive,
+    
     onSuccess: () => qc.invalidateQueries({ queryKey: ['prospectus'] }),
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
+    
   });
 
   const deleteMutation = useMutation({
@@ -207,10 +210,12 @@ export default function ProspectusPage() {
     return [
       { label: 'Edit', icon: 'edit', onClick: () => handleEdit(e) },
       {
+        
         label: e.isActive ? 'Deactivate' : 'Activate',
         icon: e.isActive ? 'toggle_off' : 'toggle_on',
         onClick: () => toggleMutation.mutate(e.prospectusId),
         disabled: toggleMutation.isPending,
+        
       },
       {
         label: 'Delete',
