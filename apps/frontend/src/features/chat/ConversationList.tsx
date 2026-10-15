@@ -24,12 +24,25 @@ function relativeTime(iso: string | null | undefined): string {
   });
 }
 
+function fullTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-PH', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 interface Props {
   conversations: ConversationSummary[];
   activeConversationId: string | null;
   onPick: (conversationId: string) => void;
   isLoading?: boolean;
-  /** Compact spacing for use inside a dropdown. */
   dense?: boolean;
 }
 
@@ -47,7 +60,7 @@ export default function ConversationList({
   if (isLoading && conversations.length === 0) {
     return (
       <div className="px-4 py-8 text-center">
-        <div className="w-5 h-5 border-2 border-slate-300 border-t-[#5c1219] animate-spin mx-auto" />
+        <div className="w-5 h-5 border-2 border-slate-300 border-t-[#5c1219] animate-spin mx-auto rounded-full" />
         <p className="text-[10px] text-slate-400 mt-3">Loading chats…</p>
       </div>
     );
@@ -55,10 +68,24 @@ export default function ConversationList({
 
   if (conversations.length === 0) {
     return (
-      <div className={dense ? 'px-3 py-5 text-center' : 'px-5 py-10 text-center'}>
-        <Icon name="forum" className="text-slate-300 mx-auto" size={dense ? 18 : 20} />
-        <p className={`text-slate-500 mt-2 leading-snug ${dense ? 'text-[10px]' : 'text-xs'}`}>
-          {dense ? 'No conversations yet' : 'No conversations yet. Pick someone online to start.'}
+      <div
+        className={
+          dense ? 'px-3 py-5 text-center' : 'px-5 py-10 text-center'
+        }
+      >
+        <Icon
+          name="forum"
+          className="text-slate-300 mx-auto"
+          size={dense ? 18 : 20}
+        />
+        <p
+          className={`text-slate-500 mt-2 leading-snug ${
+            dense ? 'text-[10px]' : 'text-xs'
+          }`}
+        >
+          {dense
+            ? 'No conversations yet'
+            : 'No conversations yet. Pick someone online to start.'}
         </p>
       </div>
     );
@@ -71,20 +98,23 @@ export default function ConversationList({
         if (!other) return null;
         const active = c.conversationId === activeConversationId;
         const unread = c.unreadCount > 0;
+        const lastAt = c.lastMessage?.createdAt ?? null;
+
         return (
           <button
             key={c.conversationId}
             onClick={() => onPick(c.conversationId)}
-            className={`w-full px-3 ${rowPadY} flex items-start ${gap} text-left transition-colors relative ${
+            title={lastAt ? fullTime(lastAt) : undefined}
+            className={`w-full px-3 ${rowPadY} flex items-start ${gap} text-left transition-colors relative rounded ${
               active ? 'bg-[#5c1219]/5' : 'hover:bg-slate-50'
-            }`}
+            } focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#5c1219]/30`}
           >
             {active && (
-              <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#5c1219]" />
+              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-[#5c1219] rounded-r" />
             )}
             <div className="relative shrink-0 mt-0.5">
               <div
-                className={`${avatarSize} font-bold flex items-center justify-center transition-colors ${
+                className={`${avatarSize} font-bold flex items-center justify-center transition-colors rounded-full ${
                   active
                     ? 'bg-[#5c1219] text-white'
                     : 'bg-slate-200 text-slate-700'
@@ -93,7 +123,7 @@ export default function ConversationList({
                 {initials(other.username)}
               </div>
               {unread && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 bg-red-600 text-white text-[9px] font-bold flex items-center justify-center border-2 border-white">
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[9px] font-bold flex items-center justify-center border-2 border-white rounded-full">
                   {c.unreadCount > 9 ? '9+' : c.unreadCount}
                 </span>
               )}
@@ -110,7 +140,7 @@ export default function ConversationList({
                   {other.username}
                 </p>
                 <span className="text-[9px] text-slate-400 shrink-0 tabular-nums">
-                  {relativeTime(c.lastMessage?.createdAt ?? null)}
+                  {relativeTime(lastAt)}
                 </span>
               </div>
               <p
