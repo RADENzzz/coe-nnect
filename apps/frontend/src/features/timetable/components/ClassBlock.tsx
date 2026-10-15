@@ -15,7 +15,6 @@ interface Props {
   onClick?: (entry: ScheduleEntry) => void;
   isDragging?: boolean;
   disabled?: boolean;
-  /** Mark as foreign — dashed border, no drag cursor. */
   isForeign?: boolean;
 }
 
@@ -59,11 +58,12 @@ function ClassBlockBase({
   const isPending = !!entry.pendingFacultyRequestId;
   const isFlagged = !!entry.flagged;
 
-  const isCompact = durationMinutes <= 30;
-  const isNarrow = laneCount >= 3;
+  // ── Adaptive layout ──
+  const isTiny = durationMinutes <= 30 || height < 34;
+  const isCompact = durationMinutes <= 45 || height < 52;
+  const isNarrow = laneCount >= 3 || width < 100;
   const showSecondary = metrics.showSecondaryLines && !isCompact && !isNarrow;
 
-  // Ring priority: conflict > warning > pending > flagged > foreign
   const ringClass = entry.hasConflict
     ? 'ring-2 ring-red-500 animate-pulse'
     : entry.hasWarning
@@ -97,7 +97,6 @@ function ClassBlockBase({
     }
   };
 
-  // Badge padding — pl is 5 when any left-side badge is present
   const hasAnyBadge =
     locked ||
     isForeign ||
@@ -105,6 +104,57 @@ function ClassBlockBase({
     isExternalFaculty ||
     isExternalRoom ||
     isPending;
+
+  // ── Tiny block: collapse into a single dot + short code ──
+  if (isTiny) {
+    return (
+      <div
+        ref={ref}
+        style={style}
+        onClick={() => onClick?.(entry)}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-label={`${entry.subjectCode}, ${formatTime(entry.startTime)}–${formatTime(entry.endTime)}`}
+        className={clsx(
+          'rounded-md px-1 py-0.5 text-white leading-tight select-none',
+          'overflow-hidden flex items-center gap-1 cursor-pointer',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white',
+          locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
+          isLab &&
+            '[background-image:repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.15)_5px,rgba(255,255,255,0.15)_10px)]',
+          ringClass,
+          dragging && 'cursor-grabbing shadow-2xl',
+        )}
+      >
+        {hasAnyBadge && (
+          <span
+            className={clsx(
+              'w-1.5 h-1.5 rounded-full shrink-0',
+              entry.hasConflict
+                ? 'bg-red-500 animate-pulse'
+                : isFlagged
+                ? 'bg-rose-300'
+                : isPending
+                ? 'bg-amber-300'
+                : locked
+                ? 'bg-black/70'
+                : 'bg-white/70',
+            )}
+            aria-hidden
+          />
+        )}
+        <span className="font-bold truncate text-[10px]">
+          {entry.subjectCode}
+        </span>
+        {overlapCount > 1 && (
+          <span className="ml-auto text-[9px] font-bold opacity-80 shrink-0">
+            +{overlapCount - 1}
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -134,10 +184,7 @@ function ClassBlockBase({
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
-      {/* ── Top-left badges ──
-          Priority: locked/foreign (leftmost), then flag,
-          then external faculty, then external room */}
-
+      {/* Top badges */}
       <div className="absolute top-0.5 left-1 flex items-center gap-0.5 pointer-events-none">
         {locked && (
           <span
@@ -190,20 +237,14 @@ function ClassBlockBase({
         </span>
       )}
 
-      {/* ── Top-right overlap counter ── */}
       {overlapCount > 1 && (
         <span className="absolute top-0.5 right-1 bg-black/70 text-white text-[9px] font-bold rounded px-1 py-px leading-none pointer-events-none">
           +{overlapCount - 1}
         </span>
       )}
 
-      {/* ── Line 1: subject code + section ── */}
-      <div
-        className={clsx(
-          'font-bold truncate',
-          hasAnyBadge && 'pl-5',
-        )}
-      >
+      {/* Line 1: subject code + section */}
+      <div className={clsx('font-bold truncate', hasAnyBadge && 'pl-5')}>
         {entry.subjectCode}
         {entry.sectionCode && showSecondary && (
           <span className="font-normal opacity-90 ml-1">
@@ -212,13 +253,10 @@ function ClassBlockBase({
         )}
       </div>
 
-      {/* ── Line 2: faculty ── */}
+      {/* Line 2: faculty */}
       {showSecondary && (
         <div
-          className={clsx(
-            'truncate opacity-90',
-            isExternalFaculty && 'italic',
-          )}
+          className={clsx('truncate opacity-90', isExternalFaculty && 'italic')}
           style={{ fontSize: metrics.blockFontSize - 1 }}
           title={isExternalFaculty ? 'External faculty' : undefined}
         >
@@ -226,21 +264,23 @@ function ClassBlockBase({
         </div>
       )}
 
-      {/* ── Line 2b: room (external takes priority when set) ── */}
-      {showSecondary && (isExternalRoom || (entry.roomNumber && entry.roomNumber !== '—')) && (
-        <div
-          className={clsx(
-            'truncate',
-            isExternalRoom ? 'opacity-95 italic' : 'opacity-80',
-          )}
-          style={{ fontSize: metrics.blockFontSize - 1 }}
-          title={isExternalRoom ? 'External room' : undefined}
-        >
-          {isExternalRoom ? entry.externalRoomName : entry.roomNumber}
-        </div>
-      )}
+      {/* Line 2b: room */}
+      {showSecondary &&
+        (isExternalRoom ||
+          (entry.roomNumber && entry.roomNumber !== '—')) && (
+          <div
+            className={clsx(
+              'truncate',
+              isExternalRoom ? 'opacity-95 italic' : 'opacity-80',
+            )}
+            style={{ fontSize: metrics.blockFontSize - 1 }}
+            title={isExternalRoom ? 'External room' : undefined}
+          >
+            {isExternalRoom ? entry.externalRoomName : entry.roomNumber}
+          </div>
+        )}
 
-      {/* ── Line 3: time ── */}
+      {/* Line 3: time */}
       {showSecondary && durationMinutes >= 60 && (
         <div
           className="truncate opacity-80"
