@@ -7,6 +7,7 @@ import {
   updateFaculty,
   toggleFacultyActive,
   deleteFaculty,
+  fetchFacultyStatusSummary,
   type FacultyRecord,
   type FacultyClass,
   type CreateFacultyInput,
@@ -38,6 +39,46 @@ const CLASS_TONE: Record<FacultyClass, 'info' | 'warning' | 'purple' | 'neutral'
   other: 'neutral',
 };
 
+type ChipKey =
+  | 'hasQualifications'
+  | 'hasPreferences'
+  | 'hasUnavailability'
+  | 'inactive';
+
+interface ChipState {
+  key: ChipKey;
+  active: boolean;
+  inverse: boolean;
+}
+
+const INITIAL_CHIPS: ChipState[] = [
+  { key: 'hasQualifications', active: false, inverse: false },
+  { key: 'hasPreferences', active: false, inverse: false },
+  { key: 'hasUnavailability', active: false, inverse: false },
+  { key: 'inactive', active: false, inverse: false },
+];
+
+const CHIP_LABEL: Record<ChipKey, string> = {
+  hasQualifications: 'Has Qualifications',
+  hasPreferences: 'Has Preferences',
+  hasUnavailability: 'Has Unavailability',
+  inactive: 'Inactive',
+};
+
+const CHIP_INVERSE_LABEL: Record<ChipKey, string> = {
+  hasQualifications: 'Missing Qualifications',
+  hasPreferences: 'Missing Preferences',
+  hasUnavailability: 'No Blocks',
+  inactive: 'Active Only',
+};
+
+const CHIP_ICON: Record<ChipKey, string> = {
+  hasQualifications: 'school',
+  hasPreferences: 'event_available',
+  hasUnavailability: 'block',
+  inactive: 'toggle_off',
+};
+
 export default function FacultyPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -65,8 +106,14 @@ export default function FacultyPage() {
   const [unavailFaculty, setUnavailFaculty] = useState<FacultyRecord | null>(null);
   const [qualOpen, setQualOpen] = useState(false);
   const [qualFaculty, setQualFaculty] = useState<FacultyRecord | null>(null);
+
+  // ── Filters ──
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState<string>('all');
+  const [designationFilter, setDesignationFilter] = useState<string>('all');
+  const [classificationFilter, setClassificationFilter] = useState<string>('all');
+  const [chips, setChips] = useState<ChipState[]>(INITIAL_CHIPS);
+
   const [deleteTarget, setDeleteTarget] = useState<FacultyRecord | null>(null);
 
   // ── Auth-derived flags ──
@@ -80,6 +127,7 @@ export default function FacultyPage() {
     return String(f.deptId ?? '') !== myDeptId;
   };
 
+  // ── Queries ──
   const { data: faculty = [], isLoading } = useQuery({
     queryKey: ['faculty', { includeInactive: true }],
     queryFn: () => fetchFaculty(true),
@@ -99,12 +147,68 @@ export default function FacultyPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // FR 3.1.3 — Bulk status summary, scoped for DHs
+  const summaryDeptId = isDH && myDeptId ? myDeptId : undefined;
+  const { data: statusSummary = [] } = useQuery({
+    queryKey: ['faculty-status-summary', summaryDeptId ?? 'all'],
+    queryFn: () => fetchFacultyStatusSummary(summaryDeptId),
+    enabled: !!user,
+    staleTime: 30 * 1000,
+  });
+
+  const statusByFacultyId = useMemo(() => {
+    const m = new Map<string, (typeof statusSummary)[number]>();
+    for (const row of statusSummary) m.set(row.facultyId, row);
+    return m;
+  }, [statusSummary]);
+
+  // ── Filtered list ──
   const filteredFaculty = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return faculty.filter((f) => {
       if (deptFilter !== 'all' && String(f.deptId ?? '') !== deptFilter) {
         return false;
       }
+
+      // FR 3.1.3 — Designation filter
+      if (designationFilter !== 'all') {
+        if (designationFilter === 'none') {
+          if (f.designationId) return false;
+        } else if (String(f.designationId ?? '') !== designationFilter) {
+          return false;
+        }
+      }
+
+      if (
+        classificationFilter !== 'all' &&
+        f.classification !== classificationFilter
+      ) {
+        return false;
+      }
+
+      // Chip filters
+      const status = statusByFacultyId.get(f.facultyId);
+      for (const chip of chips) {
+        if (!chip.active) continue;
+        let matches = true;
+        switch (chip.key) {
+          case 'hasQualifications':
+            matches = !!status?.hasQualifications;
+            break;
+          case 'hasPreferences':
+            matches = !!status?.hasPreferences;
+            break;
+          case 'hasUnavailability':
+            matches = !!status?.hasUnavailability;
+            break;
+          case 'inactive':
+            matches = f.isActive === false;
+            break;
+        }
+        if (chip.inverse) matches = !matches;
+        if (!matches) return false;
+      }
+
       if (!q) return true;
       return (
         f.firstName.toLowerCase().includes(q) ||
@@ -114,14 +218,78 @@ export default function FacultyPage() {
         (f.wmsuId ?? '').toLowerCase().includes(q)
       );
     });
-  }, [faculty, searchQuery, deptFilter]);
+  }, [
+    faculty,
+    searchQuery,
+    deptFilter,
+    designationFilter,
+    classificationFilter,
+    chips,
+    statusByFacultyId,
+  ]);
 
+  // ── Missing Qualifications count (scope-aware, active faculty only) ──
+  const missingQualsCount = useMemo(() => {
+    const scoped = isDH && myDeptId
+      ? faculty.filter((f) => String(f.deptId ?? '') === myDeptId)
+      : faculty;
+    return scoped.filter(
+      (f) =>
+        f.isActive &&
+        !statusByFacultyId.get(f.facultyId)?.hasQualifications,
+    ).length;
+  }, [faculty, statusByFacultyId, isDH, myDeptId]);
+
+  const applyMissingQualsPreset = () => {
+    setSearchQuery('');
+    setDesignationFilter('all');
+    setClassificationFilter('all');
+    if (isAdminOrDean) setDeptFilter('all');
+    setChips([
+      { key: 'hasQualifications', active: true, inverse: true },
+      { key: 'hasPreferences', active: false, inverse: false },
+      { key: 'hasUnavailability', active: false, inverse: false },
+      { key: 'inactive', active: false, inverse: false },
+    ]);
+  };
+
+  const toggleChip = (key: ChipKey) => {
+    setChips((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, active: !c.active } : c)),
+    );
+  };
+
+  const invertChip = (key: ChipKey) => {
+    setChips((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, inverse: !c.inverse } : c)),
+    );
+  };
+
+  const activeChipCount = chips.filter((c) => c.active).length;
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setDeptFilter('all');
+    setDesignationFilter('all');
+    setClassificationFilter('all');
+    setChips(INITIAL_CHIPS.map((c) => ({ ...c })));
+  };
+
+  const hasAnyFilter =
+    !!searchQuery ||
+    deptFilter !== 'all' ||
+    designationFilter !== 'all' ||
+    classificationFilter !== 'all' ||
+    activeChipCount > 0;
+
+  // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createFaculty,
     onSuccess: (f) => {
       setSuccess(`Faculty "${f.lastName}, ${f.firstName}" created.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
@@ -134,6 +302,7 @@ export default function FacultyPage() {
       setSuccess(`Faculty "${f.lastName}, ${f.firstName}" updated.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
@@ -141,7 +310,10 @@ export default function FacultyPage() {
 
   const toggleMutation = useMutation({
     mutationFn: toggleFacultyActive,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['faculty'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+    },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
   });
@@ -152,6 +324,7 @@ export default function FacultyPage() {
       setSuccess('Faculty deleted.');
       setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Delete failed'),
@@ -313,6 +486,67 @@ export default function FacultyPage() {
       render: (f) => designationName(f.designationId),
     },
     {
+      key: 'status-flags',
+      header: 'Status',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs',
+      render: (f) => {
+        const s = statusByFacultyId.get(f.facultyId);
+        const hasQ = !!s?.hasQualifications;
+        const hasP = !!s?.hasPreferences;
+        const hasU = !!s?.hasUnavailability;
+        return (
+          <div className="flex items-center gap-1">
+            <span
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                hasQ
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+              title={
+                hasQ
+                  ? `${s?.qualificationCount ?? 0} qualification(s) on file`
+                  : 'No qualifications on file'
+              }
+            >
+              <Icon name="school" size={10} />
+              {hasQ ? s?.qualificationCount : '—'}
+            </span>
+            <span
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                hasP
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+              title={
+                hasP
+                  ? `${s?.preferenceCount ?? 0} preference(s)`
+                  : 'No preferences'
+              }
+            >
+              <Icon name="event_available" size={10} />
+              {hasP ? s?.preferenceCount : '—'}
+            </span>
+            <span
+              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                hasU
+                  ? 'bg-rose-100 text-rose-800'
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+              title={
+                hasU
+                  ? `${s?.unavailabilityCount ?? 0} block(s)`
+                  : 'No unavailability blocks'
+              }
+            >
+              <Icon name="block" size={10} />
+              {hasU ? s?.unavailabilityCount : '—'}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
       key: 'hours',
       header: 'Hours',
       cardVariant: 'mono',
@@ -322,7 +556,7 @@ export default function FacultyPage() {
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Active',
       cardVariant: 'badge',
       render: (f) => <ActiveBadge isActive={f.isActive} />,
     },
@@ -398,6 +632,7 @@ export default function FacultyPage() {
           <h1 className="text-2xl font-bold text-on-surface">Faculty</h1>
           <p className="text-on-surface-variant text-sm mt-1">
             {faculty.length} faculty member(s) registered
+            {isDH && myDeptId ? ' in your department' : ''}
           </p>
         </div>
         <button
@@ -420,9 +655,10 @@ export default function FacultyPage() {
         </div>
       )}
 
-      {/* Search & filter */}
-      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
-        <div className="flex-1 min-w-[220px]">
+      {/* ── Filter panel ── */}
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-4">
+        {/* Row 1: Search */}
+        <div>
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
             Search
           </label>
@@ -436,45 +672,165 @@ export default function FacultyPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Name, email, or ID…"
+              placeholder="Name, email, employee ID, or WMSU ID…"
               className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1"
+              >
+                <Icon name="close" size={14} />
+              </button>
+            )}
           </div>
         </div>
-        <div className="min-w-[200px]">
-          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-            Department
-          </label>
-          <select
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-          >
-            <option value="all">All departments</option>
-            {departments
-              .filter((d) => d.isActive)
-              .map((d) => (
-                <option key={d.deptId} value={d.deptId}>
-                  [{d.deptCode}] {d.deptName}
+
+        {/* Row 2: Dropdown filters */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Department
+              </label>
+              <select
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="all">All departments</option>
+                {departments
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+    
+          <div>
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Designation
+            </label>
+            <select
+              value={designationFilter}
+              onChange={(e) => setDesignationFilter(e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="all">All designations</option>
+              <option value="none">— None —</option>
+              {designations.map((d) => (
+                <option key={d.designationId} value={d.designationId}>
+                  {d.designationName}
                 </option>
               ))}
-          </select>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Classification
+            </label>
+            <select
+              value={classificationFilter}
+              onChange={(e) => setClassificationFilter(e.target.value)}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="all">All classifications</option>
+              {CLASSIFICATIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        {(searchQuery || deptFilter !== 'all') && (
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setDeptFilter('all');
-            }}
-            className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
-          >
-            Clear
-          </button>
-        )}
-        <div className="ml-auto text-xs text-on-surface-variant">
-          Showing{' '}
-          <strong className="text-on-surface">{filteredFaculty.length}</strong>{' '}
-          of {faculty.length}
+
+        {/* Row 3: Quick-filter chips */}
+        <div className="pt-3 border-t border-surface-variant">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">
+              Quick filters
+            </span>
+            <span className="text-[10px] text-on-surface-variant italic">
+              Right-click a chip to invert (show the ones that{' '}
+              <em>don't</em> have it)
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {chips.map((chip) => {
+              const isActive = chip.active;
+              const isInverse = chip.inverse;
+              const label = isInverse
+                ? CHIP_INVERSE_LABEL[chip.key]
+                : CHIP_LABEL[chip.key];
+              const base =
+                'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition select-none';
+              const style = isActive
+                ? isInverse
+                  ? 'bg-amber-100 text-amber-900 border-amber-400'
+                  : 'bg-green-100 text-green-900 border-green-400'
+                : 'bg-white text-on-surface-variant border-surface-variant hover:border-primary/50 hover:text-on-surface';
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => toggleChip(chip.key)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    invertChip(chip.key);
+                  }}
+                  title="Left-click to toggle. Right-click to invert."
+                  className={`${base} ${style}`}
+                >
+                  <Icon name={CHIP_ICON[chip.key]} size={12} />
+                  {label}
+                </button>
+              );
+            })}
+
+            {/* Missing Quals preset */}
+            <button
+              type="button"
+              onClick={applyMissingQualsPreset}
+              disabled={missingQualsCount === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              title={
+                missingQualsCount === 0
+                  ? 'Every active faculty member has at least one qualification'
+                  : `Show ${missingQualsCount} active faculty without qualifications`
+              }
+            >
+              <Icon name="warning" size={12} />
+              Missing Qualifications ({missingQualsCount})
+            </button>
+
+            {hasAnyFilter && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="ml-auto text-xs px-3 py-1.5 rounded-full border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 4: Result count */}
+        <div className="flex items-center justify-between pt-2 border-t border-surface-variant text-xs text-on-surface-variant">
+          <span>
+            Showing{' '}
+            <strong className="text-on-surface">{filteredFaculty.length}</strong>{' '}
+            of {faculty.length}
+          </span>
+          {activeChipCount > 0 && (
+            <span className="italic">
+              {activeChipCount} quick filter
+              {activeChipCount === 1 ? '' : 's'} active
+            </span>
+          )}
         </div>
       </div>
 
@@ -503,7 +859,7 @@ export default function FacultyPage() {
         getActions={getActions}
       />
 
-      {/* Create / Edit modal — fields restored */}
+      {/* Create / Edit modal */}
       <Modal
         open={!!mode}
         onClose={closeForm}
@@ -515,7 +871,6 @@ export default function FacultyPage() {
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Personal info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
@@ -545,7 +900,6 @@ export default function FacultyPage() {
             </div>
           </div>
 
-          {/* Contact */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
@@ -573,7 +927,6 @@ export default function FacultyPage() {
             </div>
           </div>
 
-          {/* IDs */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
@@ -601,7 +954,6 @@ export default function FacultyPage() {
             </div>
           </div>
 
-          {/* Department + Designation */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
@@ -649,7 +1001,6 @@ export default function FacultyPage() {
             </div>
           </div>
 
-          {/* Classification + Required Hours */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
@@ -688,7 +1039,6 @@ export default function FacultyPage() {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-200 mt-6">
             <button
               type="button"
@@ -749,7 +1099,6 @@ export default function FacultyPage() {
         </p>
       </Modal>
 
-      {/* Qualifications */}
       <QualificationsModal
         open={qualOpen}
         onClose={() => {
@@ -759,7 +1108,6 @@ export default function FacultyPage() {
         faculty={qualFaculty}
       />
 
-      {/* Preferences */}
       <PreferencesModal
         open={prefsOpen}
         onClose={() => {
@@ -769,7 +1117,6 @@ export default function FacultyPage() {
         faculty={prefsFaculty}
       />
 
-      {/* Unavailability */}
       <UnavailabilityModal
         open={unavailOpen}
         onClose={() => {
