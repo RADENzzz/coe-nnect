@@ -597,11 +597,15 @@ def solve_schedule(req: SolveRequest) -> dict:
                 consecutive_penalty_terms.append(v)
 
     if consecutive_penalty_terms:
+        # Deduplicate — a candidate can appear in many overlapping
+        # windows; without this, the penalty weight scales non-linearly
+        # with chain length.
+        unique_terms = list(set(consecutive_penalty_terms))
         objective_terms.append(
-            consecutive_penalty_weight * sum(consecutive_penalty_terms)
+            consecutive_penalty_weight * sum(unique_terms)
         )
         print(
-            f"[solver] H-4: {len(consecutive_penalty_terms)} candidate(s) "
+            f"[solver] H-4: {len(unique_terms)} candidate(s) "
             f"penalized for consecutive-block risk"
         )
     
