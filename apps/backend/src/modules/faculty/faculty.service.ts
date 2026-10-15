@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   NotFoundException,
@@ -13,7 +12,7 @@ import {
   fullToAbbrSafe,
 } from '../../common/utils/day-mapping.util';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Faculty } from './entities/faculty.entity';
 import { FacultyQualification } from './entities/faculty-qualification.entity';
 import { Subject } from '../subjects/entities/subject.entity';
@@ -28,6 +27,7 @@ import { User } from '../users/entities/user.entity';
 import { FacultyUnavailability } from './entities/faculty-unavailability.entity';
 import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
 import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
+import type { FacultyStatusSummaryRow } from './dto/faculty-status-summary.dto';
 
 // ────────────────────────────────────────────
 // day_of_week mapping
@@ -54,16 +54,6 @@ export class FacultyService {
 
   // ────────────────────────────────────────────
   // Cross-department protection
-  //
-  // Dean can modify any faculty anywhere.
-  // DH can only modify faculty that belong to their own department.
-  // Anyone else: hard reject (fail-closed).
-  //
-  // NOTE: the `administrator` role is still accepted here so the
-  // hidden dev account retains full access. It is NOT used for
-  // user-facing authorization — the Dean is the top role.
-  //
-  // Returns the faculty row so callers don't need a second findOne.
   // ────────────────────────────────────────────
   private async assertOwnership(
     facultyId: string,
@@ -114,7 +104,6 @@ export class FacultyService {
   }
 
   async create(dto: CreateFacultyDto, profile: User): Promise<Faculty> {
-    // DHs can only create faculty in their own department. Force the dept.
     if (profile.role === 'department_head') {
       if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
         throw new ForbiddenException(
@@ -146,7 +135,6 @@ export class FacultyService {
   ): Promise<Faculty> {
     const found = await this.assertOwnership(id, profile);
 
-    // DHs cannot move faculty to a different department.
     if (
       profile.role === 'department_head' &&
       dto.deptId !== undefined &&
@@ -184,6 +172,88 @@ export class FacultyService {
     const found = await this.assertOwnership(id, profile);
     await this.repo.remove(found);
     return { success: true };
+  }
+
+  // ────────────────────────────────────────────
+  // FR 3.1.3 — Bulk status summary
+  //
+  // Returns one row per faculty (optionally dept-scoped) with counts
+  // across the three "has X" relations. Powers the Faculty page's
+  // quick-filter chips + the Status column.
+  //
+  // 4 queries total, no N+1.
+  // ────────────────────────────────────────────
+  async getStatusSummary(deptId?: string): Promise<FacultyStatusSummaryRow[]> {
+    // 1. Faculty in scope
+    const facultyQuery = this.repo
+      .createQueryBuilder('f')
+      .select(['f.faculty_id AS faculty_id']);
+
+    if (deptId) {
+      facultyQuery.where('f.dept_id = :deptId', { deptId });
+    }
+
+    const facultyRows = (await facultyQuery.getRawMany()) as {
+      faculty_id: string;
+    }[];
+
+    if (facultyRows.length === 0) return [];
+
+    const ids = facultyRows.map((r) => String(r.faculty_id));
+
+    // 2. Counts from each relation — TypeORM In() + groupBy
+    const [qualCounts, prefCounts, unavailCounts] = await Promise.all([
+      this.quals
+        .createQueryBuilder('q')
+        .select('q.faculty_id', 'facultyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('q.faculty_id IN (:...ids)', { ids })
+        .groupBy('q.faculty_id')
+        .getRawMany<{ facultyId: string; count: string }>(),
+      this.prefs
+        .createQueryBuilder('p')
+        .select('p.faculty_id', 'facultyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('p.faculty_id IN (:...ids)', { ids })
+        .groupBy('p.faculty_id')
+        .getRawMany<{ facultyId: string; count: string }>(),
+      this.unavailabilityRepo
+        .createQueryBuilder('u')
+        .select('u.faculty_id', 'facultyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('u.faculty_id IN (:...ids)', { ids })
+        .groupBy('u.faculty_id')
+        .getRawMany<{ facultyId: string; count: string }>(),
+    ]);
+
+    const toMap = (
+      rows: { facultyId: string; count: string }[],
+    ): Map<string, number> => {
+      const m = new Map<string, number>();
+      for (const r of rows) m.set(String(r.facultyId), Number(r.count));
+      return m;
+    };
+
+    const qMap = toMap(qualCounts);
+    const pMap = toMap(prefCounts);
+    const uMap = toMap(unavailCounts);
+
+    // 3. Join in memory
+    return facultyRows.map((row) => {
+      const id = String(row.faculty_id);
+      const qc = qMap.get(id) ?? 0;
+      const pc = pMap.get(id) ?? 0;
+      const uc = uMap.get(id) ?? 0;
+      return {
+        facultyId: id,
+        qualificationCount: qc,
+        hasQualifications: qc > 0,
+        preferenceCount: pc,
+        hasPreferences: pc > 0,
+        unavailabilityCount: uc,
+        hasUnavailability: uc > 0,
+      };
+    });
   }
 
   // ────────────────────────────────────────────
@@ -410,7 +480,7 @@ export class FacultyService {
     facultyId: string,
     termId?: string,
   ): Promise<FacultyUnavailability[]> {
-    await this.findOne(facultyId); // 404 if faculty doesn't exist
+    await this.findOne(facultyId);
 
     const qb = this.unavailabilityRepo
       .createQueryBuilder('u')
@@ -419,7 +489,6 @@ export class FacultyService {
       .addOrderBy('u.start_time', 'ASC');
 
     if (termId) {
-      // Return blocks that apply to this term OR are term-agnostic
       qb.andWhere('(u.term_id = :termId OR u.term_id IS NULL)', { termId });
     }
 
@@ -433,9 +502,7 @@ export class FacultyService {
     await this.findOne(facultyId);
 
     if (dto.startTime >= dto.endTime) {
-      throw new BadRequestException(
-        'endTime must be after startTime',
-      );
+      throw new BadRequestException('endTime must be after startTime');
     }
 
     const entity = this.unavailabilityRepo.create({
@@ -478,9 +545,7 @@ export class FacultyService {
     if (dto.termId !== undefined) found.termId = dto.termId ?? null;
 
     if (found.startTime >= found.endTime) {
-      throw new BadRequestException(
-        'endTime must be after startTime',
-      );
+      throw new BadRequestException('endTime must be after startTime');
     }
 
     return this.unavailabilityRepo.save(found);
