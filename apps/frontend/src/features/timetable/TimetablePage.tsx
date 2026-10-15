@@ -67,7 +67,6 @@ function getGenerationProgressMessage(elapsedMs: number): {
   const sec = elapsedMs / 1000;
   const raw = 1 - Math.exp(-sec / 6);
   const progress = Math.min(95, Math.round(raw * 100));
-
   let label: string;
   if (sec < 2) label = 'Starting solver…';
   else if (sec < 5) label = 'Analyzing constraints…';
@@ -75,7 +74,6 @@ function getGenerationProgressMessage(elapsedMs: number): {
   else if (sec < 20) label = 'Placing classes…';
   else if (sec < 40) label = 'Almost done…';
   else label = 'Taking longer than expected…';
-
   return { label, progress };
 }
 
@@ -119,14 +117,12 @@ function AutoGenerateButton({
           style={{ width: `${progress}%` }}
         />
       )}
-
       {!isGenerating && (
         <>
           <Icon name="auto_awesome" size={16} className="relative z-10 shrink-0" />
           <span className="relative z-10">Auto-Generate</span>
         </>
       )}
-
       {isGenerating && (
         <>
           <span
@@ -149,7 +145,6 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
   const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
   const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
-
   const hasSystemFaculty = !!raw.faculty;
   const externalName = raw.externalFacultyName ?? null;
   const externalRoom = raw.externalRoomName ?? null;
@@ -177,12 +172,10 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     endTime: end.slice(0, 5),
     status: raw.status,
     remarks: raw.remarks,
-
     flagged: raw.flagged,
     flaggedBy: raw.flaggedBy,
     flaggedAt: raw.flaggedAt,
     flagReason: raw.flagReason,
-
     loadType: (raw.loadType ?? 'lecture') as LoadType,
     deptId: raw.subject?.deptId ?? '',
     deptColor: '#800000',
@@ -198,7 +191,6 @@ function versionEntryToEntry(
   const start = raw.start_time ?? '07:00:00';
   const end = raw.end_time ?? '08:00:00';
   const isLab = raw.load_type === 'laboratory';
-
   const externalName = raw.external_faculty_name ?? null;
   const externalRoom = raw.external_room_name ?? null;
   const hasSystemFaculty = !!raw.faculty_id;
@@ -284,16 +276,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [plotSubjectPresetId, setPlotSubjectPresetId] = useState<string | null>(
     null,
   );
-
-  // ── F4.2: store IDs, not snapshots ──
-  // selectedEntry and editEntry are derived from `entries` below,
-  // so when React Query refetches and `entries` recomputes, the
-  // drawer and modal see fresh objects automatically — no F5 needed.
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [editEntryId, setEditEntryId] = useState<string | null>(null);
-
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
-
   const [coveragePanelOpen, setCoveragePanelOpen] = useState(false);
 
   const isDepartmentHead = profile?.role === 'department_head';
@@ -307,8 +292,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [facultyTargetId, setFacultyTargetId] = useState('');
   const [onlyConflicts, setOnlyConflicts] = useState(false);
 
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(defaultLayoutForViewport);
-  const [gridDensity, setGridDensity] = useState<GridDensity>(defaultDensityForViewport);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(
+    defaultLayoutForViewport,
+  );
+  const [gridDensity, setGridDensity] = useState<GridDensity>(
+    defaultDensityForViewport,
+  );
 
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoPreview, setAutoPreview] = useState<ScheduleEntry[] | null>(null);
@@ -322,10 +311,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
 
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const [activeVersion, setActiveVersion] = useState<ScheduleVersionSummary | null>(null);
+  const [activeVersion, setActiveVersion] =
+    useState<ScheduleVersionSummary | null>(null);
   const [compareA, setCompareA] = useState<ScheduleVersionSummary | null>(null);
   const [compareB, setCompareB] = useState<ScheduleVersionSummary | null>(null);
 
+  const [alertState, setAlertState] = useState<AlertState | null>(null);
+
+  // ── beforeunload during auto-generate ──
   useEffect(() => {
     if (!autoPreview && !autoGenerating) return;
     const handler = (e: BeforeUnloadEvent) => {
@@ -348,8 +341,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }, 500);
     return () => clearInterval(interval);
   }, [autoGenerating]);
-
-  const [alertState, setAlertState] = useState<AlertState | null>(null);
 
   const { data: prospectus = [] } = useQuery({
     queryKey: ['prospectus-all'],
@@ -426,28 +417,21 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const { data: unplottedMinors = [] } = useQuery<UnplottedMinor[]>({
     queryKey: ['unplotted-minors', activeTerm?.termId, minorsDeptId],
     queryFn: () => fetchUnplottedMinors(activeTerm!.termId, minorsDeptId),
-    enabled:
-      !!activeTerm?.termId &&
-      !!minorsDeptId &&
-      !activeVersion &&
-      !!user,
+    enabled: !!activeTerm?.termId && !!minorsDeptId && !activeVersion && !!user,
     refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
 
-  // ── Coverage indicator (Q4 = global always, dept-wide) ──
   const coverageDeptId = isDepartmentHead ? myDeptId : viewDeptId || myDeptId;
-  const {
-    data: coverage,
-    isLoading: coverageLoading,
-  } = useQuery<CoverageReport>({
-    queryKey: ['coverage', activeTerm?.termId, coverageDeptId],
-    queryFn: () => fetchCoverage(activeTerm!.termId, coverageDeptId),
-    enabled:
-      !!activeTerm?.termId && !!coverageDeptId && !activeVersion && !!user,
-    refetchOnWindowFocus: true,
-    staleTime: 30_000,
-  });
+  const { data: coverage, isLoading: coverageLoading } =
+    useQuery<CoverageReport>({
+      queryKey: ['coverage', activeTerm?.termId, coverageDeptId],
+      queryFn: () => fetchCoverage(activeTerm!.termId, coverageDeptId),
+      enabled:
+        !!activeTerm?.termId && !!coverageDeptId && !activeVersion && !!user,
+      refetchOnWindowFocus: true,
+      staleTime: 30_000,
+    });
 
   const autoDraftCount = useMemo(() => {
     if (!schedules) return 0;
@@ -559,7 +543,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const entries = useMemo(() => {
     let filtered = allEntries;
-
     if (viewMode === 'byDepartment' && viewDeptId) {
       filtered = filtered.filter((e) => e.deptId === viewDeptId);
       if (subMode === 'bySection' && subTargetId) {
@@ -572,11 +555,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
     } else if (viewMode === 'byFaculty' && facultyTargetId) {
       filtered = filtered.filter((e) => e.facultyId === facultyTargetId);
     }
-
     if (onlyConflicts && !activeVersion) {
       filtered = filtered.filter((e) => e.hasConflict || e.hasWarning);
     }
-
     return filtered;
   }, [
     allEntries,
@@ -590,17 +571,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
     activeVersion,
   ]);
 
-  // ── F4.2: derive selected/edit entries from the CURRENT entries list.
-  // When a mutation invalidates ['schedules', termId], the query
-  // refetches, `entries` recomputes, and these memos return fresh
-  // objects — so the drawer and modal update live.
   const selectedEntry = useMemo(
-    () => (selectedEntryId ? entries.find((e) => e.id === selectedEntryId) ?? null : null),
+    () =>
+      selectedEntryId
+        ? entries.find((e) => e.id === selectedEntryId) ?? null
+        : null,
     [entries, selectedEntryId],
   );
 
   const editEntry = useMemo(
-    () => (editEntryId ? entries.find((e) => e.id === editEntryId) ?? null : null),
+    () =>
+      editEntryId ? entries.find((e) => e.id === editEntryId) ?? null : null,
     [entries, editEntryId],
   );
 
@@ -626,8 +607,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     if (!activeTerm) return;
     try {
       const fresh = await fetchSchedules(activeTerm.termId);
-      const freshEntries = fresh.map(toEntry);
-      setAutoPreview(freshEntries);
+      setAutoPreview(fresh.map(toEntry));
       const unscheduled = await fetchUnscheduled(activeTerm.termId);
       setAutoUnscheduled(
         unscheduled.map((u) => ({
@@ -651,10 +631,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const handleDiscardPendingPreview = useCallback(async () => {
     if (!activeTerm) return;
-    queryClient.setQueryData(
-      ['pending-auto-generate', activeTerm.termId],
-      null,
-    );
+    queryClient.setQueryData(['pending-auto-generate', activeTerm.termId], null);
     try {
       await discardAutoGenerate(activeTerm.termId);
     } catch (err) {
@@ -668,14 +645,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
 
-  // ─────────────────────────────────────────────────────────────
-  // F4.1 — Auto-generate affects cross-page queries too.
-  //
-  // Accept/discard changes schedule rows that drive:
-  //   - ['faculty-requests']  → pending approvals may be orphaned
-  //   - ['flagged']            → flagged rows may be replaced
-  //   - ['dashboard']          → tile counts
-  // ─────────────────────────────────────────────────────────────
   const invalidateAfterAutoGenerate = useCallback(
     (termId: string) => {
       queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
@@ -692,10 +661,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const handleAcceptPreview = useCallback(async () => {
     if (!activeTerm) return;
-    queryClient.setQueryData(
-      ['pending-auto-generate', activeTerm.termId],
-      null,
-    );
+    queryClient.setQueryData(['pending-auto-generate', activeTerm.termId], null);
     try {
       await confirmAutoGenerate(activeTerm.termId);
     } catch (err) {
@@ -709,10 +675,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const handleDiscardPreview = useCallback(async () => {
     if (!activeTerm) return;
-    queryClient.setQueryData(
-      ['pending-auto-generate', activeTerm.termId],
-      null,
-    );
+    queryClient.setQueryData(['pending-auto-generate', activeTerm.termId], null);
     try {
       await discardAutoGenerate(activeTerm.termId);
     } catch (err) {
@@ -724,31 +687,25 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [activeTerm, queryClient, refetchPendingAutoGenerate, invalidateAfterAutoGenerate]);
 
-  const {
-    moveEntry: handleMove,
-    isPending: movePending,
-    pendingConfirmation,
-  } = useMoveSchedule({
-    termId: activeTerm?.termId,
-    allEntries,
-    onError: (msg) =>
-      setAlertState({
-        title: 'Move failed',
-        tone: 'error',
-        items: [{ message: msg, tone: 'error' }],
-      }),
-  });
+  const { moveEntry: handleMove, isPending: movePending, pendingConfirmation } =
+    useMoveSchedule({
+      termId: activeTerm?.termId,
+      allEntries,
+      onError: (msg) =>
+        setAlertState({
+          title: 'Move failed',
+          tone: 'error',
+          items: [{ message: msg, tone: 'error' }],
+        }),
+    });
 
   const handleClick = useCallback(
     (entry: ScheduleEntry) => {
       const sameSlot = entries.filter(
         (e) => e.day === entry.day && e.startTime === entry.startTime,
       );
-      if (sameSlot.length > 1) {
-        setStackOpen(sameSlot);
-      } else {
-        setSelectedEntryId(entry.id);
-      }
+      if (sameSlot.length > 1) setStackOpen(sameSlot);
+      else setSelectedEntryId(entry.id);
     },
     [entries],
   );
@@ -777,7 +734,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       try {
         await abandonAutoGenerate(activeTerm.termId);
       } catch {
-        // Ignore
+        /* ignore */
       }
       setAutoGenerating(true);
       try {
@@ -786,7 +743,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
           myDeptId,
           options,
         );
-
         if (!result.success) {
           if (
             result.blockedByUnplottedMinors &&
@@ -799,7 +755,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             });
             return;
           }
-
           if (result.roomDeficits && result.roomDeficits.length > 0) {
             setAlertState({
               title: 'Not enough rooms',
@@ -813,7 +768,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             });
             return;
           }
-
           setAlertState({
             title: 'Auto-generation failed',
             subtitle: result.message ?? 'Unknown error',
@@ -826,7 +780,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
           });
           return;
         }
-
         await queryClient.invalidateQueries({
           queryKey: ['schedules', activeTerm.termId],
         });
@@ -886,7 +839,36 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [],
   );
 
-  const isLoading = termLoading || schedulesLoading || (!!activeVersion && versionLoading);
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const inInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable;
+      if (inInput) return;
+
+      if (e.key === 'g' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setLayoutMode('grid');
+        setLayoutTouched(true);
+      } else if (e.key === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setLayoutMode('agenda');
+        setLayoutTouched(true);
+      } else if (e.key === 'Escape') {
+        setSelectedEntryId(null);
+        setStackOpen(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const isLoading =
+    termLoading || schedulesLoading || (!!activeVersion && versionLoading);
   const error = termError || schedulesError;
 
   const deptOptions = useMemo(
@@ -1006,7 +988,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const entryCountLabel = `${entries.length} ${
     entries.length === 1 ? 'entry' : 'entries'
   }`;
-
   const writable = !readOnly && !activeVersion;
 
   const versionContext = activeVersion
@@ -1028,19 +1009,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const showCoveragePill =
     !!coverage && coverage.termSemester !== null && !isLoading && !error;
 
+  // ── Layout: full-height flex ──
   return (
-    <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
+    <div className="flex flex-col h-full min-h-0 p-4 md:p-6">
+      {/* ── Header ── */}
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
             Timetable
           </h1>
-          <p className="text-sm text-on-surface-variant mt-1">
-            {activeTerm
-              ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
-              : 'Loading term...'}
+          <p className="text-sm text-on-surface-variant mt-1 flex items-center gap-2 flex-wrap">
+            <span>
+              {activeTerm
+                ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+                : 'Loading term…'}
+            </span>
             {readOnly && !activeVersion && (
-              <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
                 <Icon name="visibility" size={12} />
                 View only
               </span>
@@ -1048,22 +1033,19 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {activeTerm && !isLoading && !error && (
             <div className="hidden sm:flex items-center gap-2 text-xs text-on-surface-variant">
-              <span className="material-symbols-outlined text-base">
-                calendar_view_month
-              </span>
-              {entryCountLabel}
+              <Icon name="calendar_view_month" size={16} />
+              <span className="tabular-nums">{entryCountLabel}</span>
               {writable && movePending && (
-                <span className="ml-2 text-primary font-medium animate-pulse">
+                <span className="ml-1 text-primary font-medium animate-pulse">
                   Saving…
                 </span>
               )}
             </div>
           )}
 
-          {/* ── Coverage pill (always visible when computable) ── */}
           {showCoveragePill && (
             <button
               type="button"
@@ -1098,7 +1080,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               title="View version history"
             >
               <Icon name="history" size={16} />
-              <span className="hidden sm:inline">Version History</span>
+              <span className="hidden sm:inline">Versions</span>
             </button>
           )}
 
@@ -1118,7 +1100,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 setPlotOpen(true);
               }}
               disabled={isGenerating}
-              title={isGenerating ? 'Wait for the current generation to finish' : undefined}
+              title={
+                isGenerating
+                  ? 'Wait for the current generation to finish'
+                  : undefined
+              }
               className="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary"
             >
               <Icon name="add" size={16} />
@@ -1128,6 +1114,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       </div>
 
+      {/* ── Version banner ── */}
       {activeVersion && (
         <VersionViewBanner
           versionNumber={activeVersion.versionNumber}
@@ -1137,7 +1124,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
         />
       )}
 
-            {showCoverageBanner && coverage && (
+      {/* ── Coverage banner ── */}
+      {showCoverageBanner && coverage && (
         <div
           className={`mb-4 rounded-xl border-2 px-4 py-3 flex items-start gap-3 ${
             coverage.totals.missing > 0
@@ -1165,8 +1153,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 }`}
               >
                 {coverage.totals.missing} prospectus slot
-                {coverage.totals.missing === 1 ? '' : 's'} not yet plotted
-                {' '}
+                {coverage.totals.missing === 1 ? '' : 's'} not yet plotted{' '}
                 <span className="font-normal opacity-80">
                   ({coverage.totals.plotted} of {coverage.totals.expected}{' '}
                   done · {coverage.totals.percent}%)
@@ -1180,19 +1167,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 View list
               </button>
             </div>
-            <p className="text-xs text-on-surface-variant mt-0.5">
-              Missing{' '}
-              {coverage.missing.filter((m) => m.isMinor).length} minor
-              {coverage.missing.filter((m) => m.isMinor).length === 1
-                ? ''
-                : 's'}{' '}
-              ·{' '}
-              {coverage.missing.filter((m) => !m.isMinor).length} major
-              {coverage.missing.filter((m) => !m.isMinor).length === 1
-                ? ''
-                : 's'}
-              . Plot minors first so the solver can schedule around them.
-            </p>
             <div className="mt-2 flex flex-wrap gap-1">
               {coverage.missing.slice(0, 6).map((m) => (
                 <span
@@ -1218,6 +1192,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       )}
 
+      {/* ── Server-side generating notice ── */}
       {!activeVersion &&
         activeTerm &&
         pendingAutoGenerate &&
@@ -1232,6 +1207,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
 
+      {/* ── Resume pending preview ── */}
       {!activeVersion &&
         activeTerm &&
         pendingAutoGenerate &&
@@ -1275,6 +1251,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
 
+      {/* ── Filters + layout toolbar ── */}
       {activeTerm && (
         <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
           <div className="flex flex-wrap items-end gap-3">
@@ -1465,6 +1442,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                       ? 'bg-white text-primary shadow-sm'
                       : 'text-on-surface-variant hover:text-on-surface'
                   }`}
+                  title="Agenda view (A)"
                 >
                   <Icon name="view_list" size={14} />
                   Agenda
@@ -1481,6 +1459,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                       ? 'bg-white text-primary shadow-sm'
                       : 'text-on-surface-variant hover:text-on-surface'
                   }`}
+                  title="Grid view (G)"
                 >
                   <Icon name="grid_on" size={14} />
                   Grid
@@ -1543,6 +1522,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       )}
 
+      {/* ── Loading / error / empty ── */}
       {isLoading && <LoadingState message="Loading schedule…" />}
       {error && (
         <ErrorState
@@ -1582,6 +1562,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         />
       )}
 
+      {/* ── Export bar + grid/agenda ── */}
       {!isLoading && !error && activeTerm && entries.length > 0 && (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl border border-surface-variant bg-surface-container-lowest">
@@ -1639,12 +1620,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </>
       )}
 
+      {/* ── Modals ── */}
       {writable && activeTerm && (
         <PlotSubjectModal
           open={plotOpen}
           onClose={() => {
             setPlotOpen(false);
-            setEditEntryId(null);          // ← F4.3: clear stale edit reference
+            setEditEntryId(null);
             setPlotSubjectPresetId(null);
           }}
           termId={activeTerm.termId}
@@ -1756,7 +1738,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           <button
             type="button"
             onClick={() => setAlertState(null)}
-            className="px-5 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+            className="px-5 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg"
           >
             OK
           </button>
@@ -1765,7 +1747,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         {alertState && (
           <div className="space-y-3">
             <div
-              className={`flex items-start gap-2 p-3 border ${
+              className={`flex items-start gap-2 p-3 border rounded-lg ${
                 alertState.tone === 'error'
                   ? 'bg-red-50 border-red-200 text-red-800'
                   : 'bg-blue-50 border-blue-200 text-blue-800'
@@ -1794,7 +1776,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 {alertState.items.map((item, i) => (
                   <li
                     key={`${item.ruleId ?? 'item'}-${i}`}
-                    className={`flex items-start gap-2 p-2.5 border text-xs ${
+                    className={`flex items-start gap-2 p-2.5 border rounded-lg text-xs ${
                       item.tone === 'error'
                         ? 'bg-red-50/50 border-red-100'
                         : item.tone === 'warning'
@@ -1804,7 +1786,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                   >
                     {item.ruleId && (
                       <span
-                        className={`font-mono font-bold shrink-0 px-1.5 py-0.5 text-[10px] ${
+                        className={`font-mono font-bold shrink-0 px-1.5 py-0.5 text-[10px] rounded ${
                           item.tone === 'error'
                             ? 'bg-red-100 text-red-800'
                             : item.tone === 'warning'
@@ -1852,14 +1834,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
             <button
               type="button"
               onClick={() => setConfirmOverwrite(false)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleConfirmOverwrite}
-              className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+              className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg"
             >
               Replace and Generate
             </button>
@@ -1884,10 +1866,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             Any manual changes made to those drafts after generation will be
             lost. The solver will produce a fresh set of drafts.
           </p>
-          <p className="text-xs text-slate-500">
-            Tip: use Discard first if you want to keep the current drafts and
-            start over. Otherwise, continue to replace them.
-          </p>
         </div>
       </Modal>
 
@@ -1901,7 +1879,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
             <button
               type="button"
               onClick={() => setBlockedMinors(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
             >
               Cancel
             </button>
@@ -1923,7 +1901,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                   acknowledgeUnplottedMinors: true,
                 });
               }}
-              className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+              className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg"
             >
               Skip and generate anyway
             </button>
@@ -1943,14 +1921,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 <p className="font-semibold">
                   {blockedMinors.minors.length} minor subject
                   {blockedMinors.minors.length === 1 ? '' : 's'} in the
-                  prospectus {blockedMinors.minors.length === 1 ? 'has' : 'have'}{' '}
-                  not been plotted yet.
+                  prospectus{' '}
+                  {blockedMinors.minors.length === 1 ? 'has' : 'have'} not been
+                  plotted yet.
                 </p>
                 <p className="text-xs text-amber-800 mt-1">
                   Minor subjects are treated as fixed obstacles. Generating
                   without them will place department subjects in slots those
-                  minors might later need, you may have to re-plot things
-                  afterward.
+                  minors might later need.
                 </p>
               </div>
             </div>
@@ -1973,11 +1951,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
                           {m.semester ? ` · ${m.semester}` : ''}
                         </span>
                       )}
-                      {m.programCode && (
-                        <span className="text-[10px] text-on-surface-variant">
-                          · {m.programCode}
-                        </span>
-                      )}
                     </div>
                     <p className="text-xs text-on-surface mt-0.5 truncate">
                       {m.title}
@@ -1986,12 +1959,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 </div>
               ))}
             </div>
-
-            <p className="text-xs text-slate-500">
-              <strong>Recommended:</strong> plot these first so the solver
-              schedules around them. Or skip and re-plot later if you need to
-              see a rough schedule now.
-            </p>
           </div>
         )}
       </Modal>
