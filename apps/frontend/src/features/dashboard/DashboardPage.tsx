@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
@@ -80,10 +80,59 @@ function relativeTime(iso: string | null | undefined): string {
   });
 }
 
+function relativeDay(iso: string | null | undefined): string {
+  if (!iso) return 'Unknown';
+  const then = new Date(iso);
+  const now = new Date();
+  const startOfDay = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.floor(
+    (startOfDay(now) - startOfDay(then)) / (1000 * 60 * 60 * 24),
+  );
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return 'This week';
+  return 'Older';
+}
+
 function initials(username: string): string {
   if (!username) return '—';
   return username.slice(0, 2).toUpperCase();
 }
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+const DAY_ORDER: Record<string, number> = {
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+  Sunday: 7,
+  MON: 1,
+  TUE: 2,
+  WED: 3,
+  THU: 4,
+  FRI: 5,
+  SAT: 6,
+  SUN: 7,
+};
+
+const DAY_FULL_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
 
 // ─────────────────────────────────────────────
 // Quick Action Button
@@ -93,23 +142,41 @@ function QuickAction({
   icon,
   label,
   onClick,
+  badge,
+  accent = 'brand',
 }: {
   icon: string;
   label: string;
   onClick: () => void;
+  badge?: string | number;
+  accent?: 'brand' | 'blue' | 'amber' | 'rose' | 'emerald';
 }) {
+  const accentClasses: Record<typeof accent, string> = {
+    brand: 'text-[#5c1219]',
+    blue: 'text-blue-700',
+    amber: 'text-amber-700',
+    rose: 'text-rose-700',
+    emerald: 'text-emerald-700',
+  };
+
   return (
     <button
       onClick={onClick}
-      className="bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center justify-center gap-2 transition-all group"
+      aria-label={label}
+      className="relative bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center justify-center gap-2 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 rounded-lg"
     >
       <Icon
         name={icon}
-        className="text-[#5c1219] group-hover:scale-105 transition-transform"
+        className={`${accentClasses[accent]} group-hover:scale-105 transition-transform`}
       />
-      <span className="text-[11px] font-semibold text-slate-700 text-center">
+      <span className="text-[11px] font-semibold text-slate-700 text-center leading-tight">
         {label}
       </span>
+      {badge !== undefined && badge !== 0 && (
+        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#5c1219] text-white text-[10px] font-bold flex items-center justify-center">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -127,6 +194,9 @@ function SummaryCard({
   footer,
   onClick,
   clickable,
+  isLoading,
+  accent = 'brand',
+  hint,
 }: {
   icon: string;
   badge?: string;
@@ -136,6 +206,9 @@ function SummaryCard({
   footer?: React.ReactNode;
   onClick?: () => void;
   clickable?: boolean;
+  isLoading?: boolean;
+  accent?: 'brand' | 'blue' | 'amber' | 'rose' | 'emerald';
+  hint?: string;
 }) {
   const badgeClasses: Record<string, string> = {
     neutral: 'bg-slate-50 text-slate-600 border-slate-200',
@@ -146,22 +219,38 @@ function SummaryCard({
     rose: 'bg-rose-50 text-rose-700 border-rose-200',
   };
 
+  const iconAccentClasses: Record<typeof accent, string> = {
+    brand: 'bg-red-50 border-red-200 text-[#5c1219]',
+    blue: 'bg-blue-50 border-blue-200 text-blue-700',
+    amber: 'bg-amber-50 border-amber-200 text-amber-700',
+    rose: 'bg-rose-50 border-rose-200 text-rose-700',
+    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  };
+
   const Wrapper = clickable ? 'button' : 'div';
 
   return (
     <Wrapper
       onClick={onClick}
       disabled={!clickable}
+      title={hint}
+      aria-label={hint ?? label}
       className={
-        'bg-white border border-slate-200 p-5 shadow-sm transition-all text-left w-full ' +
+        'group bg-white border border-slate-200 p-5 shadow-sm transition-all text-left w-full rounded-lg focus:outline-none ' +
         (clickable
-          ? 'hover:border-[#5c1219]/40 hover:shadow cursor-pointer'
+          ? 'hover:border-[#5c1219]/40 hover:shadow cursor-pointer focus-visible:ring-2 focus-visible:ring-[#5c1219]/30'
           : 'hover:border-slate-300')
       }
     >
       <div className="flex justify-between items-start mb-4">
-        <div className="w-9 h-9 bg-red-50 border border-red-200 flex items-center justify-center">
-          <Icon name={icon} filled className="text-[#5c1219]" />
+        <div
+          className={`w-9 h-9 border flex items-center justify-center ${iconAccentClasses[accent]}`}
+        >
+          {isLoading ? (
+            <Icon name="progress_activity" size={16} className="animate-spin" />
+          ) : (
+            <Icon name={icon} filled />
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           {badge && (
@@ -183,8 +272,8 @@ function SummaryCard({
         </div>
       </div>
       <p className="text-sm text-slate-500 mb-1">{label}</p>
-      <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-        {value}
+      <div className="text-3xl font-extrabold text-slate-900 tracking-tight tabular-nums">
+        {isLoading ? '—' : value}
       </div>
       {footer && <div className="mt-4">{footer}</div>}
     </Wrapper>
@@ -215,7 +304,7 @@ function ActivityItem({
   return (
     <div className="p-4 px-5 flex items-center gap-4 hover:bg-slate-50 transition-colors">
       <div
-        className={`w-8 h-8 flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}
+        className={`w-8 h-8 flex items-center justify-center shrink-0 ${iconBg} ${iconColor} rounded`}
       >
         <Icon name={icon} />
       </div>
@@ -225,7 +314,7 @@ function ActivityItem({
       </div>
       <button
         onClick={onAction}
-        className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0"
+        className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 rounded px-1"
       >
         {actionLabel}
       </button>
@@ -234,18 +323,33 @@ function ActivityItem({
 }
 
 // ─────────────────────────────────────────────
-// Breakdown List — shared row components
+// Breakdown list components
 // ─────────────────────────────────────────────
 
-function BreakdownEmpty({ message }: { message: string }) {
+function BreakdownEmpty({
+  message,
+  icon = 'inbox',
+  actionLabel,
+  onAction,
+}: {
+  message: string;
+  icon?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   return (
     <div className="py-12 text-center">
-      <Icon
-        name="inbox"
-        size={36}
-        className="text-slate-300 mx-auto mb-2"
-      />
+      <Icon name={icon} size={36} className="text-slate-300 mx-auto mb-2" />
       <p className="text-sm text-slate-500">{message}</p>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#5c1219] hover:underline"
+        >
+          {actionLabel}
+          <Icon name="arrow_forward" size={12} />
+        </button>
+      )}
     </div>
   );
 }
@@ -285,6 +389,9 @@ function StatusPill({ status }: { status: string }) {
     review: 'bg-amber-50 text-amber-700 border-amber-200',
     finalized: 'bg-blue-50 text-blue-700 border-blue-200',
     published: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    pending: 'bg-amber-50 text-amber-700 border-amber-200',
+    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    rejected: 'bg-red-50 text-red-700 border-red-200',
   };
   return (
     <span
@@ -340,10 +447,6 @@ function RequestRow({
   );
 }
 
-// ─────────────────────────────────────────────
-// Flagged Row
-// ─────────────────────────────────────────────
-
 function FlaggedRow({
   s,
   onOpen,
@@ -357,7 +460,7 @@ function FlaggedRow({
   return (
     <button
       onClick={onOpen}
-      className="w-full text-left py-3 border-b border-slate-100 last:border-b-0 px-2 hover:bg-rose-50/60 transition-colors flex items-start gap-3"
+      className="w-full text-left py-3 border-b border-slate-100 last:border-b-0 px-2 hover:bg-rose-50/60 transition-colors flex items-start gap-3 focus:outline-none focus-visible:bg-rose-50/60 rounded"
     >
       <span
         className="w-1 self-stretch rounded-full shrink-0 bg-rose-600"
@@ -419,7 +522,213 @@ function FlaggedRow({
 }
 
 // ─────────────────────────────────────────────
-// Dashboard Page
+// Today Widget
+// ─────────────────────────────────────────────
+
+function TodayScheduleStrip({
+  schedules,
+  onOpenTimetable,
+}: {
+  schedules: RawSchedule[];
+  onOpenTimetable: () => void;
+}) {
+  const now = new Date();
+  const todayName = DAY_FULL_NAMES[now.getDay()];
+  const todayShort = DAY_ABBR_TO_LABEL[todayName] ?? todayName;
+
+  const todaySchedules = useMemo(
+    () =>
+      schedules
+        .filter((s) => {
+          const d = scheduleDay(s);
+          return d === todayName || d === todayShort.toUpperCase() || DAY_ABBR_TO_LABEL[d] === todayShort;
+        })
+        .sort(
+          (a, b) =>
+            timeToMinutes(scheduleStart(a) || '00:00') -
+            timeToMinutes(scheduleStart(b) || '00:00'),
+        ),
+    [schedules, todayName, todayShort],
+  );
+
+  // Find "up next" (earliest not-yet-ended)
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const upNext = todaySchedules.find(
+    (s) => timeToMinutes(scheduleEnd(s) || '23:59') >= nowMin,
+  );
+
+  return (
+    <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon name="today" size={16} className="text-[#5c1219]" />
+          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+            Today · {todayName}
+          </h3>
+        </div>
+        <span className="text-xs text-slate-400">
+          {todaySchedules.length} class
+          {todaySchedules.length === 1 ? '' : 'es'}
+        </span>
+      </div>
+
+      {todaySchedules.length === 0 ? (
+        <div className="py-8 text-center">
+          <Icon
+            name="event_available"
+            size={32}
+            className="text-emerald-400 mx-auto mb-2"
+          />
+          <p className="text-sm text-slate-500">
+            No classes scheduled for today.
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {todaySchedules.slice(0, 4).map((s) => {
+            const start = scheduleStart(s);
+            const end = scheduleEnd(s);
+            const isUpNext = upNext?.scheduleId === s.scheduleId;
+            const isPast =
+              timeToMinutes(end || '23:59') < nowMin;
+            return (
+              <button
+                key={s.scheduleId}
+                onClick={onOpenTimetable}
+                className={`w-full text-left px-5 py-3 flex items-center gap-3 transition-colors focus:outline-none focus-visible:bg-slate-50 ${
+                  isPast
+                    ? 'opacity-60'
+                    : isUpNext
+                    ? 'bg-[#5c1219]/5 hover:bg-[#5c1219]/10'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <div className="w-16 shrink-0">
+                  <div className="text-xs font-mono font-bold text-slate-900">
+                    {fmtTime(start)}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400">
+                    {fmtTime(end)}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm text-slate-900 truncate">
+                      {s.subject?.subjectCode ?? '—'}
+                    </span>
+                    {isUpNext && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#5c1219] text-white shrink-0">
+                        Up next
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">
+                    {s.section ? `${s.section} · ` : ''}
+                    {s.room ? `Rm ${s.room.roomNumber}` : 'No room'}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+          {todaySchedules.length > 4 && (
+            <button
+              onClick={onOpenTimetable}
+              className="w-full px-5 py-2.5 text-xs font-semibold text-[#5c1219] hover:bg-slate-50 transition-colors flex items-center justify-center gap-1"
+            >
+              View all {todaySchedules.length} in Timetable
+              <Icon name="arrow_forward" size={12} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Term Status Card
+// ─────────────────────────────────────────────
+
+function TermStatusCard({
+  term,
+  scheduleStatusCounts,
+  onCreate,
+}: {
+  term: any | undefined;
+  scheduleStatusCounts: { draft: number; review: number; finalized: number; published: number };
+  onCreate: () => void;
+}) {
+  if (!term) {
+    return (
+      <div className="bg-white border border-dashed border-amber-300 bg-amber-50/50 p-4 rounded-lg flex items-start gap-3">
+        <Icon name="warning" size={20} className="text-amber-600 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-bold text-amber-900">No active term</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            Wait till the Dean creates a new Term...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const total =
+    scheduleStatusCounts.draft +
+    scheduleStatusCounts.review +
+    scheduleStatusCounts.finalized +
+    scheduleStatusCounts.published;
+
+  const dominant: 'draft' | 'review' | 'finalized' | 'published' =
+    scheduleStatusCounts.published > 0 &&
+    scheduleStatusCounts.draft === 0 &&
+    scheduleStatusCounts.review === 0
+      ? 'published'
+      : scheduleStatusCounts.finalized > 0 &&
+        scheduleStatusCounts.draft === 0
+      ? 'finalized'
+      : scheduleStatusCounts.review > 0
+      ? 'review'
+      : 'draft';
+
+  const toneMap = {
+    draft: { label: 'In progress', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+    review: { label: 'Under review', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+    finalized: { label: 'Finalized', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+    published: { label: 'Published', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  };
+  const tone = toneMap[dominant];
+
+  return (
+    <div className="bg-white border border-slate-200 p-4 rounded-lg flex flex-wrap items-center gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-[#5c1219]/10 flex items-center justify-center">
+          <Icon name="calendar_month" size={20} className="text-[#5c1219]" />
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Active term
+          </p>
+          <p className="text-sm font-bold text-slate-900">
+            {term.termName} · {term.schoolYear}
+          </p>
+        </div>
+      </div>
+      <div className="ml-auto flex items-center gap-3">
+        <span className="text-xs text-slate-500">
+          {total} entr{total === 1 ? 'y' : 'ies'}
+        </span>
+        <span
+          className={`text-[11px] font-bold uppercase tracking-wide border px-2 py-0.5 rounded ${tone.color}`}
+        >
+          {tone.label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Main Page
 // ─────────────────────────────────────────────
 
 type BreakdownKind = 'schedules' | 'tasks' | 'completion' | 'flagged' | null;
@@ -428,12 +737,14 @@ export default function DashboardPage() {
   const { firstName, deptName } = useDepartmentLabel();
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
   const [breakdown, setBreakdown] = useState<BreakdownKind>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<number>(Date.now());
 
   // ── Queries ──
-  const { data: activeTerm } = useQuery({
+  const { data: activeTerm, isLoading: termLoading } = useQuery({
     queryKey: ['active-term'],
     queryFn: fetchActiveTerm,
   });
@@ -467,6 +778,20 @@ export default function DashboardPage() {
 
   const { onlineUsers, isConnected } = useOnlineUsers();
 
+  // Track refresh time when queries succeed
+  useEffect(() => {
+    if (!schedLoading && !reqLoading && !flaggedLoading) {
+      setLastRefreshed(Date.now());
+    }
+  }, [schedLoading, reqLoading, flaggedLoading]);
+
+  const refreshAll = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['active-term'] });
+    qc.invalidateQueries({ queryKey: ['schedules'] });
+    qc.invalidateQueries({ queryKey: ['flagged'] });
+    qc.invalidateQueries({ queryKey: ['faculty-requests'] });
+  }, [qc]);
+
   const deptCode = (id: string) =>
     departments.find((d) => String(d.deptId) === String(id))?.deptCode ??
     `#${id}`;
@@ -484,30 +809,46 @@ export default function DashboardPage() {
   ).length;
 
   // ── Filter to my dept ──
-  const mySchedules = schedules.filter(
-    (s) => s.subject?.deptId && String(s.subject.deptId) === myDeptId,
+  const mySchedules = useMemo(
+    () =>
+      schedules.filter(
+        (s) => s.subject?.deptId && String(s.subject.deptId) === myDeptId,
+      ),
+    [schedules, myDeptId],
   );
 
-  const myRequests = requests.filter((r) => {
-    if (!myDeptId) return false;
-    const inReq = String(r.requestingDeptId) === myDeptId;
-    const inTgt = String(r.targetDeptId) === myDeptId;
-    return inReq || inTgt;
-  });
+  const myRequests = useMemo(
+    () =>
+      requests.filter((r) => {
+        if (!myDeptId) return false;
+        return (
+          String(r.requestingDeptId) === myDeptId ||
+          String(r.targetDeptId) === myDeptId
+        );
+      }),
+    [requests, myDeptId],
+  );
 
-  const pendingIncoming = myRequests.filter(
-    (r) =>
-      r.status === 'pending' && String(r.targetDeptId) === myDeptId,
+  const pendingIncoming = useMemo(
+    () =>
+      myRequests.filter(
+        (r) =>
+          r.status === 'pending' && String(r.targetDeptId) === myDeptId,
+      ),
+    [myRequests, myDeptId],
   );
 
   // ── Computed metrics ──
   const totalSchedules = mySchedules.length;
-  const byStatus = {
-    draft: mySchedules.filter((s) => s.status === 'draft').length,
-    review: mySchedules.filter((s) => s.status === 'review').length,
-    finalized: mySchedules.filter((s) => s.status === 'finalized').length,
-    published: mySchedules.filter((s) => s.status === 'published').length,
-  };
+  const byStatus = useMemo(
+    () => ({
+      draft: mySchedules.filter((s) => s.status === 'draft').length,
+      review: mySchedules.filter((s) => s.status === 'review').length,
+      finalized: mySchedules.filter((s) => s.status === 'finalized').length,
+      published: mySchedules.filter((s) => s.status === 'published').length,
+    }),
+    [mySchedules],
+  );
   const finalizedOrPublished = byStatus.finalized + byStatus.published;
   const completionRate =
     totalSchedules > 0
@@ -519,43 +860,92 @@ export default function DashboardPage() {
   const isLoading = schedLoading || reqLoading;
   const isFlaggedLoading = flaggedLoading;
 
-  const recentActivity = [...myRequests]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt ?? 0).getTime() -
-        new Date(a.createdAt ?? 0).getTime(),
-    )
-    .slice(0, 5);
+  const recentActivity = useMemo(
+    () =>
+      [...myRequests]
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt ?? 0).getTime() -
+            new Date(a.createdAt ?? 0).getTime(),
+        )
+        .slice(0, 5),
+    [myRequests],
+  );
 
-  const schedulesValue = isLoading ? '—' : String(totalSchedules);
-  const tasksValue = isLoading ? '—' : String(pendingIncoming.length);
-  const completionValue = isLoading ? '—' : `${completionRate}%`;
-  const flaggedValue = isFlaggedLoading ? '—' : String(flaggedCount);
+  // Group by relative day
+  const groupedActivity = useMemo(() => {
+    const groups: Record<string, typeof recentActivity> = {};
+    for (const item of recentActivity) {
+      const key = relativeDay(item.createdAt);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+    return groups;
+  }, [recentActivity]);
 
   const handleOpenFlaggedEntry = (s: RawSchedule) => {
     setBreakdown(null);
     navigate(`/timetable?focus=${s.scheduleId}`);
   };
 
+  const isLoadingAny = termLoading || isLoading || isFlaggedLoading;
+  const refreshedLabel = isLoadingAny
+    ? 'Refreshing…'
+    : `Updated ${relativeTime(new Date(lastRefreshed).toISOString())}`;
+
   return (
     <>
-      {/* Welcome Header */}
+      {/* ── Header ── */}
       <div className="mb-6 mt-1 md:mt-0 border-b border-slate-200 pb-5">
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-          Welcome back, {firstName}
-        </h1>
-        <p className="text-sm text-slate-500">
-          Here is the current status of the {deptName} department schedule
-          {activeTerm
-            ? ` — ${activeTerm.termName} ${activeTerm.schoolYear}.`
-            : '.'}
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
+              {greeting()}, {firstName}
+            </h1>
+            <p className="text-sm text-slate-500">
+              Here is the current status of the <strong>{deptName}</strong>{' '}
+              department schedule
+              {activeTerm
+                ? ` — ${activeTerm.termName} ${activeTerm.schoolYear}.`
+                : '.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-[11px] text-slate-400 font-mono flex items-center gap-1"
+              aria-live="polite"
+            >
+              <Icon name="schedule" size={12} />
+              {refreshedLabel}
+            </span>
+            <button
+              onClick={refreshAll}
+              disabled={isLoadingAny}
+              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              title="Refresh dashboard"
+              aria-label="Refresh dashboard"
+            >
+              <Icon
+                name="refresh"
+                size={16}
+                className={isLoadingAny ? 'animate-spin' : ''}
+              />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
+      {/* ── Term status bar ── */}
+      <TermStatusCard
+        term={activeTerm}
+        scheduleStatusCounts={byStatus}
+        onCreate={() => navigate('/system-config/terms')}
+      />
+
+      {/* ── Bento grid ── */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6 mt-4">
         {/* Quick Actions */}
-        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm flex flex-col">
+        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm rounded-lg flex flex-col">
           <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500 mb-3 border-b border-slate-100 pb-3">
             Quick Actions
           </h3>
@@ -563,36 +953,49 @@ export default function DashboardPage() {
             <QuickAction
               icon="add_circle"
               label="New Schedule"
+              accent="brand"
               onClick={() => navigate('/timetable')}
+            />
+            <QuickAction
+              icon="task_alt"
+              label="Tasks"
+              accent="amber"
+              badge={pendingIncoming.length}
+              onClick={() => setBreakdown('tasks')}
+            />
+            <QuickAction
+              icon="flag"
+              label="Flagged"
+              accent="rose"
+              badge={flaggedCount}
+              onClick={() => setBreakdown('flagged')}
             />
             <QuickAction
               icon="search"
               label="Search Faculty"
+              accent="blue"
               onClick={() => navigate('/faculty')}
-            />
-            <QuickAction
-              icon="meeting_room"
-              label="Room Status"
-              onClick={() => navigate('/rooms')}
-            />
-            <QuickAction
-              icon="calendar_month"
-              label="View Calendar"
-              onClick={() => navigate('/timetable')}
             />
           </div>
         </div>
 
-        {/* Summary Cards — 4 tiles */}
+        {/* Summary Cards */}
         <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <SummaryCard
             icon="view_timeline"
+            accent="blue"
             badge={activeTerm?.termName ?? 'No term'}
             badgeVariant="neutral"
             label="Active Schedules"
-            value={schedulesValue}
+            value={String(totalSchedules)}
+            isLoading={isLoading}
             clickable={!isLoading && totalSchedules > 0}
             onClick={() => setBreakdown('schedules')}
+            hint={
+              totalSchedules > 0
+                ? `View all ${totalSchedules} schedule entries`
+                : undefined
+            }
             footer={
               <div className="flex items-center gap-1 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">
@@ -610,16 +1013,23 @@ export default function DashboardPage() {
 
           <SummaryCard
             icon="checklist"
+            accent="amber"
             badge={pendingIncoming.length > 0 ? 'Urgent' : 'Clear'}
             badgeVariant={pendingIncoming.length > 0 ? 'danger' : 'success'}
             label="Tasks to do"
-            value={tasksValue}
+            value={String(pendingIncoming.length)}
+            isLoading={isLoading}
             clickable={!isLoading && pendingIncoming.length > 0}
             onClick={() => setBreakdown('tasks')}
+            hint={
+              pendingIncoming.length > 0
+                ? `Review ${pendingIncoming.length} pending cross-dept requests`
+                : 'No pending tasks'
+            }
             footer={
               <div className="flex items-center gap-2">
                 <span
-                  className={`inline-block w-2 h-2 ${
+                  className={`inline-block w-2 h-2 rounded-full ${
                     pendingIncoming.length > 0
                       ? 'bg-amber-500'
                       : 'bg-emerald-500'
@@ -638,33 +1048,46 @@ export default function DashboardPage() {
 
           <SummaryCard
             icon="donut_large"
+            accent="brand"
             label="Completion Rate"
-            value={completionValue}
+            value={`${completionRate}%`}
+            isLoading={isLoading}
             clickable={!isLoading && totalSchedules > 0}
             onClick={() => setBreakdown('completion')}
+            hint={
+              totalSchedules > 0
+                ? `${finalizedOrPublished} of ${totalSchedules} finalized or published`
+                : undefined
+            }
             footer={
-              <div className="w-full bg-slate-100 h-1.5 overflow-hidden">
+              <div className="w-full bg-slate-100 h-1.5 overflow-hidden rounded-full">
                 <div
-                  className="bg-[#5c1219] h-1.5 transition-all duration-500"
+                  className="bg-[#5c1219] h-1.5 transition-all duration-500 rounded-full"
                   style={{ width: `${completionRate}%` }}
                 />
               </div>
             }
           />
 
-          {/* ── Flagged for review ── */}
           <SummaryCard
             icon="flag"
+            accent="rose"
             badge={flaggedCount > 0 ? 'Action' : 'Clean'}
             badgeVariant={flaggedCount > 0 ? 'rose' : 'success'}
             label="Flagged for review"
-            value={flaggedValue}
+            value={String(flaggedCount)}
+            isLoading={isFlaggedLoading}
             clickable={!isFlaggedLoading && flaggedCount > 0}
             onClick={() => setBreakdown('flagged')}
+            hint={
+              flaggedCount > 0
+                ? `${flaggedCount} entr${flaggedCount === 1 ? 'y' : 'ies'} need review`
+                : 'Nothing flagged'
+            }
             footer={
               <div className="flex items-center gap-2">
                 <span
-                  className={`inline-block w-2 h-2 ${
+                  className={`inline-block w-2 h-2 rounded-full ${
                     flaggedCount > 0 ? 'bg-rose-500' : 'bg-emerald-500'
                   }`}
                 />
@@ -681,90 +1104,121 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-            Recent Scheduling Activity
-          </h3>
-          {recentActivity.length > 0 && (
-            <Link
-              to="/approvals"
-              className="text-xs font-semibold text-[#5c1219] hover:underline"
-            >
-              View all
-            </Link>
-          )}
+      {/* ── Today + Recent Activity ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Today */}
+        <div className="lg:col-span-1">
+          <TodayScheduleStrip
+            schedules={mySchedules}
+            onOpenTimetable={() => navigate('/timetable')}
+          />
         </div>
-        <div className="divide-y divide-slate-100">
-          {isLoading ? (
-            <div className="py-12 text-center text-sm text-slate-400">
-              Loading…
-            </div>
-          ) : recentActivity.length === 0 ? (
-            <BreakdownEmpty message="No recent activity in your department." />
-          ) : (
-            recentActivity.map((r) => {
-              const isIncoming =
-                String(r.targetDeptId) === myDeptId &&
-                r.status === 'pending';
-              const isApproved = r.status === 'approved';
-              const isRejected = r.status === 'rejected';
-              const iconName = isApproved
-                ? 'check_circle'
-                : isRejected
-                ? 'cancel'
-                : 'pending_actions';
-              const iconBg = isApproved
-                ? 'bg-emerald-50'
-                : isRejected
-                ? 'bg-red-50'
-                : 'bg-amber-50';
-              const iconColor = isApproved
-                ? 'text-emerald-700'
-                : isRejected
-                ? 'text-red-700'
-                : 'text-amber-700';
 
-              return (
-                <ActivityItem
-                  key={r.requestId}
-                  icon={iconName}
-                  iconBg={iconBg}
-                  iconColor={iconColor}
-                  text={
-                    <>
-                      <span className="font-mono font-bold">
-                        {deptCode(r.requestingDeptId)}
-                      </span>
-                      {' → '}
-                      <span className="font-mono font-bold">
-                        {deptCode(r.targetDeptId)}
-                      </span>
-                      {' · '}
-                      <span className="text-slate-600">{r.reason}</span>
-                    </>
-                  }
-                  time={relativeTime(r.createdAt)}
-                  actionLabel={isIncoming ? 'Review' : 'View'}
-                  onAction={() => navigate('/approvals')}
+        {/* Recent Activity */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+              Recent Scheduling Activity
+            </h3>
+            {recentActivity.length > 0 && (
+              <Link
+                to="/approvals"
+                className="text-xs font-semibold text-[#5c1219] hover:underline"
+              >
+                View all
+              </Link>
+            )}
+          </div>
+          <div>
+            {isLoading ? (
+              <div className="py-12 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
+                <Icon
+                  name="progress_activity"
+                  size={14}
+                  className="animate-spin"
                 />
-              );
-            })
-          )}
+                Loading…
+              </div>
+            ) : recentActivity.length === 0 ? (
+              <BreakdownEmpty
+                icon="inbox"
+                message="No recent activity in your department."
+                actionLabel="Open Approvals"
+                onAction={() => navigate('/approvals')}
+              />
+            ) : (
+              Object.entries(groupedActivity).map(([group, items]) => (
+                <div key={group}>
+                  <div className="px-5 py-2 bg-slate-50 border-y border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {group}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {items.map((r) => {
+                      const isIncoming =
+                        String(r.targetDeptId) === myDeptId &&
+                        r.status === 'pending';
+                      const isApproved = r.status === 'approved';
+                      const isRejected = r.status === 'rejected';
+                      const iconName = isApproved
+                        ? 'check_circle'
+                        : isRejected
+                        ? 'cancel'
+                        : 'pending_actions';
+                      const iconBg = isApproved
+                        ? 'bg-emerald-50'
+                        : isRejected
+                        ? 'bg-red-50'
+                        : 'bg-amber-50';
+                      const iconColor = isApproved
+                        ? 'text-emerald-700'
+                        : isRejected
+                        ? 'text-red-700'
+                        : 'text-amber-700';
+
+                      return (
+                        <ActivityItem
+                          key={r.requestId}
+                          icon={iconName}
+                          iconBg={iconBg}
+                          iconColor={iconColor}
+                          text={
+                            <>
+                              <span className="font-mono font-bold">
+                                {deptCode(r.requestingDeptId)}
+                              </span>
+                              {' → '}
+                              <span className="font-mono font-bold">
+                                {deptCode(r.targetDeptId)}
+                              </span>
+                              {' · '}
+                              <span className="text-slate-600">{r.reason}</span>
+                            </>
+                          }
+                          time={relativeTime(r.createdAt)}
+                          actionLabel={isIncoming ? 'Review' : 'View'}
+                          onAction={() => navigate('/approvals')}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ─────────────────────────────────────
-          Other Department Heads Online
-         ───────────────────────────────────── */}
-      <div className="mt-6 bg-white border border-slate-200 shadow-sm overflow-hidden">
+      {/* ── Other Department Heads Online ── */}
+      <div className="mt-6 bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span
               className={`inline-block w-2 h-2 rounded-full ${
                 isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
               }`}
+              aria-hidden
             />
             <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
               Other Department Heads
@@ -780,7 +1234,7 @@ export default function DashboardPage() {
             No other department heads configured.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
             {otherDeptHeads.map((head) => {
               const isOnline = onlineUserIds.has(head.user_id);
               const dept = departments.find(
@@ -792,13 +1246,14 @@ export default function DashboardPage() {
                   className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
                 >
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
                       {initials(head.username)}
                     </div>
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
                         isOnline ? 'bg-emerald-500' : 'bg-slate-300'
                       }`}
+                      aria-hidden
                     />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -812,7 +1267,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <span
-                    className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-0.5 shrink-0 ${
+                    className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-0.5 shrink-0 rounded ${
                       isOnline
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-slate-50 text-slate-500 border-slate-200'
@@ -827,9 +1282,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ─────────────────────────────────────
-          Breakdown Modals
-         ───────────────────────────────────── */}
+      {/* ── Breakdown Modals ── */}
 
       <Modal
         open={breakdown === 'schedules'}
@@ -841,14 +1294,22 @@ export default function DashboardPage() {
         size="lg"
       >
         {totalSchedules === 0 ? (
-          <BreakdownEmpty message="No schedule entries yet. Click Plot Subject to add one." />
+          <BreakdownEmpty
+            icon="event_note"
+            message="No schedule entries yet. Start by plotting a subject."
+            actionLabel="Open Timetable"
+            onAction={() => {
+              setBreakdown(null);
+              navigate('/timetable');
+            }}
+          />
         ) : (
           <div>
             {[...mySchedules]
               .sort((a, b) => {
-                const da = scheduleDay(a);
-                const db = scheduleDay(b);
-                if (da !== db) return da.localeCompare(db);
+                const da = DAY_ORDER[scheduleDay(a)] ?? 99;
+                const db = DAY_ORDER[scheduleDay(b)] ?? 99;
+                if (da !== db) return da - db;
                 return (
                   timeToMinutes(scheduleStart(a) || '00:00') -
                   timeToMinutes(scheduleStart(b) || '00:00')
@@ -871,7 +1332,10 @@ export default function DashboardPage() {
         size="lg"
       >
         {pendingIncoming.length === 0 ? (
-          <BreakdownEmpty message="Nothing pending. You're all caught up." />
+          <BreakdownEmpty
+            icon="check_circle"
+            message="Nothing pending. You're all caught up."
+          />
         ) : (
           <div>
             {pendingIncoming.map((r) => (
@@ -910,7 +1374,7 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-4">
             <div className="text-center py-4">
-              <div className="text-5xl font-extrabold text-[#5c1219]">
+              <div className="text-5xl font-extrabold text-[#5c1219] tabular-nums">
                 {completionRate}%
               </div>
               <p className="text-xs text-slate-500 mt-1">
@@ -918,9 +1382,9 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="w-full bg-slate-100 h-2 overflow-hidden">
+            <div className="w-full bg-slate-100 h-2 overflow-hidden rounded-full">
               <div
-                className="bg-[#5c1219] h-2 transition-all duration-500"
+                className="bg-[#5c1219] h-2 transition-all duration-500 rounded-full"
                 style={{ width: `${completionRate}%` }}
               />
             </div>
@@ -955,7 +1419,6 @@ export default function DashboardPage() {
         )}
       </Modal>
 
-      {/* ── Flagged for review modal ── */}
       <Modal
         open={breakdown === 'flagged'}
         onClose={() => setBreakdown(null)}
@@ -966,7 +1429,7 @@ export default function DashboardPage() {
         size="lg"
       >
         {flaggedCount === 0 ? (
-          <BreakdownEmpty message="Nothing flagged. Looking good." />
+          <BreakdownEmpty icon="verified" message="Nothing flagged. Looking good." />
         ) : (
           <div>
             {flagged.map((s) => (
@@ -1004,14 +1467,14 @@ function StatusRow({
       <div className="flex items-center justify-between text-xs mb-1">
         <span className="font-semibold text-slate-700">{label}</span>
         <span className="text-slate-500">
-          <span className="font-bold text-slate-900">{count}</span>
+          <span className="font-bold text-slate-900 tabular-nums">{count}</span>
           {' · '}
-          {pct}%
+          <span className="tabular-nums">{pct}%</span>
         </span>
       </div>
-      <div className="w-full bg-slate-100 h-1.5">
+      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
         <div
-          className={`${barColor} h-1.5 transition-all duration-300`}
+          className={`${barColor} h-1.5 transition-all duration-300 rounded-full`}
           style={{ width: `${pct}%` }}
         />
       </div>
