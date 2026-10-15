@@ -1855,7 +1855,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 <p className="text-xs text-amber-800 mt-1">
                   Minor subjects are treated as fixed obstacles. Generating
                   without them will place department subjects in slots those
-                  minors might later need — you may have to re-plot things
+                  minors might later need, you may have to re-plot things
                   afterward.
                 </p>
               </div>
