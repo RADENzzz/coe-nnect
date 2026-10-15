@@ -1,3 +1,4 @@
+import { useRef, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import clsx from 'clsx';
 import Icon from '../ui/Icon';
@@ -17,12 +18,40 @@ export default function Sidebar({ nav }: SidebarProps) {
 
   const subtitle =
     nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
-  const isDH = nav.brandSubtitle === 'Department Portal';
+
+  // ── Debounced hover collapse ──
+  // Prevents flicker when the mouse briefly leaves the nav.
+  const collapseTimerRef = useRef<number | null>(null);
+
+  const expand = useCallback(() => {
+    if (collapseTimerRef.current) {
+      window.clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+    setSidebarCollapsed(false);
+  }, [setSidebarCollapsed]);
+
+  const scheduleCollapse = useCallback(() => {
+    if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+    collapseTimerRef.current = window.setTimeout(() => {
+      setSidebarCollapsed(true);
+      collapseTimerRef.current = null;
+    }, 150);
+  }, [setSidebarCollapsed]);
 
   return (
     <nav
-      onMouseEnter={() => setSidebarCollapsed(false)}
-      onMouseLeave={() => setSidebarCollapsed(true)}
+      onMouseEnter={expand}
+      onMouseLeave={scheduleCollapse}
+      // Keyboard parity: expand when focus enters, collapse when it leaves.
+      onFocus={expand}
+      onBlur={(e) => {
+        // Only collapse if focus moved outside the nav.
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setSidebarCollapsed(true);
+        }
+      }}
+      aria-label="Main navigation"
       className={clsx(
         'hidden md:flex flex-col h-screen bg-[#5c1219] border-r border-black/10 fixed left-0 top-0 z-50',
         'transition-[width] duration-200 ease-out',
@@ -33,7 +62,9 @@ export default function Sidebar({ nav }: SidebarProps) {
       <div
         className={clsx(
           'border-b border-white/10 flex items-center',
-          collapsed ? 'px-3 py-4 justify-center' : 'px-5 py-5 justify-between gap-2',
+          collapsed
+            ? 'px-3 py-4 justify-center'
+            : 'px-5 py-5 justify-between gap-2',
         )}
       >
         <div className="flex items-center gap-3 min-w-0">
@@ -45,7 +76,10 @@ export default function Sidebar({ nav }: SidebarProps) {
               <p className="text-sm font-extrabold text-white leading-tight tracking-tight">
                 CoE-NNECT
               </p>
-              <p className="text-xs text-white/70 truncate max-w-[140px]">
+              <p
+                className="text-xs text-white/70 truncate max-w-[140px]"
+                title={subtitle}
+              >
                 {subtitle}
               </p>
             </div>
@@ -56,7 +90,7 @@ export default function Sidebar({ nav }: SidebarProps) {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
             aria-label="Collapse sidebar"
             title="Collapse sidebar"
           >
@@ -65,19 +99,18 @@ export default function Sidebar({ nav }: SidebarProps) {
         )}
       </div>
 
-      {/* Expand button when collapsed (below brand) */}
+      {/* Expand button when collapsed */}
       {collapsed && (
         <button
           type="button"
           onClick={toggleSidebar}
-          className="mx-2 mt-2 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+          className="mx-2 mt-2 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
           aria-label="Expand sidebar"
           title="Expand sidebar"
         >
           <Icon name="chevron_right" size={18} />
         </button>
       )}
-
 
       {/* Main Nav */}
       <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2">
@@ -88,10 +121,8 @@ export default function Sidebar({ nav }: SidebarProps) {
             title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 font-semibold text-sm transition-colors',
-                collapsed
-                  ? 'justify-center py-2.5 px-2'
-                  : 'px-3 py-2.5',
+                'flex items-center gap-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+                collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
                 isActive
                   ? 'bg-white text-[#5c1219]'
                   : 'text-white/80 hover:bg-white/10 hover:text-white',
@@ -118,10 +149,8 @@ export default function Sidebar({ nav }: SidebarProps) {
               title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
                 clsx(
-                  'flex items-center gap-3 font-semibold text-sm transition-colors',
-                  collapsed
-                    ? 'justify-center py-2.5 px-2'
-                    : 'px-3 py-2.5',
+                  'flex items-center gap-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+                  collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
                   isActive
                     ? 'bg-white text-[#5c1219]'
                     : 'text-white/80 hover:bg-white/10 hover:text-white',
