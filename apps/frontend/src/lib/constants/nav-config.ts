@@ -34,9 +34,9 @@ const DH_NAV: RoleNav = {
     { label: 'Sections',          path: ROUTES.SECTIONS,       icon: 'view_module' },
     { label: 'Reports',           path: ROUTES.REPORTS_HUB,    icon: 'bar_chart' },
   ],
-footer: [
-  { label: 'Help', path: ROUTES.HELP, icon: 'help_outline' },
-],
+  footer: [
+    { label: 'Help', path: ROUTES.HELP, icon: 'help_outline' },
+  ],
   bottom: [
     { label: 'Dashboard', path: ROUTES.DASHBOARD,  icon: 'dashboard',            primary: true },
     { label: 'Planner',   path: ROUTES.TIMETABLE,  icon: 'calendar_view_month',  primary: true },
@@ -47,24 +47,36 @@ footer: [
 
 /**
  * Dean navigation.
+ *
+ * Mirrors every route registered under `/dean/*` in App.tsx.
+ * Missing entries here mean a route exists but is unreachable from
+ * the sidebar — that was the Audit Trail bug.
  */
 const DEAN_NAV: RoleNav = {
   brandSubtitle: 'Dean Portal',
   topBarLabel: 'College Dean',
   main: [
-    { label: 'Dashboard',          path: '/dean/dashboard',      icon: 'dashboard',        primary: true },
-    { label: 'Departments',        path: '/dean/departments',    icon: 'corporate_fare',   primary: true },
-    { label: 'Users',              path: '/dean/users',          icon: 'manage_accounts',  primary: true },
-    { label: 'Faculty',            path: '/dean/faculty',        icon: 'groups',           primary: true },
-    { label: 'Schedule Approvals', path: '/dean/approvals',      icon: 'pending_actions',  primary: true },
-    { label: 'Timetable',          path: '/dean/timetable',      icon: 'calendar_view_month' },
-    { label: 'Import Prospectus',  path: '/dean/import',         icon: 'upload_file' },
-    { label: 'Reports',            path: '/dean/reports',        icon: 'bar_chart' },
-    { label: 'System Settings',    path: '/dean/system-settings',icon: 'settings' },
+    // ── Overview ──
+    { label: 'Dashboard',          path: '/dean/dashboard',       icon: 'dashboard',         primary: true },
+
+    // ── Organization ──
+    { label: 'Departments',        path: '/dean/departments',     icon: 'corporate_fare',    primary: true },
+    { label: 'Users',              path: '/dean/users',           icon: 'manage_accounts',   primary: true },
+    { label: 'Faculty',            path: '/dean/faculty',         icon: 'groups',            primary: true },
+
+    // ── Work ──
+    { label: 'Schedule Approvals', path: '/dean/approvals',       icon: 'pending_actions',   primary: true },
+    { label: 'Timetable',          path: '/dean/timetable',       icon: 'calendar_view_month' },
+    { label: 'Import Prospectus',  path: '/dean/import',          icon: 'upload_file' },
+    { label: 'Reports',            path: '/dean/reports',         icon: 'bar_chart' },
+
+    // ── Configuration + Governance ──
+    { label: 'System Settings',    path: '/dean/system-settings', icon: 'settings' },
+    { label: 'Audit Trail',        path: '/dean/audit-trail',     icon: 'history' },
   ],
-footer: [
-  { label: 'Help', path: '/dean/help', icon: 'help_outline' },
-],
+  footer: [
+    { label: 'Help',          path: '/dean/help',          icon: 'help_outline' },
+  ],
   bottom: [
     { label: 'Dashboard',   path: '/dean/dashboard',      icon: 'dashboard',           primary: true },
     { label: 'Departments', path: '/dean/departments',    icon: 'corporate_fare',      primary: true },
