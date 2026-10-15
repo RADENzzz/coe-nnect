@@ -2,14 +2,6 @@ import type { ConstraintRule } from '../../types/rule.interface';
 import type { RuleContext } from '../../types/rule-context.type';
 import type { RuleResult } from '../../types/rule-result.type';
 
-/**
- * R-3: Room 206 (CpE lecture room) must NEVER host a laboratory
- * session. This is an explicit rule from the analysis document.
- *
- * Gated on `ctx.loadType`: only fires when the caller explicitly
- * plots a laboratory session. A lecture plot of a combined subject
- * (e.g. Physics lecture) into Room 206 is allowed.
- */
 const FORBIDDEN_LAB_ROOMS: string[] = ['206'];
 
 export const roomNoLabRule: ConstraintRule = {
@@ -21,10 +13,11 @@ export const roomNoLabRule: ConstraintRule = {
   category: 'room',
 
   validate(ctx: RuleContext): RuleResult {
-    const { room, subject, loadType } = ctx;
+    // External room → no internal room number to check.
+    if (ctx.externalRoomName) return { status: 'pass' };
 
+    const { room, subject, loadType } = ctx;
     if (!room) return { status: 'pass' };
-    // Only enforce for actual lab sessions.
     if (loadType !== 'laboratory') return { status: 'pass' };
     if (!FORBIDDEN_LAB_ROOMS.includes(room.roomNumber)) {
       return { status: 'pass' };
