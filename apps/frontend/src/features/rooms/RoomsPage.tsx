@@ -7,6 +7,7 @@ import {
   updateRoom,
   toggleRoomActive,
   deleteRoom,
+  fetchAllRoomPreferences,
   type RoomRecord,
   type RoomType,
   type CreateRoomInput,
@@ -28,6 +29,17 @@ const ROOM_TYPES: { value: RoomType; label: string }[] = [
 ];
 
 type Mode = 'create' | 'edit';
+
+/**
+ * Quick-filter tiles.
+ *
+ *   all       → no quick filter
+ *   mine      → DH only: rooms owned by the DH's department
+ *   shared    → dept_id IS NULL
+ *   other     → DH only: rooms owned by other departments
+ *   preferred → shared rooms with at least one room_preference row
+ */
+type QuickFilter = 'all' | 'mine' | 'shared' | 'other' | 'preferred';
 
 const TYPE_TONE: Record<
   RoomType,
@@ -64,6 +76,7 @@ export default function RoomsPage() {
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [deleteTarget, setDeleteTarget] = useState<RoomRecord | null>(null);
 
   // ── F3: preferences modal ──
@@ -83,6 +96,25 @@ export default function RoomsPage() {
     enabled: !!user,
   });
 
+  // ── Bulk preferences: one call, drives "Preferred" tile + row flag ──
+  const { data: allPreferences = [] } = useQuery({
+    queryKey: ['room-preferences', 'all'],
+    queryFn: fetchAllRoomPreferences,
+    enabled: !!user && (isDH || isAdminOrDean),
+    staleTime: 30_000,
+  });
+
+  const preferredRoomIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of allPreferences) set.add(String(p.roomId));
+    return set;
+  }, [allPreferences]);
+
+  const isPreferred = useCallback(
+    (r: RoomRecord) => preferredRoomIds.has(String(r.roomId)),
+    [preferredRoomIds],
+  );
+
   const isForeign = useCallback(
     (r: RoomRecord): boolean => {
       if (!isDH) return false;
@@ -92,17 +124,80 @@ export default function RoomsPage() {
     [isDH, myDeptId],
   );
 
+  // ── Tile counts (always computed over the FULL roster) ──
+  const counts = useMemo(() => {
+    let mine = 0;
+    let shared = 0;
+    let other = 0;
+    let preferred = 0;
+
+    for (const r of rooms) {
+      if (!r.deptId) shared++;
+      else if (isDH && myDeptId && String(r.deptId) === myDeptId) mine++;
+      else if (isDH) other++;
+      else other++; // Dean/Admin: any owned room counts toward "other/owned"
+
+      if (isPreferred(r)) preferred++;
+    }
+
+    return {
+      all: rooms.length,
+      mine,
+      shared,
+      other,
+      preferred,
+    };
+  }, [rooms, isDH, myDeptId, isPreferred]);
+
   const filteredRooms = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+
     return rooms.filter((r) => {
+      // Quick filter
+      switch (quickFilter) {
+        case 'mine':
+          if (!isDH || !myDeptId) return false;
+          if (!r.deptId || String(r.deptId) !== myDeptId) return false;
+          break;
+        case 'shared':
+          if (r.deptId) return false;
+          break;
+        case 'other':
+          if (isDH) {
+            if (!r.deptId) return false;
+            if (String(r.deptId) === myDeptId) return false;
+          } else {
+            // Dean/Admin: "other" means any owned room
+            if (!r.deptId) return false;
+          }
+          break;
+        case 'preferred':
+          if (!isPreferred(r)) return false;
+          break;
+        case 'all':
+        default:
+          break;
+      }
+
+      // Type filter
       if (typeFilter !== 'all' && r.roomType !== typeFilter) return false;
+
+      // Search
       if (!q) return true;
       return (
         r.roomNumber.toLowerCase().includes(q) ||
         r.building.toLowerCase().includes(q)
       );
     });
-  }, [rooms, searchQuery, typeFilter]);
+  }, [
+    rooms,
+    quickFilter,
+    typeFilter,
+    searchQuery,
+    isDH,
+    myDeptId,
+    isPreferred,
+  ]);
 
   const createMutation = useMutation({
     mutationFn: createRoom,
@@ -237,7 +332,16 @@ export default function RoomsPage() {
       header: 'Room',
       cardVariant: 'title',
       cellClassName: 'font-bold font-mono text-primary',
-      render: (r) => r.roomNumber,
+      render: (r) => (
+        <span className="inline-flex items-center gap-1.5">
+          {r.roomNumber}
+          {isPreferred(r) && (
+            <span title="At least one department prefers this room">
+              <Icon name="star" size={12} className="text-amber-500" />
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'building',
@@ -314,8 +418,7 @@ export default function RoomsPage() {
     const actions: RowAction[] = [];
 
     // F3: preferences are only meaningful for shared rooms
-    if (!r.deptId && (isDH || isAdminOrDean)) {
-      actions.push({
+    if (!r.deptId && (isDH || isAdminOrDean)) {actions.push({
         label: 'Preferences',
         icon: 'star',
         onClick: () => setPreferencesTarget(r),
@@ -341,6 +444,23 @@ export default function RoomsPage() {
 
     return actions;
   };
+
+  // ── Empty-state message adapts to quick filter ──
+  const emptyMessage = (() => {
+    if (rooms.length === 0) return 'No rooms yet.';
+    switch (quickFilter) {
+      case 'preferred':
+        return 'No shared rooms have been preferred by any department yet.';
+      case 'shared':
+        return 'No shared rooms.';
+      case 'mine':
+        return 'Your department owns no rooms yet.';
+      case 'other':
+        return 'No rooms owned by other departments.';
+      default:
+        return 'No rooms match your filters.';
+    }
+  })();
 
   return (
     <div className="space-y-6">
@@ -372,6 +492,60 @@ export default function RoomsPage() {
           {success}
         </div>
       )}
+
+      {/* ════════════════════════════════════════════
+          Quick-filter tiles (KPI row that filters)
+          ════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <QuickTile
+          label="All rooms"
+          count={counts.all}
+          icon="meeting_room"
+          active={quickFilter === 'all'}
+          onClick={() => setQuickFilter('all')}
+        />
+        {isDH && (
+          <QuickTile
+            label="My department"
+            count={counts.mine}
+            icon="apartment"
+            active={quickFilter === 'mine'}
+            onClick={() => setQuickFilter('mine')}
+            disabled={counts.mine === 0}
+          />
+        )}
+        <QuickTile
+          label="Shared"
+          count={counts.shared}
+          icon="groups"
+          active={quickFilter === 'shared'}
+          onClick={() => setQuickFilter('shared')}
+          disabled={counts.shared === 0}
+        />
+        <QuickTile
+          label={isDH ? 'Other departments' : 'Owned'}
+          count={counts.other}
+          icon={isDH ? 'domain' : 'business'}
+          active={quickFilter === 'other'}
+          onClick={() => setQuickFilter('other')}
+          disabled={counts.other === 0}
+        />
+        <QuickTile
+          label="Preferred"
+          count={counts.preferred}
+          icon="star"
+          accent
+          active={quickFilter === 'preferred'}
+          onClick={() => setQuickFilter('preferred')}
+          disabled={counts.preferred === 0}
+        />
+      </div>
+
+      <p className="text-[11px] text-on-surface-variant -mt-1">
+        <Icon name="star" size={11} className="inline align-middle text-amber-500 mr-1" />
+        <strong>Preferred</strong> = shared rooms at least one department has asked
+        the auto-generator to favor.
+      </p>
 
       {isDH && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs">
@@ -426,15 +600,18 @@ export default function RoomsPage() {
             ))}
           </select>
         </div>
-        {(searchQuery || typeFilter !== 'all') && (
+        {(searchQuery ||
+          typeFilter !== 'all' ||
+          quickFilter !== 'all') && (
           <button
             onClick={() => {
               setSearchQuery('');
               setTypeFilter('all');
+              setQuickFilter('all');
             }}
             className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
           >
-            Clear
+            Clear all
           </button>
         )}
         <div className="ml-auto text-xs text-on-surface-variant">
@@ -452,7 +629,7 @@ export default function RoomsPage() {
         rowSubtitle={(r) => r.building}
         isLoading={isLoading}
         hasSourceRows={rooms.length > 0}
-        emptyMessage="No rooms yet."
+        emptyMessage={emptyMessage}
         noMatchMessage="No rooms match your filters."
         getActions={getActions}
       />
@@ -649,5 +826,75 @@ export default function RoomsPage() {
         room={preferencesTarget}
       />
     </div>
+  );
+}
+
+// ────────────────────────────────────────────
+// Quick-filter tile (inline — small, no need for its own file)
+// ────────────────────────────────────────────
+
+interface QuickTileProps {
+  label: string;
+  count: number;
+  icon: string;
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  accent?: boolean;
+}
+
+function QuickTile({
+  label,
+  count,
+  icon,
+  active,
+  onClick,
+  disabled,
+  accent,
+}: QuickTileProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        'text-left rounded-xl border px-3.5 py-3 transition',
+        'flex flex-col gap-1 min-h-[76px]',
+        active
+          ? 'bg-primary text-on-primary border-primary shadow-sm'
+          : 'bg-surface-container-lowest border-surface-variant hover:border-primary',
+        disabled
+          ? 'opacity-50 cursor-not-allowed hover:border-surface-variant'
+          : 'cursor-pointer',
+      ].join(' ')}
+    >
+      <div className="flex items-center gap-1.5">
+        <Icon
+          name={icon}
+          size={14}
+          className={
+            active
+              ? 'text-on-primary'
+              : accent
+              ? 'text-amber-500'
+              : 'text-on-surface-variant'
+          }
+        />
+        <span
+          className={`text-[10px] font-bold uppercase tracking-wider ${
+            active ? 'text-on-primary/80' : 'text-on-surface-variant'
+          }`}
+        >
+          {label}
+        </span>
+      </div>
+      <div
+        className={`text-2xl font-bold leading-none ${
+          active ? 'text-on-primary' : 'text-on-surface'
+        }`}
+      >
+        {count}
+      </div>
+    </button>
   );
 }
