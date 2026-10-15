@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback, useId } from 'react';
 import clsx from 'clsx';
 import RowActionMenu, { type RowAction } from './RowActionMenu';
 
@@ -18,6 +18,16 @@ export interface Column<T> {
   hideOnMobile?: boolean;
   cellClassName?: string;
   headerClassName?: string;
+  /** Enable client-side sort on this column. `sortValue` extracts the key. */
+  sortable?: boolean;
+  sortValue?: (row: T) => string | number;
+}
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortState {
+  key: string;
+  direction: SortDirection;
 }
 
 export interface ResponsiveTableProps<T> {
@@ -32,6 +42,32 @@ export interface ResponsiveTableProps<T> {
   hasSourceRows?: boolean;
   accentColor?: (row: T) => string;
   getActions?: (row: T) => RowAction[];
+
+  /** Called when a row is clicked (desktop row or mobile card). */
+  onRowClick?: (row: T) => void;
+  /** Optional caption rendered above the table (visually or a11y). */
+  caption?: string;
+
+  /** Visual density. */
+  density?: 'comfortable' | 'compact';
+
+  /** Sticky header inside the scroll container. */
+  stickyHeader?: boolean;
+
+  /** Enable row selection with checkboxes. */
+  selectable?: boolean;
+  selectedKeys?: Set<string>;
+  onSelectionChange?: (next: Set<string>) => void;
+
+  /** Skeleton row count while loading. */
+  skeletonRows?: number;
+
+  /** Empty state extras. */
+  emptyIcon?: string;
+  emptyAction?: React.ReactNode;
+
+  /** Initial sort state (uncontrolled). */
+  defaultSort?: SortState;
 }
 
 const ACCENT_PALETTE = [
@@ -50,6 +86,12 @@ function hashToColor(key: string): string {
   return ACCENT_PALETTE[Math.abs(hash) % ACCENT_PALETTE.length];
 }
 
+function defaultSortValue<T>(row: T, col: Column<T>): string | number {
+  const raw = col.render(row);
+  if (typeof raw === 'string' || typeof raw === 'number') return raw;
+  return String(raw ?? '');
+}
+
 export default function ResponsiveTable<T>({
   columns,
   rows,
@@ -62,7 +104,22 @@ export default function ResponsiveTable<T>({
   hasSourceRows = true,
   accentColor,
   getActions,
+  onRowClick,
+  caption,
+  density = 'comfortable',
+  stickyHeader = false,
+  selectable = false,
+  selectedKeys,
+  onSelectionChange,
+  skeletonRows = 5,
+  emptyIcon,
+  emptyAction,
+  defaultSort,
 }: ResponsiveTableProps<T>) {
+  const [sort, setSort] = useState<SortState | null>(defaultSort ?? null);
+  const tableId = useId();
+
+  // ── Layout grouping for mobile cards ──
   const layout = useMemo(() => {
     const titleCols: Column<T>[] = [];
     const subtitleCols: Column<T>[] = [];
@@ -78,109 +135,346 @@ export default function ResponsiveTable<T>({
         case 'badge':    badgeCols.push(c); break;
         case 'meta':     metaCols.push(c); break;
         case 'mono':     monoCols.push(c); break;
-        case 'actions':  break; // handled separately
+        case 'actions':  break;
         default:         metaCols.push(c);
       }
     }
     return { titleCols, subtitleCols, badgeCols, metaCols, monoCols };
   }, [columns]);
 
+  const hasActions = useMemo(
+    () => columns.some((c) => c.cardVariant === 'actions'),
+    [columns],
+  );
+
+  // ── Sorting ──
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    const col = columns.find((c) => c.key === sort.key);
+    if (!col) return rows;
+    const getVal = col.sortValue ?? ((r: T) => defaultSortValue(r, col));
+    const dir = sort.direction === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = getVal(a);
+      const vb = getVal(b);
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  }, [rows, sort, columns]);
+
+  const toggleSort = useCallback((col: Column<T>) => {
+    if (!col.sortable) return;
+    setSort((prev) => {
+      if (!prev || prev.key !== col.key) {
+        return { key: col.key, direction: 'asc' };
+      }
+      if (prev.direction === 'asc') return { key: col.key, direction: 'desc' };
+      return null; // 3rd click clears
+    });
+  }, []);
+
+  // ── Selection ──
+  const allKeysOnPage = useMemo(
+    () => sortedRows.map((r) => rowKey(r)),
+    [sortedRows, rowKey],
+  );
+
+  const allSelected =
+    selectable &&
+    allKeysOnPage.length > 0 &&
+    selectedKeys != null &&
+    allKeysOnPage.every((k) => selectedKeys.has(k));
+
+  const someSelected =
+    selectable &&
+    selectedKeys != null &&
+    !allSelected &&
+    allKeysOnPage.some((k) => selectedKeys.has(k));
+
+  const toggleAll = useCallback(() => {
+    if (!onSelectionChange) return;
+    const next = new Set(selectedKeys ?? []);
+    if (allSelected) {
+      allKeysOnPage.forEach((k) => next.delete(k));
+    } else {
+      allKeysOnPage.forEach((k) => next.add(k));
+    }
+    onSelectionChange(next);
+  }, [allSelected, allKeysOnPage, selectedKeys, onSelectionChange]);
+
+  const toggleOne = useCallback(
+    (key: string) => {
+      if (!onSelectionChange) return;
+      const next = new Set(selectedKeys ?? []);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      onSelectionChange(next);
+    },
+    [onSelectionChange, selectedKeys],
+  );
+
+  // ── Density ──
+  const cellPad = density === 'compact' ? 'px-4 py-2' : 'px-5 py-3.5';
+  const headPad = density === 'compact' ? 'px-4 py-2' : 'px-5 py-3';
+
+  // ── Loading skeleton ──
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-10">
-        <div className="flex items-center justify-center gap-2 text-on-surface-variant text-sm">
-          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          Loading…
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+        <div className="p-4 space-y-3">
+          {Array.from({ length: skeletonRows }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="h-4 bg-slate-100 rounded animate-pulse flex-1" />
+              <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
+              <div className="h-4 bg-slate-100 rounded animate-pulse w-32" />
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
+  // ── Empty ──
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-12 text-center">
+        {emptyIcon && (
+          <Icon
+            name={emptyIcon}
+            size={48}
+            className="text-slate-300 mx-auto mb-3"
+          />
+        )}
         <p className="text-sm text-on-surface-variant">
           {hasSourceRows ? noMatchMessage : emptyMessage}
         </p>
+        {!hasSourceRows && emptyAction && (
+          <div className="mt-4 flex justify-center">{emptyAction}</div>
+        )}
       </div>
     );
   }
 
+  // ── Row activation helper ──
+  const activateRow = (row: T) => {
+    if (!onRowClick) return;
+    onRowClick(row);
+  };
+
   return (
     <>
-      {/* ─── Desktop / tablet: real table ─── */}
-      <div className="hidden md:block rounded-xl border border-surface-variant bg-surface-container-lowest overflow-visible">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider">
-              {columns.map((c) => {
-                const isActionsCol = c.cardVariant === 'actions';
-                return (
-                  <th
-                    key={c.key}
+{/* ─── Desktop / tablet table ─── */}
+<div className="hidden md:block rounded-xl border border-surface-variant bg-surface-container-lowest">
+  <div
+    className={clsx(
+      'overflow-x-auto',
+      stickyHeader && 'max-h-[70vh] overflow-y-auto',
+    )}
+  >
+    <table
+      id={tableId}
+      className="w-full text-sm border-collapse"
+      role="table"
+    >
+      {caption && <caption className="sr-only">{caption}</caption>}
+      <thead
+        className={clsx(
+          'border-b border-surface-variant text-on-surface-variant text-xs uppercase tracking-wider',
+          stickyHeader &&
+            'sticky top-0 z-20 bg-surface-container-lowest shadow-[0_1px_0_0] shadow-surface-variant',
+        )}
+      >
+        <tr>
+          {selectable && (
+            <th
+              className={clsx(
+                headPad,
+                'w-0 text-left font-medium',
+                stickyHeader && 'bg-surface-container-lowest',
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelected;
+                }}
+                onChange={toggleAll}
+                aria-label="Select all rows"
+                className="cursor-pointer accent-primary"
+              />
+            </th>
+          )}
+          {columns.map((c) => {
+            const isActionsCol = c.cardVariant === 'actions';
+            const sortable = !!c.sortable;
+            const isSorted = sort?.key === c.key;
+            return (
+              <th
+                key={c.key}
+                scope="col"
+                aria-sort={
+                  isSorted
+                    ? sort!.direction === 'asc'
+                      ? 'ascending'
+                      : 'descending'
+                    : sortable
+                    ? 'none'
+                    : undefined
+                }
+                className={clsx(
+                  headPad,
+                  'font-medium',
+                  isActionsCol
+                    ? 'text-right w-0 whitespace-nowrap'
+                    : 'text-left',
+                  // ★ Sticky actions column
+                  isActionsCol &&
+                    'sticky right-0 z-20 bg-surface-container-lowest shadow-[-1px_0_0_0_theme(colors.slate.200)]',
+                  c.headerClassName,
+                )}
+              >
+                {sortable ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(c)}
                     className={clsx(
-                      'px-5 py-3 font-medium',
-                      isActionsCol
-                        ? 'text-right w-0 whitespace-nowrap'
-                        : 'text-left',
-                      c.headerClassName,
+                      'inline-flex items-center gap-1 select-none rounded transition',
+                      'hover:text-on-surface',
+                      isSorted && 'text-primary',
                     )}
                   >
-                    {typeof c.header === 'string' ? c.header : c.header}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr
-                key={rowKey(row)}
-                className="border-b border-white/5 hover:bg-surface-container-low transition-colors"
-              >
-                {columns.map((c) => {
-                  const isActionsCol = c.cardVariant === 'actions';
-                  const actions = isActionsCol ? (getActions?.(row) ?? []) : [];
+                    {c.header}
+                    <Icon
+                      name={
+                        !isSorted
+                          ? 'unfold_more'
+                          : sort!.direction === 'asc'
+                          ? 'arrow_upward'
+                          : 'arrow_downward'
+                      }
+                      size={12}
+                    />
+                  </button>
+                ) : (
+                  c.header
+                )}
+              </th>
+            );
+          })}
+        </tr>
+      </thead>
+      <tbody>
+        {sortedRows.map((row) => {
+          const key = rowKey(row);
+          const isSelected = !!selectedKeys?.has(key);
+          const clickable = !!onRowClick;
+          return (
+            <tr
+              key={key}
+              onClick={clickable ? () => activateRow(row) : undefined}
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (
+                        e.key === 'Enter' &&
+                        e.target === e.currentTarget
+                      ) {
+                        e.preventDefault();
+                        activateRow(row);
+                      }
+                    }
+                  : undefined
+              }
+              tabIndex={clickable ? 0 : undefined}
+              className={clsx(
+                'group border-b border-slate-100 transition-colors',
+                clickable &&
+                  'cursor-pointer focus:outline-none focus-visible:bg-primary/5',
+                isSelected
+                  ? 'bg-primary/5'
+                  : 'hover:bg-surface-container-low',
+              )}
+              data-selected={isSelected || undefined}
+            >
+              {selectable && (
+                <td className={clsx(cellPad, 'w-0')}>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      toggleOne(key);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={
+                      rowTitle ? `Select ${rowTitle(row)}` : 'Select row'
+                    }
+                    className="cursor-pointer accent-primary"
+                  />
+                </td>
+              )}
+              {columns.map((c) => {
+                const isActionsCol = c.cardVariant === 'actions';
+                const actions = isActionsCol
+                  ? getActions?.(row) ?? []
+                  : [];
 
-                  if (isActionsCol) {
-                    return (
-                      <td
-                        key={c.key}
-                        className="relative py-3.5 px-5 text-right whitespace-nowrap w-0"
-                      >
-                        {actions.length > 0 && (
-                          <RowActionMenu
-                            actions={actions}
-                            title={rowTitle?.(row) ?? ''}
-                            subtitle={rowSubtitle?.(row)}
-                            size="sm"
-                          />
-                        )}
-                      </td>
-                    );
-                  }
-
+                if (isActionsCol) {
+                  if (!hasActions) return null;
                   return (
                     <td
                       key={c.key}
-                      className={clsx('px-5 py-3.5', c.cellClassName)}
+                      className={clsx(
+                        cellPad,
+                        'relative text-right whitespace-nowrap w-0',
+                        // ★ Sticky actions column — matches row background
+                        'sticky right-0 z-10',
+                        'shadow-[-1px_0_0_0_theme(colors.slate.100)]',
+                        isSelected
+                          ? 'bg-primary/5'
+                          : 'bg-surface-container-lowest group-hover:bg-surface-container-low',
+                      )}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {c.render(row)}
+                      {actions.length > 0 && (
+                        <RowActionMenu
+                          actions={actions}
+                          title={rowTitle?.(row) ?? ''}
+                          subtitle={rowSubtitle?.(row)}
+                          size="sm"
+                        />
+                      )}
                     </td>
                   );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                }
 
-      {/* ─── Mobile: card list ─── */}
-      <div className="md:hidden space-y-2">
-        {rows.map((row) => {
+                return (
+                  <td
+                    key={c.key}
+                    className={clsx(cellPad, c.cellClassName)}
+                  >
+                    {c.render(row)}
+                  </td>
+                );
+              })}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+      {/* ─── Mobile card list ─── */}
+      <div className="md:hidden space-y-2" role="list">
+        {sortedRows.map((row) => {
           const key = rowKey(row);
           const accent = accentColor?.(row) ?? hashToColor(key);
           const actions = getActions?.(row) ?? [];
+          const isSelected = !!selectedKeys?.has(key);
+          const clickable = !!onRowClick;
 
           const titleNode = layout.titleCols.map((c) => (
             <span key={c.key}>{c.render(row)}</span>
@@ -192,7 +486,27 @@ export default function ResponsiveTable<T>({
           return (
             <div
               key={key}
-              className="bg-white border border-slate-200 flex items-stretch overflow-hidden"
+              role="listitem"
+              onClick={clickable ? () => activateRow(row) : undefined}
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === 'Enter' && e.target === e.currentTarget) {
+                        e.preventDefault();
+                        activateRow(row);
+                      }
+                    }
+                  : undefined
+              }
+              tabIndex={clickable ? 0 : undefined}
+              className={clsx(
+                'bg-white border border-slate-200 flex items-stretch overflow-hidden rounded-xl transition',
+                clickable &&
+                  'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                isSelected
+                  ? 'border-primary/40 bg-primary/5'
+                  : 'hover:border-slate-300',
+              )}
             >
               <span
                 className="w-1.5 shrink-0"
@@ -201,24 +515,42 @@ export default function ResponsiveTable<T>({
               />
 
               <div className="flex-1 min-w-0 p-3">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  {selectable && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleOne(key);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={
+                        rowTitle ? `Select ${rowTitle(row)}` : 'Select row'
+                      }
+                      className="mt-1 cursor-pointer accent-primary shrink-0"
+                    />
+                  )}
+
                   <div className="min-w-0 flex-1">
-                    <div className="font-bold text-sm text-slate-900 truncate flex items-baseline gap-2 flex-wrap">
+                    <h3 className="font-bold text-sm text-slate-900 flex items-baseline gap-2 flex-wrap">
                       {titleNode.length > 0 ? titleNode : null}
-                    </div>
+                    </h3>
                     {subtitleNode.length > 0 && (
-                      <div className="text-xs text-slate-500 truncate mt-0.5">
+                      <div className="text-xs text-slate-500 mt-0.5 break-words">
                         {subtitleNode}
                       </div>
                     )}
                   </div>
 
                   {actions.length > 0 && (
-                    <RowActionMenu
-                      actions={actions}
-                      title={rowTitle?.(row) ?? ''}
-                      subtitle={rowSubtitle?.(row)}
-                    />
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <RowActionMenu
+                        actions={actions}
+                        title={rowTitle?.(row) ?? ''}
+                        subtitle={rowSubtitle?.(row)}
+                      />
+                    </div>
                   )}
                 </div>
 
@@ -235,7 +567,7 @@ export default function ResponsiveTable<T>({
                     {layout.metaCols.map((c) => (
                       <div
                         key={c.key}
-                        className="text-[11px] text-slate-500 truncate flex items-center gap-1.5"
+                        className="text-[11px] text-slate-500 break-words flex items-center gap-1.5"
                       >
                         {c.render(row)}
                       </div>
@@ -243,7 +575,7 @@ export default function ResponsiveTable<T>({
                     {layout.monoCols.map((c) => (
                       <div
                         key={c.key}
-                        className="text-[11px] text-slate-500 font-mono truncate"
+                        className="text-[11px] text-slate-500 font-mono break-words"
                       >
                         {c.render(row)}
                       </div>
@@ -258,3 +590,6 @@ export default function ResponsiveTable<T>({
     </>
   );
 }
+
+// ── Local Icon shim (delete if you import from './Icon') ──
+import Icon from './Icon';
