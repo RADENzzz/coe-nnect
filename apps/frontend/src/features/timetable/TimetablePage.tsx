@@ -163,8 +163,8 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     facultyId: raw.facultyId ?? '',
     facultyName: hasSystemFaculty
       ? `${raw.faculty!.firstName} ${raw.faculty!.lastName}`
-      : externalName ?? 'VL',                          // ← NEW fallback
-    externalFacultyName: externalName,                  // ← NEW
+      : externalName ?? 'VL',
+    externalFacultyName: externalName,
     roomId: raw.roomId ?? '',
     roomNumber: raw.room?.roomNumber ?? '—',
     building: raw.room?.building ?? '',
@@ -204,7 +204,7 @@ function versionEntryToEntry(
     subjectCode: raw.subject_code ?? '—',
     subjectTitle: raw.subject_title ?? '',
     sectionId: raw.section_id ?? '',
-    pendingFacultyRequestId: null, 
+    pendingFacultyRequestId: null,
     pendingFacultyDeptId: null,
     sectionCode: raw.section_code ?? '',
     facultyId: raw.faculty_id ?? '',
@@ -278,11 +278,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [plotSubjectPresetId, setPlotSubjectPresetId] = useState<string | null>(
     null,
   );
-  const [selectedEntry, setSelectedEntry] = useState<ScheduleEntry | null>(null);
-  const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
-  const [editEntry, setEditEntry] = useState<ScheduleEntry | null>(null);
 
-  // ── Minor subjects panel ──
+  // ── F4.2: store IDs, not snapshots ──
+  // selectedEntry and editEntry are derived from `entries` below,
+  // so when React Query refetches and `entries` recomputes, the
+  // drawer and modal see fresh objects automatically — no F5 needed.
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [editEntryId, setEditEntryId] = useState<string | null>(null);
+
+  const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
+
   const [minorsPanelOpen, setMinorsPanelOpen] = useState(false);
 
   const isDepartmentHead = profile?.role === 'department_head';
@@ -310,7 +315,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
   } | null>(null);
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
 
-  // ── Version state ──
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [activeVersion, setActiveVersion] = useState<ScheduleVersionSummary | null>(null);
   const [compareA, setCompareA] = useState<ScheduleVersionSummary | null>(null);
@@ -405,7 +409,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     enabled: !!user && !!activeTerm,
   });
 
-  // ── Version snapshot query ──
   const { data: versionDetail, isLoading: versionLoading } = useQuery({
     queryKey: ['schedule-version-detail', activeVersion?.versionId],
     queryFn: () => fetchVersion(activeVersion!.versionId),
@@ -413,8 +416,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     staleTime: 60 * 1000,
   });
 
-  // ── Unplotted minor subjects ──
-  // Only for DHs (they own the dept) and only when not viewing a version.
   const minorsDeptId = isDepartmentHead ? myDeptId : viewDeptId || myDeptId;
   const { data: unplottedMinors = [] } = useQuery<UnplottedMinor[]>({
     queryKey: ['unplotted-minors', activeTerm?.termId, minorsDeptId],
@@ -510,7 +511,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── The entries we actually render. ──
   const allEntries = useMemo(() => {
     if (activeVersion && versionDetail?.snapshot) {
       const ctx = {
@@ -570,13 +570,27 @@ export default function TimetablePage({ readOnly = false }: Props) {
     activeVersion,
   ]);
 
+  // ── F4.2: derive selected/edit entries from the CURRENT entries list.
+  // When a mutation invalidates ['schedules', termId], the query
+  // refetches, `entries` recomputes, and these memos return fresh
+  // objects — so the drawer and modal update live.
+  const selectedEntry = useMemo(
+    () => (selectedEntryId ? entries.find((e) => e.id === selectedEntryId) ?? null : null),
+    [entries, selectedEntryId],
+  );
+
+  const editEntry = useMemo(
+    () => (editEntryId ? entries.find((e) => e.id === editEntryId) ?? null : null),
+    [entries, editEntryId],
+  );
+
   const [focusApplied, setFocusApplied] = useState(false);
   useEffect(() => {
     if (focusApplied) return;
     const focusId = searchParams.get('focus');
     if (!focusId || !entries.length) return;
     const entry = entries.find((e) => e.id === focusId);
-    if (entry) setSelectedEntry(entry);
+    if (entry) setSelectedEntryId(entry.id);
     const next = new URLSearchParams(searchParams);
     next.delete('focus');
     setSearchParams(next, { replace: true });
@@ -634,6 +648,28 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
 
+  // ─────────────────────────────────────────────────────────────
+  // F4.1 — Auto-generate affects cross-page queries too.
+  //
+  // Accept/discard changes schedule rows that drive:
+  //   - ['faculty-requests']  → pending approvals may be orphaned
+  //   - ['flagged']            → flagged rows may be replaced
+  //   - ['dashboard']          → tile counts
+  // ─────────────────────────────────────────────────────────────
+  const invalidateAfterAutoGenerate = useCallback(
+    (termId: string) => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      queryClient.invalidateQueries({ queryKey: ['unscheduled', termId] });
+      queryClient.invalidateQueries({
+        queryKey: ['unplotted-minors', termId, minorsDeptId],
+      });
+      queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['flagged'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    [queryClient, minorsDeptId],
+  );
+
   const handleAcceptPreview = useCallback(async () => {
     if (!activeTerm) return;
     queryClient.setQueryData(
@@ -647,17 +683,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
     setAutoPreview(null);
     setAutoUnscheduled([]);
-    queryClient.invalidateQueries({
-      queryKey: ['schedules', activeTerm.termId],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['unscheduled', activeTerm.termId],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['unplotted-minors', activeTerm.termId, minorsDeptId],
-    });
+    invalidateAfterAutoGenerate(activeTerm.termId);
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate, minorsDeptId]);
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate, invalidateAfterAutoGenerate]);
 
   const handleDiscardPreview = useCallback(async () => {
     if (!activeTerm) return;
@@ -672,17 +700,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
     setAutoPreview(null);
     setAutoUnscheduled([]);
-    queryClient.invalidateQueries({
-      queryKey: ['schedules', activeTerm.termId],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['unscheduled', activeTerm.termId],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['unplotted-minors', activeTerm.termId, minorsDeptId],
-    });
+    invalidateAfterAutoGenerate(activeTerm.termId);
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate, minorsDeptId]);
+  }, [activeTerm, queryClient, refetchPendingAutoGenerate, invalidateAfterAutoGenerate]);
 
   const {
     moveEntry: handleMove,
@@ -707,35 +727,31 @@ export default function TimetablePage({ readOnly = false }: Props) {
       if (sameSlot.length > 1) {
         setStackOpen(sameSlot);
       } else {
-        setSelectedEntry(entry);
+        setSelectedEntryId(entry.id);
       }
     },
     [entries],
   );
 
   const handleEdit = useCallback((entry: ScheduleEntry) => {
-    setSelectedEntry(null);
-    setEditEntry(entry);
+    setSelectedEntryId(null);
+    setEditEntryId(entry.id);
     setPlotOpen(true);
   }, []);
 
   const handlePickFromStack = useCallback((entry: ScheduleEntry) => {
     setStackOpen(null);
-    setSelectedEntry(entry);
+    setSelectedEntryId(entry.id);
   }, []);
 
-  /**
-   * Open the Plot Subject modal pre-selected to a specific subject.
-   * Called from the unplotted-minors panel.
-   */
   const handlePlotMinor = useCallback((subjectId: string) => {
     setMinorsPanelOpen(false);
-    setEditEntry(null);
+    setEditEntryId(null);
     setPlotSubjectPresetId(subjectId);
     setPlotOpen(true);
   }, []);
 
-    const performAutoGenerate = useCallback(
+  const performAutoGenerate = useCallback(
     async (options?: { acknowledgeUnplottedMinors?: boolean }) => {
       if (!activeTerm || !myDeptId) return;
       try {
@@ -752,7 +768,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         );
 
         if (!result.success) {
-          // ── Blocked by unplotted minors? ──
           if (
             result.blockedByUnplottedMinors &&
             result.unplottedMinors &&
@@ -765,7 +780,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             return;
           }
 
-          // ── Room deficits ──
           if (result.roomDeficits && result.roomDeficits.length > 0) {
             setAlertState({
               title: 'Not enough rooms',
@@ -780,7 +794,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             return;
           }
 
-          // ── Generic failure ──
           setAlertState({
             title: 'Auto-generation failed',
             subtitle: result.message ?? 'Unknown error',
@@ -794,7 +807,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
           return;
         }
 
-        // ── Success ──
         await queryClient.invalidateQueries({
           queryKey: ['schedules', activeTerm.termId],
         });
@@ -829,13 +841,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     await performAutoGenerate();
   }, [performAutoGenerate]);
 
-  
-  // ── Version handlers ──
   const handleViewVersion = useCallback(
     (version: ScheduleVersionSummary) => {
       setActiveVersion(version);
       setVersionsOpen(false);
-      setSelectedEntry(null);
+      setSelectedEntryId(null);
       setStackOpen(null);
     },
     [],
@@ -843,7 +853,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const handleExitVersionView = useCallback(() => {
     setActiveVersion(null);
-    setSelectedEntry(null);
+    setSelectedEntryId(null);
     setStackOpen(null);
   }, []);
 
@@ -986,14 +996,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
         capturedAt: activeVersion.capturedAt,
       }
     : null;
-  // Show the unplotted-minors banner only when we have real minors and
-  // the user can act on them (writable, not viewing a version).
+
   const showMinorsBanner =
     writable && unplottedMinors.length > 0 && !isLoading && !error;
 
   return (
     <div className="p-4 md:p-6 max-w-[1800px] mx-auto flex flex-col h-full min-h-0">
-      {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
@@ -1064,7 +1072,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       </div>
 
-      {/* Version view banner */}
       {activeVersion && (
         <VersionViewBanner
           versionNumber={activeVersion.versionNumber}
@@ -1074,7 +1081,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         />
       )}
 
-      {/* Unplotted minor subjects banner */}
       {showMinorsBanner && (
         <div className="mb-4 rounded-xl border-2 border-purple-300 bg-purple-50 px-4 py-3 flex items-start gap-3">
           <Icon
@@ -1120,7 +1126,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       )}
 
-      {/* Someone else is generating */}
       {!activeVersion &&
         activeTerm &&
         pendingAutoGenerate &&
@@ -1135,7 +1140,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
 
-      {/* Resume Pending Auto-Generate Preview Banner */}
       {!activeVersion &&
         activeTerm &&
         pendingAutoGenerate &&
@@ -1179,7 +1183,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
 
-      {/* Filter panel */}
       {activeTerm && (
         <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
           <div className="flex flex-wrap items-end gap-3">
@@ -1448,7 +1451,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </div>
       )}
 
-      {/* States */}
       {isLoading && <LoadingState message="Loading schedule…" />}
       {error && (
         <ErrorState
@@ -1488,7 +1490,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         />
       )}
 
-      {/* Grid + toolbar */}
       {!isLoading && !error && activeTerm && entries.length > 0 && (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl border border-surface-variant bg-surface-container-lowest">
@@ -1546,13 +1547,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </>
       )}
 
-      {/* Modals */}
       {writable && activeTerm && (
         <PlotSubjectModal
           open={plotOpen}
           onClose={() => {
             setPlotOpen(false);
-            setEditEntry(null);
+            setEditEntryId(null);          // ← F4.3: clear stale edit reference
             setPlotSubjectPresetId(null);
           }}
           termId={activeTerm.termId}
@@ -1610,7 +1610,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       {activeTerm && (
         <ScheduleDetailDrawer
           entry={selectedEntry}
-          onClose={() => setSelectedEntry(null)}
+          onClose={() => setSelectedEntryId(null)}
           onEdit={writable ? handleEdit : undefined}
           termId={activeTerm.termId}
           onMove={writable ? handleMove : undefined}
@@ -1627,7 +1627,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
       <MoveScheduleConfirmModal pending={pendingConfirmation} />
 
-      {/* Version history drawer */}
       <VersionHistoryDrawer
         open={versionsOpen}
         onClose={() => setVersionsOpen(false)}
@@ -1638,7 +1637,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         onCompare={handleCompare}
       />
 
-      {/* Version compare modal */}
       <VersionCompareModal
         open={!!(compareA && compareB)}
         onClose={() => {
@@ -1649,7 +1647,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         versionB={compareB}
       />
 
-      {/* Unplotted minors slide-over panel */}
       <UnplottedMinorsPanel
         open={minorsPanelOpen}
         onClose={() => setMinorsPanelOpen(false)}
@@ -1657,7 +1654,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
         onPlot={(subjectId) => handlePlotMinor(subjectId)}
       />
 
-      {/* Generic alert modal */}
       <Modal
         open={!!alertState}
         onClose={() => setAlertState(null)}
@@ -1801,7 +1797,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </p>
         </div>
       </Modal>
-            {/* Blocked by unplotted minors */}
+
       <Modal
         open={!!blockedMinors}
         onClose={() => setBlockedMinors(null)}
@@ -1906,6 +1902,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
       </Modal>
+
       {!activeVersion && unscheduledRecords.length > 0 && !autoPreview && (
         <div className="fixed bottom-4 right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
           <details className="bg-white border border-amber-200 shadow-lg rounded-lg overflow-hidden">
