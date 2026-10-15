@@ -87,6 +87,17 @@ export async function fetchRoomPreferences(
   return data.data;
 }
 
+/**
+ * Bulk fetch: every preference across every shared room.
+ * Single round-trip for the Rooms page tiles + row flags.
+ */
+export async function fetchAllRoomPreferences(): Promise<
+  RoomPreferenceRecord[]
+> {
+  const { data } = await api.get('/v1/rooms/preferences/all');
+  return data.data;
+}
+
 export async function upsertRoomPreference(
   input: UpsertRoomPreferenceInput,
 ): Promise<RoomPreferenceRecord> {
