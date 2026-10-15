@@ -113,7 +113,6 @@ const EMPTY_FORM = {
 
 type FacultyMode = 'system' | 'external';
 
-/** Per-day time slot for multi-session mode. */
 interface MultiDayRow {
   day: (typeof DAYS)[number];
   enabled: boolean;
@@ -172,12 +171,6 @@ export default function PlotSubjectModal({
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
 
-    /**
-   * F1b: detect a cross-department faculty pick in "system" mode.
-   * The backend will auto-create a pending faculty_request and block
-   * finalization until the other DH approves. Surface this to the DH
-   * before they submit.
-   */
   const selectedFaculty = faculty.find(
     (f) => f.facultyId === form.facultyId,
   );
@@ -191,7 +184,6 @@ export default function PlotSubjectModal({
     );
   }, [facultyMode, selectedFaculty, selectedSubject]);
 
-  // Look up the faculty's department name for a nicer hint
   const crossDeptName = useMemo(() => {
     if (!isCrossDeptSelection || !selectedFaculty?.deptId) return null;
     const d = departments.find(
@@ -200,17 +192,6 @@ export default function PlotSubjectModal({
     return d ? `[${d.deptCode}] ${d.deptName}` : null;
   }, [isCrossDeptSelection, selectedFaculty, departments]);
 
-  /**
-   * F2 — Section auto-filter by subject year.
-   *
-   * Pull the year levels the subject maps to in the prospectus. If the
-   * subject maps to exactly one year (the common case), narrow the
-   * Section dropdown to sections of that year. If it maps to multiple
-   * years (cross-listed subject), don't filter — show a hint instead.
-   *
-   * Edit mode skips this — the existing section is authoritative, and
-   * filtering would hide the currently-selected value.
-   */
   const subjectYearLevels = useMemo(() => {
     if (!selectedSubject) return [] as number[];
     const years = selectedSubject.prospectusYears ?? [];
@@ -232,8 +213,6 @@ export default function PlotSubjectModal({
     return activeSections.filter((s) => s.yearLevel === autoYearFilter);
   }, [sections, autoYearFilter, sectionYearOverride]);
 
-  // If the auto-filter would hide the current selection (e.g., DH
-  // switched subject after picking a section), clear it.
   useEffect(() => {
     if (isEditMode) return;
     if (autoYearFilter == null || sectionYearOverride) return;
@@ -330,7 +309,7 @@ export default function PlotSubjectModal({
         subjectId: editing.subjectId,
         section: editing.sectionCode ?? '',
         facultyId: editing.facultyId ?? '',
-        externalFacultyName: editing.externalFacultyName ?? '',   // ← NEW
+        externalFacultyName: editing.externalFacultyName ?? '',
         roomId: editing.roomId ?? '',
         dayOfWeek: DAY_ABBR_TO_FULL[editing.day] ?? 'Monday',
         startTime: editing.startTime,
@@ -347,7 +326,6 @@ export default function PlotSubjectModal({
       setFilterYear('');
       setFilterSem('');
     } else {
-      // ── Fresh form, optional preset subject ──
       setForm({
         ...EMPTY_FORM,
         subjectId: presetSubjectId ?? '',
@@ -364,8 +342,6 @@ export default function PlotSubjectModal({
       setValidation(null);
       setTouched(false);
       setSubmitting(false);
-      // When opening with a preset, drop the dept filter so the preset
-      // subject doesn't get auto-cleared by the validity guard below.
       setFilterDept(presetSubjectId ? '' : defaultDept);
       setFilterYear('');
       setFilterSem('');
@@ -394,7 +370,6 @@ export default function PlotSubjectModal({
     }
   }, [form.startTime, form.endTime]);
 
-  // ── Session-limit enforcement ──
   const sessionStatus = useMemo(() => {
     if (!form.subjectId || !form.section) {
       return {
@@ -459,7 +434,6 @@ export default function PlotSubjectModal({
     editing?.id,
   ]);
 
-  // ── Multi-day selection helpers ──
   const enabledDays = multiDays.filter((d) => d.enabled);
   const multiCount = enabledDays.length;
 
@@ -487,7 +461,6 @@ export default function PlotSubjectModal({
     );
   };
 
-  // Debounced live validation (single mode only)
   useEffect(() => {
     if (mode !== 'single') return;
     if (!open || !form.subjectId || !form.roomId || !form.dayOfWeek) return;
@@ -518,10 +491,28 @@ export default function PlotSubjectModal({
     return () => clearTimeout(timeout);
   }, [open, form, termId, editing?.id, mode, facultyMode]);
 
+  // ─────────────────────────────────────────────────────────────
+  // F4.1 — Cross-page invalidation.
+  //
+  // A plot/edit/delete in one tab affects queries that live on
+  // other pages: the Approvals page watches ['faculty-requests'];
+  // the Dashboard watches ['dashboard']; the timetable watches
+  // ['schedules', termId], ['unplotted-minors', ...], ['flagged'].
+  //
+  // Invalidate them all so no page needs a manual refresh.
+  // ─────────────────────────────────────────────────────────────
+  const invalidateAfterMutation = () => {
+    queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+    queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
+    queryClient.invalidateQueries({ queryKey: ['flagged'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  };
+
   const plotMutation = useMutation({
     mutationFn: (payload: PlotSubjectPayload) => plotSubject(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      invalidateAfterMutation();
       onClose();
     },
     onError: (err: any) => {
@@ -535,7 +526,7 @@ export default function PlotSubjectModal({
   const plotMultiMutation = useMutation({
     mutationFn: plotMulti,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      invalidateAfterMutation();
       onClose();
     },
     onError: (err: any) => {
@@ -548,7 +539,6 @@ export default function PlotSubjectModal({
     },
   });
 
-  // ── EDIT 1: extended payload type ──
   const updateMutation = useMutation({
     mutationFn: (payload: {
       id: string;
@@ -562,7 +552,7 @@ export default function PlotSubjectModal({
       loadType?: 'lecture' | 'laboratory' | 'other';
     }) => updateSchedule(payload.id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      invalidateAfterMutation();
       onClose();
     },
     onError: (err: any) => {
@@ -581,12 +571,7 @@ export default function PlotSubjectModal({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-    /**
-   * Build and fire the plot payload. Split out from handleSubmit so we
-   * can gate it behind the F1b cross-dept confirmation.
-   */
   const fireSubmit = async () => {
-    // ── Multi-session path ──
     if (mode === 'multi') {
       setSubmitting(true);
       const extName = form.externalFacultyName.trim();
@@ -609,7 +594,6 @@ export default function PlotSubjectModal({
       return;
     }
 
-    // ── Single-session path ──
     setSubmitting(true);
     try {
       const fresh = await validatePlot({
@@ -687,7 +671,6 @@ export default function PlotSubjectModal({
       return;
     }
 
-    // ── F1b: intercept cross-dept submissions ──
     if (isCrossDeptSelection && !isEditMode) {
       setPendingConfirm({
         payloadKind: mode === 'multi' ? 'multi' : 'single',
@@ -695,7 +678,6 @@ export default function PlotSubjectModal({
       return;
     }
 
-    // Regular submission
     await fireSubmit();
   };
 
@@ -759,7 +741,6 @@ export default function PlotSubjectModal({
           </button>
         </div>
 
-        {/* ── Mode toggle (hidden in edit mode) ── */}
         {!isEditMode && (
           <div className="px-6 pt-4">
             <div
@@ -787,7 +768,6 @@ export default function PlotSubjectModal({
                 type="button"
                 onClick={() => {
                   setMode('multi');
-                  // Seed default times from the current single-session times
                   applyDefaultTimes(form.startTime, form.endTime);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
@@ -863,7 +843,6 @@ export default function PlotSubjectModal({
             </div>
           )}
 
-          {/* Subject */}
           <div>
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Subject *
@@ -894,7 +873,6 @@ export default function PlotSubjectModal({
             </select>
           </div>
 
-          {/* Section + Load Type */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -918,7 +896,6 @@ export default function PlotSubjectModal({
                 ))}
               </select>
 
-              {/* F2: auto-filter hint + override */}
               {autoYearFilter != null && !sectionYearOverride && (
                 <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
                   <Icon name="filter_alt" size={11} />
@@ -994,7 +971,6 @@ export default function PlotSubjectModal({
             </div>
           </div>
 
-          {/* Session limit info */}
           {sessionStatus.limit != null &&
             form.subjectId &&
             form.section &&
@@ -1030,14 +1006,12 @@ export default function PlotSubjectModal({
             </div>
           )}
 
-          {/* Faculty + Room */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Faculty *
               </label>
 
-              {/* Mode toggle */}
               <div
                 role="tablist"
                 aria-label="Faculty source"
@@ -1073,7 +1047,6 @@ export default function PlotSubjectModal({
                 </button>
               </div>
 
-              {/* System mode: dropdown */}
               {facultyMode === 'system' && (
                 <>
                   <select
@@ -1100,7 +1073,6 @@ export default function PlotSubjectModal({
                 </>
               )}
 
-              {/* External mode: text input */}
               {facultyMode === 'external' && (
                 <>
                   <input
@@ -1120,7 +1092,6 @@ export default function PlotSubjectModal({
                 </>
               )}
 
-              {/* F1b: cross-dept warning — inside the Faculty column */}
               {isCrossDeptSelection && (
                 <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
                   <Icon
@@ -1165,9 +1136,6 @@ export default function PlotSubjectModal({
             </div>
           </div>
 
-          {/* ═══════════════════════════════════════════════ */}
-          {/* SINGLE-SESSION: Day + Times                    */}
-          {/* ═══════════════════════════════════════════════ */}
           {mode === 'single' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -1217,9 +1185,6 @@ export default function PlotSubjectModal({
             </div>
           )}
 
-          {/* ═══════════════════════════════════════════════ */}
-          {/* MULTI-SESSION: day checkboxes                  */}
-          {/* ═══════════════════════════════════════════════ */}
           {mode === 'multi' && (
             <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -1231,7 +1196,6 @@ export default function PlotSubjectModal({
                 </span>
               </div>
 
-              {/* Optional: apply a shared time to all picked days */}
               <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg bg-surface-container-low">
                 <div className="flex-1 min-w-[120px]">
                   <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
@@ -1333,7 +1297,6 @@ export default function PlotSubjectModal({
             </div>
           )}
 
-          {/* Validation feedback (single mode) */}
           {mode === 'single' && touched && validation && (
             <div className="space-y-2">
               {validation.hardConflicts.length > 0 && (
@@ -1473,7 +1436,6 @@ export default function PlotSubjectModal({
         </form>
       </div>
 
-      {/* ── F1b: cross-department confirmation ── */}
       {pendingConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div
@@ -1555,4 +1517,4 @@ export default function PlotSubjectModal({
       )}
     </div>
   );
-} 
+}
