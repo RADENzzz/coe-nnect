@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -11,46 +11,50 @@ import { getNavForRole } from '../../lib/constants/nav-config';
 import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
 
-/**
- * Inner component — inside the NotificationSocketProvider so it can
- * access the socket context.
- */
 function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
   const setLastPath = useUiStore((s) => s.setLastPath);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
 
   const nav = getNavForRole(profile?.role);
 
-  // Wire socket events into React Query cache
   useNotificationSocketBridge();
 
+  // Collapse the sidebar by default on md+ viewports.
+  // Uses a single media query; simpler and equivalent to the old
+  // two-query version.
   useEffect(() => {
-    const mqTablet = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
-    const mqDesktop = window.matchMedia('(min-width: 1024px)');
+    const mq = window.matchMedia('(min-width: 768px)');
     const set = useUiStore.getState().setSidebarCollapsed;
-
     const handle = () => {
-      if (mqTablet.matches || mqDesktop.matches) set(true);
+      if (mq.matches) set(true);
     };
-
     handle();
-
-    mqTablet.addEventListener('change', handle);
-    mqDesktop.addEventListener('change', handle);
-    return () => {
-      mqTablet.removeEventListener('change', handle);
-      mqDesktop.removeEventListener('change', handle);
-    };
+    mq.addEventListener('change', handle);
+    return () => mq.removeEventListener('change', handle);
   }, []);
 
   useEffect(() => {
     setLastPath(location.pathname);
   }, [location.pathname, setLastPath]);
 
+  // Scroll main content to top on route change.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [location.pathname]);
+
   return (
     <div className="bg-slate-50 text-slate-900 min-h-screen flex">
+      {/* Skip link for keyboard users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[200] focus:px-3 focus:py-2 focus:bg-white focus:text-[#5c1219] focus:font-semibold focus:rounded focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#5c1219]"
+      >
+        Skip to content
+      </a>
+
       <Sidebar nav={nav} />
       <MobileDrawer nav={nav} />
 
@@ -61,7 +65,12 @@ function ShellInner() {
       >
         <TopBar label={nav.topBarLabel} />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
+        <main
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 focus:outline-none"
+        >
           <Outlet />
         </main>
       </div>
