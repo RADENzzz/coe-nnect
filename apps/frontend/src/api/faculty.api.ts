@@ -34,6 +34,28 @@ export interface CreateFacultyInput {
   requiredHours?: number;
 }
 
+// ────────────────────────────────────────────────────────────
+// FR 3.1.3 — Status summary (bulk, for the Faculty page chips)
+// ────────────────────────────────────────────────────────────
+
+export interface FacultyStatusSummaryRow {
+  facultyId: string;
+  qualificationCount: number;
+  hasQualifications: boolean;
+  preferenceCount: number;
+  hasPreferences: boolean;
+  unavailabilityCount: number;
+  hasUnavailability: boolean;
+}
+
+export async function fetchFacultyStatusSummary(
+  deptId?: string,
+): Promise<FacultyStatusSummaryRow[]> {
+  const params = deptId ? { deptId } : {};
+  const { data } = await api.get('/v1/faculty/status-summary', { params });
+  return data.data;
+}
+
 export async function fetchFaculty(
   includeInactive: boolean = false,
 ): Promise<FacultyRecord[]> {
