@@ -436,6 +436,65 @@ export async function fetchUnplottedMinors(
 }
 
 // ────────────────────────────────────────────
+// Coverage indicator (2026-10-15)
+// ────────────────────────────────────────────
+
+export interface CoverageMissingItem {
+  subjectId: string;
+  subjectCode: string;
+  title: string;
+  isMinor: boolean;
+  programId: string;
+  programCode: string | null;
+  yearLevel: number;
+  semester: string;
+  sectionId: string;
+  sectionCode: string;
+  loadTypes: Array<'lecture' | 'laboratory'>;
+}
+
+export interface CoverageBySection {
+  sectionId: string;
+  sectionCode: string;
+  expected: number;
+  plotted: number;
+  missing: number;
+}
+
+export interface CoverageByProgram {
+  programId: string;
+  programCode: string | null;
+  expected: number;
+  plotted: number;
+  missing: number;
+}
+
+export interface CoverageReport {
+  termId: string;
+  deptId: string;
+  termSemester: string | null;
+  totals: {
+    expected: number;
+    plotted: number;
+    missing: number;
+    percent: number;
+  };
+  missing: CoverageMissingItem[];
+  bySection: CoverageBySection[];
+  byProgram: CoverageByProgram[];
+}
+
+export async function fetchCoverage(
+  termId: string,
+  deptId: string,
+): Promise<CoverageReport> {
+  const { data } = await api.get('/v1/schedules/coverage', {
+    params: { termId, deptId },
+  });
+  return data.data;
+}
+
+// ────────────────────────────────────────────
 // Schedule Version — FR 5.1.8(a)
 // ────────────────────────────────────────────
 
