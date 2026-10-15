@@ -118,7 +118,6 @@ export default function ScheduleDetailDrawer({
     queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
     queryClient.invalidateQueries({ queryKey: ['flagged'] });
     queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['schedule-versions'] });
   };
 
