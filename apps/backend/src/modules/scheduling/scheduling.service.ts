@@ -244,11 +244,14 @@ export class SchedulingService {
       user,
     });
 
+    const extRoomName = dto.externalRoomName?.trim() || undefined;
+
     const context = await this.ruleContextBuilder.build({
       termId: dto.termId,
       subjectId: dto.subjectId,
       facultyId: dto.facultyId,
       roomId: dto.roomId,
+      externalRoomName: extRoomName,
       section: dto.section,
       dayOfWeek: dto.dayOfWeek,
       startTime: dto.startTime,
@@ -292,12 +295,15 @@ export class SchedulingService {
       );
     }
 
+    const extRoomTrimmed = dto.externalRoomName?.trim() ?? '';
+
     const entry = this.scheduleRepo.create({
       termId: dto.termId,
       subjectId: dto.subjectId,
       facultyId: dto.facultyId ?? null,
       externalFacultyName: hasExternalFaculty ? extTrimmed : null,
       roomId: dto.roomId ?? null,
+      externalRoomName: extRoomTrimmed.length > 0 ? extRoomTrimmed : null,
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
@@ -398,6 +404,7 @@ export class SchedulingService {
     }
 
     // ── F1b: create the cross-dept request BEFORE the engine runs ──
+    // ── F1b: create the cross-dept request BEFORE the engine runs ──
     const gate = await this.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
       subjectDeptId,
@@ -405,6 +412,11 @@ export class SchedulingService {
       subjectId: dto.subjectId,
       user,
     });
+
+    // ── External room name (2026-10-15) ──
+    // Trimmed once here and reused in every session's context + in the
+    // final rows array. Empty string → undefined (treated as not set).
+    const extRoomName = dto.externalRoomName?.trim() || undefined;
 
     const errors: Array<{ dayOfWeek: string; reason: string }> = [];
 
@@ -439,6 +451,7 @@ export class SchedulingService {
         subjectId: dto.subjectId,
         facultyId: dto.facultyId,
         roomId: dto.roomId,
+        externalRoomName: extRoomName,
         section: dto.section,
         dayOfWeek: session.dayOfWeek,
         startTime: session.startTime,
@@ -497,6 +510,7 @@ export class SchedulingService {
       facultyId: dto.facultyId ?? null,
       externalFacultyName: hasExternalFaculty ? extTrimmed : null,
       roomId: dto.roomId ?? null,
+      externalRoomName: extRoomName ?? null,        // ← NEW
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
@@ -561,6 +575,12 @@ export class SchedulingService {
       found.endTime = normalizeTime(dto.endTime) ?? null;
     }
     if (dto.roomId !== undefined) found.roomId = dto.roomId;
+
+        if (dto.externalRoomName !== undefined) {
+      const trimmed = (dto.externalRoomName ?? '').trim();
+      found.externalRoomName = trimmed.length > 0 ? trimmed : null;
+    }
+
     if (dto.loadType !== undefined) found.loadType = dto.loadType;
 
     // ── F1: faculty source — system OR external, never both ──
