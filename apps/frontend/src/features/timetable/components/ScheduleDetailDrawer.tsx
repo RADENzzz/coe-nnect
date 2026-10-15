@@ -66,7 +66,6 @@ export default function ScheduleDetailDrawer({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [unfinalizeOpen, setUnfinalizeOpen] = useState(false);
 
-  // ── Flag state ──
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagReason, setFlagReason] = useState('');
 
@@ -102,10 +101,31 @@ export default function ScheduleDetailDrawer({
     };
   }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen, flagOpen]);
 
+  // ─────────────────────────────────────────────────────────────
+  // F4.1 — Cross-page invalidation.
+  //
+  // Any mutation in the drawer can affect:
+  //   - ['schedules', termId]      → the timetable grid/drawer itself
+  //   - ['faculty-requests']       → approvals page (orphan cleanup,
+  //                                  request resolution)
+  //   - ['flagged']                → dashboard "Flagged" tile
+  //   - ['unplotted-minors', ...]  → minors banner
+  //   - ['dashboard']              → tile counts
+  //   - ['schedule-version-...']   → version drawer freshness
+  // ─────────────────────────────────────────────────────────────
+  const invalidateAfterMutation = () => {
+    queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+    queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['flagged'] });
+    queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['schedule-versions'] });
+  };
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(entry!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      invalidateAfterMutation();
       onClose();
     },
     onError: (err: any) => {
@@ -118,7 +138,7 @@ export default function ScheduleDetailDrawer({
     mutationFn: (status: 'draft' | 'review' | 'finalized' | 'published') =>
       updateScheduleStatus(entry!.id, status),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      invalidateAfterMutation();
       setError(null);
       setUnfinalizeOpen(false);
     },
@@ -133,7 +153,7 @@ export default function ScheduleDetailDrawer({
   const remarksMutation = useMutation({
     mutationFn: (text: string) => updateRemarks(entry!.id, text),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
+      invalidateAfterMutation();
       setRemarksSaved(true);
       setTimeout(() => setRemarksSaved(false), 1500);
     },
@@ -142,12 +162,10 @@ export default function ScheduleDetailDrawer({
     },
   });
 
-  // ── Flag mutations ──
   const flagMutation = useMutation({
     mutationFn: (reason: string) => flagSchedule(entry!.id, reason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
-      queryClient.invalidateQueries({ queryKey: ['flagged', termId] });
+      invalidateAfterMutation();
       setFlagOpen(false);
       setFlagReason('');
       setError(null);
@@ -161,8 +179,7 @@ export default function ScheduleDetailDrawer({
   const unflagMutation = useMutation({
     mutationFn: () => unflagSchedule(entry!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
-      queryClient.invalidateQueries({ queryKey: ['flagged', termId] });
+      invalidateAfterMutation();
       setError(null);
     },
     onError: (err: any) => {
@@ -195,7 +212,6 @@ export default function ScheduleDetailDrawer({
 
   if (!entry) return null;
 
-  // ── Foreign-entry detection ──
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
   const isForeignEntry =
@@ -203,7 +219,7 @@ export default function ScheduleDetailDrawer({
 
   const locked = isLocked(entry.status);
   const writable = !readOnly && !isForeignEntry;
-  const canFlag = !readOnly;   // ← anyone signed-in can flag
+  const canFlag = !readOnly;
 
   return (
     <>
@@ -250,7 +266,6 @@ export default function ScheduleDetailDrawer({
             </button>
           </header>
 
-          {/* Foreign-entry banner */}
           {isForeignEntry && (
             <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-xs text-amber-900">
               <Icon name="lock" size={16} className="shrink-0" />
@@ -271,7 +286,6 @@ export default function ScheduleDetailDrawer({
             </div>
           )}
 
-                    {/* ── F1b: pending cross-dept approval banner ── */}
           {entry.pendingFacultyRequestId && (
             <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
               <Icon
@@ -292,7 +306,6 @@ export default function ScheduleDetailDrawer({
             </div>
           )}
 
-          {/* ── Flag banner ── */}
           {entry.flagged && (
             <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
               <Icon name="flag" filled size={16} className="shrink-0 mt-0.5" />
@@ -525,7 +538,6 @@ export default function ScheduleDetailDrawer({
           </div>
 
           <footer className="border-t border-surface-variant p-4 flex items-center gap-2 bg-surface-container-low pb-safe flex-wrap">
-            {/* ── Flag / Unflag — visible to everyone ── */}
             {canFlag && (
               <>
                 {!entry.flagged ? (
@@ -556,7 +568,6 @@ export default function ScheduleDetailDrawer({
               </>
             )}
 
-            {/* ── Owner-only actions ── */}
             {writable && (
               <>
                 <button
@@ -582,7 +593,6 @@ export default function ScheduleDetailDrawer({
               </>
             )}
 
-            {/* ── Close — always present, right-aligned ── */}
             <button
               onClick={onClose}
               className={clsx(
@@ -606,7 +616,6 @@ export default function ScheduleDetailDrawer({
         />
       )}
 
-      {/* Delete confirmation */}
       <Modal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -638,7 +647,6 @@ export default function ScheduleDetailDrawer({
         </p>
       </Modal>
 
-      {/* Unfinalize confirmation */}
       <Modal
         open={unfinalizeOpen}
         onClose={() => setUnfinalizeOpen(false)}
@@ -670,7 +678,6 @@ export default function ScheduleDetailDrawer({
         </p>
       </Modal>
 
-      {/* ── Flag modal ── */}
       <Modal
         open={flagOpen}
         onClose={() => setFlagOpen(false)}
