@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   plotSubject,
@@ -121,6 +121,72 @@ interface MultiDayRow {
   endTime: string;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Small presentational helpers
+   ───────────────────────────────────────────────────────────── */
+
+function SectionHeader({
+  step,
+  icon,
+  title,
+  subtitle,
+}: {
+  step?: number;
+  icon: string;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="flex items-start gap-2 mb-3">
+      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5">
+        {step ?? <Icon name={icon} size={13} />}
+      </div>
+      <div>
+        <h3 className="text-sm font-bold text-on-surface leading-tight">
+          {title}
+        </h3>
+        {subtitle && (
+          <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
+            {subtitle}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1">
+      <Icon name="error" size={11} filled />
+      {message}
+    </p>
+  );
+}
+
+function HelperText({
+  children,
+  tone = 'muted',
+}: {
+  children: React.ReactNode;
+  tone?: 'muted' | 'info' | 'warn';
+}) {
+  const cls =
+    tone === 'info'
+      ? 'text-blue-700'
+      : tone === 'warn'
+      ? 'text-amber-700'
+      : 'text-on-surface-variant';
+  return (
+    <p className={`text-[10px] mt-1 leading-snug ${cls}`}>{children}</p>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Main component
+   ───────────────────────────────────────────────────────────── */
+
 export default function PlotSubjectModal({
   open,
   onClose,
@@ -158,6 +224,8 @@ export default function PlotSubjectModal({
   const [roomMode, setRoomMode] = useState<RoomMode>('system');
   const [validation, setValidation] = useState<ValidateResult | null>(null);
   const [touched, setTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
   const [pendingConfirm, setPendingConfirm] = useState<null | {
@@ -169,21 +237,19 @@ export default function PlotSubjectModal({
   const [filterSem, setFilterSem] = useState('');
   const [sectionYearOverride, setSectionYearOverride] = useState(false);
 
+  const subjectSelectRef = useRef<HTMLSelectElement>(null);
+
   const selectedSubject = subjects.find((s) => s.subjectId === form.subjectId);
   const allowsLecture = !selectedSubject || selectedSubject.lectureUnits > 0;
   const allowsLaboratory = !selectedSubject || selectedSubject.labUnits > 0;
 
-  const selectedFaculty = faculty.find(
-    (f) => f.facultyId === form.facultyId,
-  );
+  const selectedFaculty = faculty.find((f) => f.facultyId === form.facultyId);
 
   const isCrossDeptSelection = useMemo(() => {
     if (facultyMode !== 'system') return false;
     if (!selectedFaculty?.deptId) return false;
     if (!selectedSubject?.deptId) return false;
-    return (
-      String(selectedFaculty.deptId) !== String(selectedSubject.deptId)
-    );
+    return String(selectedFaculty.deptId) !== String(selectedSubject.deptId);
   }, [facultyMode, selectedFaculty, selectedSubject]);
 
   const crossDeptName = useMemo(() => {
@@ -194,19 +260,10 @@ export default function PlotSubjectModal({
     return d ? `[${d.deptCode}] ${d.deptName}` : null;
   }, [isCrossDeptSelection, selectedFaculty, departments]);
 
-  /**
-   * When the subject is a minor (taught by another department/college),
-   * the room is usually not in our internal `room` table. Auto-default
-   * the room mode to 'external' when a minor subject is selected and
-   * the user hasn't already picked an internal room.
-   *
-   * The user can still override by picking 'From list' — a minor
-   * subject occasionally meets in a room we do manage.
-   */
+  /** Auto-default room mode to external when a "minor" subject is selected. */
   useEffect(() => {
-    if (isEditMode) return; // don't auto-flip during edit
+    if (isEditMode) return;
     if (!selectedSubject) return;
-    // Minor heuristic: deptId differs from the DH's own dept
     const isMinorSubject =
       !!selectedSubject.deptId &&
       !!myDeptId &&
@@ -292,9 +349,7 @@ export default function PlotSubjectModal({
       const dept = departments.find(
         (d) => String(d.deptId) === String(f.deptId ?? ''),
       );
-      const label = dept
-        ? `[${dept.deptCode}] ${dept.deptName}`
-        : 'Unassigned';
+      const label = dept ? `[${dept.deptCode}] ${dept.deptName}` : 'Unassigned';
       if (!groups.has(label)) groups.set(label, []);
       groups.get(label)!.push(f);
     }
@@ -322,6 +377,8 @@ export default function PlotSubjectModal({
       );
       setValidation(null);
       setTouched(false);
+      setSubmitAttempted(false);
+      setTouchedFields(new Set());
       setSubmitting(false);
       setFilterDept(defaultDept);
       setFilterYear('');
@@ -350,6 +407,8 @@ export default function PlotSubjectModal({
       });
       setValidation(null);
       setTouched(false);
+      setSubmitAttempted(false);
+      setTouchedFields(new Set());
       setSubmitting(false);
       setFilterDept(defaultDept);
       setFilterYear('');
@@ -371,6 +430,8 @@ export default function PlotSubjectModal({
       );
       setValidation(null);
       setTouched(false);
+      setSubmitAttempted(false);
+      setTouchedFields(new Set());
       setSubmitting(false);
       setFilterDept(presetSubjectId ? '' : defaultDept);
       setFilterYear('');
@@ -378,6 +439,13 @@ export default function PlotSubjectModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing, myDeptId, profile?.role, presetSubjectId]);
+
+  // Autofocus the subject picker the first time the modal opens in create mode
+  useEffect(() => {
+    if (!open || isEditMode) return;
+    const t = setTimeout(() => subjectSelectRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [open, isEditMode]);
 
   useEffect(() => {
     if (!selectedSubject) return;
@@ -451,7 +519,9 @@ export default function PlotSubjectModal({
     const remaining = Math.max(0, limit - current);
     const exceeded = current >= limit;
     const message = exceeded
-      ? `This section already has ${current} of ${limit} ${loadType} session${limit === 1 ? '' : 's'} plotted for ${subject.subjectCode}. The prospectus allows a maximum of ${limit}.`
+      ? `This section already has ${current} of ${limit} ${loadType} session${
+          limit === 1 ? '' : 's'
+        } plotted for ${subject.subjectCode}. The prospectus allows a maximum of ${limit}.`
       : null;
 
     return { current, limit, exceeded, message, remaining };
@@ -469,9 +539,7 @@ export default function PlotSubjectModal({
 
   const toggleDay = (day: string) => {
     setMultiDays((rows) =>
-      rows.map((r) =>
-        r.day === day ? { ...r, enabled: !r.enabled } : r,
-      ),
+      rows.map((r) => (r.day === day ? { ...r, enabled: !r.enabled } : r)),
     );
   };
 
@@ -491,6 +559,18 @@ export default function PlotSubjectModal({
     );
   };
 
+  const applyPresetDays = (days: (typeof DAYS)[number][]) => {
+    setMultiDays((rows) =>
+      rows.map((r) => ({
+        ...r,
+        enabled: days.includes(r.day),
+        startTime: multiDays[0].startTime,
+        endTime: multiDays[0].endTime,
+      })),
+    );
+  };
+
+  /* ─── Debounced validation (single mode) ─── */
   useEffect(() => {
     if (mode !== 'single') return;
     if (!open || !form.subjectId) return;
@@ -595,8 +675,47 @@ export default function PlotSubjectModal({
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setTouchedFields((prev) => new Set(prev).add(name));
   };
+
+  const markTouched = (field: string) =>
+    setTouchedFields((prev) => new Set(prev).add(field));
+
+  /* ─── Derived: field-level errors ─── */
+  const fieldErrors = useMemo(() => {
+    const errs: Record<string, string | undefined> = {};
+    const show = (f: string) => submitAttempted || touchedFields.has(f);
+
+    if (show('subjectId') && !form.subjectId)
+      errs.subjectId = 'Pick a subject to plot.';
+
+    if (show('facultyId') || show('externalFacultyName')) {
+      const ok =
+        (facultyMode === 'system' && !!form.facultyId) ||
+        (facultyMode === 'external' &&
+          form.externalFacultyName.trim().length > 0);
+      if (!ok)
+        errs.faculty =
+          facultyMode === 'system'
+            ? 'Select a faculty member from the list.'
+            : 'Enter the guest professor’s name.';
+    }
+
+    if (show('roomId') || show('externalRoomName')) {
+      const ok =
+        (roomMode === 'system' && !!form.roomId) ||
+        (roomMode === 'external' && form.externalRoomName.trim().length > 0);
+      if (!ok)
+        errs.room =
+          roomMode === 'system'
+            ? 'Select a room from the list.'
+            : 'Enter the external room name.';
+    }
+
+    return errs;
+  }, [form, facultyMode, roomMode, submitAttempted, touchedFields]);
 
   const fireSubmit = async () => {
     const extRoomTrimmed = form.externalRoomName.trim();
@@ -613,9 +732,7 @@ export default function PlotSubjectModal({
           facultyMode === 'external' && extName ? extName : undefined,
         roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
         externalRoomName:
-          roomMode === 'external' && extRoomTrimmed
-            ? extRoomTrimmed
-            : undefined,
+          roomMode === 'external' && extRoomTrimmed ? extRoomTrimmed : undefined,
         section: form.section || undefined,
         loadType: form.loadType,
         sessions: enabledDays.map((d) => ({
@@ -636,9 +753,7 @@ export default function PlotSubjectModal({
           facultyMode === 'system' ? form.facultyId || undefined : undefined,
         roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
         externalRoomName:
-          roomMode === 'external' && extRoomTrimmed
-            ? extRoomTrimmed
-            : undefined,
+          roomMode === 'external' && extRoomTrimmed ? extRoomTrimmed : undefined,
         section: form.section || undefined,
         dayOfWeek: form.dayOfWeek,
         startTime: form.startTime,
@@ -663,11 +778,8 @@ export default function PlotSubjectModal({
           endTime: form.endTime,
           roomId: roomMode === 'system' ? form.roomId || null : null,
           externalRoomName:
-            roomMode === 'external'
-              ? extRoomTrimmed || null
-              : null,
-          facultyId:
-            facultyMode === 'system' ? form.facultyId || null : null,
+            roomMode === 'external' ? extRoomTrimmed || null : null,
+          facultyId: facultyMode === 'system' ? form.facultyId || null : null,
           externalFacultyName:
             facultyMode === 'external'
               ? form.externalFacultyName.trim() || null
@@ -681,9 +793,7 @@ export default function PlotSubjectModal({
           termId,
           subjectId: form.subjectId,
           facultyId:
-            facultyMode === 'system'
-              ? form.facultyId || undefined
-              : undefined,
+            facultyMode === 'system' ? form.facultyId || undefined : undefined,
           externalFacultyName:
             facultyMode === 'external' && extName ? extName : undefined,
           roomId: roomMode === 'system' ? form.roomId || undefined : undefined,
@@ -707,22 +817,19 @@ export default function PlotSubjectModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    setSubmitAttempted(true);
 
     const hasSystemFaculty = facultyMode === 'system' && !!form.facultyId;
     const hasExternalFaculty =
       facultyMode === 'external' && form.externalFacultyName.trim().length > 0;
 
-    if (!hasSystemFaculty && !hasExternalFaculty) {
-      return;
-    }
+    if (!hasSystemFaculty && !hasExternalFaculty) return;
 
     const hasRoom =
       (roomMode === 'system' && !!form.roomId) ||
       (roomMode === 'external' && form.externalRoomName.trim().length > 0);
 
-    if (!hasRoom) {
-      return;
-    }
+    if (!hasRoom) return;
 
     if (isCrossDeptSelection && !isEditMode) {
       setPendingConfirm({
@@ -733,8 +840,6 @@ export default function PlotSubjectModal({
 
     await fireSubmit();
   };
-
-  if (!open) return null;
 
   const hasFaculty =
     (facultyMode === 'system' && !!form.facultyId) ||
@@ -766,7 +871,87 @@ export default function PlotSubjectModal({
   const submitDisabled =
     mode === 'multi' ? multiSubmitDisabled : singleSubmitDisabled;
 
+  /* ─── Why is submit disabled? (for the helper line) ─── */
+  const disabledReason = useMemo(() => {
+    if (!submitDisabled) return null;
+    if (submitting) return null;
+    if (!form.subjectId) return 'Pick a subject first.';
+    if (!hasFaculty)
+      return facultyMode === 'system'
+        ? 'Choose a faculty member.'
+        : 'Enter the guest professor’s name.';
+    if (!hasRoom)
+      return roomMode === 'system'
+        ? 'Choose a room.'
+        : 'Enter the external room name.';
+    if (mode === 'multi' && multiCount === 0)
+      return 'Tick at least one day for the multi-session.';
+    if (
+      mode === 'multi' &&
+      sessionStatus.limit != null &&
+      multiCount > sessionStatus.remaining
+    )
+      return `Only ${sessionStatus.remaining} session${
+        sessionStatus.remaining === 1 ? '' : 's'
+      } left — untick some days.`;
+    if (sessionStatus.exceeded) return 'Session limit reached for this section.';
+    if (mode === 'single' && touched && (validation?.hardConflicts.length ?? 0) > 0)
+      return 'Resolve the conflicts below to continue.';
+    return null;
+  }, [
+    submitDisabled,
+    submitting,
+    form.subjectId,
+    hasFaculty,
+    hasRoom,
+    facultyMode,
+    roomMode,
+    mode,
+    multiCount,
+    sessionStatus,
+    touched,
+    validation,
+  ]);
+
   const hasActiveFilter = filterDept || filterYear || filterSem;
+
+  /* ─── Live summary strip (single mode only) ─── */
+  const summaryLine = useMemo(() => {
+    if (mode !== 'single') return null;
+    if (!form.subjectId || !hasFaculty || !hasRoom) return null;
+    const subj = selectedSubject
+      ? `[${selectedSubject.subjectCode}]`
+      : 'Subject';
+    const sec = form.section ? ` · ${form.section}` : ' · (no section)';
+    const time = ` · ${DAY_ABBR[form.dayOfWeek] ?? form.dayOfWeek} ${formatTime(
+      form.startTime,
+    )}–${formatTime(form.endTime)}`;
+    let who = '';
+    if (facultyMode === 'system' && selectedFaculty)
+      who = ` · ${selectedFaculty.lastName}, ${selectedFaculty.firstName}`;
+    else if (facultyMode === 'external' && form.externalFacultyName.trim())
+      who = ` · ${form.externalFacultyName.trim()}`;
+    let where = '';
+    if (roomMode === 'system' && form.roomId) {
+      const r = rooms.find((x) => x.roomId === form.roomId);
+      if (r) where = ` · Rm ${r.roomNumber}`;
+    } else if (roomMode === 'external' && form.externalRoomName.trim()) {
+      where = ` · ${form.externalRoomName.trim()}`;
+    }
+    return `${subj}${sec}${time}${where}${who}`;
+  }, [
+    mode,
+    form,
+    hasFaculty,
+    hasRoom,
+    selectedSubject,
+    selectedFaculty,
+    rooms,
+    facultyMode,
+    roomMode,
+  ]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -776,28 +961,29 @@ export default function PlotSubjectModal({
       />
 
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant">
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant sticky top-0 bg-surface-container-lowest z-10">
           <div>
             <h2 className="text-lg font-bold text-primary">
-              {isEditMode ? 'Edit Class' : 'Plot Subject'}
+              {isEditMode ? 'Edit class' : 'Plot a subject'}
             </h2>
             <p className="text-xs text-on-surface-variant">
               {isEditMode
-                ? 'Modify day, time, room, or faculty'
-                : mode === 'multi'
-                ? 'Plot this subject on multiple days at once'
-                : 'Add a new class to the timetable'}
+                ? 'Change day, time, room, or faculty.'
+                : 'Schedule a class into this term’s timetable.'}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="w-8 h-8 rounded-full hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant"
           >
             <Icon name="close" />
           </button>
         </div>
 
+        {/* Mode tabs (single vs multi) */}
         {!isEditMode && (
           <div className="px-6 pt-4">
             <div
@@ -817,7 +1003,7 @@ export default function PlotSubjectModal({
                 }`}
               >
                 <Icon name="calendar_today" size={14} />
-                Single session
+                One session
               </button>
               <button
                 role="tab"
@@ -834,590 +1020,696 @@ export default function PlotSubjectModal({
                 }`}
               >
                 <Icon name="view_week" size={14} />
-                Multi-session
+                Multiple days
               </button>
             </div>
+            <p className="mt-1.5 text-[10px] text-on-surface-variant">
+              {mode === 'single'
+                ? 'Pick one day and time. Conflicts are checked as you type.'
+                : 'Pick several days at once — handy for MWF or TTh patterns.'}
+            </p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {!isEditMode && (
-            <div className="rounded-lg border border-surface-variant bg-surface-container-low p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">
-                  Filter subjects
-                </span>
-                {hasActiveFilter && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFilterDept('');
-                      setFilterYear('');
-                      setFilterSem('');
-                    }}
-                    className="text-[10px] text-primary hover:underline"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* ── 1. Subject & section ── */}
+          <section>
+            <SectionHeader
+              step={1}
+              icon="menu_book"
+              title="Subject & section"
+              subtitle="What are you teaching, and to whom?"
+            />
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <select
-                  value={filterDept}
-                  onChange={(e) => setFilterDept(e.target.value)}
-                  className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
-                >
-                  <option value="">All departments</option>
-                  {departments.map((d) => (
-                    <option key={d.deptId} value={d.deptId}>
-                      [{d.deptCode}] {d.deptName}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filterYear}
-                  onChange={(e) => setFilterYear(e.target.value)}
-                  className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
-                >
-                  <option value="">Any year</option>
-                  <option value="1">1st Year</option>
-                  <option value="2">2nd Year</option>
-                  <option value="3">3rd Year</option>
-                  <option value="4">4th Year</option>
-                </select>
-                <select
-                  value={filterSem}
-                  onChange={(e) => setFilterSem(e.target.value)}
-                  className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
-                >
-                  <option value="">Any semester</option>
-                  <option value="1st">1st</option>
-                  <option value="2nd">2nd</option>
-                  <option value="summer">Summer</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-              Subject *
-              {isEditMode && (
-                <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-on-surface-variant">
-                  (locked in edit mode)
-                </span>
-              )}
-            </label>
-            <select
-              name="subjectId"
-              required
-              value={form.subjectId}
-              onChange={handleChange}
-              disabled={isEditMode}
-              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <option value="">
-                {filteredSubjects.length === 0
-                  ? 'No subjects match your filters'
-                  : `Select a subject… (${filteredSubjects.length} available)`}
-              </option>
-              {filteredSubjects.map((s) => (
-                <option key={s.subjectId} value={s.subjectId}>
-                  [{s.subjectCode}] {s.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Section
-              </label>
-              <select
-                name="section"
-                value={form.section}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">— none —</option>
-                {sectionsForDisplay.map((s) => (
-                  <option key={s.sectionId} value={s.sectionCode}>
-                    {s.sectionCode}
-                    {s.yearLevel != null ? ` — Y${s.yearLevel}` : ''}
-                    {s.studentCount != null
-                      ? ` (${s.studentCount} students)`
-                      : ''}
-                  </option>
-                ))}
-              </select>
-
-              {autoYearFilter != null && !sectionYearOverride && (
-                <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
-                  <Icon name="filter_alt" size={11} />
-                  Filtered to <strong>Year {autoYearFilter}</strong> based on
-                  this subject's prospectus.
-                  <button
-                    type="button"
-                    onClick={() => setSectionYearOverride(true)}
-                    className="text-primary hover:underline font-semibold"
-                  >
-                    Show all years
-                  </button>
-                </p>
-              )}
-
-              {autoYearFilter == null &&
-                !isEditMode &&
-                subjectYearLevels.length > 1 && (
-                  <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
-                    <Icon name="info" size={11} />
-                    This subject spans{' '}
-                    {subjectYearLevels.map((y) => `Y${y}`).join(' / ')} — showing
-                    all sections.
-                  </p>
-                )}
-
-              {sectionYearOverride && autoYearFilter != null && (
-                <p className="text-[10px] text-on-surface-variant mt-1 flex items-center gap-1">
-                  <Icon name="filter_alt_off" size={11} />
-                  Showing all years.
-                  <button
-                    type="button"
-                    onClick={() => setSectionYearOverride(false)}
-                    className="text-primary hover:underline font-semibold"
-                  >
-                    Re-filter to Y{autoYearFilter}
-                  </button>
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Load Type *
-              </label>
-              <select
-                name="loadType"
-                required
-                value={form.loadType}
-                onChange={handleChange}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="lecture" disabled={!allowsLecture}>
-                  Lecture {!allowsLecture ? '(no lecture component)' : ''}
-                </option>
-                <option value="laboratory" disabled={!allowsLaboratory}>
-                  Laboratory {!allowsLaboratory ? '(no lab component)' : ''}
-                </option>
-              </select>
-              {selectedSubject && (
-                <p className="text-[10px] text-on-surface-variant mt-1 leading-tight">
-                  {selectedSubject.lectureUnits > 0 &&
-                    `${selectedSubject.lectureUnits}L`}
-                  {selectedSubject.lectureUnits > 0 &&
-                    selectedSubject.labUnits > 0 &&
-                    ' + '}
-                  {selectedSubject.labUnits > 0 &&
-                    `${selectedSubject.labUnits}Lab`}
-                  {selectedSubject.lectureUnits === 0 &&
-                    selectedSubject.labUnits === 0 &&
-                    'This subject has no component units.'}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {sessionStatus.limit != null &&
-            form.subjectId &&
-            form.section &&
-            !sessionStatus.exceeded && (
-              <div className="rounded-lg px-3 py-2 text-xs flex items-center gap-2 bg-blue-50 text-blue-900 border border-blue-200">
-                <Icon name="info" size={14} className="shrink-0" />
-                <span>
-                  Plotted: <strong>{sessionStatus.current}</strong> of{' '}
-                  <strong>{sessionStatus.limit}</strong> allowed{' '}
-                  {form.loadType} session
-                  {sessionStatus.limit === 1 ? '' : 's'} for this subject and
-                  section. <strong>{sessionStatus.remaining}</strong> remaining.
-                </span>
-              </div>
-            )}
-
-          {sessionStatus.exceeded && sessionStatus.message && (
-            <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
-              <Icon
-                name="warning"
-                filled
-                size={18}
-                className="shrink-0 mt-0.5"
-              />
-              <div>
-                <p className="font-medium">Session limit reached</p>
-                <p className="mt-0.5">{sessionStatus.message}</p>
-                <p className="mt-1 text-xs text-amber-800">
-                  Remove an existing session first, or increase the pattern on
-                  the Prospectus page.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Faculty *
-              </label>
-
-              <div
-                role="tablist"
-                aria-label="Faculty source"
-                className="inline-flex w-full rounded-lg border border-surface-variant bg-surface-container-low p-0.5 mb-2"
-              >
-                <button
-                  role="tab"
-                  aria-selected={facultyMode === 'system'}
-                  type="button"
-                  onClick={() => setFacultyMode('system')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                    facultyMode === 'system'
-                      ? 'bg-white text-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  <Icon name="badge" size={14} />
-                  System faculty
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={facultyMode === 'external'}
-                  type="button"
-                  onClick={() => setFacultyMode('external')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                    facultyMode === 'external'
-                      ? 'bg-white text-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  <Icon name="person_edit" size={14} />
-                  External
-                </button>
-              </div>
-
-              {facultyMode === 'system' && (
-                <>
-                  <select
-                    name="facultyId"
-                    value={form.facultyId}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">Select a faculty…</option>
-                    {facultyGroups.map(([label, facs]) => (
-                      <optgroup key={label} label={label}>
-                        {facs.map((f) => (
-                          <option key={f.facultyId} value={f.facultyId}>
-                            {f.lastName}, {f.firstName}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    Use this for faculty in the system. Overload, qualification,
-                    and preference checks will apply.
-                  </p>
-                </>
-              )}
-
-              {facultyMode === 'external' && (
-                <>
-                  <input
-                    type="text"
-                    name="externalFacultyName"
-                    value={form.externalFacultyName}
-                    onChange={handleChange}
-                    placeholder="e.g. Prof. Juan Dela Cruz (Math Dept)"
-                    maxLength={120}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  />
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    For professors outside the system (Math, GenEd, EPIC,
-                    visiting lecturers). No overload or qualification checks
-                    will apply.
-                  </p>
-                </>
-              )}
-
-              {isCrossDeptSelection && (
-                <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
-                  <Icon
-                    name="hourglass_top"
-                    size={14}
-                    className="shrink-0 mt-0.5"
-                  />
-                  <div>
-                    <p className="font-semibold">
-                      Cross-department faculty
-                    </p>
-                    <p className="mt-0.5 leading-tight">
-                      This faculty is from{' '}
-                      <strong>{crossDeptName ?? 'another department'}</strong>.
-                      Plotting will create a pending approval request.
-                      Finalization is blocked until that department head
-                      approves.
-                    </p>
-                  </div>
+            {!isEditMode && (
+              <div className="rounded-lg border border-surface-variant bg-surface-container-low p-3 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                    Filter the subject list
+                  </span>
+                  {hasActiveFilter && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterDept('');
+                        setFilterYear('');
+                        setFilterSem('');
+                      }}
+                      className="text-[10px] text-primary hover:underline font-semibold"
+                    >
+                      Clear filters
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Room *
-              </label>
-
-              <div
-                role="tablist"
-                aria-label="Room source"
-                className="inline-flex w-full rounded-lg border border-surface-variant bg-surface-container-low p-0.5 mb-2"
-              >
-                <button
-                  role="tab"
-                  aria-selected={roomMode === 'system'}
-                  type="button"
-                  onClick={() => setRoomMode('system')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                    roomMode === 'system'
-                      ? 'bg-white text-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  <Icon name="meeting_room" size={14} />
-                  From list
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={roomMode === 'external'}
-                  type="button"
-                  onClick={() => setRoomMode('external')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                    roomMode === 'external'
-                      ? 'bg-white text-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  <Icon name="home_work" size={14} />
-                  External
-                </button>
-              </div>
-
-              {roomMode === 'system' && (
-                <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <select
-                    name="roomId"
-                    value={form.roomId}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                    value={filterDept}
+                    onChange={(e) => setFilterDept(e.target.value)}
+                    className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
                   >
-                    <option value="">Select a room…</option>
-                    {rooms.map((r) => (
-                      <option key={r.roomId} value={r.roomId}>
-                        Room {r.roomNumber} ({r.roomType.replace('_', ' ')})
+                    <option value="">All departments</option>
+                    {departments.map((d) => (
+                      <option key={d.deptId} value={d.deptId}>
+                        [{d.deptCode}] {d.deptName}
                       </option>
                     ))}
                   </select>
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    Room type and overlap rules apply. Use this for rooms we
-                    manage.
-                  </p>
-                </>
-              )}
+                  <select
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(e.target.value)}
+                    className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Any year</option>
+                    <option value="1">1st year</option>
+                    <option value="2">2nd year</option>
+                    <option value="3">3rd year</option>
+                    <option value="4">4th year</option>
+                  </select>
+                  <select
+                    value={filterSem}
+                    onChange={(e) => setFilterSem(e.target.value)}
+                    className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Any semester</option>
+                    <option value="1st">1st</option>
+                    <option value="2nd">2nd</option>
+                    <option value="summer">Summer</option>
+                  </select>
+                </div>
+              </div>
+            )}
 
-              {roomMode === 'external' && (
-                <>
-                  <input
-                    type="text"
-                    name="externalRoomName"
-                    value={form.externalRoomName}
-                    onChange={handleChange}
-                    placeholder="e.g. Math Building Room 204"
-                    maxLength={120}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  />
-                  <p className="text-[10px] text-on-surface-variant mt-1">
-                    For rooms outside the system (another college's room,
-                    renovation overflow, off-site). Room rules skip — the
-                    section is still reserved for this time.
-                  </p>
-                </>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Subject *
+                {isEditMode && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-normal normal-case tracking-normal text-on-surface-variant">
+                    <Icon name="lock" size={11} />
+                    Fixed while editing — delete & re-plot to change
+                  </span>
+                )}
+              </label>
+              <select
+                ref={subjectSelectRef}
+                name="subjectId"
+                required
+                value={form.subjectId}
+                onChange={handleChange}
+                onBlur={() => markTouched('subjectId')}
+                disabled={isEditMode}
+                className={`w-full bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed ${
+                  fieldErrors.subjectId
+                    ? 'border-red-400'
+                    : 'border-surface-variant'
+                }`}
+              >
+                <option value="">
+                  {filteredSubjects.length === 0
+                    ? 'No subjects match your filters'
+                    : `Select a subject… (${filteredSubjects.length} available)`}
+                </option>
+                {filteredSubjects.map((s) => (
+                  <option key={s.subjectId} value={s.subjectId}>
+                    [{s.subjectCode}] {s.title}
+                  </option>
+                ))}
+              </select>
+              <FieldError message={fieldErrors.subjectId} />
+              {!isEditMode && filteredSubjects.length === 0 && hasActiveFilter && (
+                <HelperText tone="warn">
+                  Nothing matches. Try widening the filters above.
+                </HelperText>
               )}
             </div>
-          </div>
 
-          {mode === 'single' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Day *
+                  Section
                 </label>
                 <select
-                  name="dayOfWeek"
-                  required
-                  value={form.dayOfWeek}
+                  name="section"
+                  value={form.section}
                   onChange={handleChange}
                   className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
                 >
-                  {DAYS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
+                  <option value="">— none —</option>
+                  {sectionsForDisplay.map((s) => (
+                    <option key={s.sectionId} value={s.sectionCode}>
+                      {s.sectionCode}
+                      {s.yearLevel != null ? ` — Y${s.yearLevel}` : ''}
+                      {s.studentCount != null
+                        ? ` (${s.studentCount} students)`
+                        : ''}
                     </option>
                   ))}
                 </select>
+
+                {autoYearFilter != null && !sectionYearOverride && (
+                  <HelperText tone="info">
+                    <Icon name="filter_alt" size={11} />{' '}
+                    Filtered to <strong>Year {autoYearFilter}</strong> from this
+                    subject’s prospectus.{' '}
+                    <button
+                      type="button"
+                      onClick={() => setSectionYearOverride(true)}
+                      className="text-primary hover:underline font-semibold"
+                    >
+                      Show all years
+                    </button>
+                  </HelperText>
+                )}
+
+                {autoYearFilter == null &&
+                  !isEditMode &&
+                  subjectYearLevels.length > 1 && (
+                    <HelperText>
+                      <Icon name="info" size={11} /> This subject spans{' '}
+                      {subjectYearLevels.map((y) => `Y${y}`).join(' / ')} —
+                      showing all sections.
+                    </HelperText>
+                  )}
+
+                {sectionYearOverride && autoYearFilter != null && (
+                  <HelperText>
+                    <Icon name="filter_alt_off" size={11} /> Showing all years.{' '}
+                    <button
+                      type="button"
+                      onClick={() => setSectionYearOverride(false)}
+                      className="text-primary hover:underline font-semibold"
+                    >
+                      Re-filter to Y{autoYearFilter}
+                    </button>
+                  </HelperText>
+                )}
               </div>
+
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Start *
+                  Component *
                 </label>
-                <TimeSlotSelect
-                  value={form.startTime}
-                  onChange={(v) =>
-                    setForm((prev) => ({ ...prev, startTime: v }))
-                  }
-                  options={startOptions}
-                  ariaLabel="Start time"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  End *
-                </label>
-                <TimeSlotSelect
-                  value={form.endTime}
-                  onChange={(v) =>
-                    setForm((prev) => ({ ...prev, endTime: v }))
-                  }
-                  options={endOptions}
-                  ariaLabel="End time"
-                />
-              </div>
-            </div>
-          )}
-
-          {mode === 'multi' && (
-            <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                  Pick days this class meets
-                </span>
-                <span className="text-xs text-on-surface-variant">
-                  {multiCount} selected
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg bg-surface-container-low">
-                <div className="flex-1 min-w-[120px]">
-                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                    Default start
-                  </label>
-                  <TimeSlotSelect
-                    value={multiDays[0].startTime}
-                    onChange={(v) => {
-                      applyDefaultTimes(v, multiDays[0].endTime);
-                    }}
-                    options={startOptions}
-                    ariaLabel="Default start time"
-                  />
-                </div>
-                <div className="flex-1 min-w-[120px]">
-                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                    Default end
-                  </label>
-                  <TimeSlotSelect
-                    value={multiDays[0].endTime}
-                    onChange={(v) => {
-                      applyDefaultTimes(multiDays[0].startTime, v);
-                    }}
-                    options={endOptions}
-                    ariaLabel="Default end time"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    applyDefaultTimes(multiDays[0].startTime, multiDays[0].endTime)
-                  }
-                  className="px-3 py-2 text-xs font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high transition"
+                <select
+                  name="loadType"
+                  required
+                  value={form.loadType}
+                  onChange={handleChange}
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
                 >
-                  Apply to all
-                </button>
+                  <option value="lecture" disabled={!allowsLecture}>
+                    Lecture {!allowsLecture ? '(none for this subject)' : ''}
+                  </option>
+                  <option value="laboratory" disabled={!allowsLaboratory}>
+                    Laboratory {!allowsLaboratory ? '(none for this subject)' : ''}
+                  </option>
+                </select>
+                {selectedSubject && (
+                  <HelperText>
+                    {selectedSubject.lectureUnits > 0 &&
+                      `${selectedSubject.lectureUnits}L`}
+                    {selectedSubject.lectureUnits > 0 &&
+                      selectedSubject.labUnits > 0 &&
+                      ' + '}
+                    {selectedSubject.labUnits > 0 &&
+                      `${selectedSubject.labUnits}Lab`}
+                    {selectedSubject.lectureUnits === 0 &&
+                      selectedSubject.labUnits === 0 &&
+                      'This subject has no component units.'}
+                  </HelperText>
+                )}
+              </div>
+            </div>
+
+            {/* Session limit feedback */}
+            {sessionStatus.limit != null &&
+              form.subjectId &&
+              form.section &&
+              !sessionStatus.exceeded && (
+                <div className="mt-3 rounded-lg px-3 py-2 text-xs flex items-center gap-2 bg-blue-50 text-blue-900 border border-blue-200">
+                  <Icon name="info" size={14} className="shrink-0" />
+                  <span>
+                    Plotted <strong>{sessionStatus.current}</strong> of{' '}
+                    <strong>{sessionStatus.limit}</strong> allowed{' '}
+                    {form.loadType} session
+                    {sessionStatus.limit === 1 ? '' : 's'} for this section.{' '}
+                    <strong>{sessionStatus.remaining}</strong> left.
+                  </span>
+                </div>
+              )}
+
+            {sessionStatus.exceeded && sessionStatus.message && (
+              <div className="mt-3 rounded-lg p-3 text-sm flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
+                <Icon name="warning" filled size={18} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Session limit reached</p>
+                  <p className="mt-0.5">{sessionStatus.message}</p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Remove an existing session first, or raise the pattern on
+                    the Prospectus page.
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* ── 2. Schedule ── */}
+          <section>
+            <SectionHeader
+              step={2}
+              icon="schedule"
+              title="Schedule"
+              subtitle={
+                mode === 'single'
+                  ? 'When does this class meet?'
+                  : 'Tick each day this class meets.'
+              }
+            />
+
+            {mode === 'single' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Day *
+                  </label>
+                  <select
+                    name="dayOfWeek"
+                    required
+                    value={form.dayOfWeek}
+                    onChange={handleChange}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  >
+                    {DAYS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Start *
+                  </label>
+                  <TimeSlotSelect
+                    value={form.startTime}
+                    onChange={(v) =>
+                      setForm((prev) => ({ ...prev, startTime: v }))
+                    }
+                    options={startOptions}
+                    ariaLabel="Start time"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    End *
+                  </label>
+                  <TimeSlotSelect
+                    value={form.endTime}
+                    onChange={(v) =>
+                      setForm((prev) => ({ ...prev, endTime: v }))
+                    }
+                    options={endOptions}
+                    ariaLabel="End time"
+                  />
+                </div>
+              </div>
+            )}
+
+            {mode === 'multi' && (
+              <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-on-surface-variant">
+                    {multiCount} day{multiCount === 1 ? '' : 's'} selected
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        applyPresetDays(['Monday', 'Wednesday', 'Friday'])
+                      }
+                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
+                    >
+                      MWF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        applyPresetDays(['Tuesday', 'Thursday'])
+                      }
+                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
+                    >
+                      TTh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        applyPresetDays([
+                          'Monday',
+                          'Tuesday',
+                          'Wednesday',
+                          'Thursday',
+                          'Friday',
+                        ])
+                      }
+                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
+                    >
+                      M–F
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetDays([])}
+                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg bg-surface-container-low">
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                      Default start
+                    </label>
+                    <TimeSlotSelect
+                      value={multiDays[0].startTime}
+                      onChange={(v) =>
+                        applyDefaultTimes(v, multiDays[0].endTime)
+                      }
+                      options={startOptions}
+                      ariaLabel="Default start time"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[120px]">
+                    <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                      Default end
+                    </label>
+                    <TimeSlotSelect
+                      value={multiDays[0].endTime}
+                      onChange={(v) =>
+                        applyDefaultTimes(multiDays[0].startTime, v)
+                      }
+                      options={endOptions}
+                      ariaLabel="Default end time"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      applyDefaultTimes(
+                        multiDays[0].startTime,
+                        multiDays[0].endTime,
+                      )
+                    }
+                    className="px-3 py-2 text-xs font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high transition"
+                  >
+                    Apply to all
+                  </button>
+                </div>
+
+                <ul className="divide-y divide-surface-variant">
+                  {multiDays.map((row) => (
+                    <li
+                      key={row.day}
+                      className="py-2.5 flex flex-wrap items-center gap-3"
+                    >
+                      <label className="flex items-center gap-2 min-w-[110px] cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={row.enabled}
+                          onChange={() => toggleDay(row.day)}
+                          className="accent-[#5c1219] w-4 h-4"
+                        />
+                        <span className="text-sm font-semibold text-on-surface">
+                          {DAY_ABBR[row.day] ?? row.day}
+                        </span>
+                      </label>
+                      {row.enabled && (
+                        <>
+                          <div className="flex-1 min-w-[110px]">
+                            <TimeSlotSelect
+                              value={row.startTime}
+                              onChange={(v) =>
+                                updateDayTime(row.day, 'startTime', v)
+                              }
+                              options={startOptions}
+                              ariaLabel={`${row.day} start time`}
+                            />
+                          </div>
+                          <span className="text-xs text-on-surface-variant">
+                            to
+                          </span>
+                          <div className="flex-1 min-w-[110px]">
+                            <TimeSlotSelect
+                              value={row.endTime}
+                              onChange={(v) =>
+                                updateDayTime(row.day, 'endTime', v)
+                              }
+                              options={TIME_OPTIONS.slice(
+                                TIME_OPTIONS.indexOf(row.startTime) + 1,
+                              )}
+                              ariaLabel={`${row.day} end time`}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+
+                {sessionStatus.limit != null && (
+                  <HelperText
+                    tone={
+                      multiCount > sessionStatus.remaining ? 'warn' : 'muted'
+                    }
+                  >
+                    The prospectus allows {sessionStatus.limit} {form.loadType}{' '}
+                    session{sessionStatus.limit === 1 ? '' : 's'}. You have{' '}
+                    {sessionStatus.remaining} left — pick at most{' '}
+                    {sessionStatus.remaining} day
+                    {sessionStatus.remaining === 1 ? '' : 's'}.
+                  </HelperText>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ── 3. Faculty ── */}
+          <section>
+            <SectionHeader
+              step={3}
+              icon="person"
+              title="Faculty"
+              subtitle="Who is teaching this class?"
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div
+                  role="tablist"
+                  aria-label="Faculty source"
+                  className="inline-flex w-full rounded-lg border border-surface-variant bg-surface-container-low p-0.5 mb-2"
+                >
+                  <button
+                    role="tab"
+                    aria-selected={facultyMode === 'system'}
+                    type="button"
+                    onClick={() => setFacultyMode('system')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                      facultyMode === 'system'
+                        ? 'bg-white text-primary shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    <Icon name="badge" size={14} />
+                    From faculty list
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={facultyMode === 'external'}
+                    type="button"
+                    onClick={() => setFacultyMode('external')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                      facultyMode === 'external'
+                        ? 'bg-white text-primary shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    <Icon name="person_edit" size={14} />
+                    Guest / external
+                  </button>
+                </div>
+
+                {facultyMode === 'system' && (
+                  <>
+                    <select
+                      name="facultyId"
+                      value={form.facultyId}
+                      onChange={handleChange}
+                      onBlur={() => markTouched('facultyId')}
+                      className={`w-full bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary ${
+                        fieldErrors.faculty
+                          ? 'border-red-400'
+                          : 'border-surface-variant'
+                      }`}
+                    >
+                      <option value="">Select a faculty…</option>
+                      {facultyGroups.map(([label, facs]) => (
+                        <optgroup key={label} label={label}>
+                          {facs.map((f) => (
+                            <option key={f.facultyId} value={f.facultyId}>
+                              {f.lastName}, {f.firstName}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <HelperText>
+                      Use this for faculty already in the system — overload,
+                      qualification, and preference checks will apply.
+                    </HelperText>
+                  </>
+                )}
+
+                {facultyMode === 'external' && (
+                  <>
+                    <input
+                      type="text"
+                      name="externalFacultyName"
+                      value={form.externalFacultyName}
+                      onChange={handleChange}
+                      onBlur={() => markTouched('externalFacultyName')}
+                      placeholder="e.g. Prof. Juan Dela Cruz (Math Dept)"
+                      maxLength={120}
+                      className={`w-full bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary ${
+                        fieldErrors.faculty
+                          ? 'border-red-400'
+                          : 'border-surface-variant'
+                      }`}
+                    />
+                    <HelperText>
+                      For professors not in the system (Math, GenEd, EPIC,
+                      visiting lecturers). Overload and qualification checks
+                      are skipped.
+                    </HelperText>
+                  </>
+                )}
+
+                <FieldError message={fieldErrors.faculty} />
+
+                {isCrossDeptSelection && (
+                  <div className="mt-2 rounded-lg px-2.5 py-2 text-[11px] flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
+                    <Icon
+                      name="hourglass_top"
+                      size={14}
+                      className="shrink-0 mt-0.5"
+                    />
+                    <div>
+                      <p className="font-semibold">Cross-department faculty</p>
+                      <p className="mt-0.5 leading-tight">
+                        This faculty is from{' '}
+                        <strong>{crossDeptName ?? 'another department'}</strong>.
+                        Plotting creates a pending approval request; the class
+                        can’t be finalized until that department head approves.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <ul className="divide-y divide-surface-variant">
-                {multiDays.map((row) => (
-                  <li
-                    key={row.day}
-                    className="py-2.5 flex flex-wrap items-center gap-3"
+              <div>
+                <div
+                  role="tablist"
+                  aria-label="Room source"
+                  className="inline-flex w-full rounded-lg border border-surface-variant bg-surface-container-low p-0.5 mb-2"
+                >
+                  <button
+                    role="tab"
+                    aria-selected={roomMode === 'system'}
+                    type="button"
+                    onClick={() => setRoomMode('system')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                      roomMode === 'system'
+                        ? 'bg-white text-primary shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
                   >
-                    <label className="flex items-center gap-2 min-w-[110px] cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={row.enabled}
-                        onChange={() => toggleDay(row.day)}
-                        className="accent-[#5c1219] w-4 h-4"
-                      />
-                      <span className="text-sm font-semibold text-on-surface">
-                        {DAY_ABBR[row.day] ?? row.day}
-                      </span>
-                    </label>
-                    {row.enabled && (
-                      <>
-                        <div className="flex-1 min-w-[110px]">
-                          <TimeSlotSelect
-                            value={row.startTime}
-                            onChange={(v) =>
-                              updateDayTime(row.day, 'startTime', v)
-                            }
-                            options={startOptions}
-                            ariaLabel={`${row.day} start time`}
-                          />
-                        </div>
-                        <span className="text-xs text-on-surface-variant">
-                          to
-                        </span>
-                        <div className="flex-1 min-w-[110px]">
-                          <TimeSlotSelect
-                            value={row.endTime}
-                            onChange={(v) =>
-                              updateDayTime(row.day, 'endTime', v)
-                            }
-                            options={TIME_OPTIONS.slice(
-                              TIME_OPTIONS.indexOf(row.startTime) + 1,
-                            )}
-                            ariaLabel={`${row.day} end time`}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                    <Icon name="meeting_room" size={14} />
+                    From room list
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={roomMode === 'external'}
+                    type="button"
+                    onClick={() => setRoomMode('external')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                      roomMode === 'external'
+                        ? 'bg-white text-primary shadow-sm'
+                        : 'text-on-surface-variant hover:text-on-surface'
+                    }`}
+                  >
+                    <Icon name="home_work" size={14} />
+                    External room
+                  </button>
+                </div>
 
-              {sessionStatus.limit != null && (
-                <p className="text-[11px] text-on-surface-variant">
-                  The prospectus allows {sessionStatus.limit}{' '}
-                  {form.loadType} session
-                  {sessionStatus.limit === 1 ? '' : 's'}. You have{' '}
-                  {sessionStatus.remaining} remaining. Pick at most{' '}
-                  {sessionStatus.remaining} day
-                  {sessionStatus.remaining === 1 ? '' : 's'}.
-                </p>
-              )}
+                {roomMode === 'system' && (
+                  <>
+                    <select
+                      name="roomId"
+                      value={form.roomId}
+                      onChange={handleChange}
+                      onBlur={() => markTouched('roomId')}
+                      className={`w-full bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary ${
+                        fieldErrors.room
+                          ? 'border-red-400'
+                          : 'border-surface-variant'
+                      }`}
+                    >
+                      <option value="">Select a room…</option>
+                      {rooms.map((r) => (
+                        <option key={r.roomId} value={r.roomId}>
+                          Room {r.roomNumber} ({r.roomType.replace('_', ' ')})
+                        </option>
+                      ))}
+                    </select>
+                    <HelperText>
+                      Use this for rooms we manage — room-type and overlap
+                      rules apply.
+                    </HelperText>
+                  </>
+                )}
+
+                {roomMode === 'external' && (
+                  <>
+                    <input
+                      type="text"
+                      name="externalRoomName"
+                      value={form.externalRoomName}
+                      onChange={handleChange}
+                      onBlur={() => markTouched('externalRoomName')}
+                      placeholder="e.g. Math Building Room 204"
+                      maxLength={120}
+                      className={`w-full bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary ${
+                        fieldErrors.room
+                          ? 'border-red-400'
+                          : 'border-surface-variant'
+                      }`}
+                    />
+                    <HelperText>
+                      For rooms outside the system (another college’s room,
+                      overflow, off-site). Room rules are skipped — the section
+                      is still reserved for this time.
+                    </HelperText>
+                  </>
+                )}
+
+                <FieldError message={fieldErrors.room} />
+              </div>
             </div>
-          )}
+          </section>
 
+          {/* ── 4. Conflict feedback (single mode) ── */}
           {mode === 'single' && touched && validation && (
-            <div className="space-y-2">
+            <section className="space-y-2">
               {validation.hardConflicts.length > 0 && (
                 <div className="rounded-lg p-3 text-sm flex items-start gap-2 bg-red-50 text-red-800 border border-red-200">
                   <Icon
@@ -1428,10 +1720,9 @@ export default function PlotSubjectModal({
                   />
                   <div>
                     <p className="font-medium">
-                      {validation.hardConflicts.length} hard conflict
-                      {validation.hardConflicts.length === 1 ? '' : 's'} —
-                      cannot
-                      {isEditMode ? ' save' : ' plot'}:
+                      {validation.hardConflicts.length} blocking conflict
+                      {validation.hardConflicts.length === 1 ? '' : 's'} — fix
+                      before {isEditMode ? 'saving' : 'plotting'}:
                     </p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5">
                       {validation.hardConflicts.map((c) => (
@@ -1458,7 +1749,8 @@ export default function PlotSubjectModal({
                   <div>
                     <p className="font-medium">
                       {validation.softWarnings.length} warning
-                      {validation.softWarnings.length === 1 ? '' : 's'}:
+                      {validation.softWarnings.length === 1 ? '' : 's'} —
+                      you can still plot:
                     </p>
                     <ul className="mt-1 list-disc list-inside space-y-0.5">
                       {validation.softWarnings.map((w) => (
@@ -1483,78 +1775,106 @@ export default function PlotSubjectModal({
                       size={18}
                       className="shrink-0 mt-0.5"
                     />
-                    <p className="font-medium">No conflicts detected ✓</p>
+                    <p className="font-medium">No conflicts detected</p>
                   </div>
                 )}
-            </div>
+            </section>
           )}
 
-          <div className="flex justify-end gap-3 pt-2 border-t border-surface-variant">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-low rounded-lg transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitDisabled}
-              className="px-6 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
-            >
-              {submitting ||
-              plotMutation.isPending ||
-              plotMultiMutation.isPending ||
-              updateMutation.isPending ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  {submitting
-                    ? 'Checking…'
-                    : isEditMode
-                    ? 'Saving…'
-                    : mode === 'multi'
-                    ? `Plotting ${multiCount}…`
-                    : 'Plotting…'}
-                </>
-              ) : mode === 'multi' ? (
-                <>
-                  <Icon
-                    name={isCrossDeptSelection ? 'send' : 'add'}
-                    size={16}
-                  />
-                  {isCrossDeptSelection ? 'Request & Plot' : 'Plot'}{' '}
-                  {multiCount || 0} Session
-                  {multiCount === 1 ? '' : 's'}
-                </>
-              ) : sessionStatus.exceeded ? (
-                <>
-                  <Icon name="block" size={16} />
-                  Limit reached
-                </>
-              ) : (
-                <>
-                  <Icon
-                    name={
-                      isEditMode
-                        ? 'save'
-                        : isCrossDeptSelection
-                        ? 'send'
-                        : 'add'
-                    }
-                    size={16}
-                  />
-                  {isEditMode
-                    ? 'Save Changes'
-                    : isCrossDeptSelection
-                    ? 'Request & Plot'
-                    : 'Plot Subject'}
-                </>
+          {/* ── Summary + actions ── */}
+          <div className="pt-2 border-t border-surface-variant space-y-3">
+            {summaryLine && (
+              <div className="rounded-lg bg-surface-container-low border border-surface-variant px-3 py-2 text-xs text-on-surface flex items-start gap-2">
+                <Icon
+                  name="preview"
+                  size={14}
+                  className="text-primary shrink-0 mt-0.5"
+                />
+                <div>
+                  <span className="font-semibold text-on-surface-variant uppercase tracking-wider text-[10px] block mb-0.5">
+                    You’re about to {isEditMode ? 'save' : 'plot'}
+                  </span>
+                  <span className="text-on-surface">{summaryLine}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:justify-end sm:items-center gap-3">
+              {disabledReason && !submitting && (
+                <p className="text-[11px] text-on-surface-variant sm:mr-auto flex items-center gap-1">
+                  <Icon name="info" size={12} />
+                  {disabledReason}
+                </p>
               )}
-            </button>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-low rounded-lg transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitDisabled}
+                  className="px-6 py-2 bg-primary text-on-primary text-sm font-semibold rounded-lg hover:bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+                >
+                  {submitting ||
+                  plotMutation.isPending ||
+                  plotMultiMutation.isPending ||
+                  updateMutation.isPending ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      {submitting
+                        ? 'Checking…'
+                        : isEditMode
+                        ? 'Saving…'
+                        : mode === 'multi'
+                        ? `Plotting ${multiCount}…`
+                        : 'Plotting…'}
+                    </>
+                  ) : mode === 'multi' ? (
+                    <>
+                      <Icon
+                        name={isCrossDeptSelection ? 'send' : 'add'}
+                        size={16}
+                      />
+                      {isCrossDeptSelection ? 'Request & plot' : 'Plot'}{' '}
+                      {multiCount || 0} session
+                      {multiCount === 1 ? '' : 's'}
+                    </>
+                  ) : sessionStatus.exceeded ? (
+                    <>
+                      <Icon name="block" size={16} />
+                      Limit reached
+                    </>
+                  ) : (
+                    <>
+                      <Icon
+                        name={
+                          isEditMode
+                            ? 'save'
+                            : isCrossDeptSelection
+                            ? 'send'
+                            : 'add'
+                        }
+                        size={16}
+                      />
+                      {isEditMode
+                        ? 'Save changes'
+                        : isCrossDeptSelection
+                        ? 'Request & plot'
+                        : 'Plot subject'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </form>
       </div>
 
+      {/* Cross-dept confirm dialog */}
       {pendingConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div
@@ -1574,16 +1894,12 @@ export default function PlotSubjectModal({
                   Cross-department faculty request
                 </h3>
                 <p className="text-xs text-on-surface-variant mt-1">
-                  You're about to plot{' '}
+                  You’re about to plot{' '}
                   <strong>{selectedSubject?.subjectCode}</strong> using{' '}
                   <strong>
                     {selectedFaculty?.lastName}, {selectedFaculty?.firstName}
                   </strong>{' '}
-                  from{' '}
-                  <strong>
-                    {crossDeptName ?? 'another department'}
-                  </strong>
-                  .
+                  from <strong>{crossDeptName ?? 'another department'}</strong>.
                 </p>
               </div>
             </div>
@@ -1595,12 +1911,11 @@ export default function PlotSubjectModal({
                   A <strong>pending approval request</strong> is created.
                 </li>
                 <li>
-                  The faculty's department head is notified on their
-                  Approvals page.
+                  Their department head is notified on the Approvals page.
                 </li>
                 <li>
-                  The class is plotted in <strong>draft</strong> status
-                  immediately — no wait.
+                  The class is plotted immediately in <strong>draft</strong>{' '}
+                  status.
                 </li>
                 <li>
                   It <strong>cannot be finalized</strong> until that
