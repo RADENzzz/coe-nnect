@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Icon from '../../components/ui/Icon';
 import type { ChatMessage } from './types';
 
 interface Props {
@@ -61,17 +62,74 @@ function dayLabel(iso: string | null | undefined): string {
   });
 }
 
+// Linkify URLs in message text
+function renderMessageBody(body: string): React.ReactNode {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = body.split(urlRegex);
+  return parts.map((part, i) => {
+    if (urlRegex.test(part)) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:no-underline break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 export default function MessageThread({
   messages,
   selfUserId,
   otherName,
   isLoading,
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showJumpButton, setShowJumpButton] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Auto-scroll only if user is already at bottom
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (isAtBottom) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    } else if (messages.length > 0) {
+      setShowJumpButton(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setIsAtBottom(atBottom);
+    if (atBottom) setShowJumpButton(false);
+  };
+
+  const jumpToLatest = () => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    setShowJumpButton(false);
+  };
+
+  const copyMessage = async (id: string, body: string) => {
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const grouped = useMemo(() => {
     const groups: { day: string; label: string; items: ChatMessage[] }[] = [];
@@ -94,7 +152,7 @@ export default function MessageThread({
   if (isLoading && messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-slate-300 border-t-[#5c1219] animate-spin" />
+        <div className="w-6 h-6 border-2 border-slate-300 border-t-[#5c1219] animate-spin rounded-full" />
       </div>
     );
   }
@@ -102,7 +160,7 @@ export default function MessageThread({
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center py-10 px-6 text-center">
-        <div className="w-16 h-16 bg-slate-50 border border-slate-200 flex items-center justify-center mb-4">
+        <div className="w-16 h-16 bg-slate-50 border border-slate-200 flex items-center justify-center mb-4 rounded-full">
           <span
             className="material-symbols-outlined text-slate-300"
             style={{ fontSize: 32 }}
@@ -121,62 +179,96 @@ export default function MessageThread({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50/30">
-      {grouped.map((group) => (
-        <div key={group.day} className="space-y-3">
-          {group.label && (
-            <div className="flex items-center gap-3 py-1">
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                {group.label}
-              </span>
-              <div className="flex-1 h-px bg-slate-200" />
-            </div>
-          )}
+    <div className="flex-1 relative min-h-0">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50/30"
+      >
+        {grouped.map((group) => (
+          <div key={group.day} className="space-y-3">
+            {group.label && (
+              <div className="flex items-center gap-3 py-1 sticky top-0 bg-slate-50/30 backdrop-blur-sm z-10 -mx-4 px-4">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  {group.label}
+                </span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+            )}
 
-          {group.items.map((m, idx) => {
-            const isSelf = m.senderId === selfUserId;
-            const prev = group.items[idx - 1];
-            const isFirstInGroup = !prev || prev.senderId !== m.senderId;
-            const time = fmtTime(m.createdAt);
-            const fullTime = fmtFullTime(m.createdAt);
+            {group.items.map((m, idx) => {
+              const isSelf = m.senderId === selfUserId;
+              const prev = group.items[idx - 1];
+              const isFirstInGroup = !prev || prev.senderId !== m.senderId;
+              const time = fmtTime(m.createdAt);
+              const fullTime = fmtFullTime(m.createdAt);
+              const isCopied = copiedId === m.messageId;
 
-            return (
-              <div
-                key={m.messageId}
-                className={`flex ${isSelf ? 'justify-end' : 'justify-start'}`}
-              >
+              return (
                 <div
-                  title={fullTime || undefined}
-                  className={`group max-w-[80%] px-3.5 py-2 transition-colors ${
-                    isSelf
-                      ? 'bg-[#5c1219] text-white'
-                      : 'bg-white text-slate-900 border border-slate-200'
-                  }`}
+                  key={m.messageId}
+                  className={`flex ${isSelf ? 'justify-end' : 'justify-start'} group`}
                 >
-                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                    {m.body}
-                  </p>
-                  {time && (
-                    <p
-                      className={`text-[9px] mt-1 tabular-nums transition-opacity duration-150 ${
-                        isSelf ? 'text-white/70' : 'text-slate-400'
-                      } ${
-                        isFirstInGroup
-                          ? 'opacity-100'
-                          : 'opacity-0 group-hover:opacity-100'
+                  <div className="relative max-w-[80%]">
+                    <div
+                      title={fullTime || undefined}
+                      className={`px-3.5 py-2 transition-colors rounded-2xl ${
+                        isSelf
+                          ? 'bg-[#5c1219] text-white rounded-br-sm'
+                          : 'bg-white text-slate-900 border border-slate-200 rounded-bl-sm'
                       }`}
                     >
-                      {time}
-                    </p>
-                  )}
+                      <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                        {renderMessageBody(m.body)}
+                      </p>
+                      {time && (
+                        <p
+                          className={`text-[9px] mt-1 tabular-nums transition-opacity duration-150 ${
+                            isSelf ? 'text-white/70' : 'text-slate-400'
+                          } ${
+                            isFirstInGroup
+                              ? 'opacity-100'
+                              : 'opacity-0 group-hover:opacity-100'
+                          }`}
+                        >
+                          {time}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Copy button on hover */}
+                    <button
+                      type="button"
+                      onClick={() => copyMessage(m.messageId, m.body)}
+                      className={`absolute top-1 ${
+                        isSelf ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'
+                      } opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-slate-700`}
+                      title="Copy message"
+                      aria-label="Copy message"
+                    >
+                      <Icon name={isCopied ? 'check' : 'content_copy'} size={12} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-      <div ref={endRef} />
+              );
+            })}
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+
+      {/* Jump to latest */}
+      {showJumpButton && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-4 right-4 px-3 py-1.5 bg-[#5c1219] text-white text-xs font-semibold rounded-full shadow-lg hover:bg-[#6b1620] transition flex items-center gap-1.5 animate-fade-in"
+        >
+          <Icon name="arrow_downward" size={14} />
+          Latest
+        </button>
+      )}
     </div>
   );
 }
