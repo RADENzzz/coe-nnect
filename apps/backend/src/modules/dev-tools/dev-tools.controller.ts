@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DevToolsService } from './dev-tools.service';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { RenameUserDto } from './dto/rename-user.dto';
@@ -23,6 +24,8 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
  *
  * Route ordering: static prefixes before `:id` routes.
  */
+@ApiTags('Dev Tools')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('administrator')
 @Controller('v1/dev-tools')
