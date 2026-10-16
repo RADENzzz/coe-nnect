@@ -4,6 +4,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -22,6 +23,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
  * the HTTP API — audit inspection for dev work is done via the
  * Supabase SQL editor instead.
  */
+@ApiTags('Audit')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('college_dean')
 @Controller('v1/audit')
