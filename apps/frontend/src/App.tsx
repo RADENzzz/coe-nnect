@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import LoginPage from './features/auth/LoginPage';
 import DashboardPage from './features/dashboard/DashboardPage';
 import TimetablePage from './features/timetable/TimetablePage';
@@ -28,6 +28,29 @@ import RequireDesktop from './features/import/components/RequireDesktop';
 import NotificationsInboxPage from './features/notifications/NotificationsInboxPage';
 import SettingsPage from './features/settings/SettingsPage';
 import HelpPage from './features/help/HelpPage';
+import DevToolsPage from './features/dev-tools/DevToolsPage';
+import { useAuthStore } from './store/auth.store';
+
+/**
+ * Redirects the hidden `administrator` role away from Dean-only
+ * pages. The dev account is a maintenance account; it should only
+ * see /dean/dev-tools.
+ *
+ * Deans pass through untouched.
+ */
+function DeanRouteGuard() {
+  const profile = useAuthStore((s) => s.profile);
+  const location = useLocation();
+
+  if (
+    profile?.role === 'administrator' &&
+    location.pathname !== '/dean/dev-tools'
+  ) {
+    return <Navigate to="/dean/dev-tools" replace />;
+  }
+
+  return <Outlet />;
+}
 
 /**
  * Route tree.
@@ -36,14 +59,10 @@ import HelpPage from './features/help/HelpPage';
  *   - The `/admin/*` route group is gone entirely.
  *   - The `/dean/*` route group absorbs every route that used to live
  *     under `/admin/*` plus its existing Dean routes.
- *   - The `administrator` role is routed into `/dean/*` via ROLE_HOME
- *     and ProtectedRoute fallback logic.
+ *   - The `administrator` role is routed into `/dean/*` but the
+ *     DeanRouteGuard forces it to `/dean/dev-tools` — the dev
+ *     account cannot view Dean pages.
  *   - The Department Head portal at `/*` is unchanged.
- *
- * Help is mounted separately inside each shell, so the same component
- * renders with the correct role-aware shell:
- *   - DH:   /help
- *   - Dean: /dean/help
  */
 function App() {
   return (
@@ -59,48 +78,63 @@ function App() {
           />
         }
       >
-        <Route path="/dean" element={<DeanShell />}>
-          <Route index element={<Navigate to="/dean/dashboard" replace />} />
+        {/* ↓ Dev-account guard: forces /dean/dev-tools for administrator */}
+        <Route element={<DeanRouteGuard />}>
+          <Route path="/dean" element={<DeanShell />}>
+            <Route
+              index
+              element={<Navigate to="/dean/dashboard" replace />}
+            />
 
-          {/* Dean-specific */}
-          <Route path="dashboard" element={<DeanDashboardPage />} />
-          <Route path="departments" element={<DeanDepartmentsPage />} />
-          <Route
-            path="departments/manage"
-            element={<DeanDepartmentsManagePage />}
-          />
-          <Route path="approvals" element={<DeanApprovalsPage />} />
-          <Route path="timetable" element={<TimetablePage readOnly />} />
+            {/* Dean-specific */}
+            <Route path="dashboard" element={<DeanDashboardPage />} />
+            <Route path="departments" element={<DeanDepartmentsPage />} />
+            <Route
+              path="departments/manage"
+              element={<DeanDepartmentsManagePage />}
+            />
+            <Route path="approvals" element={<DeanApprovalsPage />} />
+            <Route path="timetable" element={<TimetablePage readOnly />} />
 
-          {/* Absorbed from the old Admin portal */}
-          <Route path="users" element={<AdminUsersPage />} />
-          <Route path="faculty" element={<FacultyPage />} />
-          <Route path="system-settings" element={<SystemConfigPage />} />
-          <Route path="audit-trail" element={<AuditTrailPage />} />
+            {/* Absorbed from the old Admin portal */}
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="faculty" element={<FacultyPage />} />
+            <Route path="system-settings" element={<SystemConfigPage />} />
+            <Route path="audit-trail" element={<AuditTrailPage />} />
 
-          {/* Reports */}
-          <Route path="reports" element={<ReportsHubPage />} />
-          <Route path="reports/workload" element={<FacultyWorkloadPage />} />
-          <Route path="reports/approvals" element={<ApprovalsReportPage />} />
-          <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+            {/* Developer-only */}
+            <Route path="dev-tools" element={<DevToolsPage />} />
 
-          {/* Prospectus PDF import */}
-          <Route path="import" element={<ProspectusPdfListPage />} />
-          <Route
-            path="import/:id"
-            element={
-              <RequireDesktop>
-                <ProspectusPdfEditorPage />
-              </RequireDesktop>
-            }
-          />
+            {/* Reports */}
+            <Route path="reports" element={<ReportsHubPage />} />
+            <Route path="reports/workload" element={<FacultyWorkloadPage />} />
+            <Route
+              path="reports/approvals"
+              element={<ApprovalsReportPage />}
+            />
+            <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
 
-          {/* Notifications + settings */}
-          <Route path="notifications" element={<NotificationsInboxPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+            {/* Prospectus PDF import */}
+            <Route path="import" element={<ProspectusPdfListPage />} />
+            <Route
+              path="import/:id"
+              element={
+                <RequireDesktop>
+                  <ProspectusPdfEditorPage />
+                </RequireDesktop>
+              }
+            />
 
-          {/* Help */}
-          <Route path="help" element={<HelpPage />} />
+            {/* Notifications + settings */}
+            <Route
+              path="notifications"
+              element={<NotificationsInboxPage />}
+            />
+            <Route path="settings" element={<SettingsPage />} />
+
+            {/* Help */}
+            <Route path="help" element={<HelpPage />} />
+          </Route>
         </Route>
       </Route>
 
@@ -125,7 +159,10 @@ function App() {
           <Route path="rooms" element={<RoomsPage />} />
           <Route path="reports" element={<ReportsHubPage />} />
           <Route path="reports/workload" element={<FacultyWorkloadPage />} />
-          <Route path="reports/approvals" element={<ApprovalsReportPage />} />
+          <Route
+            path="reports/approvals"
+            element={<ApprovalsReportPage />}
+          />
           <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
           <Route path="import" element={<ProspectusPdfListPage />} />
           <Route
@@ -145,7 +182,10 @@ function App() {
       </Route>
 
       {/* Legacy /admin/* — redirect anything that hits it */}
-      <Route path="/admin/*" element={<Navigate to="/dean/dashboard" replace />} />
+      <Route
+        path="/admin/*"
+        element={<Navigate to="/dean/dashboard" replace />}
+      />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
