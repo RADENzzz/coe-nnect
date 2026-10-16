@@ -8,6 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DepartmentsService } from './departments.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
@@ -30,6 +31,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
  * department CRUD itself stays available to them. The disallowed
  * action is a future feature — not this one.
  */
+@ApiTags('Departments')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/departments')
 export class DepartmentsController {
