@@ -3,6 +3,8 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,6 +20,15 @@ import { User, UserRole } from './entities/user.entity';
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+
+  /**
+   * In-memory rate limit for self-service password changes.
+   *
+   * TODO: If the backend ever runs on multiple replicas, replace with
+   * a shared store (Redis or the DB). For the current single-replica
+   * Railway deploy, this is sufficient.
+   */
+  private readonly changePasswordAttempts = new Map<string, number[]>();
 
   constructor(
     private supabase: SupabaseService,
@@ -238,8 +249,7 @@ export class UsersService {
     }
 
     const finalRole = dto.role ?? user.role;
-    const finalDeptId =
-      dto.deptId !== undefined ? dto.deptId : user.deptId;
+    const finalDeptId = dto.deptId !== undefined ? dto.deptId : user.deptId;
     if (finalRole === 'department_head' && !finalDeptId) {
       throw new ConflictException(
         'Department Heads must be assigned to a department.',
@@ -275,7 +285,85 @@ export class UsersService {
 
     return saved;
   }
-    /**
+
+  // ════════════════════════════════════════════
+  // SELF-SERVICE PASSWORD CHANGE
+  // ════════════════════════════════════════════
+
+  /**
+   * Change the currently-authenticated user's password.
+   *
+   * Flow:
+   *   1. Re-authenticate with Supabase using the provided current
+   *      password. This proves the caller knows it — a stolen session
+   *      alone is not enough.
+   *   2. Use the admin client to set the new password. We deliberately
+   *      do NOT sign the user out — the existing JWT stays valid.
+   *   3. Rate limit: 5 failed attempts per user per 5 min.
+   *
+   * Security: the new password is never written to the audit trail,
+   * only the fact that a change occurred (via @Auditable on the
+   * controller). The password is never logged anywhere.
+   */
+  async changeOwnPassword(
+    userId: string,
+    userEmail: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ success: true }> {
+    // ── Rate limit: 5 attempts per user per 5 min ──
+    const key = `pwd:${userId}`;
+    const now = Date.now();
+    const FIVE_MIN = 5 * 60 * 1000;
+    const bucket = (this.changePasswordAttempts.get(key) ?? []).filter(
+      (t) => now - t < FIVE_MIN,
+    );
+
+    if (bucket.length >= 5) {
+      throw new BadRequestException(
+        'Too many password change attempts. Try again in a few minutes.',
+      );
+    }
+
+    // ── Re-authenticate ──
+    const { data: signIn, error: signInErr } = await this.supabase
+      .getAdminClient()
+      .auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+
+    if (signInErr || !signIn.user) {
+      bucket.push(now);
+      this.changePasswordAttempts.set(key, bucket);
+      this.logger.warn(
+        `changeOwnPassword: re-auth failed for user=${userId} (attempt ${bucket.length}/5)`,
+      );
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    // ── Update via admin client ──
+    const { error: updateErr } = await this.supabase
+      .getAdminClient()
+      .auth.admin.updateUserById(userId, { password: newPassword });
+
+    if (updateErr) {
+      this.logger.error(
+        `changeOwnPassword failed for user=${userId}: ${updateErr.message}`,
+      );
+      throw new BadRequestException(
+        `Failed to update password: ${updateErr.message}`,
+      );
+    }
+
+    // ── Clear rate limit on success ──
+    this.changePasswordAttempts.delete(key);
+
+    this.logger.log(`Password changed by user=${userId}`);
+    return { success: true };
+  }
+
+  /**
    * True if the user holds the hidden dev-only `administrator` role.
    *
    * This exists so services can distinguish "actual dev account" from
