@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { TeamCard } from '../components/TeamCard';
 import { TEAM_GROUPS, CLIENT } from '../data/team';
-import { SpotlightCard, Stagger, StaggerItem } from '../components/animations';
+import { SpotlightCard } from '../components/animations';
 import { useEasterEggStore } from '../store/easter-egg.store';
 
 export function TeamInfo() {
@@ -41,21 +41,18 @@ export function TeamInfo() {
               </span>
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {group.members.map((m, i) => (
-                <TeamCard
-                  key={m.name}
-                  member={m}
-                  index={i}
-                  onTap={
-                    m.name === 'Alrhaden A. Javier'
-                      ? () => registerTap()
-                      : undefined
-                  }
-                  storeTaps={
-                    m.name === 'Alrhaden A. Javier' ? taps : undefined
-                  }
-                />
-              ))}
+              {group.members.map((m, i) => {
+                const isEasterEgg = m.name === 'Alrhaden A. Javier';
+                return (
+                  <TeamCard
+                    key={m.name}
+                    member={m}
+                    index={i}
+                    onTap={isEasterEgg ? () => registerTap() : undefined}
+                    storeTaps={isEasterEgg ? taps : undefined}
+                  />
+                );
+              })}
             </div>
           </motion.div>
         ))}

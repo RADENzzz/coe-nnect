@@ -161,4 +161,41 @@ export const sfx = {
   calm() {
     tone({ freq: 600, freqEnd: 200, duration: 0.2, type: 'sine', peak: 0.06 });
   },
+
+    /** Soft chime — used for celebratory tap effects. */
+  chime() {
+    tone({ freq: 660, freqEnd: 990, duration: 0.12, type: 'triangle', peak: 0.10 });
+    setTimeout(() => {
+      tone({ freq: 880, freqEnd: 1320, duration: 0.14, type: 'triangle', peak: 0.08 });
+    }, 60);
+  },
+
+  /** Bright sparkle blip. */
+  sparkle() {
+    tone({ freq: 1200, freqEnd: 2200, duration: 0.08, type: 'sine', peak: 0.09 });
+    tone({ freq: 1800, freqEnd: 2800, duration: 0.06, type: 'sine', peak: 0.06 });
+  },
+
+  /** Electric crackle. */
+  zap() {
+    noise({ duration: 0.09, filterFreq: 4000, filterEnd: 800, peak: 0.18, type: 'highpass' });
+    tone({ freq: 300, freqEnd: 90, duration: 0.12, type: 'square', peak: 0.10 });
+  },
+
+  /** Cartoon pop — for bubbles / confetti. */
+  bloop() {
+    tone({ freq: 500, freqEnd: 900, duration: 0.09, type: 'sine', peak: 0.12 });
+  },
+
+  /** Soft pink/upward sweep — for petals / hearts. */
+  petal() {
+    tone({ freq: 480, freqEnd: 720, duration: 0.22, type: 'triangle', peak: 0.07 });
+  },
+
+  /** Twinkle cascade — for stars / snow. */
+  twinkle() {
+    tone({ freq: 900, freqEnd: 1400, duration: 0.07, type: 'sine', peak: 0.07 });
+    setTimeout(() => tone({ freq: 1300, freqEnd: 1900, duration: 0.08, type: 'sine', peak: 0.06 }), 60);
+    setTimeout(() => tone({ freq: 1700, freqEnd: 2400, duration: 0.07, type: 'sine', peak: 0.05 }), 120);
+  },
 };

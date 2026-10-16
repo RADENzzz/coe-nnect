@@ -3,6 +3,8 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type { TeamMember } from '../data/team';
 import { SpotlightCard } from './animations';
 import { sfx } from '../lib/sfx';
+import { MEMBER_EFFECTS } from '../lib/member-effects';
+import { MemberTapEffect } from './MemberTapEffect';
 
 interface Props {
   member: TeamMember;
@@ -108,6 +110,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
   const [floatKey, setFloatKey] = useState(0);
   const [rippleKey, setRippleKey] = useState(0);
   const [impactKey, setImpactKey] = useState(0);
+  const [celebrateKey, setCelebrateKey] = useState(0);
   const [localTaps, setLocalTaps] = useState(0);
 
   // Idle-reset: after 3s of no taps, revert to stage 0 (no manga).
@@ -115,7 +118,13 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
 
   const prefersReduced = useReducedMotion();
   const softMotion = prefersReduced === true;
+  // Easter-egg motion is deliberate — the user tapped to trigger it,
+  // so we don't gate the manga visuals on reduced-motion. Celebration
+  // effects DO respect the preference (see MemberTapEffect `reduce`).
   const reduce = false;
+
+  // Per-member celebration effect (undefined for Alrhaden, who has the easter egg)
+  const memberEffect = MEMBER_EFFECTS[member.name] ?? null;
 
   const effectiveTaps = storeTaps != null && storeTaps > 0 ? storeTaps : localTaps;
 
@@ -138,14 +147,45 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
     };
   }, []);
 
+  // Stage-change SFX for the easter egg
+  useEffect(() => {
+    if (messageIndex < 0) {
+      lastStageRef.current = -1;
+      return;
+    }
+    if (messageIndex === lastStageRef.current) return;
+    lastStageRef.current = messageIndex;
+
+    if (messageIndex >= 6)      sfx.rage();
+    else if (messageIndex >= 4) sfx.impact();
+    else if (messageIndex >= 2) sfx.angry();
+    else                        sfx.pop();
+  }, [messageIndex]);
+
   const handleTap = useCallback(() => {
     sfx.init();
-    
+
     setLocalTaps((t) => t + 1);
     setTapPulseKey((k) => k + 1);
     setFloatKey((k) => k + 1);
     setRippleKey((k) => k + 1);
     setImpactKey((k) => k + 1);
+
+    // Celebration: bump key + play SFX mapped to the effect kind
+    if (memberEffect) {
+      setCelebrateKey((k) => k + 1);
+      switch (memberEffect.kind) {
+        case 'sparkle':   sfx.sparkle();  break;
+        case 'lightning': sfx.zap();      break;
+        case 'bubbles':   sfx.bloop();    break;
+        case 'petals':    sfx.petal();    break;
+        case 'stars':     sfx.twinkle();  break;
+        case 'snow':      sfx.twinkle();  break;
+        case 'hearts':    sfx.chime();    break;
+        case 'confetti':  sfx.chime();    break;
+      }
+    }
+
     onTap?.();
 
     // Reset the idle timer — every tap restarts the 3s countdown
@@ -158,26 +198,16 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
       setImpactKey(0);
       setFloatKey(0);
       setRippleKey(0);
+      setCelebrateKey(0);
       idleTimerRef.current = null;
     }, IDLE_RESET_MS);
-  }, [onTap]);
+  }, [onTap, memberEffect]);
 
-  useEffect(() => {
-  if (messageIndex < 0) {
-    lastStageRef.current = -1;
-    return;
-  }
-  if (messageIndex === lastStageRef.current) return;
-  lastStageRef.current = messageIndex;
-
-  // Stage-specific SFX
-  if (messageIndex >= 6)      sfx.rage();
-  else if (messageIndex >= 4) sfx.impact();
-  else if (messageIndex >= 2) sfx.angry();
-  else                        sfx.pop();
-}, [messageIndex]);
   const shakeAmp = activeStyle?.shakeAmp ?? 6;
   const shouldShake = tapPulseKey > 0;
+
+  // Card is interactive if it has the easter egg OR a celebration effect
+  const interactive = Boolean(onTap || memberEffect);
 
   return (
     <motion.div
@@ -216,7 +246,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
         className="relative"
         style={{ willChange: 'transform' }}
       >
-        {/* ═══ GLOW HALO ═══ */}
+        {/* ═══ GLOW HALO (easter egg only) ═══ */}
         {activeStyle && !reduce && (
           <motion.div
             key={`glow-${messageIndex}`}
@@ -233,12 +263,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
           />
         )}
 
-        {/* ═══ SPEED LINES — anchored to the UPPER-LEFT corner ═══
-            - The SVG's own viewBox is centered at (0,0), spanning -100..100.
-            - We position the SVG so its center sits at the card's top-left
-              corner, then bias the radiating lines toward the bottom-right
-              of the SVG so they fan *into* the card (classic manga impact).
-        */}
+        {/* ═══ SPEED LINES (easter egg only) ═══ */}
         <AnimatePresence>
           {activeStyle && !reduce && (
             <motion.svg
@@ -253,10 +278,8 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
               transition={{ duration: 0.45, ease: 'easeOut' }}
             >
               {Array.from({ length: 20 }).map((_, i) => {
-                // Fan the lines across a 90° arc pointing toward
-                // bottom-right (the interior of the card).
-                const spread = Math.PI / 2;               // 90° total
-                const a = -Math.PI / 4 + (i / 19) * spread; // -45° .. +45°
+                const spread = Math.PI / 2;
+                const a = -Math.PI / 4 + (i / 19) * spread;
                 const x1 = Math.cos(a) * 55;
                 const y1 = Math.sin(a) * 55;
                 const x2 = Math.cos(a) * 100;
@@ -285,8 +308,8 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
           )}
         </AnimatePresence>
 
-        {/* ═══ Emoji burst ═══ */}
-        {!reduce && impactKey > 0 && (
+        {/* ═══ Emoji burst (easter egg only) ═══ */}
+        {!reduce && impactKey > 0 && activeStyle && (
           <div
             key={`burst-${impactKey}`}
             className="pointer-events-none absolute left-1/2 top-1/2 z-40"
@@ -310,6 +333,15 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
               </motion.span>
             ))}
           </div>
+        )}
+
+        {/* ═══ Per-member celebration effect (confetti / sparkles / etc.) ═══ */}
+        {memberEffect && (
+          <MemberTapEffect
+            effect={memberEffect}
+            triggerKey={celebrateKey}
+            reduce={softMotion}
+          />
         )}
 
         {/* ═══ CARD ═══ */}
@@ -356,7 +388,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
             </AnimatePresence>
 
             {/* Radial impact ripple */}
-            {!reduce && impactKey > 0 && (
+            {!reduce && impactKey > 0 && activeStyle && (
               <motion.div
                 key={`impact-${impactKey}`}
                 aria-hidden
@@ -369,7 +401,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
                   className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full"
                   style={{
                     background: `radial-gradient(circle, ${
-                      activeStyle?.glow ?? 'rgba(92,18,25,0.5)'
+                      activeStyle.glow
                     } 0%, transparent 70%)`,
                   }}
                 />
@@ -500,12 +532,16 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
               </motion.div>
 
               <div className="min-w-0">
-                {onTap ? (
+                {interactive ? (
                   <motion.button
                     type="button"
                     onClick={handleTap}
                     className="relative block max-w-full truncate text-left text-sm font-semibold text-slate-900 underline decoration-transparent underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-700 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                    aria-label={`Secret stats easter egg trigger: ${member.name}`}
+                    aria-label={
+                      member.name === 'Alrhaden A. Javier'
+                        ? `Secret stats easter egg trigger: ${member.name}`
+                        : `Celebrate ${member.name}`
+                    }
                   >
                     <motion.span
                       key={tapPulseKey}
@@ -515,21 +551,25 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
                       {member.name}
                     </motion.span>
 
-                    <AnimatePresence>
-                      {floatKey > 0 && (
-                        <motion.span
-                          key={floatKey}
-                          initial={{ opacity: 0, y: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, y: -22, scale: 1 }}
-                          exit={{ opacity: 0, y: -30 }}
-                          transition={{ duration: 0.6, ease: 'easeOut' }}
-                          className="pointer-events-none absolute -right-3 top-0 text-[11px] font-bold text-brand-700"
-                        >
-                          +1
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
+                    {/* Floating "+1" — easter egg only (has onTap) */}
+                    {onTap && (
+                      <AnimatePresence>
+                        {floatKey > 0 && (
+                          <motion.span
+                            key={floatKey}
+                            initial={{ opacity: 0, y: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, y: -22, scale: 1 }}
+                            exit={{ opacity: 0, y: -30 }}
+                            transition={{ duration: 0.6, ease: 'easeOut' }}
+                            className="pointer-events-none absolute -right-3 top-0 text-[11px] font-bold text-brand-700"
+                          >
+                            +1
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    )}
 
+                    {/* Ripple ring — anyone who is interactive */}
                     {!reduce && rippleKey > 0 && (
                       <motion.span
                         key={rippleKey}
@@ -564,7 +604,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
           </SpotlightCard>
         </div>
 
-        {/* Manga bubble */}
+        {/* Manga bubble — easter egg only */}
         <AnimatePresence>
           {activeStyle && (
             <MangaBubble
