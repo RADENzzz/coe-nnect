@@ -77,7 +77,9 @@ function ShellInner() {
 
       <BottomNav items={nav.bottom} />
 
-      {profile?.role !== 'viewer' && <ChatWidget />}
+      {profile?.role !== 'viewer' && profile?.role !== 'administrator' && (
+  <ChatWidget />
+)}
     </div>
   );
 }
