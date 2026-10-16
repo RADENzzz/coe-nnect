@@ -4,7 +4,11 @@ import clsx from 'clsx';
 import Icon from '../ui/Icon';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import { useUiStore } from '../../store/ui.store';
-import type { RoleNav } from '../../lib/constants/nav-config';
+import { useAuthStore } from '../../store/auth.store';
+import {
+  filterNavByRole,
+  type RoleNav,
+} from '../../lib/constants/nav-config';
 
 interface SidebarProps {
   nav: RoleNav;
@@ -12,6 +16,7 @@ interface SidebarProps {
 
 export default function Sidebar({ nav }: SidebarProps) {
   const { deptName } = useDepartmentLabel();
+  const profile = useAuthStore((s) => s.profile);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
@@ -19,8 +24,10 @@ export default function Sidebar({ nav }: SidebarProps) {
   const subtitle =
     nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
 
-  // ── Debounced hover collapse ──
-  // Prevents flicker when the mouse briefly leaves the nav.
+  // Filter role-gated items (e.g. Dev Tools is administrator-only)
+  const visibleMain = filterNavByRole(nav.main, profile?.role);
+  const visibleFooter = filterNavByRole(nav.footer, profile?.role);
+
   const collapseTimerRef = useRef<number | null>(null);
 
   const expand = useCallback(() => {
@@ -43,10 +50,8 @@ export default function Sidebar({ nav }: SidebarProps) {
     <nav
       onMouseEnter={expand}
       onMouseLeave={scheduleCollapse}
-      // Keyboard parity: expand when focus enters, collapse when it leaves.
       onFocus={expand}
       onBlur={(e) => {
-        // Only collapse if focus moved outside the nav.
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
           setSidebarCollapsed(true);
         }
@@ -99,7 +104,6 @@ export default function Sidebar({ nav }: SidebarProps) {
         )}
       </div>
 
-      {/* Expand button when collapsed */}
       {collapsed && (
         <button
           type="button"
@@ -114,7 +118,7 @@ export default function Sidebar({ nav }: SidebarProps) {
 
       {/* Main Nav */}
       <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2">
-        {nav.main.map((item) => (
+        {visibleMain.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -140,9 +144,9 @@ export default function Sidebar({ nav }: SidebarProps) {
       </div>
 
       {/* Footer Nav */}
-      {nav.footer.length > 0 && (
+      {visibleFooter.length > 0 && (
         <div className="flex flex-col gap-px py-2 border-t border-white/10 px-2">
-          {nav.footer.map((item) => (
+          {visibleFooter.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
