@@ -1,30 +1,85 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { fetchRepoCommits } from '../../../api/stats.api';
 
-// ── Time helpers ──
+// ═══════════════════════════════════════════════════════════
+// Live clock
+// ═══════════════════════════════════════════════════════════
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diff = Math.max(0, now - then);
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return 'just now';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d ago`;
-  const mo = Math.floor(day / 30);
-  if (mo < 12) return `${mo}mo ago`;
-  const yr = Math.floor(mo / 12);
-  return `${yr}y ago`;
+/**
+ * Returns a timestamp that updates once per second. Use this for
+ * any "X minutes ago" display that should tick live.
+ */
+function useLiveNow(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Time formatting
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Format a duration in ms as a compact, granular "ago" string.
+ *
+ *   < 60s   → "42s"
+ *   < 60m   → "13m 5s"
+ *   < 24h   → "2h 14m"
+ *   < 30d   → "3d 6h"
+ *   < 12mo  → "1mo 12d"
+ *   ≥ 1y    → "1y 3mo"
+ *
+ * Shows at most two units so the string stays short even when the
+ * value is years old.
+ */
+function formatDuration(ms: number): string {
+  if (ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+
+  const MIN = 60;
+  const HR = 60 * 60;
+  const DAY = 60 * 60 * 24;
+  const MON = 60 * 60 * 24 * 30; // approximate
+  const YR = 60 * 60 * 24 * 365;
+
+  const years = Math.floor(totalSec / YR);
+  const months = Math.floor((totalSec % YR) / MON);
+  const days = Math.floor((totalSec % MON) / DAY);
+  const hours = Math.floor((totalSec % DAY) / HR);
+  const minutes = Math.floor((totalSec % HR) / MIN);
+  const seconds = totalSec % MIN;
+
+  if (totalSec < MIN) return `${seconds}s`;
+
+  if (totalSec < HR) {
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+
+  if (totalSec < DAY) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+
+  if (totalSec < MON) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+
+  if (totalSec < YR) {
+    return days > 0 ? `${months}mo ${days}d` : `${months}mo`;
+  }
+
+  return months > 0 ? `${years}y ${months}mo` : `${years}y`;
+}
+
+function liveRelative(iso: string, now: number): string {
+  return `${formatDuration(now - new Date(iso).getTime())} ago`;
 }
 
 function formatDay(ymd: string): string {
-  // "2026-03-15" → "Mar 15, 2026"
   const d = new Date(`${ymd}T00:00:00`);
   return d.toLocaleDateString('en-PH', {
     month: 'short',
@@ -34,7 +89,6 @@ function formatDay(ymd: string): string {
 }
 
 function formatDayShort(ymd: string): string {
-  // "2026-03-15" → "Mar 15"
   const d = new Date(`${ymd}T00:00:00`);
   return d.toLocaleDateString('en-PH', {
     month: 'short',
@@ -50,16 +104,10 @@ function formatDate(iso: string): string {
   });
 }
 
-// ── Commits-per-day bar graph ──
+// ═══════════════════════════════════════════════════════════
+// Commits-per-day bar graph
+// ═══════════════════════════════════════════════════════════
 
-/**
- * Vertical bar graph of commit activity per calendar day. Each bar
- * is one day with at least one commit; height is scaled to the
- * busiest day. Hover a bar to see the exact count.
- *
- * The x-axis covers the entire project history from the first
- * commit to today, so gaps between bars = days with no commits.
- */
 function CommitActivityBarGraph({
   commits,
 }: {
@@ -72,8 +120,6 @@ function CommitActivityBarGraph({
       map.set(key, (map.get(key) ?? 0) + 1);
     }
 
-    // Fill the calendar: from earliest to latest date, one entry per
-    // day. Days with no commits get count: 0.
     const sorted = Array.from(map.entries()).sort((a, b) =>
       a[0].localeCompare(b[0]),
     );
@@ -101,7 +147,6 @@ function CommitActivityBarGraph({
   const activeDays = days.filter((d) => d.count > 0).length;
   const busiest = days.reduce((a, b) => (b.count > a.count ? b : a));
 
-  // When there are many days, thin out labels so the x-axis stays legible.
   const labelEvery = Math.max(1, Math.ceil(days.length / 12));
 
   return (
@@ -121,7 +166,7 @@ function CommitActivityBarGraph({
         </span>
       </div>
 
-      {/* Bar chart — horizontal scroll for long histories */}
+      {/* Chart */}
       <div className="relative overflow-x-auto pb-2">
         <div
           className="relative h-40"
@@ -176,7 +221,6 @@ function CommitActivityBarGraph({
                       : 'bg-slate-200 hover:bg-slate-300')
                   }
                 >
-                  {/* Custom tooltip — only for active days */}
                   {isActive && (
                     <div className="pointer-events-none absolute -top-8 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap border border-brand-700 bg-white px-1.5 py-0.5 text-[9px] font-medium text-brand-700 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
                       {formatDayShort(d.day)} · {d.count}
@@ -189,9 +233,7 @@ function CommitActivityBarGraph({
         </div>
       </div>
 
-      {/* X-axis labels — outside the scroll container so they don't
-          scroll away from the bars, but they must line up. We put
-          them inside the same scroll width. */}
+      {/* X-axis labels */}
       <div className="relative overflow-x-auto">
         <div
           className="ml-9 flex gap-px text-[8px] text-slate-400"
@@ -216,7 +258,7 @@ function CommitActivityBarGraph({
         </div>
       </div>
 
-      {/* Legend / stats */}
+      {/* Stats footer */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-brand-100 pt-3 text-[10px]">
         <span className="text-slate-500">
           Busiest day:{' '}
@@ -230,7 +272,7 @@ function CommitActivityBarGraph({
         </span>
       </div>
 
-      {/* Legend row */}
+      {/* Legend */}
       <div className="mt-2 flex flex-wrap items-center gap-3 text-[9px] text-slate-500">
         <span className="flex items-center gap-1">
           <span className="h-2 w-2 bg-brand-700" />
@@ -249,7 +291,9 @@ function CommitActivityBarGraph({
   );
 }
 
-// ── Main component ──
+// ═══════════════════════════════════════════════════════════
+// Main component
+// ═══════════════════════════════════════════════════════════
 
 export function RepoCommitHistory() {
   const { data, isLoading, error } = useQuery({
@@ -260,14 +304,17 @@ export function RepoCommitHistory() {
     refetchOnWindowFocus: false,
   });
 
+  // Live-updating clock — re-renders the "Latest" tile every second
+  const now = useLiveNow(1000);
+
   const stats = useMemo(() => {
     if (!data) return null;
     return {
       total: data.totalFetched,
       earliest: data.earliestAt ? formatDate(data.earliestAt) : null,
-      latest: data.latestAt ? relativeTime(data.latestAt) : null,
+      latest: data.latestAt ? liveRelative(data.latestAt, now) : null,
     };
-  }, [data]);
+  }, [data, now]);
 
   if (isLoading) {
     return (
@@ -324,7 +371,14 @@ export function RepoCommitHistory() {
           <div className="text-[9px] uppercase tracking-wider text-slate-500">
             Latest
           </div>
-          <div className="mt-1 text-sm font-bold text-brand-700">
+          <div
+            className="mt-1 text-sm font-bold tabular-nums text-brand-700"
+            title={
+              data.latestAt
+                ? new Date(data.latestAt).toLocaleString('en-PH')
+                : ''
+            }
+          >
             {stats.latest ?? '—'}
           </div>
         </div>
