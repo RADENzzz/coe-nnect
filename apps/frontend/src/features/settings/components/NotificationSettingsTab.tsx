@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import {
@@ -6,7 +7,6 @@ import {
   type NotificationSettingsItem,
 } from '../../../api/notifications.api';
 
-// Group labels, mirroring the backend's trigger categories
 const CATEGORY_META: Record<
   string,
   { label: string; icon: string; description: string }
@@ -58,6 +58,26 @@ const CATEGORY_ORDER: string[] = [
   'admin',
 ];
 
+function SkeletonRows() {
+  return (
+    <div className="space-y-4">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="border border-slate-200 rounded-xl p-4 animate-pulse bg-white"
+        >
+          <div className="h-4 bg-slate-200 rounded w-1/4 mb-3" />
+          <div className="space-y-2">
+            <div className="h-3 bg-slate-100 rounded w-3/4" />
+            <div className="h-3 bg-slate-100 rounded w-2/3" />
+            <div className="h-3 bg-slate-100 rounded w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function NotificationSettingsTab() {
   const queryClient = useQueryClient();
 
@@ -76,7 +96,6 @@ export default function NotificationSettingsTab() {
       enabled: boolean;
     }) => updateNotificationSetting(triggerKey, enabled),
     onMutate: async ({ triggerKey, enabled }) => {
-      // Optimistic flip
       await queryClient.cancelQueries({ queryKey: ['notification-settings'] });
       const prev = queryClient.getQueryData<NotificationSettingsItem[]>([
         'notification-settings',
@@ -100,42 +119,87 @@ export default function NotificationSettingsTab() {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="py-12 text-center text-sm text-slate-500">
-        Loading your notification preferences…
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
-        Failed to load settings: {(error as Error).message}
-      </div>
-    );
-  }
+  const bulkUpdate = useMutation({
+    mutationFn: ({
+      triggerKeys,
+      enabled,
+    }: {
+      triggerKeys: string[];
+      enabled: boolean;
+    }) =>
+      Promise.all(
+        triggerKeys.map((key) => updateNotificationSetting(key, enabled)),
+      ),
+    onMutate: async ({ triggerKeys, enabled }) => {
+      await queryClient.cancelQueries({ queryKey: ['notification-settings'] });
+      const prev = queryClient.getQueryData<NotificationSettingsItem[]>([
+        'notification-settings',
+      ]);
+      queryClient.setQueryData<NotificationSettingsItem[]>(
+        ['notification-settings'],
+        (old) =>
+          old?.map((item) =>
+            triggerKeys.includes(item.triggerKey)
+              ? { ...item, enabled }
+              : item,
+          ) ?? old,
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(['notification-settings'], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['notification-settings'] });
+    },
+  });
 
   const items = data ?? [];
 
-  // Group items by category, preserving category order
-  const grouped = new Map<string, NotificationSettingsItem[]>();
-  for (const item of items) {
-    const list = grouped.get(item.category) ?? [];
-    list.push(item);
-    grouped.set(item.category, list);
-  }
+  const grouped = useMemo(() => {
+    const map = new Map<string, NotificationSettingsItem[]>();
+    for (const item of items) {
+      const list = map.get(item.category) ?? [];
+      list.push(item);
+      map.set(item.category, list);
+    }
+    return map;
+  }, [items]);
 
   const enabledCount = items.filter((i) => i.enabled).length;
   const total = items.length;
+  const bulkPendingKeys = new Set(
+    bulkUpdate.isPending && bulkUpdate.variables
+      ? bulkUpdate.variables.triggerKeys
+      : [],
+  );
+
+  if (isLoading) return <SkeletonRows />;
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="p-4 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800 flex items-start gap-2"
+      >
+        <Icon name="error" size={16} className="mt-0.5 shrink-0" />
+        <span>Failed to load settings: {(error as Error).message}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Intro */}
       <div className="p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <Icon name="notifications_active" size={20} className="text-primary" />
+            <Icon
+              name="notifications_active"
+              size={20}
+              className="text-primary"
+            />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">
@@ -152,7 +216,6 @@ export default function NotificationSettingsTab() {
         </div>
       </div>
 
-      {/* Category sections */}
       {CATEGORY_ORDER.map((cat) => {
         const list = grouped.get(cat);
         if (!list || list.length === 0) return null;
@@ -161,18 +224,19 @@ export default function NotificationSettingsTab() {
           icon: 'notifications',
           description: '',
         };
+        const allOn = list.every((i) => i.enabled);
+        const catPending = list.some((i) => bulkPendingKeys.has(i.triggerKey));
 
         return (
           <section
             key={cat}
             className="border border-surface-variant rounded-xl overflow-hidden bg-white"
           >
-            {/* Section header */}
             <header className="px-4 py-3 bg-surface-container-lowest border-b border-surface-variant flex items-center gap-3">
               <div className="w-8 h-8 rounded flex items-center justify-center bg-primary/10 shrink-0">
                 <Icon name={meta.icon} size={16} className="text-primary" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-slate-900">
                   {meta.label}
                 </p>
@@ -180,14 +244,27 @@ export default function NotificationSettingsTab() {
                   <p className="text-xs text-slate-500">{meta.description}</p>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() =>
+                  bulkUpdate.mutate({
+                    triggerKeys: list.map((i) => i.triggerKey),
+                    enabled: !allOn,
+                  })
+                }
+                disabled={catPending}
+                className="text-[11px] font-semibold text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                {allOn ? 'Disable all' : 'Enable all'}
+              </button>
             </header>
 
-            {/* Rows */}
             <ul className="divide-y divide-surface-variant">
               {list.map((item) => {
                 const isPending =
-                  update.isPending &&
-                  update.variables?.triggerKey === item.triggerKey;
+                  (update.isPending &&
+                    update.variables?.triggerKey === item.triggerKey) ||
+                  bulkPendingKeys.has(item.triggerKey);
 
                 return (
                   <li
@@ -209,6 +286,7 @@ export default function NotificationSettingsTab() {
                         className="sr-only peer"
                         checked={item.enabled}
                         disabled={isPending}
+                        aria-label={item.label}
                         onChange={(e) =>
                           update.mutate({
                             triggerKey: item.triggerKey,
