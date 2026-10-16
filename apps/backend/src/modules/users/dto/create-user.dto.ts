@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsIn,
   IsNumberString,
+  Matches,
 } from 'class-validator';
 
 /**
@@ -22,18 +23,32 @@ export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 export class CreateUserDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
+  /**
+   * Matches the frontend rule enforced in AdminUsersPage and
+   * mirrored in ChangePasswordDto. Prevents API-level bypass of the
+   * client-side regex.
+   */
   @IsString()
-  @MinLength(8)
-  password: string;
+  @MinLength(8, { message: 'Password must be at least 8 characters.' })
+  @Matches(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+    {
+      message:
+        'Password must be at least 8 characters long and include at least ' +
+        'one uppercase letter, one lowercase letter, one number, and one ' +
+        'special character (@$!%*?&).',
+    },
+  )
+  password!: string;
 
   @IsString()
   @MinLength(3)
-  username: string;
+  username!: string;
 
   @IsIn(ASSIGNABLE_ROLES)
-  role: AssignableRole;
+  role!: AssignableRole;
 
   @IsOptional()
   @IsNumberString()
