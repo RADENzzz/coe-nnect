@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   ProspectusService,
   type ProspectusCaller,
@@ -51,6 +52,8 @@ function callerFromRequest(req: any): ProspectusCaller {
  * The hidden dev account still bypasses program-ownership checks at
  * the service layer.
  */
+@ApiTags('Prospectus')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/prospectus')
 export class ProspectusController {
