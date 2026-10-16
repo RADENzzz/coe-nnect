@@ -34,14 +34,8 @@ function formatDate(iso: string): string {
   });
 }
 
-// ── Commit count bar chart ──
+// ── Commits per contributor (top 6) ──
 
-/**
- * Compact horizontal bar chart of commits per contributor.
- * Reuses fetchRepoContributors — no extra GitHub API call needed
- * beyond what the easter egg also consumes (they share the query
- * cache via React Query).
- */
 function CommitCountChart() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['repo-contributors'],
@@ -64,9 +58,7 @@ function CommitCountChart() {
     );
   }
 
-  if (error || !data?.topContributor) {
-    return null;
-  }
+  if (error || !data?.topContributor) return null;
 
   const contributors = data.allContributors.slice(0, 6);
   const totalCommits = data.totalCommits;
@@ -161,18 +153,171 @@ function CommitCountChart() {
   );
 }
 
-// ── Main component ──
+// ── Commits per week (activity bar graph) ──
+
+/**
+ * Vertical bar graph showing commit count per week. Each bar is one
+ * week; height is scaled to the busiest week. Bars are clickable
+ * if we know the week's commits (we don't — GitHub groups weekly),
+ * so instead hovering shows the tooltip with week + count.
+ */
+function CommitActivityBarGraph() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['repo-contributors'],
+    queryFn: fetchRepoContributors,
+    staleTime: 60 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const weeks = data?.weeklyActivity ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5 text-center">
+        <span className="material-symbols-outlined animate-spin text-[20px] text-brand-700">
+          progress_activity
+        </span>
+        <p className="mt-2 text-xs text-slate-500">Loading activity…</p>
+      </div>
+    );
+  }
+
+  if (error || weeks.length === 0) return null;
+
+  const max = Math.max(...weeks.map((w) => w.count), 1);
+  const totalInWindow = weeks.reduce((sum, w) => sum + w.count, 0);
+
+  // Take last 26 weeks (6 months) for a compact, readable chart
+  const recent = weeks.slice(-26);
+
+  return (
+    <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[18px] text-brand-700">
+            calendar_month
+          </span>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-800">
+            Commit Activity · Last {recent.length} Weeks
+          </h3>
+        </div>
+        <span className="text-[9px] font-mono text-slate-500">
+          {totalInWindow.toLocaleString()} commits
+        </span>
+      </div>
+
+      {/* Bar chart */}
+      <div className="relative flex items-end gap-[3px] h-32">
+        {/* Y-axis guide lines */}
+        <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
+          {[max, Math.round(max * 0.66), Math.round(max * 0.33), 0].map(
+            (v, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 text-[8px] text-slate-400"
+              >
+                <span className="w-6 text-right font-mono tabular-nums">
+                  {v}
+                </span>
+                <div className="flex-1 border-t border-dashed border-slate-200" />
+              </div>
+            ),
+          )}
+        </div>
+
+        {/* Bars */}
+        <div className="relative ml-8 flex flex-1 items-end gap-[2px] h-full">
+          {recent.map((w, i) => {
+            const heightPct =
+              w.count === 0 ? 2 : Math.max(4, (w.count / max) * 100);
+            const weekDate = new Date(w.weekStart);
+            const weekLabel = weekDate.toLocaleDateString('en-PH', {
+              month: 'short',
+              day: '2-digit',
+            });
+
+            return (
+              <motion.div
+                key={w.weekStart}
+                initial={{ height: 0 }}
+                animate={{ height: `${heightPct}%` }}
+                transition={{
+                  duration: 0.6,
+                  delay: i * 0.015,
+                  ease: [0.2, 0.9, 0.3, 1],
+                }}
+                className={
+                  'group relative flex-1 min-w-[4px] transition-colors ' +
+                  (w.count === 0
+                    ? 'bg-slate-200'
+                    : 'bg-brand-500 hover:bg-brand-700')
+                }
+                title={`Week of ${weekLabel}: ${w.count} commit${
+                  w.count === 1 ? '' : 's'
+                }`}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* X-axis labels — sparse, only every 4th week */}
+      <div className="relative mt-2 ml-8 flex gap-[2px] text-[8px] text-slate-400">
+        {recent.map((w, i) => {
+          const showLabel = i % 4 === 0 || i === recent.length - 1;
+          const weekDate = new Date(w.weekStart);
+          const label = weekDate.toLocaleDateString('en-PH', {
+            month: 'short',
+            day: '2-digit',
+          });
+
+          return (
+            <div
+              key={w.weekStart}
+              className="flex-1 min-w-[4px] text-center"
+            >
+              {showLabel ? (
+                <span className="whitespace-nowrap">{label}</span>
+              ) : (
+                <span className="opacity-0">{label}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-brand-100 pt-3 text-[10px]">
+        <span className="text-slate-500">
+          Busiest week: <strong className="text-brand-700">{max}</strong>{' '}
+          commits
+        </span>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1 text-slate-500">
+            <span className="h-2 w-2 bg-brand-500" />
+            Active week
+          </span>
+          <span className="flex items-center gap-1 text-slate-500">
+            <span className="h-2 w-2 bg-slate-200" />
+            No commits
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main ──
 
 export function RepoCommitHistory() {
-  const { data, isLoading, error } = useQuery({
+  const { data } = useQuery({
     queryKey: ['repo-commits'],
     queryFn: fetchRepoCommits,
     staleTime: 60 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
-
-  const [visibleCount, setVisibleCount] = useState(20);
 
   const stats = useMemo(() => {
     if (!data) return null;
@@ -188,24 +333,6 @@ export function RepoCommitHistory() {
     };
   }, [data]);
 
-  if (isLoading) {
-    return (
-      <div className="border border-slate-200 bg-white p-5 text-center">
-        <span className="material-symbols-outlined animate-spin text-[20px] text-brand-700">
-          progress_activity
-        </span>
-        <p className="mt-2 text-xs text-slate-500">Loading commit history…</p>
-      </div>
-    );
-  }
-
-  if (error || !data || !stats) {
-    return null;
-  }
-
-  const visibleCommits = data.commits.slice(0, visibleCount);
-  const hasMore = visibleCount < data.commits.length;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -219,121 +346,54 @@ export function RepoCommitHistory() {
           Development History
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-700">
-          Every commit made to the CoE-NNECT repository since the project began.
+          Commit activity across the CoE-NNECT repository since the project
+          began.
         </p>
       </div>
 
-      {/* Commit count bar chart — NEW */}
-      <CommitCountChart />
-
-      {/* Timeline card */}
-      <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px] text-brand-700">
-              history
-            </span>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-800">
-              Commit Timeline
-            </h3>
-          </div>
-          <span className="text-[10px] font-mono text-slate-500">
-            {stats.total} commits
-          </span>
-        </div>
-
-        {/* Summary */}
-        <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-          <div className="border border-brand-200 bg-white/60 px-2 py-2">
+      {/* Summary tiles (optional) */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white px-3 py-3 text-center">
             <div className="text-[9px] uppercase tracking-wider text-slate-500">
-              Total
+              Total commits
             </div>
-            <div className="text-sm font-bold text-brand-700">
+            <div className="mt-1 text-lg font-bold text-brand-700">
               {stats.total.toLocaleString()}
             </div>
           </div>
-          <div className="border border-brand-200 bg-white/60 px-2 py-2">
+          <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white px-3 py-3 text-center">
             <div className="text-[9px] uppercase tracking-wider text-slate-500">
               Authors
             </div>
-            <div className="text-sm font-bold text-brand-700">
+            <div className="mt-1 text-lg font-bold text-brand-700">
               {stats.uniqueAuthors}
             </div>
           </div>
-          <div className="border border-brand-200 bg-white/60 px-2 py-2">
+          <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white px-3 py-3 text-center">
             <div className="text-[9px] uppercase tracking-wider text-slate-500">
-              Since
+              Started
             </div>
-            <div className="text-sm font-bold text-brand-700">
+            <div className="mt-1 text-sm font-bold text-brand-700">
               {stats.earliest ?? '—'}
             </div>
           </div>
+          <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white px-3 py-3 text-center">
+            <div className="text-[9px] uppercase tracking-wider text-slate-500">
+              Latest
+            </div>
+            <div className="mt-1 text-sm font-bold text-brand-700">
+              {stats.latest ?? '—'}
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Commit list */}
-        <ol className="space-y-0.5">
-          {visibleCommits.map((c) => (
-            <li key={c.sha} className="relative">
-              <div className="absolute left-[6px] top-3 bottom-0 w-px bg-brand-200" />
-              <a
-                href={c.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-start gap-3 rounded-sm p-2 pl-6 transition-colors hover:bg-white/70"
-              >
-                <span className="absolute left-0 top-[14px] h-[13px] w-[13px] border-2 border-brand-300 bg-white transition-colors group-hover:border-brand-700" />
+      {/* Chart 1: Commits per contributor */}
+      <CommitCountChart />
 
-                {c.authorAvatarUrl ? (
-                  <img
-                    src={c.authorAvatarUrl}
-                    alt={c.authorLogin ?? c.authorName}
-                    className="mt-0.5 h-5 w-5 shrink-0 rounded-full border border-slate-200"
-                  />
-                ) : (
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center bg-slate-200 text-[9px] font-bold text-slate-500">
-                    {c.authorName.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-medium text-slate-800 transition-colors group-hover:text-brand-700">
-                    {c.message}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-500">
-                    <span className="font-mono text-slate-400">
-                      {c.shortSha}
-                    </span>
-                    <span>·</span>
-                    <span>{c.authorLogin ?? c.authorName}</span>
-                    <span>·</span>
-                    <span title={formatDate(c.committedAt)}>
-                      {relativeTime(c.committedAt)}
-                    </span>
-                  </div>
-                </div>
-
-                <span className="material-symbols-outlined mt-1 shrink-0 text-[14px] text-slate-300 transition-colors group-hover:text-brand-700">
-                  open_in_new
-                </span>
-              </a>
-            </li>
-          ))}
-        </ol>
-
-        {hasMore && (
-          <button
-            type="button"
-            onClick={() => setVisibleCount((n) => n + 20)}
-            className="mt-3 w-full border border-brand-300 bg-white/60 py-2 text-[10px] font-semibold uppercase tracking-wider text-brand-700 transition-colors hover:bg-white"
-          >
-            Load more ({data.commits.length - visibleCount} remaining)
-          </button>
-        )}
-
-        <p className="mt-3 text-center text-[9px] text-slate-400">
-          Latest: {stats.latest ?? '—'}
-        </p>
-      </div>
+      {/* Chart 2: Commit activity per week */}
+      <CommitActivityBarGraph />
     </motion.div>
   );
 }
