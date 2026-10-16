@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Icon from '../../components/ui/Icon';
 import NotificationSettingsTab from './components/NotificationSettingsTab';
+import SecuritySection from './components/SecuritySection';
 
-type TabKey = 'notifications';
+type TabKey = 'notifications' | 'security';
 
 interface TabDef {
   key: TabKey;
@@ -17,7 +17,11 @@ const TABS: TabDef[] = [
     label: 'Notifications',
     icon: 'notifications',
   },
-  // Future: profile, appearance, etc.
+  {
+    key: 'security',
+    label: 'Security',
+    icon: 'lock',
+  },
 ];
 
 function isValidTab(v: string | null): v is TabKey {
@@ -26,18 +30,14 @@ function isValidTab(v: string | null): v is TabKey {
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initial = searchParams.get('tab');
-  const [active, setActive] = useState<TabKey>(
-    isValidTab(initial) ? initial : 'notifications',
-  );
+  const tabParam = searchParams.get('tab');
+  const active: TabKey = isValidTab(tabParam) ? tabParam : 'notifications';
 
-  // Keep the URL in sync when the tab changes
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    next.set('tab', active);
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  const setActive = (next: TabKey) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', next);
+    setSearchParams(params, { replace: true });
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -51,15 +51,22 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Tabs */}
       <div className="border-b border-surface-variant mb-6">
-        <nav className="-mb-px flex gap-4" aria-label="Settings tabs">
+        <nav
+          className="-mb-px flex gap-4"
+          aria-label="Settings tabs"
+          role="tablist"
+        >
           {TABS.map((t) => {
             const isActive = t.key === active;
             return (
               <button
                 key={t.key}
                 type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`settings-panel-${t.key}`}
+                id={`settings-tab-${t.key}`}
                 onClick={() => setActive(t.key)}
                 className={`flex items-center gap-2 px-1 py-3 text-sm font-semibold border-b-2 transition ${
                   isActive
@@ -75,8 +82,14 @@ export default function SettingsPage() {
         </nav>
       </div>
 
-      {/* Tab body */}
-      {active === 'notifications' && <NotificationSettingsTab />}
+      <div
+        role="tabpanel"
+        id={`settings-panel-${active}`}
+        aria-labelledby={`settings-tab-${active}`}
+      >
+        {active === 'notifications' && <NotificationSettingsTab />}
+        {active === 'security' && <SecuritySection />}
+      </div>
     </div>
   );
 }
