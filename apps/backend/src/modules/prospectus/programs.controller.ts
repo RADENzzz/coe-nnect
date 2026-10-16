@@ -1,4 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ProspectusService } from './prospectus.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -7,6 +8,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
  * Lives inside ProspectusModule so we don't need a separate ProgramsModule
  * until Program CRUD is actually built (deferred).
  */
+@ApiTags('Prospectus')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard)
 @Controller('v1/programs')
 export class ProgramsController {
