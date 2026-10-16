@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SectionsService } from './sections.service';
 import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
@@ -25,6 +26,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
  *     department (resolved through section → program → dept_id in
  *     SectionsService.assertOwnership).
  */
+@ApiTags('Sections')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/sections')
 export class SectionsController {
