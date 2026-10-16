@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SchedulingService } from './scheduling.service';
 import { PlotSubjectDto } from './dto/plot-subject.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -36,6 +37,8 @@ import { PlotMultiDto } from './dto/plot-multi.dto';
  * The hidden dev account still bypasses ownership checks at the
  * service layer — but the API surface treats the Dean as the top role.
  */
+@ApiTags('Scheduling')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/schedules')
 export class SchedulingController {
