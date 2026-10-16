@@ -104,7 +104,7 @@ export function StatsEasterEgg({ onOverlayChange }: Props) {
   useEffect(() => {
     const audio = new Audio('/help/music/song.mp3');
     audio.loop = true;
-    audio.volume = 0.4;
+    audio.volume = 1.0;
     audio.preload = 'auto';
     audioRef.current = audio;
     return () => {

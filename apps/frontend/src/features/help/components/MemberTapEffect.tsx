@@ -14,6 +14,7 @@ export function MemberTapEffect({ effect, triggerKey, reduce }: Props) {
 
   return (
     <div
+    
       key={`effect-${triggerKey}`}
       aria-hidden
       className="pointer-events-none absolute inset-0 z-40 overflow-visible"
@@ -27,6 +28,7 @@ export function MemberTapEffect({ effect, triggerKey, reduce }: Props) {
       {effect.kind === 'petals'    && <PetalsBurst color={effect.color} color2={effect.color2} />}
       {effect.kind === 'snow'      && <SnowBurst color={effect.color} color2={effect.color2} />}
     </div>
+    
   );
 }
 

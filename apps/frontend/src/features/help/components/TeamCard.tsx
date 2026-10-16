@@ -13,15 +13,102 @@ interface Props {
   storeTaps?: number;
 }
 
-const MANGA_MESSAGES: string[] = [
-  "Hey! Don't touch that!",
-  'Wag NGANI!!!?',
-  'Are you serious right now?',
-  'This is NOT a button!',
-  'One more tap and I swear…',
-  'Okay, seriously, cut it out!',
-  'Fine! You asked for it…',
-];
+/**
+ * Per-member escalating messages.
+ * Alrhaden uses the original manga easter-egg messages.
+ * Every other member gets their own themed progression.
+ * The array length determines the max stage for that member.
+ *
+ * NOTE: only Alrhaden has the manga speech bubble rendered —
+ * other members' messages exist here for future use but aren't
+ * currently displayed (their effect is particles + word float only).
+ */
+const MEMBER_MESSAGES: Record<string, string[]> = {
+  // ── Easter egg (Alrhaden) — the original 7-stage manga rage ──
+  'Alrhaden A. Javier': [
+    "Hey! Don't touch that!",
+    'Wag NGANI!!!?',
+    'Are you serious right now?',
+    'This is NOT a button!',
+    'One more tap and I swear…',
+    'Okay, seriously, cut it out!',
+    'Fine! You asked for it…',
+  ],
+
+  // ── Leadership ──
+  'Jazmine Elaiza L. Luis': [
+    'Oh, hey there!',
+    'Yes, I\'m listening…',
+    'This is NOT in the minutes.',
+    'I have a spreadsheet for this.',
+    'Please stop clicking me!',
+    'I\'m putting this in the next sync.',
+    'Meeting adjourned. FOREVER.',
+  ],
+
+  // ── Development ──
+  'Giel V. Andales': [
+    'Yo, need something?',
+    'That\'s not a component.',
+    'Have you tried refreshing?',
+    'I wrote that in 2023.',
+    'Stop. Breaking. My. Code.',
+    'console.log("why are you like this")',
+    'FATAL: patience.exe not found',
+  ],
+  'Edzel Don V. Tio': [
+    'Query received.',
+    'SELECT * FROM buttons WHERE id = you;',
+    'Row not found.',
+    'That violates RLS policy.',
+    'ROLLBACK initiated.',
+    'DROP TABLE taps;',
+    'DROP DATABASE patience;',
+  ],
+
+  // ── Quality & Training ──
+  'Roland C. Velez': [
+    'Test case #1: PASS.',
+    'Test case #2: borderline.',
+    'Test case #3: needs retesting.',
+    'Regression detected.',
+    'This would FAIL QA.',
+    'Critical bug: you.',
+    'BUILD FAILED. Go home.',
+  ],
+  'Andre Aga B. Dacumos': [
+    'Welcome to the demo!',
+    'Step 1: don\'t tap.',
+    'Step 2: seriously, don\'t.',
+    'That\'s not in the manual.',
+    'Class dismissed!',
+    'Detention for you.',
+    'EXPEL—okay that\'s too far.',
+  ],
+
+  // ── Analysis & Documentation ──
+  'Aizzah Arabelle B. Javelosa': [
+    'Filed under: curious.',
+    'Noted. Documented. Archived.',
+    'That\'s a requirement violation.',
+    'Adding to the risk register.',
+    'v2.0 will remove this button.',
+    'Change request DENIED.',
+    'SRS Appendix Z: you.',
+  ],
+  'Euwan Tyrone B. Prias': [
+    'Analyzing your intent…',
+    'Data suggests curiosity.',
+    'Hypothesis: you\'re bored.',
+    'Correlation ≠ causation. Stop.',
+    'Spec violation detected.',
+    'The system rejects this input.',
+    'ANALYSIS COMPLETE: tap harder.',
+  ],
+};
+
+/** Fallback for members with no specific messages. */
+const DEFAULT_MESSAGES: string[] = ['Hey!', 'Stop that.', 'Seriously?'];
 
 interface MangaStyle {
   bg: string;
@@ -128,9 +215,13 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
 
   const effectiveTaps = storeTaps != null && storeTaps > 0 ? storeTaps : localTaps;
 
+  // Per-member message list (falls back to a generic list if a name
+  // isn't registered). Length drives the max stage for that member.
+  const messages = MEMBER_MESSAGES[member.name] ?? DEFAULT_MESSAGES;
+
   const messageIndex =
     effectiveTaps > 0
-      ? Math.min(effectiveTaps, MANGA_MESSAGES.length) - 1
+      ? Math.min(effectiveTaps, messages.length) - 1
       : -1;
 
   const activeStyle =
@@ -609,10 +700,10 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
           {activeStyle && (
             <MangaBubble
               key={messageIndex}
-              message={MANGA_MESSAGES[messageIndex]}
+              message={messages[messageIndex]}
               style={activeStyle}
               step={messageIndex + 1}
-              total={MANGA_MESSAGES.length}
+              total={messages.length}
               reduce={reduce}
             />
           )}

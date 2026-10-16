@@ -1,3 +1,9 @@
+/**
+ * Per-member tap effects.
+ * Each name gets a distinct "wow" moment — no speech bubble.
+ * Alrhaden A. Javier is intentionally excluded (he has the manga easter egg).
+ */
+
 export type MemberEffectKind =
   | 'confetti'
   | 'sparkle'
@@ -10,14 +16,15 @@ export type MemberEffectKind =
 
 export interface MemberEffect {
   kind: MemberEffectKind;
+  /** Accent color used for glow + particles. */
   color: string;
+  /** Optional secondary color for gradients. */
   color2?: string;
 }
 
 /**
  * Map each team member (by exact name) to their effect.
- * Any name NOT in this map gets no effect.
- * Alrhaden A. Javier is intentionally excluded (he has the manga easter egg).
+ * Any name NOT in this map gets no effect (renders as a plain card).
  */
 export const MEMBER_EFFECTS: Record<string, MemberEffect> = {
   // Leadership
