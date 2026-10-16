@@ -6,7 +6,7 @@ import {
   EASTER_EGG_TOTAL_TAPS,
   useEasterEggStore,
 } from '../store/easter-egg.store';
-
+import { RepoContributorsCard } from './RepoContributorsCard';
 const STATS: Array<{
   icon: string;
   label: string;
@@ -383,6 +383,9 @@ export function StatsEasterEgg({ onOverlayChange }: Props) {
                 </button>
               </div>
             )}
+
+            {/* ⭐ GitHub Contributors easter egg */}
+            <RepoContributorsCard />
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
               <p
