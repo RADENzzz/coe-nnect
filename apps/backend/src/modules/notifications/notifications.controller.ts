@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -17,6 +18,8 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 import { ListNotificationsDto } from './dto/list-notifications.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
+@ApiTags('Notifications')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/notifications')
 export class NotificationsController {
