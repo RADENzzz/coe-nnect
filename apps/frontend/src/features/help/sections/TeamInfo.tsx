@@ -1,8 +1,8 @@
 import { motion } from 'motion/react';
 import { TeamCard } from '../components/TeamCard';
 import { TEAM_GROUPS, CLIENT } from '../data/team';
-import { useEasterEggStore, EASTER_EGG_TOTAL_TAPS } from '../store/easter-egg.store';
 import { SpotlightCard, Stagger, StaggerItem } from '../components/animations';
+import { useEasterEggStore } from '../store/easter-egg.store';
 
 export function TeamInfo() {
   const registerTap = useEasterEggStore((s) => s.registerTap);
@@ -51,10 +51,8 @@ export function TeamInfo() {
                       ? () => registerTap()
                       : undefined
                   }
-                  remainingSteps={
-                    m.name === 'Alrhaden A. Javier' && taps > 0
-                      ? EASTER_EGG_TOTAL_TAPS - taps
-                      : null
+                  storeTaps={
+                    m.name === 'Alrhaden A. Javier' ? taps : undefined
                   }
                 />
               ))}
