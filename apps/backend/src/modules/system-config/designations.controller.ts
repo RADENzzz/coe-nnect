@@ -8,6 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SystemConfigService } from './system-config.service';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { UpdateDesignationDto } from './dto/update-designation.dto';
@@ -24,6 +25,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
  *
  * `administrator` is intentionally absent from every @Roles() list.
  */
+@ApiTags('System Config')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/designations')
 export class DesignationsController {
