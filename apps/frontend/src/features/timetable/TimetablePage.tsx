@@ -60,6 +60,118 @@ const DAY_MAP: Record<string, Day> = {
   Sunday: 'SUN',
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// API error extraction
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Unpack an Axios error into a user-facing title, message, and any
+ * additional validation details.
+ *
+ * NestJS returns one of:
+ *   - `{ message: "string", error: "Bad Request", statusCode: 400 }`
+ *   - `{ message: ["field1 bad", "field2 bad"], error, statusCode }`  (ValidationPipe)
+ *
+ * Network failures have no `response` — we fall back to `err.message`.
+ */
+function extractApiError(err: any): {
+  title: string;
+  message: string;
+  details: string[];
+} {
+  const status = err?.response?.status;
+  const body = err?.response?.data;
+  const rawMessage = body?.message;
+
+  const messages: string[] = Array.isArray(rawMessage)
+    ? rawMessage
+    : rawMessage
+    ? [rawMessage]
+    : [];
+
+  const title =
+    status === 400
+      ? 'Cannot generate schedule'
+      : status === 401
+      ? 'Session expired'
+      : status === 403
+      ? 'Permission denied'
+      : status === 404
+      ? 'Not found'
+      : status === 409
+      ? 'Another generation in progress'
+      : status === 500
+      ? 'Server error'
+      : 'Auto-generate failed';
+
+  const message =
+    messages[0] ??
+    err?.message ??
+    'Something went wrong. Please try again.';
+
+  return { title, message, details: messages.slice(1) };
+}
+
+/**
+ * Turn a known server message into one or more actionable hints.
+ * These are shown above the technical details so the user knows the
+ * next step without needing to understand the error.
+ */
+function hintsForMessage(message: string): string[] {
+  const m = message.toLowerCase();
+  const hints: string[] = [];
+
+  if (/no active sections/.test(m)) {
+    hints.push(
+      'Create at least one section for this department under Sections before generating a schedule.',
+    );
+  }
+  if (/no semester|semester.*not set|has no semester/.test(m)) {
+    hints.push(
+      'Set the semester on the active term in System Settings → Terms.',
+    );
+  }
+  if (/no (?:active )?faculty|no faculty/.test(m)) {
+    hints.push(
+      'Add at least one active faculty member to this department before generating.',
+    );
+  }
+  if (/no (?:active )?subjects|no subjects/.test(m)) {
+    hints.push(
+      'Add subjects and prospectus entries for this department before generating.',
+    );
+  }
+  if (/not enough rooms|room deficit/.test(m)) {
+    hints.push(
+      'Add more rooms or reduce the number of sections needing the same room type.',
+    );
+  }
+  if (/unplotted minors|minor subjects/.test(m)) {
+    hints.push(
+      'Plot the outstanding minor subjects first, or choose "Skip and generate anyway" to proceed.',
+    );
+  }
+  if (/already running|in progress/.test(m)) {
+    hints.push(
+      'Wait for the current generation to finish, then try again.',
+    );
+  }
+  if (/forbidden|permission/.test(m)) {
+    hints.push(
+      'Only Department Heads can run auto-generate for their department.',
+    );
+  }
+  if (/session expired|unauthorized/.test(m)) {
+    hints.push('Log out and log back in to refresh your session.');
+  }
+
+  return hints;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Auto-generate progress
+// ═══════════════════════════════════════════════════════════════════
+
 function getGenerationProgressMessage(elapsedMs: number): {
   label: string;
   progress: number;
@@ -82,6 +194,10 @@ interface AutoGenerateButtonProps {
   isServerSide: boolean;
   elapsedMs: number;
   onClick: () => void;
+  /** When true, the button is greyed out and unclickable. */
+  disabled?: boolean;
+  /** Tooltip / title shown while disabled. */
+  disabledReason?: string;
 }
 
 function AutoGenerateButton({
@@ -89,17 +205,23 @@ function AutoGenerateButton({
   isServerSide,
   elapsedMs,
   onClick,
+  disabled = false,
+  disabledReason,
 }: AutoGenerateButtonProps) {
   const { label, progress } = isServerSide
     ? { label: 'Other user generating…', progress: 60 }
     : getGenerationProgressMessage(elapsedMs);
 
+  const isBlocked = disabled && !isGenerating;
+
   return (
     <button
       onClick={onClick}
-      disabled={isGenerating}
+      disabled={isGenerating || disabled}
+      title={isBlocked ? disabledReason : undefined}
       aria-busy={isGenerating}
       aria-live="polite"
+      aria-disabled={isGenerating || disabled}
       className={[
         'relative inline-flex items-center justify-center gap-2',
         'px-3 w-[240px] h-[38px]',
@@ -107,6 +229,8 @@ function AutoGenerateButton({
         'overflow-hidden',
         isGenerating
           ? 'bg-primary/5 border border-primary text-primary cursor-not-allowed'
+          : isBlocked
+          ? 'bg-surface-container-high border border-surface-variant text-on-surface-variant cursor-not-allowed opacity-70'
           : 'border border-primary text-primary hover:bg-primary/5',
       ].join(' ')}
     >
@@ -119,7 +243,11 @@ function AutoGenerateButton({
       )}
       {!isGenerating && (
         <>
-          <Icon name="auto_awesome" size={16} className="relative z-10 shrink-0" />
+          <Icon
+            name={isBlocked ? 'block' : 'auto_awesome'}
+            size={16}
+            className="relative z-10 shrink-0"
+          />
           <span className="relative z-10">Auto-Generate</span>
         </>
       )}
@@ -603,6 +731,51 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [allEntries],
   );
 
+  // ═══════════════════════════════════════════════════════════════════
+  // Auto-generate pre-flight checks
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Which sections belong to the current DH's department?
+   *
+   * Section shape may put dept on `section.program.deptId` or directly
+   * on the section. Check both.
+   */
+  const deptSections = useMemo(() => {
+    if (!myDeptId) return [];
+    return sections.filter((s) => {
+      if (!s.isActive) return false;
+      const sDept =
+        (s as any).program?.deptId ??
+        (s as any).deptId ??
+        (s as any).program?.dept_id;
+      if (sDept == null) return true; // unknown — don't block
+      return String(sDept) === myDeptId;
+    });
+  }, [sections, myDeptId]);
+
+  /** Can the button even be clicked? */
+  const canAutoGenerate = useMemo(() => {
+    if (!activeTerm) return false;
+    if (!myDeptId) return false;
+    if (deptSections.length === 0) return false;
+    return true;
+  }, [activeTerm, myDeptId, deptSections.length]);
+
+  /** Why is the button disabled? */
+  const autoGenerateDisabledReason = useMemo(() => {
+    if (!activeTerm) return 'No active term.';
+    if (!myDeptId)
+      return 'Your account is missing a department. Contact an administrator.';
+    if (deptSections.length === 0)
+      return 'Add at least one section to this department before generating.';
+    return undefined;
+  }, [activeTerm, myDeptId, deptSections.length]);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Handlers
+  // ═══════════════════════════════════════════════════════════════════
+
   const handleResumePendingPreview = useCallback(async () => {
     if (!activeTerm) return;
     try {
@@ -620,11 +793,18 @@ export default function TimetablePage({ readOnly = false }: Props) {
         })),
       );
     } catch (err) {
-      console.error('Failed to resume preview:', err);
+      const { title, message, details } = extractApiError(err);
       setAlertState({
-        title: 'Could not resume preview',
+        title: `Could not resume preview — ${title}`,
+        subtitle: message,
         tone: 'error',
-        items: [{ message: (err as Error).message, tone: 'error' }],
+        items: [
+          ...hintsForMessage(message).map((h) => ({
+            message: h,
+            tone: 'info' as const,
+          })),
+          ...details.map((d) => ({ message: d, tone: 'error' as const })),
+        ],
       });
     }
   }, [activeTerm]);
@@ -635,11 +815,18 @@ export default function TimetablePage({ readOnly = false }: Props) {
     try {
       await discardAutoGenerate(activeTerm.termId);
     } catch (err) {
-      console.error('Failed to discard pending preview:', err);
+      const { title, message, details } = extractApiError(err);
       setAlertState({
-        title: 'Could not discard preview',
+        title: `Could not discard preview — ${title}`,
+        subtitle: message,
         tone: 'error',
-        items: [{ message: (err as Error).message, tone: 'error' }],
+        items: [
+          ...hintsForMessage(message).map((h) => ({
+            message: h,
+            tone: 'info' as const,
+          })),
+          ...details.map((d) => ({ message: d, tone: 'error' as const })),
+        ],
       });
     }
     refetchPendingAutoGenerate();
@@ -665,13 +852,31 @@ export default function TimetablePage({ readOnly = false }: Props) {
     try {
       await confirmAutoGenerate(activeTerm.termId);
     } catch (err) {
-      console.error('Failed to confirm auto-generate:', err);
+      const { title, message, details } = extractApiError(err);
+      setAlertState({
+        title: `Could not accept schedule — ${title}`,
+        subtitle: message,
+        tone: 'error',
+        items: [
+          ...hintsForMessage(message).map((h) => ({
+            message: h,
+            tone: 'info' as const,
+          })),
+          ...details.map((d) => ({ message: d, tone: 'error' as const })),
+        ],
+      });
+      return;
     }
     setAutoPreview(null);
     setAutoUnscheduled([]);
     invalidateAfterAutoGenerate(activeTerm.termId);
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate, invalidateAfterAutoGenerate]);
+  }, [
+    activeTerm,
+    queryClient,
+    refetchPendingAutoGenerate,
+    invalidateAfterAutoGenerate,
+  ]);
 
   const handleDiscardPreview = useCallback(async () => {
     if (!activeTerm) return;
@@ -679,13 +884,31 @@ export default function TimetablePage({ readOnly = false }: Props) {
     try {
       await discardAutoGenerate(activeTerm.termId);
     } catch (err) {
-      console.error('Failed to discard auto-generate:', err);
+      const { title, message, details } = extractApiError(err);
+      setAlertState({
+        title: `Could not discard schedule — ${title}`,
+        subtitle: message,
+        tone: 'error',
+        items: [
+          ...hintsForMessage(message).map((h) => ({
+            message: h,
+            tone: 'info' as const,
+          })),
+          ...details.map((d) => ({ message: d, tone: 'error' as const })),
+        ],
+      });
+      return;
     }
     setAutoPreview(null);
     setAutoUnscheduled([]);
     invalidateAfterAutoGenerate(activeTerm.termId);
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate, invalidateAfterAutoGenerate]);
+  }, [
+    activeTerm,
+    queryClient,
+    refetchPendingAutoGenerate,
+    invalidateAfterAutoGenerate,
+  ]);
 
   const { moveEntry: handleMove, isPending: movePending, pendingConfirmation } =
     useMoveSchedule({
@@ -731,10 +954,28 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const performAutoGenerate = useCallback(
     async (options?: { acknowledgeUnplottedMinors?: boolean }) => {
       if (!activeTerm || !myDeptId) return;
+
+      // ── Pre-flight: nothing to schedule? ──
+      if (deptSections.length === 0) {
+        setAlertState({
+          title: 'Cannot generate schedule',
+          subtitle: 'No active sections found for this department',
+          tone: 'error',
+          items: [
+            {
+              message:
+                'Create at least one section for this department under Sections before generating a schedule.',
+              tone: 'info',
+            },
+          ],
+        });
+        return;
+      }
+
       try {
         await abandonAutoGenerate(activeTerm.termId);
       } catch {
-        /* ignore */
+        /* ignore — abandon is best-effort */
       }
       setAutoGenerating(true);
       try {
@@ -768,15 +1009,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
             });
             return;
           }
+          // Generic failure: surface message + hints + engine failures
+          const serverMessage = result.message ?? 'Unknown error';
           setAlertState({
             title: 'Auto-generation failed',
-            subtitle: result.message ?? 'Unknown error',
+            subtitle: serverMessage,
             tone: 'error',
-            items: (result.failures ?? []).slice(0, 20).map((f) => ({
-              ruleId: f.ruleId,
-              message: f.reason,
-              tone: 'error' as const,
-            })),
+            items: [
+              ...hintsForMessage(serverMessage).map((h) => ({
+                message: h,
+                tone: 'info' as const,
+              })),
+              ...(result.failures ?? []).slice(0, 20).map((f) => ({
+                ruleId: f.ruleId,
+                message: f.reason,
+                tone: 'error' as const,
+              })),
+            ],
           });
           return;
         }
@@ -788,26 +1037,59 @@ export default function TimetablePage({ readOnly = false }: Props) {
         setAutoUnscheduled(result.unscheduled ?? []);
         refetchPendingAutoGenerate();
       } catch (err) {
+        // ── Network/HTTP error — unpack and show the server's message ──
+        const { title, message, details } = extractApiError(err);
         setAlertState({
-          title: 'Auto-generate failed',
+          title,
+          subtitle: message,
           tone: 'error',
-          items: [{ message: (err as Error).message, tone: 'error' }],
+          items: [
+            ...hintsForMessage(message).map((h) => ({
+              message: h,
+              tone: 'info' as const,
+            })),
+            ...details.map((d) => ({ message: d, tone: 'error' as const })),
+          ],
         });
       } finally {
         setAutoGenerating(false);
       }
     },
-    [activeTerm, myDeptId, queryClient, refetchPendingAutoGenerate],
+    [
+      activeTerm,
+      myDeptId,
+      deptSections.length,
+      queryClient,
+      refetchPendingAutoGenerate,
+    ],
   );
 
   const handleAutoGenerate = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
+
+    // Guard: no sections
+    if (deptSections.length === 0) {
+      setAlertState({
+        title: 'Cannot generate schedule',
+        subtitle: 'No active sections found for this department',
+        tone: 'error',
+        items: [
+          {
+            message:
+              'Create at least one section for this department under Sections before generating a schedule.',
+            tone: 'info',
+          },
+        ],
+      });
+      return;
+    }
+
     if (autoDraftCount > 0) {
       setConfirmOverwrite(true);
       return;
     }
     await performAutoGenerate();
-  }, [activeTerm, myDeptId, autoDraftCount, performAutoGenerate]);
+  }, [activeTerm, myDeptId, deptSections.length, autoDraftCount, performAutoGenerate]);
 
   const handleConfirmOverwrite = useCallback(async () => {
     setConfirmOverwrite(false);
@@ -1090,6 +1372,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
               isServerSide={serverSideGenerating && !autoGenerating}
               elapsedMs={generationElapsedMs}
               onClick={handleAutoGenerate}
+              disabled={!canAutoGenerate}
+              disabledReason={autoGenerateDisabledReason}
             />
           )}
 
@@ -1781,9 +2065,18 @@ export default function TimetablePage({ readOnly = false }: Props) {
                         ? 'bg-red-50/50 border-red-100'
                         : item.tone === 'warning'
                         ? 'bg-amber-50/50 border-amber-100'
+                        : item.tone === 'info'
+                        ? 'bg-blue-50/50 border-blue-100'
                         : 'bg-slate-50 border-slate-100'
                     }`}
                   >
+                    {item.tone === 'info' && !item.ruleId && (
+                      <Icon
+                        name="lightbulb"
+                        size={14}
+                        className="text-blue-600 shrink-0 mt-0.5"
+                      />
+                    )}
                     {item.ruleId && (
                       <span
                         className={`font-mono font-bold shrink-0 px-1.5 py-0.5 text-[10px] rounded ${
