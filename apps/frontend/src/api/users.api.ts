@@ -82,3 +82,11 @@ export async function updateUser(
   const { data } = await api.patch(`/v1/users/${id}`, input);
   return data.data;
 }
+
+export async function changeOwnPassword(payload: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ success: true }> {
+  const { data } = await api.post('/v1/users/me/password', payload);
+  return data;
+}
