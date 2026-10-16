@@ -2,11 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { fetchRepoContributors } from '../../../api/stats.api';
 
-/**
- * GitHub-style contribution heatmap. Shows the last 52 weeks of
- * project-wide commit activity. Intensity is scaled relative to the
- * busiest week in the dataset.
- */
 function ActivityHeatmap({
   weeks,
 }: {
@@ -59,10 +54,6 @@ function ActivityHeatmap({
   );
 }
 
-/**
- * Horizontal bar graph comparing the top N contributors by commit
- * count. Rows are clickable and open the contributor's GitHub profile.
- */
 function ContributionBars({
   contributors,
 }: {
@@ -80,11 +71,16 @@ function ContributionBars({
 
   return (
     <div className="mt-5 border-t border-brand-200 pt-4">
-      <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-        Contribution breakdown · top {contributors.length}
-      </p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          Contribution breakdown · top {contributors.length}
+        </p>
+        <p className="text-[9px] italic text-slate-400">
+          Click a row to view profile
+        </p>
+      </div>
 
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {contributors.map((c, i) => {
           const pct = (c.contributions / max) * 100;
           const isTop = i === 0;
@@ -95,9 +91,10 @@ function ContributionBars({
               href={c.profileUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex items-center gap-2 rounded-sm px-1 py-1 transition-colors hover:bg-white/70"
+              title={`Open @${c.login} on GitHub`}
+              className="group flex cursor-pointer items-center gap-2 border border-transparent px-2 py-1.5 transition-all hover:border-brand-300 hover:bg-white hover:shadow-sm"
             >
-              <span className="w-4 shrink-0 text-right font-mono text-[10px] text-slate-400">
+              <span className="w-4 shrink-0 text-right font-mono text-[10px] text-slate-400 transition-colors group-hover:text-brand-700">
                 {i + 1}
               </span>
               <img
@@ -126,6 +123,9 @@ function ContributionBars({
               <span className="w-10 shrink-0 text-right font-mono text-[10px] text-slate-600 transition-colors group-hover:text-brand-700">
                 {c.contributions}
               </span>
+              <span className="material-symbols-outlined w-4 shrink-0 text-[13px] text-slate-300 opacity-0 transition-all group-hover:text-brand-700 group-hover:opacity-100">
+                open_in_new
+              </span>
             </a>
           );
         })}
@@ -138,8 +138,8 @@ export function RepoContributorsCard() {
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['repo-contributors'],
     queryFn: fetchRepoContributors,
-    staleTime: 60 * 60 * 1000,   // consider cached for 1 hour
-    refetchInterval: 5 * 60 * 1000, // silently refresh every 5 min
+    staleTime: 60 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
@@ -175,18 +175,16 @@ export function RepoContributorsCard() {
       transition={{ duration: 0.5 }}
       className="mt-4 border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5"
     >
-      {/* Header */}
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-[18px] text-brand-700">
             emoji_events
           </span>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-800">
-            Top Contributor REPO
+            Top Contributor
           </h3>
         </div>
 
-        {/* Live indicator */}
         <div
           className="flex items-center gap-1.5 text-[9px] font-medium uppercase tracking-wider text-slate-500"
           title={`Last updated ${new Date(fetchedAt).toLocaleTimeString()}${
@@ -211,12 +209,11 @@ export function RepoContributorsCard() {
         </div>
       </div>
 
-      {/* Top contributor spotlight */}
       <a
         href={topContributor.profileUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-center gap-4 rounded-sm p-2 -m-2 transition-colors hover:bg-white/70"
+        className="group -m-2 flex items-center gap-4 rounded-sm p-2 transition-colors hover:bg-white/70"
       >
         <img
           src={topContributor.avatarUrl}
@@ -237,15 +234,12 @@ export function RepoContributorsCard() {
         </div>
       </a>
 
-      {/* Bar graph */}
       <ContributionBars contributors={topForBars} />
 
-      {/* Heatmap */}
       {weeklyActivity.length > 0 && (
         <ActivityHeatmap weeks={weeklyActivity} />
       )}
 
-      {/* Footer line */}
       <p className="mt-4 text-center text-[9px] text-slate-400">
         {allContributors.length} contributor
         {allContributors.length === 1 ? '' : 's'} ·{' '}
