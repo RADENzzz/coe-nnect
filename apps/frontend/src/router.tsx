@@ -22,6 +22,7 @@ export const ROUTES = {
   USERS: '/users',
   VACANT_SLOTS: '/vacant-slots',
   CREATE_DEPARTMENT: '/dean/departments',
+  DEAN_DEV_TOOLS: '/dean/dev-tools',
   WORKLOAD_SUMMARY: '/reports/workload',
   REPORTS_HUB: '/reports',
   APPROVALS_REPORT: '/reports/approvals',
