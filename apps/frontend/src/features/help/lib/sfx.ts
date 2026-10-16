@@ -8,6 +8,7 @@
  *   sfx.angry();             // stage 3+
  *   sfx.impact();            // stage 5+ (screen flash moment)
  *   sfx.rage();              // stage 7 (final)
+ *   sfx.scream();            // Wilhelm scream
  *   sfx.mute(true);          // respect reduced-motion / user pref
  */
 
@@ -118,6 +119,45 @@ function noise({
   src.stop(ac.currentTime + duration + 0.02);
 }
 
+/* ─────────────── File-based SFX ─────────────── */
+
+/** Cache one HTMLAudioElement per src for quick replay. */
+const audioCache = new Map<string, HTMLAudioElement>();
+
+function playFile(src: string, volume = 0.7) {
+  if (typeof window === 'undefined' || muted) return;
+
+  let base = audioCache.get(src);
+  if (!base) {
+    base = new Audio(src);
+    base.preload = 'auto';
+    audioCache.set(src, base);
+  }
+
+  // Clone so overlapping plays (rapid taps) work independently.
+  const el = base.cloneNode(true) as HTMLAudioElement;
+  el.volume = Math.max(0, Math.min(1, volume));
+  void el.play().catch((err) => {
+    console.warn('[sfx] file playback failed:', src, err);
+  });
+  el.addEventListener('ended', () => {
+    el.src = '';
+  });
+}
+
+/* ─────────────── Achievement registry ─────────────── */
+
+export const ACHIEVEMENTS = {
+  WILHELM: {
+    id: 'wilhelm-scream',
+    title: 'Did You Hear That?',
+    description:
+      'Triggered the legendary Wilhelm scream from one of the team cards.',
+    icon: 'campaign',
+    rarity: 'Rare',
+  },
+} as const;
+
 /* ─────────────── Public SFX ─────────────── */
 
 export const sfx = {
@@ -162,7 +202,7 @@ export const sfx = {
     tone({ freq: 600, freqEnd: 200, duration: 0.2, type: 'sine', peak: 0.06 });
   },
 
-    /** Soft chime — used for celebratory tap effects. */
+  /** Soft chime — used for celebratory tap effects. */
   chime() {
     tone({ freq: 660, freqEnd: 990, duration: 0.12, type: 'triangle', peak: 0.10 });
     setTimeout(() => {
@@ -197,5 +237,10 @@ export const sfx = {
     tone({ freq: 900, freqEnd: 1400, duration: 0.07, type: 'sine', peak: 0.07 });
     setTimeout(() => tone({ freq: 1300, freqEnd: 1900, duration: 0.08, type: 'sine', peak: 0.06 }), 60);
     setTimeout(() => tone({ freq: 1700, freqEnd: 2400, duration: 0.07, type: 'sine', peak: 0.05 }), 120);
+  },
+
+  /** Wilhelm scream — plays the mp3 from /help/music/. */
+  scream() {
+    playFile('/help/music/wilhelmscream.mp3', 0.7);
   },
 };

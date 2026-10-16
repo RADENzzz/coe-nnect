@@ -1,12 +1,37 @@
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { TeamCard } from '../components/TeamCard';
 import { TEAM_GROUPS, CLIENT } from '../data/team';
 import { SpotlightCard } from '../components/animations';
 import { useEasterEggStore } from '../store/easter-egg.store';
+import {
+  Achievement,
+  type AchievementData,
+} from '../components/Achievement';
+import { ACHIEVEMENTS } from '../lib/sfx';
 
 export function TeamInfo() {
   const registerTap = useEasterEggStore((s) => s.registerTap);
   const taps = useEasterEggStore((s) => s.taps);
+
+  // The last achievement shown on screen. Null = none.
+  const [achievement, setAchievement] = useState<AchievementData | null>(null);
+
+  // Guard so the same achievement doesn't re-fire within a session.
+  const unlockedRef = useRef<Set<string>>(new Set());
+
+  const handleAchievement = (id: string) => {
+    if (unlockedRef.current.has(id)) return;
+    unlockedRef.current.add(id);
+
+    // Look up the definition and show the popup.
+    const def =
+      id === ACHIEVEMENTS.WILHELM.id
+        ? { ...ACHIEVEMENTS.WILHELM }
+        : null;
+    if (!def) return;
+    setAchievement(def as AchievementData);
+  };
 
   return (
     <div>
@@ -50,6 +75,7 @@ export function TeamInfo() {
                     index={i}
                     onTap={isEasterEgg ? () => registerTap() : undefined}
                     storeTaps={isEasterEgg ? taps : undefined}
+                    onAchievement={handleAchievement}
                   />
                 );
               })}
@@ -88,6 +114,12 @@ export function TeamInfo() {
           </SpotlightCard>
         </motion.div>
       </div>
+
+      {/* Achievement popup */}
+      <Achievement
+        achievement={achievement}
+        onDismiss={() => setAchievement(null)}
+      />
     </div>
   );
 }

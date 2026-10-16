@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type { TeamMember } from '../data/team';
 import { SpotlightCard } from './animations';
-import { sfx } from '../lib/sfx';
+import { sfx, ACHIEVEMENTS } from '../lib/sfx';
 import { MEMBER_EFFECTS } from '../lib/member-effects';
 import { MemberTapEffect } from './MemberTapEffect';
 
@@ -11,7 +11,21 @@ interface Props {
   index?: number;
   onTap?: () => void;
   storeTaps?: number;
+  /** Fires once per session when the chosen member's final tap screams. */
+  onAchievement?: (achievementId: string) => void;
 }
+
+
+/**
+ * Rickroll URL — fires once per session when the scream member hits
+ * their final tap. Guarded by module-level state so subsequent taps
+ * don't spam tabs.
+ */
+const RICKROLL_URL =
+  'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1';
+const SCREAM_TARGET = 7;
+let screamCount = 0;      // how many screams have played this session
+let rickrollFired = false;
 
 /**
  * Per-member escalating messages.
@@ -128,6 +142,17 @@ interface MangaStyle {
   avatarBg: string;
 }
 
+/**
+ * Every page load, one non-easter-egg team member is randomly chosen
+ * to be the "scream" member. Tapping that member plays the Wilhelm
+ * scream on their FINAL tap. The pick is fixed for the session —
+ * refresh to reroll.
+ */
+const SCREAM_MEMBER: string = (() => {
+  const candidates = Object.keys(MEMBER_EFFECTS);
+  return candidates[Math.floor(Math.random() * candidates.length)] ?? '';
+})();
+
 const MANGA_STYLES: MangaStyle[] = [
   {
     bg: 'bg-white', border: 'border-slate-900', text: 'text-slate-900', rotate: -3,
@@ -190,7 +215,13 @@ const MANGA_STYLES: MangaStyle[] = [
 /** How long (ms) the card waits after the last tap before resetting. */
 const IDLE_RESET_MS = 3000;
 
-export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
+export function TeamCard({
+  member,
+  index = 0,
+  onTap,
+  storeTaps,
+  onAchievement,
+}: Props) {
   const lastStageRef = useRef(-1);
   const isBrand = member.accent === 'brand';
   const [tapPulseKey, setTapPulseKey] = useState(0);
@@ -265,15 +296,40 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
     // Celebration: bump key + play SFX mapped to the effect kind
     if (memberEffect) {
       setCelebrateKey((k) => k + 1);
-      switch (memberEffect.kind) {
-        case 'sparkle':   sfx.sparkle();  break;
-        case 'lightning': sfx.zap();      break;
-        case 'bubbles':   sfx.bloop();    break;
-        case 'petals':    sfx.petal();    break;
-        case 'stars':     sfx.twinkle();  break;
-        case 'snow':      sfx.twinkle();  break;
-        case 'hearts':    sfx.chime();    break;
-        case 'confetti':  sfx.chime();    break;
+
+      const nextLocalTap = localTaps + 1;
+      const isFinalTap = nextLocalTap >= messages.length;
+      const isScreamFinal = isFinalTap && SCREAM_MEMBER === member.name;
+
+      // Normal celebration SFX — skipped only on the chosen member's final tap.
+      if (!isScreamFinal) {
+        switch (memberEffect.kind) {
+          case 'sparkle':   sfx.sparkle();  break;
+          case 'lightning': sfx.zap();      break;
+          case 'bubbles':   sfx.bloop();    break;
+          case 'petals':    sfx.petal();    break;
+          case 'stars':     sfx.twinkle();  break;
+          case 'snow':      sfx.twinkle();  break;
+          case 'hearts':    sfx.chime();    break;
+          case 'confetti':  sfx.chime();    break;
+        }
+      }
+
+      // Wilhelm scream — the chosen member screams on their final tap.
+      if (isScreamFinal) {
+        screamCount += 1;
+        sfx.scream();
+
+        // Tap 1 — the achievement unlocks the first time the scream plays.
+        if (screamCount === 1) {
+          onAchievement?.(ACHIEVEMENTS.WILHELM.id);
+        }
+
+        // Tap 7 — the payoff. Rickroll opens in a new tab, once only.
+        if (screamCount >= SCREAM_TARGET && !rickrollFired) {
+          rickrollFired = true;
+          window.open(RICKROLL_URL, '_blank', 'noopener,noreferrer');
+        }
       }
     }
 
@@ -292,7 +348,7 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
       setCelebrateKey(0);
       idleTimerRef.current = null;
     }, IDLE_RESET_MS);
-  }, [onTap, memberEffect]);
+  }, [onTap, memberEffect, localTaps, messages.length, onAchievement]);
 
   const shakeAmp = activeStyle?.shakeAmp ?? 6;
   const shouldShake = tapPulseKey > 0;
