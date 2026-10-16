@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import type { TeamMember } from '../data/team';
 import { SpotlightCard } from './animations';
+import { sfx } from '../lib/sfx';
 
 interface Props {
   member: TeamMember;
@@ -101,6 +102,7 @@ const MANGA_STYLES: MangaStyle[] = [
 const IDLE_RESET_MS = 3000;
 
 export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
+  const lastStageRef = useRef(-1);
   const isBrand = member.accent === 'brand';
   const [tapPulseKey, setTapPulseKey] = useState(0);
   const [floatKey, setFloatKey] = useState(0);
@@ -137,6 +139,8 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
   }, []);
 
   const handleTap = useCallback(() => {
+    sfx.init();
+    
     setLocalTaps((t) => t + 1);
     setTapPulseKey((k) => k + 1);
     setFloatKey((k) => k + 1);
@@ -158,6 +162,20 @@ export function TeamCard({ member, index = 0, onTap, storeTaps }: Props) {
     }, IDLE_RESET_MS);
   }, [onTap]);
 
+  useEffect(() => {
+  if (messageIndex < 0) {
+    lastStageRef.current = -1;
+    return;
+  }
+  if (messageIndex === lastStageRef.current) return;
+  lastStageRef.current = messageIndex;
+
+  // Stage-specific SFX
+  if (messageIndex >= 6)      sfx.rage();
+  else if (messageIndex >= 4) sfx.impact();
+  else if (messageIndex >= 2) sfx.angry();
+  else                        sfx.pop();
+}, [messageIndex]);
   const shakeAmp = activeStyle?.shakeAmp ?? 6;
   const shouldShake = tapPulseKey > 0;
 
