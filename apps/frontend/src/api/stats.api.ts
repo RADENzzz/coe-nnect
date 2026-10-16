@@ -57,3 +57,29 @@ export async function fetchRepoContributors(): Promise<RepoContributorsResponse>
   const { data } = await api.get('/v1/stats/repo-contributors');
   return data.data;
 }
+
+export interface RepoCommit {
+  sha: string;
+  shortSha: string;
+  message: string;
+  authorLogin: string | null;
+  authorName: string;
+  authorAvatarUrl: string | null;
+  authorProfileUrl: string | null;
+  committedAt: string;
+  url: string;
+}
+
+export interface RepoCommitsResponse {
+  commits: RepoCommit[];
+  totalFetched: number;
+  latestAt: string | null;
+  earliestAt: string | null;
+  fetchedAt: string;
+  cached: boolean;
+}
+
+export async function fetchRepoCommits(): Promise<RepoCommitsResponse> {
+  const { data } = await api.get('/v1/stats/repo-commits');
+  return data.data;
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { HelpTOC } from './components/HelpTOC';
 import { GettingStarted } from './sections/GettingStarted';
 import { RoleGuides } from './sections/RoleGuides';
@@ -16,6 +16,7 @@ import {
   BackToTop,
   ShimmerText,
 } from './components/animations';
+import { RepoCommitHistory } from './components/RepoCommitHistory';
 
 const SECTIONS = [
   { id: 'getting-started', label: 'Getting Started' },
@@ -25,6 +26,7 @@ const SECTIONS = [
   { id: 'troubleshooting', label: 'Troubleshooting' },
   { id: 'team', label: 'About the Team' },
   { id: 'version', label: 'Version Info' },
+  { id: 'commit-history', label: 'Development History' },
 ];
 
 const KEYWORDS: Record<string, string[]> = {
@@ -35,6 +37,7 @@ const KEYWORDS: Record<string, string[]> = {
   troubleshooting: ['error', 'broken', 'fix', 'problem', 'issue', 'bug'],
   team: ['developer', 'client', 'author', 'credit'],
   version: ['build', 'release', 'changelog', 'about'],
+  'commit-history': ['git', 'commits', 'history', 'log', 'repo', 'github'],
 };
 
 export default function HelpPage() {
@@ -201,6 +204,13 @@ export default function HelpPage() {
             <Reveal>
               <section id="version" className="scroll-mt-24">
                 <VersionInfo />
+              </section>
+            </Reveal>
+          )}
+          {visibleIds.has('commit-history') && (
+            <Reveal>
+              <section id="commit-history" className="scroll-mt-24">
+                <RepoCommitHistory />
               </section>
             </Reveal>
           )}

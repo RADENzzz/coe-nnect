@@ -12,6 +12,9 @@ import { User } from '../users/entities/user.entity';
 import { StatsController } from './stats.controller';
 import { StatsService } from './stats.service';
 import { RepoContributorsService } from './repo-contributors.service';
+import { RepoCommitsService } from './repo-commits.service';
+
+// in providers array:
 
 @Module({
   imports: [
@@ -27,6 +30,6 @@ import { RepoContributorsService } from './repo-contributors.service';
     ]),
   ],
   controllers: [StatsController],
-  providers: [RolesGuard, StatsService, RepoContributorsService],
+  providers: [RolesGuard, StatsService, RepoContributorsService, RepoCommitsService], 
 })
 export class StatsModule {}
