@@ -23,6 +23,7 @@ import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SearchModule } from './modules/search/search.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { DevToolsModule } from './modules/dev-tools/dev-tools.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { StatsModule } from './modules/stats/stats.module';
     ChatModule,
     ProspectusPdfsModule,
     NotificationsModule,
+    DevToolsModule,
   ],
   providers: [
     {
