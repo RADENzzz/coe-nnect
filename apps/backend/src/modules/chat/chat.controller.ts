@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -29,6 +30,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
  * NOTE: The service-layer eligibility list is intentionally broader
  * than the controller guard so the dev account can reach the route.
  */
+@ApiTags('Chat')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('college_dean', 'department_head')
 @Controller('v1/chat')
