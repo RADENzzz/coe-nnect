@@ -85,11 +85,11 @@
 }
 
 @layer components {
-.card {
-  @apply bg-white border border-slate-200 rounded-none;
-  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04),
-              0 1px 3px 0 rgba(15, 23, 42, 0.06);
-}
+  .card {
+    @apply bg-white border border-slate-200 rounded-none;
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04),
+                0 1px 3px 0 rgba(15, 23, 42, 0.06);
+  }
 
   .card-header {
     @apply border-b border-slate-100 px-5 py-4;
@@ -297,8 +297,6 @@
     .easter-egg-tap-pulse { animation: none; }
   }
 
-  
-
   .animate-fade-in { animation: fade-in 250ms ease-out; }
   .animate-fade-up { animation: fade-up 400ms cubic-bezier(0.2, 0.9, 0.3, 1); }
   .animate-slide-in { animation: slide-in 350ms cubic-bezier(0.2, 0.9, 0.3, 1); }
@@ -340,12 +338,12 @@
     .animate-shimmer,
     .animate-chat-in,
     .animate-drawer-in,
-    .animate-backdrop-in,  
+    .animate-backdrop-in,
     .animate-badge-pop,
     .animate-slide-up,
     .animate-toast-in,
     .animate-toast-out {
-    animation: none !important;
+      animation: none !important;
     }
   }
 }
@@ -442,7 +440,6 @@
   100% { opacity: 1;    transform: scale(1); }
 }
 
-
 /* ── Layer 6: Retro dot grid ── */
 .disco-overlay .disco-grid {
   position: absolute;
@@ -512,7 +509,6 @@
   opacity: 0.7;
   will-change: transform, opacity;
   transform: translate(-50%, -50%);
-  /* animationName is set inline */
 }
 
 @keyframes name-pulse {
@@ -624,17 +620,6 @@
       translate(var(--orbit-rx, 20vw), 0)
       rotate(calc(-1deg * var(--orbit-dir, 1)))
       scale(1);
-  }
-}
-
-@keyframes name-pulse {
-  0%, 100% {
-    opacity: 0.55;
-    filter: hue-rotate(0deg);
-  }
-  50% {
-    opacity: 1;
-    filter: hue-rotate(-10deg);
   }
 }
 
@@ -782,10 +767,9 @@
 .disco-stats-grid > *:nth-child(8) { animation-delay: 0.56s; }
 
 /* ═══════════════════════════════════════════════
-   Reduced-motion fallback
+   Reduced-motion fallback for disco overlay
    ═══════════════════════════════════════════════ */
 
-/* The opened easter egg keeps its team-name motion in reduced-motion mode. */
 @media (prefers-reduced-motion: reduce) {
   .disco-overlay::before,
   .disco-overlay::after,
@@ -795,8 +779,9 @@
   .disco-overlay .disco-floor-glow {
     animation: none !important;
   }
+}
 
-  /* ═══════════════════════════════════════════════
+/* ═══════════════════════════════════════════════
    Additions — 2026-04
    Small, additive utilities to support newer
    components. No existing rules are overridden.
@@ -997,5 +982,4 @@ html {
   .no-print {
     display: none !important;
   }
-}
 }
