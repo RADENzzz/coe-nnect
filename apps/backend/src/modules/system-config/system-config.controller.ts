@@ -5,6 +5,7 @@ import {
   Patch,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SystemConfigService } from './system-config.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,6 +22,8 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
  *
  * `administrator` is intentionally absent from every @Roles() list.
  */
+@ApiTags('System Config')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/system-config')
 export class SystemConfigController {
