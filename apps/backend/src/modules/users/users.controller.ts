@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -35,6 +36,8 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
  * be declared before parameterized `:id` routes or Nest will match
  * the literal segment as an ID.
  */
+@ApiTags('Users')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('college_dean')
 @Controller('v1/users')
