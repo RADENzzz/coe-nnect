@@ -3,7 +3,11 @@ import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
-import type { RoleNav } from '../../lib/constants/nav-config';
+import {
+  filterNavByRole,
+  type RoleNav,
+} from '../../lib/constants/nav-config';
+import { useAuthStore } from '../../store/auth.store';
 
 // Global body-lock counter so nested modals cooperate
 let bodyLockCount = 0;
@@ -41,6 +45,10 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
 
   const subtitle =
     nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
+
+  const profile = useAuthStore((s) => s.profile);
+  const visibleMain = filterNavByRole(nav.main, profile?.role);
+  const visibleFooter = filterNavByRole(nav.footer, profile?.role);
 
   useEffect(() => {
     if (!isMobileDrawerOpen) return;
@@ -171,7 +179,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
 
         {/* Main Nav */}
         <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2 overscroll-contain">
-          {nav.main.map((item) => (
+          {visibleMain.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -193,9 +201,9 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         </div>
 
         {/* Footer Nav */}
-        {nav.footer.length > 0 && (
+        {visibleFooter.length > 0 && (
           <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2 pb-safe">
-            {nav.footer.map((item) => (
+            {visibleFooter.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
