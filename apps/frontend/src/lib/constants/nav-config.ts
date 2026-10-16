@@ -6,6 +6,12 @@ export interface NavItem {
   path: string;
   icon: string;
   primary?: boolean;
+  /**
+   * If set, this item is only rendered when the current user's role
+   * matches. Kept for future role-gated entries; currently unused
+   * because the administrator role has its own DEV_NAV.
+   */
+  requiresRole?: Role;
 }
 
 export interface RoleNav {
@@ -48,9 +54,8 @@ const DH_NAV: RoleNav = {
 /**
  * Dean navigation.
  *
- * Mirrors every route registered under `/dean/*` in App.tsx.
- * Missing entries here mean a route exists but is unreachable from
- * the sidebar — that was the Audit Trail bug.
+ * Mirrors every route registered under `/dean/*` in App.tsx, EXCEPT
+ * the developer-only route. The Dean does not see Dev Tools.
  */
 const DEAN_NAV: RoleNav = {
   brandSubtitle: 'Dean Portal',
@@ -85,8 +90,37 @@ const DEAN_NAV: RoleNav = {
   ],
 };
 
+/**
+ * Developer navigation.
+ *
+ * Used ONLY by the hidden `administrator` role (dev-admin@wmsu.edu.ph).
+ * Intentionally minimal — the dev account is a maintenance account,
+ * not a user persona. It must not see Dean or DH pages.
+ */
+const DEV_NAV: RoleNav = {
+  brandSubtitle: 'Developer',
+  topBarLabel: 'Developer Tools',
+  main: [
+    {
+      label: 'Dev Tools',
+      path: '/dean/dev-tools',
+      icon: 'terminal',
+      primary: true,
+    },
+  ],
+  footer: [],
+  bottom: [
+    {
+      label: 'Dev Tools',
+      path: '/dean/dev-tools',
+      icon: 'terminal',
+      primary: true,
+    },
+  ],
+};
+
 export const NAV_BY_ROLE: Record<Role, RoleNav> = {
-  [ROLES.ADMIN]:     DEAN_NAV,
+  [ROLES.ADMIN]:     DEV_NAV,     // ← was DEAN_NAV
   [ROLES.DEAN]:      DEAN_NAV,
   [ROLES.DEPT_HEAD]: DH_NAV,
   [ROLES.VIEWER]:    DH_NAV,
@@ -95,4 +129,18 @@ export const NAV_BY_ROLE: Record<Role, RoleNav> = {
 export function getNavForRole(role: Role | undefined): RoleNav {
   if (!role) return DH_NAV;
   return NAV_BY_ROLE[role] ?? DH_NAV;
+}
+
+/**
+ * Filter a nav list to items whose `requiresRole` either isn't set
+ * or matches the current user's role.
+ *
+ * Kept for future role-gated entries. Currently a no-op for all
+ * navs because DEV_NAV/DEAN_NAV/DH_NAV have no requiresRole items.
+ */
+export function filterNavByRole(
+  items: NavItem[],
+  role: Role | undefined,
+): NavItem[] {
+  return items.filter((item) => !item.requiresRole || item.requiresRole === role);
 }
