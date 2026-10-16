@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FacultyService } from './faculty.service';
 import { CreateFacultyDto } from './dto/create-faculty.dto';
 import { UpdateFacultyDto } from './dto/update-faculty.dto';
@@ -38,6 +39,8 @@ import { FacultyStatusSummaryQueryDto } from './dto/faculty-status-summary.dto';
  * service layer (see FacultyService.assertOwnership) — but the API
  * surface treats the Dean as the top role.
  */
+@ApiTags('Faculty')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/faculty')
 export class FacultyController {
