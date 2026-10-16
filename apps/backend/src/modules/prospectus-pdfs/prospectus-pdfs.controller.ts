@@ -12,6 +12,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -47,6 +48,8 @@ interface RequestWithProfile extends Request {
  * @Roles() decorator. The hidden dev account still bypasses the
  * department check at the service layer.
  */
+@ApiTags('Prospectus PDFs')
+@ApiBearerAuth('supabase-jwt')
 @Controller('v1/prospectus-pdfs')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('college_dean', 'department_head')
@@ -59,6 +62,7 @@ export class ProspectusPdfsController {
 
   @Post()
   @Auditable({ action: 'prospectus_pdf.upload', source: 'Prospectus' })
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 20 * 1024 * 1024 },
