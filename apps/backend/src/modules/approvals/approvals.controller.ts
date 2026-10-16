@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ApprovalsService } from './approvals.service';
 import { CreateFacultyRequestDto } from './dto/create-faculty-request.dto';
 import { RespondFacultyRequestDto } from './dto/respond-faculty-request.dto';
@@ -16,6 +17,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 
+@ApiTags('Approvals')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/faculty-requests')
 export class ApprovalsController {
