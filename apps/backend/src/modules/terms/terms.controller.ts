@@ -8,6 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TermsService } from './terms.service';
 import { CreateTermDto } from './dto/create-term.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -25,6 +26,8 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
  *
  * `administrator` is intentionally absent from every @Roles() list.
  */
+@ApiTags('Terms')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/terms')
 export class TermsController {
