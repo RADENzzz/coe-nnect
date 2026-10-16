@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SubjectsService } from './subjects.service';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
@@ -29,6 +30,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
  *
  * `administrator` is intentionally absent from every @Roles() list.
  */
+@ApiTags('Subjects')
+@ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/subjects')
 export class SubjectsController {
