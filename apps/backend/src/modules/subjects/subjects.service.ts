@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { Subject } from './entities/subject.entity';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
@@ -14,6 +14,14 @@ import { SubjectRestriction } from './entities/subject-restriction.entity';
 import { CreateSubjectRestrictionDto } from './dto/create-subject-restriction.dto';
 import { UpdateSubjectRestrictionDto } from './dto/update-subject-restriction.dto';
 import { User } from '../users/entities/user.entity';
+import { Schedule } from '../scheduling/entities/schedule.entity';
+import { Prospectus } from '../prospectus/entities/prospectus.entity';
+
+/**
+ * Postgres error code for foreign key violations.
+ * @see https://www.postgresql.org/docs/current/errcodes-appendix.html
+ */
+const PG_FK_VIOLATION = '23503';
 
 @Injectable()
 export class SubjectsService {
@@ -22,6 +30,10 @@ export class SubjectsService {
     private readonly repo: Repository<Subject>,
     @InjectRepository(SubjectRestriction)
     private readonly restrictions: Repository<SubjectRestriction>,
+    @InjectRepository(Schedule)
+    private readonly scheduleRepo: Repository<Schedule>,
+    @InjectRepository(Prospectus)
+    private readonly prospectusRepo: Repository<Prospectus>,
   ) {}
 
   // ────────────────────────────────────────────
@@ -169,9 +181,77 @@ export class SubjectsService {
     return this.repo.save(found);
   }
 
+  /**
+   * Delete a subject.
+   *
+   * A subject cannot be deleted while it is referenced by:
+   *   - schedule rows (FK: schedule_subject_id_fkey)
+   *   - prospectus entries (FK on prospectus.subject_id)
+   *   - subject restrictions (either side of the pair)
+   *
+   * We check these *before* issuing the DELETE so the user gets a
+   * specific, actionable message instead of a raw Postgres FK error.
+   * A catch-all converts any remaining FK violation (e.g. a table we
+   * haven't enumerated yet) into the same clean 409 shape.
+   *
+   * The alternative when references exist is to deactivate the
+   * subject instead — we suggest that in the error message.
+   */
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, profile);
-    await this.repo.remove(found);
+
+    const [scheduleCount, prospectusCount, restrictionCount] =
+      await Promise.all([
+        this.scheduleRepo.count({ where: { subjectId: id } }),
+        this.prospectusRepo.count({ where: { subjectId: id } }),
+        this.restrictions
+          .createQueryBuilder('r')
+          .where('r.subjectId1 = :id OR r.subjectId2 = :id', { id })
+          .getCount(),
+      ]);
+
+    const blockers: string[] = [];
+    if (scheduleCount > 0) {
+      blockers.push(
+        `${scheduleCount} schedule ${scheduleCount === 1 ? 'entry' : 'entries'}`,
+      );
+    }
+    if (prospectusCount > 0) {
+      blockers.push(
+        `${prospectusCount} prospectus ${prospectusCount === 1 ? 'mapping' : 'mappings'}`,
+      );
+    }
+    if (restrictionCount > 0) {
+      blockers.push(
+        `${restrictionCount} subject ${restrictionCount === 1 ? 'restriction' : 'restrictions'}`,
+      );
+    }
+
+    if (blockers.length > 0) {
+      throw new ConflictException(
+        `Cannot delete "${found.subjectCode}" — it is still referenced by ${blockers.join(
+          ', ',
+        )}. Remove those references first, or deactivate the subject instead.`,
+      );
+    }
+
+    try {
+      await this.repo.remove(found);
+    } catch (err) {
+      // Safety net: any remaining FK violation (a table we didn't
+      // enumerate above) still surfaces as a clean 409, never a 500.
+      if (
+        err instanceof QueryFailedError &&
+        (err as any).driverError?.code === PG_FK_VIOLATION
+      ) {
+        throw new ConflictException(
+          `Cannot delete "${found.subjectCode}" — it is still referenced by other data. ` +
+            `Deactivate the subject instead.`,
+        );
+      }
+      throw err;
+    }
+
     return { success: true };
   }
 
@@ -218,10 +298,7 @@ export class SubjectsService {
     // Ownership check: a DH can only restrict subjects they own.
     if (profile.role === 'department_head') {
       const myDept = String(profile.deptId);
-      if (
-        String(a.deptId) !== myDept ||
-        String(b.deptId) !== myDept
-      ) {
+      if (String(a.deptId) !== myDept || String(b.deptId) !== myDept) {
         throw new ForbiddenException(
           'You can only create restrictions between subjects in your own department.',
         );
