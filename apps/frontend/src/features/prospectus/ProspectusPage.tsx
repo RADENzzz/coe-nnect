@@ -217,10 +217,22 @@ export default function ProspectusPage() {
     [visiblePrograms],
   );
 
+  // ── Shared invalidation helper ──
+  // Prospectus is the *source of truth* for coverage expected count.
+  // Any change here can add/remove expected (subject × section) pairs.
+  // 'prospectus-all' is the key TimetablePage reads for its plot modal.
+  const invalidateAfterProspectusChange = () => {
+    qc.invalidateQueries({ queryKey: ['prospectus'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-all'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
+    qc.invalidateQueries({ queryKey: ['coverage'] });
+    qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+  };
+
   // ── Mutations ──
   const toggleMutation = useMutation({
     mutationFn: toggleProspectusActive,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['prospectus'] }),
+    onSuccess: () => invalidateAfterProspectusChange(),
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
   });
@@ -230,7 +242,7 @@ export default function ProspectusPage() {
     onSuccess: () => {
       setSuccess('Prospectus entry removed.');
       setDeleteTarget(null);
-      qc.invalidateQueries({ queryKey: ['prospectus'] });
+      invalidateAfterProspectusChange();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Delete failed'),
@@ -253,7 +265,7 @@ export default function ProspectusPage() {
           targets.length === 1 ? 'y' : 'ies'
         }.`,
       );
-      qc.invalidateQueries({ queryKey: ['prospectus'] });
+      invalidateAfterProspectusChange();
     } catch (err: any) {
       setError(err?.response?.data?.message ?? 'Bulk operation failed');
     } finally {
@@ -855,7 +867,7 @@ export default function ProspectusPage() {
             setSuccess(
               `Copied ${count} subject${count === 1 ? '' : 's'} into the current slot.`,
             );
-            qc.invalidateQueries({ queryKey: ['prospectus'] });
+            invalidateAfterProspectusChange();
           }}
         />
       )}
