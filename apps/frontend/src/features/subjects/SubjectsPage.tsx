@@ -374,15 +374,23 @@ export default function SubjectsPage() {
     deptCodeById,
   ]);
 
+  // ── Shared invalidation helper ──
+  // Coverage and unplotted-minors both depend on the subject catalog.
+  // Any subject mutation can change which (subject × section) pairs are
+  // expected, missing, or plottable.
+  const invalidateAfterSubjectChange = () => {
+    qc.invalidateQueries({ queryKey: ['subjects'] });
+    qc.invalidateQueries({ queryKey: ['coverage'] });
+    qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+  };
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createSubject,
     onSuccess: (s) => {
       setSuccess(`Subject "${s.subjectCode}" created.`);
       closeForm(true);
-      qc.invalidateQueries({ queryKey: ['subjects'] });
-      qc.invalidateQueries({ queryKey: ['coverage'] });
-      qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+      invalidateAfterSubjectChange();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
@@ -399,7 +407,7 @@ export default function SubjectsPage() {
     onSuccess: (s) => {
       setSuccess(`Subject "${s.subjectCode}" updated.`);
       closeForm(true);
-      qc.invalidateQueries({ queryKey: ['subjects'] });
+      invalidateAfterSubjectChange();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
@@ -407,7 +415,7 @@ export default function SubjectsPage() {
 
   const toggleMutation = useMutation({
     mutationFn: toggleSubjectActive,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['subjects'] }),
+    onSuccess: () => invalidateAfterSubjectChange(),
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
   });
@@ -417,7 +425,7 @@ export default function SubjectsPage() {
     onSuccess: () => {
       setSuccess('Subject deleted.');
       setDeleteTarget(null);
-      qc.invalidateQueries({ queryKey: ['subjects'] });
+      invalidateAfterSubjectChange();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Delete failed'),
