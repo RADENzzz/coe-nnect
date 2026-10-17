@@ -246,12 +246,22 @@ export default function ProspectusFormModal({
       });
   }, [subjects, subjectSearch, subjectsInCurrentProgram, editing]);
 
+  // ── Shared invalidation helper ──
+  // 'prospectus-all' is read by TimetablePage for the plot modal.
+  // 'coverage' and 'unplotted-minors' depend on the prospectus shape.
+  const invalidateAfterProspectusChange = () => {
+    qc.invalidateQueries({ queryKey: ['prospectus'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-all'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
+    qc.invalidateQueries({ queryKey: ['coverage'] });
+    qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+  };
+
   // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createProspectus,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['prospectus'] });
-      qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
+      invalidateAfterProspectusChange();
       onClose();
     },
     onError: (err: any) =>
@@ -269,8 +279,7 @@ export default function ProspectusFormModal({
       input: Parameters<typeof updateProspectus>[1];
     }) => updateProspectus(id, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['prospectus'] });
-      qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
+      invalidateAfterProspectusChange();
       onClose();
     },
     onError: (err: any) =>
