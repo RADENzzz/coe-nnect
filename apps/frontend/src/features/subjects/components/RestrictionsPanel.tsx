@@ -43,10 +43,20 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
     enabled: open,
   });
 
+  // ── Shared invalidation helper ──
+  // Restrictions feed into the coverage indicator (a restriction can
+  // affect whether a (subject × section) pair is schedulable) and into
+  // the scheduler's S-11 rule.
+  const invalidateAfterRestrictionChange = () => {
+    qc.invalidateQueries({ queryKey: ['subject-restrictions'] });
+    qc.invalidateQueries({ queryKey: ['coverage'] });
+    qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: createSubjectRestriction,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['subject-restrictions'] });
+      invalidateAfterRestrictionChange();
       setForm({ subjectId1: '', subjectId2: '', warningMessage: '' });
       setError(null);
     },
@@ -62,7 +72,7 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
       id: string;
       input: { warningMessage?: string; isActive?: boolean };
     }) => updateSubjectRestriction(id, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['subject-restrictions'] }),
+    onSuccess: () => invalidateAfterRestrictionChange(),
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Update failed'),
   });
@@ -70,7 +80,7 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
   const deleteMutation = useMutation({
     mutationFn: deleteSubjectRestriction,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['subject-restrictions'] });
+      invalidateAfterRestrictionChange();
       setDeleteTarget(null);
     },
     onError: (err: any) =>
