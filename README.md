@@ -73,8 +73,8 @@ See the [documentation index](docs/README.md) for guides and service-specific in
 Clone the repository, install the JavaScript workspace dependencies, and create local environment files:
 
 ```powershell
-git clone https://github.com/RADENzzz/SCHEDULING-SYSTEM-WMSU-.git
-Set-Location SCHEDULING-SYSTEM-WMSU-
+git clone https://github.com/RADENzzz/coe-nnect.git
+Set-Location coe-nnect
 pnpm install
 Copy-Item apps\backend\.env.example apps\backend\.env
 Copy-Item apps\frontend\.env.example apps\frontend\.env.local
