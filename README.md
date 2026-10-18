@@ -41,7 +41,7 @@ CoE-NNECT supports academic scheduling for the College of Engineering at Western
 - View timetables and reports, review audit history, and use notifications and chat.
 - Import prospectus information from PDF text using editor-defined regions.
 
-The Python OR-Tools solver and the IDP client are standalone or reserved packages; neither is currently integrated into the main application. See the [package documentation](docs/README.md) for their status.
+The Python OR-Tools solver is a separately deployed service called by the backend during automatic schedule generation. The IDP client remains reserved and is not integrated. See the [system architecture](docs/architecture/README.md) and [package documentation](docs/README.md) for details.
 
 ## Repository layout
 
@@ -129,10 +129,12 @@ Browser
 
 Supporting services:
   ├── FastAPI prospectus parser (packages/prospectus-parser)
-  └── FastAPI OR-Tools solver (packages/solver-service; not integrated)
+  └── FastAPI OR-Tools solver (packages/solver-service; called by backend auto-generation)
 ```
 
 Database schema changes are managed through the Supabase SQL workflow; TypeORM schema synchronization is disabled. Use a configured development database when running seeds or other database-changing commands.
+
+See the [system architecture](docs/architecture/README.md) for component boundaries, persistence, and key workflows.
 
 ## Documentation
 
