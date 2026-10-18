@@ -94,7 +94,6 @@ export default function TopBar({ label }: TopBarProps) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ── Chat control (from ChatProvider at shell level) ──
   const { open: chatOpen, setOpen: setChatOpen, totalUnread } =
     useChatControl();
 
@@ -191,8 +190,12 @@ export default function TopBar({ label }: TopBarProps) {
     function handleKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        inputRef.current?.focus();
-        setIsSearchOpen(true);
+        if (window.matchMedia('(min-width: 768px)').matches) {
+          inputRef.current?.focus();
+          setIsSearchOpen(true);
+        } else {
+          setMobileSearchOpen(true);
+        }
       }
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
@@ -253,16 +256,11 @@ export default function TopBar({ label }: TopBarProps) {
     isSearchOpen && !debouncedQuery && recentSearches.length > 0;
   const showClear = searchQuery.length > 0;
 
-  const renderSearchDropdown = (
-    variant: 'desktop' | 'mobile' = 'desktop',
-  ) => {
-    const widthClass =
-      variant === 'desktop' ? 'w-[22rem] right-0 mt-1' : 'w-full mt-2';
-
+  const renderSearchDropdown = () => {
     if (showRecent) {
       return (
         <div
-          className={`animate-fade-in absolute ${widthClass} border border-slate-200 bg-white shadow-lg z-50`}
+          className="animate-fade-in absolute w-[22rem] right-0 mt-1 border border-slate-200 bg-white shadow-lg z-50"
         >
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -311,7 +309,7 @@ export default function TopBar({ label }: TopBarProps) {
     return (
       <div
         id="global-search-results"
-        className={`animate-fade-in absolute ${widthClass} max-h-[70vh] overflow-y-auto border border-slate-200 bg-white shadow-lg z-50`}
+        className="animate-fade-in absolute w-[22rem] right-0 mt-1 max-h-[70vh] overflow-y-auto border border-slate-200 bg-white shadow-lg z-50"
       >
         {isFetching && results.length === 0 ? (
           <div className="px-4 py-3 text-xs text-slate-400">
@@ -383,28 +381,6 @@ export default function TopBar({ label }: TopBarProps) {
             })}
           </ul>
         )}
-
-        {results.length > 0 && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-[10px] text-slate-400">
-            <span>
-              <kbd className="border border-slate-200 bg-slate-50 px-1 py-0.5 font-mono">
-                ↑↓
-              </kbd>{' '}
-              navigate ·{' '}
-              <kbd className="border border-slate-200 bg-slate-50 px-1 py-0.5 font-mono">
-                Enter
-              </kbd>{' '}
-              open ·{' '}
-              <kbd className="border border-slate-200 bg-slate-50 px-1 py-0.5 font-mono">
-                Esc
-              </kbd>{' '}
-              close
-            </span>
-            <span>
-              {results.length} result{results.length === 1 ? '' : 's'}
-            </span>
-          </div>
-        )}
       </div>
     );
   };
@@ -416,16 +392,16 @@ export default function TopBar({ label }: TopBarProps) {
         style={{ height: '48px' }}
       >
         {/* Left */}
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             onClick={openMobileDrawer}
-            className="md:hidden tap-target hover:bg-slate-50 flex items-center justify-center text-slate-600 -ml-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+            className="md:hidden tap-target hover:bg-slate-50 flex items-center justify-center text-slate-600 -ml-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 shrink-0"
             aria-label="Open menu"
           >
             <Icon name="menu" />
           </button>
 
-          <span className="md:hidden text-sm font-bold text-slate-900 truncate">
+          <span className="md:hidden text-sm font-bold text-slate-900 truncate min-w-0">
             {pageTitle}
           </span>
 
@@ -437,18 +413,13 @@ export default function TopBar({ label }: TopBarProps) {
         </div>
 
         {/* Right */}
-        <div className="flex items-center gap-1 md:gap-2">
-          {/* Mobile search trigger */}
-          <button
-            type="button"
-            onClick={() => setMobileSearchOpen(true)}
-            className="md:hidden tap-target hover:bg-slate-50 flex items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
-            aria-label="Search"
-          >
-            <Icon name="search" />
-          </button>
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">
+          {/* ── Mobile: only bell + avatar (search + chat moved elsewhere) ── */}
+          <div className="md:hidden flex items-center gap-1">
+            <NotificationBell />
+          </div>
 
-          {/* Desktop search */}
+          {/* ── Desktop: search + chat + bell + settings + avatar ── */}
           <div ref={searchRef} className="relative hidden md:block">
             <Icon
               name="search"
@@ -489,15 +460,14 @@ export default function TopBar({ label }: TopBarProps) {
               </button>
             ) : null}
 
-            {renderSearchDropdown('desktop')}
+            {renderSearchDropdown()}
           </div>
 
-          {/* ── Chat button (new placement) ── */}
           {profile?.role !== 'viewer' && (
             <button
               type="button"
               onClick={() => setChatOpen(!chatOpen)}
-              className="tap-target hover:bg-slate-50 transition-colors flex items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
               aria-label={
                 totalUnread > 0
                   ? `Chat (${totalUnread} unread)`
@@ -524,7 +494,9 @@ export default function TopBar({ label }: TopBarProps) {
             </button>
           )}
 
-          <NotificationBell />
+          <div className="hidden md:block">
+            <NotificationBell />
+          </div>
 
           <button
             type="button"
@@ -561,6 +533,33 @@ export default function TopBar({ label }: TopBarProps) {
                     {profile?.email ?? ''}
                   </p>
                 </div>
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    setMobileSearchOpen(true);
+                  }}
+                  className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                >
+                  <Icon name="search" className="mr-3 text-base" />
+                  Search
+                </button>
+                {profile?.role !== 'viewer' && (
+                  <button
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      setChatOpen(true);
+                    }}
+                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                  >
+                    <Icon name="forum" className="mr-3 text-base" />
+                    Chat
+                    {totalUnread > 0 && (
+                      <span className="ml-auto text-[10px] font-bold text-white bg-[#5c1219] px-1.5 py-0.5 rounded-full">
+                        {totalUnread > 9 ? '9+' : totalUnread}
+                      </span>
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
@@ -632,7 +631,107 @@ export default function TopBar({ label }: TopBarProps) {
             </div>
           </div>
           <div className="relative flex-1 overflow-y-auto">
-            {renderSearchDropdown('mobile')}
+            {isFetching && results.length === 0 ? (
+              <div className="px-4 py-3 text-xs text-slate-400">
+                Searching…
+              </div>
+            ) : results.length === 0 && debouncedQuery.length >= MIN_QUERY_LENGTH ? (
+              <div className="px-4 py-12 text-center text-sm text-slate-500">
+                No results for &ldquo;{debouncedQuery}&rdquo;
+              </div>
+            ) : debouncedQuery.length < MIN_QUERY_LENGTH && recentSearches.length > 0 ? (
+              <div>
+                <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Recent searches
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecentSearches([]);
+                      saveRecentSearches([]);
+                    }}
+                    className="text-[10px] text-slate-400 hover:text-slate-700 font-semibold"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <ul>
+                  {recentSearches.map((term) => (
+                    <li key={term}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery(term);
+                          setIsSearchOpen(true);
+                          inputRef.current?.focus();
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-100"
+                      >
+                        <Icon
+                          name="history"
+                          className="text-slate-400 text-[18px]"
+                        />
+                        <span className="text-sm text-slate-700 truncate">
+                          {term}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {results.length > 0 && (
+              <ul role="listbox" className="py-1">
+                {groupedResults.map(([type, items]) => {
+                  const meta = TYPE_META[type as SearchResult['type']];
+                  return (
+                    <li key={type}>
+                      <div className="px-4 py-1.5 flex items-center gap-2 bg-slate-50 border-y border-slate-100">
+                        <Icon
+                          name={meta.icon}
+                          className="text-slate-400 text-[14px]"
+                        />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          {meta.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {items.length}
+                        </span>
+                      </div>
+                      <ul>
+                        {items.map((r) => (
+                          <li key={`${r.type}-${r.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelect(r)}
+                              className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                            >
+                              <span className="material-symbols-outlined mt-0.5 text-[20px] text-slate-400">
+                                {meta.icon}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium text-slate-900">
+                                  <Highlighted
+                                    text={r.label}
+                                    query={debouncedQuery}
+                                  />
+                                </div>
+                                {r.sublabel && (
+                                  <div className="mt-0.5 truncate text-xs text-slate-500">
+                                    {r.sublabel}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </div>
       )}
