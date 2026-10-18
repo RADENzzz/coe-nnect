@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchSchedules, fetchActiveTerm } from '../../api/schedule.api';
 import { fetchUserDirectory } from '../../api/users.api';
@@ -12,12 +13,14 @@ function StatCard({
   value,
   sub,
   color = 'brand',
+  to,
 }: {
   icon: string;
   label: string;
   value: string | number;
   sub?: string;
   color?: 'brand' | 'green' | 'amber' | 'blue';
+  to?: string;
 }) {
   const colors = {
     brand: 'bg-red-50 border-red-200 text-[#5c1219]',
@@ -25,8 +28,9 @@ function StatCard({
     amber: 'bg-amber-50 border-amber-200 text-amber-700',
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
   };
-  return (
-    <div className="bg-white border border-slate-200 p-5 shadow-sm flex flex-col gap-3">
+
+  const inner = (
+    <>
       <div
         className={`w-9 h-9 border flex items-center justify-center ${colors[color]}`}
       >
@@ -41,8 +45,27 @@ function StatCard({
         </p>
         {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
       </div>
-    </div>
+    </>
   );
+
+  const className =
+    'bg-white border border-slate-200 p-5 shadow-sm flex flex-col gap-3 transition' +
+    (to
+      ? ' hover:border-[#5c1219]/40 hover:shadow-md cursor-pointer group'
+      : '');
+
+  if (to) {
+    return (
+      <Link to={to} className={className}>
+        {inner}
+        <span className="text-[10px] text-[#5c1219] font-semibold opacity-0 group-hover:opacity-100 transition flex items-center gap-1 -mt-1">
+          View <Icon name="arrow_forward" size={11} />
+        </span>
+      </Link>
+    );
+  }
+
+  return <div className={className}>{inner}</div>;
 }
 
 function initials(username: string): string {
@@ -124,6 +147,7 @@ export default function DeanDashboardPage() {
           value={deptLoading ? '—' : activeDepts.length}
           sub={`${departments.length} total`}
           color="brand"
+          to="/dean/departments"
         />
         <StatCard
           icon="pending_actions"
@@ -131,6 +155,7 @@ export default function DeanDashboardPage() {
           value={reviewSchedules.length}
           sub="Schedules in review"
           color={reviewSchedules.length > 0 ? 'amber' : 'green'}
+          to="/dean/approvals"
         />
         <StatCard
           icon="check_circle"
@@ -138,6 +163,7 @@ export default function DeanDashboardPage() {
           value={finalizedSchedules.length}
           sub={activeTerm ? `For ${activeTerm.termName}` : '—'}
           color="green"
+          to="/dean/reports/approvals"
         />
         <StatCard
           icon="sensors"
@@ -145,6 +171,7 @@ export default function DeanDashboardPage() {
           value={`${onlineDHs} / ${deptsWithHeads.filter((x) => x.head).length}`}
           sub={isConnected ? 'Live' : 'Connecting…'}
           color={onlineDHs > 0 ? 'green' : 'blue'}
+          // Not clickable — presence has no dedicated page
         />
       </div>
 
