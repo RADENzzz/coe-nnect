@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -9,6 +9,11 @@ import {
   type Department,
   type CreateDepartmentInput,
 } from '../../api/departments.api';
+import {
+  fetchUsers,
+  updateUser,
+  type UserRecord,
+} from '../../api/users.api';
 import { login } from '../../api/auth.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
@@ -18,7 +23,7 @@ import { ActiveBadge } from '../../components/ui/StatusBadge';
 
 type Mode = 'create' | 'edit';
 
-export default function AdminDepartmentsPage() {
+export default function DeanDepartmentsManagePage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
 
@@ -30,6 +35,7 @@ export default function AdminDepartmentsPage() {
     deptCode: '',
     deptName: '',
     description: '',
+    headUserId: '',
   });
 
   const [deactivateTarget, setDeactivateTarget] = useState<string | null>(null);
@@ -43,13 +49,65 @@ export default function AdminDepartmentsPage() {
     enabled: !!user,
   });
 
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
+    enabled: !!user,
+  });
+
+  // ── Eligible DHs for the current form selection ──
+  // A user is eligible if:
+  //   - role === 'department_head'
+  //   - isActive === true
+  //   - either: no deptId yet (unassigned) OR deptId === current editing department
+  const eligibleHeads = useMemo(() => {
+    const editingDeptId = editing?.deptId ? String(editing.deptId) : null;
+    return allUsers.filter((u) => {
+      if (u.role !== 'department_head') return false;
+      if (!u.isActive) return false;
+      const userDept = u.deptId ? String(u.deptId) : null;
+      if (userDept === null) return true; // unassigned
+      if (editingDeptId && userDept === editingDeptId) return true; // current dept
+      return false; // assigned to another dept
+    });
+  }, [allUsers, editing]);
+
+  // ── Current head of the editing department ──
+  const currentHead = useMemo(() => {
+    if (!editing) return null;
+    return (
+      allUsers.find(
+        (u) =>
+          u.role === 'department_head' &&
+          u.isActive &&
+          String(u.deptId ?? '') === String(editing.deptId),
+      ) ?? null
+    );
+  }, [allUsers, editing]);
+
   // ── Create ──
   const createMutation = useMutation({
     mutationFn: createDepartment,
-    onSuccess: (dept) => {
+    onSuccess: async (dept) => {
+      // If a head was selected, assign them to this new dept
+      if (form.headUserId) {
+        try {
+          await updateUser(form.headUserId, { deptId: dept.deptId });
+        } catch (err) {
+          // Dept created but head assignment failed — surface the error
+          setError(
+            'Department created, but head assignment failed. Use the Users page to assign a head.',
+          );
+          qc.invalidateQueries({ queryKey: ['departments'] });
+          qc.invalidateQueries({ queryKey: ['users'] });
+          closeForm();
+          return;
+        }
+      }
       setSuccess(`Department "${dept.deptName}" created.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['departments'] });
+      qc.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (err: any) => {
       setError(
@@ -105,12 +163,12 @@ export default function AdminDepartmentsPage() {
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
@@ -124,14 +182,36 @@ export default function AdminDepartmentsPage() {
     if (mode === 'create') {
       createMutation.mutate(payload);
     } else if (mode === 'edit' && editing) {
+      // 1. Update dept fields
       updateMutation.mutate({ id: editing.deptId, input: payload });
+
+      // 2. Handle head change (async, after update succeeds)
+      const currentHeadId = currentHead ? currentHead.userId : '';
+      const targetHeadId = form.headUserId;
+      if (currentHeadId !== targetHeadId) {
+        try {
+          // Unassign the old head
+          if (currentHeadId) {
+            await updateUser(currentHeadId, { deptId: null });
+          }
+          // Assign the new head
+          if (targetHeadId) {
+            await updateUser(targetHeadId, { deptId: editing.deptId });
+          }
+          qc.invalidateQueries({ queryKey: ['users'] });
+        } catch (err: any) {
+          setError(
+            'Department updated, but head reassignment failed. Use the Users page to fix it.',
+          );
+        }
+      }
     }
   };
 
   const openCreate = () => {
     setMode('create');
     setEditing(null);
-    setForm({ deptCode: '', deptName: '', description: '' });
+    setForm({ deptCode: '', deptName: '', description: '', headUserId: '' });
     setError(null);
     setSuccess(null);
   };
@@ -139,10 +219,17 @@ export default function AdminDepartmentsPage() {
   const openEdit = (d: Department) => {
     setMode('edit');
     setEditing(d);
+    const head = allUsers.find(
+      (u) =>
+        u.role === 'department_head' &&
+        u.isActive &&
+        String(u.deptId ?? '') === String(d.deptId),
+    );
     setForm({
       deptCode: d.deptCode,
       deptName: d.deptName,
       description: d.description ?? '',
+      headUserId: head ? head.userId : '',
     });
     setError(null);
     setSuccess(null);
@@ -151,7 +238,7 @@ export default function AdminDepartmentsPage() {
   const closeForm = () => {
     setMode(null);
     setEditing(null);
-    setForm({ deptCode: '', deptName: '', description: '' });
+    setForm({ deptCode: '', deptName: '', description: '', headUserId: '' });
     setError(null);
   };
 
@@ -172,11 +259,23 @@ export default function AdminDepartmentsPage() {
       render: (d) => d.deptName,
     },
     {
-      key: 'id',
-      header: 'ID',
-      hideOnMobile: true,
-      cellClassName: 'text-on-surface-variant font-mono',
-      render: (d) => String(d.deptId),
+      key: 'head',
+      header: 'Head',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs text-on-surface-variant',
+      render: (d) => {
+        const head = allUsers.find(
+          (u) =>
+            u.role === 'department_head' &&
+            u.isActive &&
+            String(u.deptId ?? '') === String(d.deptId),
+        );
+        return head ? (
+          <span className="text-on-surface">{head.username}</span>
+        ) : (
+          <span className="italic">Not assigned</span>
+        );
+      },
     },
     {
       key: 'description',
@@ -321,6 +420,28 @@ export default function AdminDepartmentsPage() {
           </div>
           <div>
             <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+              Department Head
+            </label>
+            <select
+              name="headUserId"
+              value={form.headUserId}
+              onChange={handleChange}
+              className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+            >
+              <option value="">— none —</option>
+              {eligibleHeads.map((u) => (
+                <option key={u.userId} value={u.userId}>
+                  {u.username} ({u.email})
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-on-surface-variant mt-1">
+              Only active DHs who aren't assigned to another department
+              appear here. Create new DHs on the Users page.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Description
             </label>
             <textarea
@@ -335,7 +456,7 @@ export default function AdminDepartmentsPage() {
         </form>
       </Modal>
 
-      {/* Deactivate confirmation */}
+      {/* Deactivate confirmation (unchanged) */}
       <Modal
         open={!!deactivateTarget}
         onClose={() => {
@@ -399,6 +520,7 @@ export default function AdminDepartmentsPage() {
         emptyMessage="No departments yet."
         noMatchMessage="No departments match your filters."
         getActions={getActions}
+        onRowClick={(d) => openEdit(d)}
       />
     </div>
   );
