@@ -200,6 +200,7 @@ export default function TableRegion({
           screenHeight={anchorScreen.height}
           zoom={pageView.zoom}
           regionXStart={Number(table.regionXStartPt)}
+          regionXEnd={Number(table.regionXEndPt)}
           columns={table.columns}
           onChange={onColumnsChange}
           interactive={columnsInteractive}
