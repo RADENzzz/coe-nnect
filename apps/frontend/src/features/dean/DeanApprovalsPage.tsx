@@ -7,11 +7,15 @@ import {
 } from '../../api/schedule.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchFaculty } from '../../api/faculty.api';
+import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
-import { useState, useMemo } from 'react';
+import Modal from '../../components/ui/Modal';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge from '../../components/ui/StatusBadge';
+import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
 const STATUS_LABELS: Record<
   string,
@@ -25,15 +29,45 @@ const STATUS_LABELS: Record<
 
 type TabFilter = 'review' | 'finalized' | 'all';
 type StatusFilter = 'all' | 'draft' | 'review' | 'finalized' | 'published';
+type BatchAction = 'finalize' | 'publish';
+
+interface PendingConfirmation {
+  action: BatchAction | 'return-to-draft';
+  ids: string[];
+  /** Short human label for the modal title, e.g. "3 schedules". */
+  itemCount: number;
+}
 
 export default function DeanApprovalsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<TabFilter>('review');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [searchParams, setSearchParams] = useSearchParams();
+  const initialDeptFilter = searchParams.get('deptFilter') ?? '';
+  const [deptFilter, setDeptFilter] = useState(initialDeptFilter);
+
+  // Sync URL when dept filter changes (for shareable links + back button)
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (deptFilter) {
+      next.set('deptFilter', deptFilter);
+    } else {
+      next.delete('deptFilter');
+    }
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deptFilter]);
   const [sectionFilter, setSectionFilter] = useState('');
   const [facultyFilter, setFacultyFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // ── Batch selection ──
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingConfirm, setPendingConfirm] =
+    useState<PendingConfirmation | null>(null);
 
   const { data: activeTerm } = useQuery({
     queryKey: ['active-term'],
@@ -58,6 +92,12 @@ export default function DeanApprovalsPage() {
     enabled: !!activeTerm?.termId,
   });
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: fetchDepartments,
+    enabled: !!activeTerm?.termId,
+  });
+
   const statusMutation = useMutation({
     mutationFn: ({
       id,
@@ -77,6 +117,25 @@ export default function DeanApprovalsPage() {
     },
   });
 
+  // ── Clear success message after 3s ──
+  useEffect(() => {
+    if (!actionSuccess) return;
+    const t = setTimeout(() => setActionSuccess(null), 3000);
+    return () => clearTimeout(t);
+  }, [actionSuccess]);
+
+  // ── Dept lookup (subject → dept) ──
+  const deptById = useMemo(() => {
+    const m = new Map<string, { code: string; name: string }>();
+    for (const d of departments) {
+      m.set(String(d.deptId), { code: d.deptCode, name: d.deptName });
+    }
+    return m;
+  }, [departments]);
+
+  const getDeptOfSchedule = (s: RawSchedule) =>
+    s.subject?.deptId ? deptById.get(String(s.subject.deptId)) : null;
+
   // ── Tab filtering ──
   const tabFiltered = useMemo(() => {
     if (tab === 'review') return schedules.filter((s) => s.status === 'review');
@@ -92,6 +151,9 @@ export default function DeanApprovalsPage() {
     const q = searchQuery.trim().toLowerCase();
     return tabFiltered.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      if (deptFilter && String(s.subject?.deptId ?? '') !== deptFilter) {
+        return false;
+      }
       if (sectionFilter && (s.section ?? '') !== sectionFilter) return false;
       if (facultyFilter && String(s.facultyId ?? '') !== facultyFilter) {
         return false;
@@ -103,7 +165,43 @@ export default function DeanApprovalsPage() {
       }
       return true;
     });
-  }, [tabFiltered, statusFilter, sectionFilter, facultyFilter, searchQuery]);
+  }, [
+    tabFiltered,
+    statusFilter,
+    deptFilter,
+    sectionFilter,
+    facultyFilter,
+    searchQuery,
+  ]);
+
+  // ── Selection ──
+  // Clear selection when tab changes.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [tab]);
+
+  // Only keep selected ids that are still visible in `filtered`.
+  const effectiveSelectedIds = useMemo(() => {
+    const visibleIds = new Set(filtered.map((s) => s.scheduleId));
+    const next = new Set<string>();
+    for (const id of selectedIds) {
+      if (visibleIds.has(id)) next.add(id);
+    }
+    return next;
+  }, [filtered, selectedIds]);
+
+  // ── Selected rows breakdown ──
+  const selectedRows = useMemo(
+    () => filtered.filter((s) => effectiveSelectedIds.has(s.scheduleId)),
+    [filtered, effectiveSelectedIds],
+  );
+
+  const selectedPendingCount = selectedRows.filter(
+    (s) => s.status === 'review',
+  ).length;
+  const selectedFinalizedCount = selectedRows.filter(
+    (s) => s.status === 'finalized',
+  ).length;
 
   const reviewCount = schedules.filter((s) => s.status === 'review').length;
   const finalizedCount = schedules.filter(
@@ -113,14 +211,101 @@ export default function DeanApprovalsPage() {
   const hasAnyFilter =
     !!searchQuery ||
     statusFilter !== 'all' ||
+    !!deptFilter ||
     !!sectionFilter ||
     !!facultyFilter;
 
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
+    setDeptFilter('');
     setSectionFilter('');
     setFacultyFilter('');
+  };
+
+  // ── Batch / single action handlers ──
+  const openConfirm = (action: BatchAction | 'return-to-draft', ids: string[]) => {
+    if (ids.length === 0) return;
+    setPendingConfirm({
+      action,
+      ids,
+      itemCount: ids.length,
+    });
+  };
+
+  const closeConfirm = () => setPendingConfirm(null);
+
+  const performAction = useCallback(
+    async (action: BatchAction | 'return-to-draft', ids: string[]) => {
+      if (ids.length === 0) return;
+      const nextStatus: 'draft' | 'finalized' | 'published' =
+        action === 'finalize'
+          ? 'finalized'
+          : action === 'publish'
+          ? 'published'
+          : 'draft';
+
+      // Run all updates, collecting successes and failures.
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          updateScheduleStatus(id, nextStatus).then(() => id),
+        ),
+      );
+
+      const succeeded = results
+        .filter(
+          (r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled',
+        )
+        .map((r) => r.value);
+
+      const failures = results.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+
+      // Clear the successful ones from the selection.
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of succeeded) next.delete(id);
+        return next;
+      });
+
+      if (failures.length === 0) {
+        const verb =
+          action === 'finalize'
+            ? 'Finalized'
+            : action === 'publish'
+            ? 'Published'
+            : 'Returned to draft';
+        setActionSuccess(
+          `${verb} ${succeeded.length} schedule${
+            succeeded.length === 1 ? '' : 's'
+          }.`,
+        );
+        setActionError(null);
+      } else {
+        setActionError(
+          `${succeeded.length} succeeded, ${failures.length} failed. ${
+            failures[0].reason?.response?.data?.message ??
+            failures[0].reason?.message ??
+            ''
+          }`.trim(),
+        );
+      }
+    },
+    [qc],
+  );
+
+  const handleConfirm = useCallback(async () => {
+    if (!pendingConfirm) return;
+    const { action, ids } = pendingConfirm;
+    closeConfirm();
+    await performAction(action, ids);
+  }, [pendingConfirm, performAction]);
+
+  const handleBatch = (action: BatchAction | 'return-to-draft') => {
+    openConfirm(action, Array.from(effectiveSelectedIds));
   };
 
   // ── Columns ──
@@ -131,6 +316,22 @@ export default function DeanApprovalsPage() {
       cardVariant: 'title',
       cellClassName: 'font-semibold text-slate-900',
       render: (s) => s.subject?.subjectCode ?? 'Unknown',
+    },
+    {
+      key: 'dept',
+      header: 'Dept',
+      cardVariant: 'badge',
+      render: (s) => {
+        const dept = getDeptOfSchedule(s);
+        if (!dept) {
+          return <span className="text-xs text-slate-400 italic">—</span>;
+        }
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+            {dept.code}
+          </span>
+        );
+      },
     },
     {
       key: 'title',
@@ -208,8 +409,8 @@ export default function DeanApprovalsPage() {
         {
           label: 'Return to Draft',
           icon: 'undo',
-          onClick: () =>
-            statusMutation.mutate({ id: s.scheduleId, status: 'draft' }),
+          // Wrap in confirmation — this is destructive and irreversible.
+          onClick: () => openConfirm('return-to-draft', [s.scheduleId]),
           disabled: isPending,
         },
       ];
@@ -219,8 +420,8 @@ export default function DeanApprovalsPage() {
         {
           label: 'Publish',
           icon: 'publish',
-          onClick: () =>
-            statusMutation.mutate({ id: s.scheduleId, status: 'published' }),
+          // Wrap in confirmation — cannot be un-published.
+          onClick: () => openConfirm('publish', [s.scheduleId]),
           disabled: isPending,
         },
       ];
@@ -228,8 +429,41 @@ export default function DeanApprovalsPage() {
     return [];
   };
 
+  // ── Confirmation copy per action ──
+  const getConfirmCopy = (action: BatchAction | 'return-to-draft', count: number) => {
+    const noun = count === 1 ? 'schedule' : 'schedules';
+    switch (action) {
+      case 'finalize':
+        return {
+          title: `Finalize ${count} ${noun}?`,
+          body: `This will move ${count} ${noun} to Finalized status. They'll be locked from further edits until unfinalized.`,
+          confirmLabel: count === 1 ? 'Finalize' : `Finalize ${count}`,
+          tone: 'primary' as const,
+        };
+      case 'publish':
+        return {
+          title: `Publish ${count} ${noun}?`,
+          body: `This will publish ${count} ${noun}. All departments will see them. Publishing cannot be undone.`,
+          confirmLabel: count === 1 ? 'Publish' : `Publish ${count}`,
+          tone: 'primary' as const,
+        };
+      case 'return-to-draft':
+        return {
+          title: `Return ${count} ${noun} to draft?`,
+          body: `This will remove ${count} ${noun} from review and set them back to Draft. Any pending approvals will be cancelled.`,
+          confirmLabel:
+            count === 1 ? 'Return to Draft' : `Return ${count} to Draft`,
+          tone: 'danger' as const,
+        };
+    }
+  };
+
+  const confirmCopy = pendingConfirm
+    ? getConfirmCopy(pendingConfirm.action, pendingConfirm.itemCount)
+    : null;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Header */}
       <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap">
         <div>
@@ -249,8 +483,22 @@ export default function DeanApprovalsPage() {
       </div>
 
       {actionError && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm">
-          {actionError}
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2">
+          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-red-600 hover:text-red-800"
+            aria-label="Dismiss"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      )}
+      {actionSuccess && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-start gap-2">
+          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{actionSuccess}</span>
         </div>
       )}
 
@@ -299,6 +547,26 @@ export default function DeanApprovalsPage() {
                   className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
                 />
               </div>
+            </div>
+
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Department
+              </label>
+              <select
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">All departments</option>
+                {departments
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
             </div>
 
             <div className="min-w-[140px]">
@@ -394,11 +662,13 @@ export default function DeanApprovalsPage() {
           rows={filtered}
           rowKey={(s) => s.scheduleId}
           rowTitle={(s) => s.subject?.subjectCode ?? 'Schedule'}
-          rowSubtitle={(s) =>
-            s.faculty
+          rowSubtitle={(s) => {
+            const dept = getDeptOfSchedule(s);
+            const fac = s.faculty
               ? `${s.faculty.firstName} ${s.faculty.lastName}`
-              : 'Unassigned'
-          }
+              : 'Unassigned';
+            return dept ? `[${dept.code}] ${fac}` : fac;
+          }}
           isLoading={isLoading}
           hasSourceRows={schedules.length > 0}
           emptyMessage={
@@ -408,8 +678,104 @@ export default function DeanApprovalsPage() {
           }
           noMatchMessage="No schedules match your filters."
           getActions={getActions}
+          selectable
+          selectedKeys={effectiveSelectedIds}
+          onSelectionChange={setSelectedIds}
+          onRowClick={(s) =>
+            navigate(`/dean/timetable?focus=${s.scheduleId}`)
+          }
         />
       )}
+
+      {/* ── Floating BulkActionBar ── */}
+      {effectiveSelectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
+          <div className="bg-slate-900 text-white rounded-xl shadow-2xl px-4 py-3 flex items-center gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/10 font-bold text-sm tabular-nums">
+                {effectiveSelectedIds.size}
+              </span>
+              <span className="text-sm font-semibold whitespace-nowrap">
+                selected
+              </span>
+            </div>
+
+            <div className="flex-1 flex items-center gap-2 ml-2 flex-wrap">
+              {selectedPendingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleBatch('finalize')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition"
+                >
+                  <Icon name="check_circle" size={14} />
+                  Finalize {selectedPendingCount}
+                </button>
+              )}
+              {selectedFinalizedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleBatch('publish')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition"
+                >
+                  <Icon name="publish" size={14} />
+                  Publish {selectedFinalizedCount}
+                </button>
+              )}
+              {selectedPendingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleBatch('return-to-draft')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition"
+                >
+                  <Icon name="undo" size={14} />
+                  Return to Draft
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-white/70 hover:text-white transition shrink-0"
+              aria-label="Clear selection"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmation Modal ── */}
+      <Modal
+        open={!!pendingConfirm}
+        onClose={closeConfirm}
+        title={confirmCopy?.title ?? ''}
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closeConfirm}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition ${
+                confirmCopy?.tone === 'danger'
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-[#5c1219] hover:opacity-90'
+              }`}
+            >
+              {confirmCopy?.confirmLabel}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">{confirmCopy?.body}</p>
+      </Modal>
     </div>
   );
 }
