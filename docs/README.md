@@ -7,13 +7,17 @@ Use these guides to set up the applications, understand workspace packages, and 
 - [Backend API](apps/backend.md) — API modules, environment configuration, database scripts, and checks.
 - [Frontend](apps/frontend.md) — application features, environment configuration, and checks.
 
+## Architecture
+
+- [System architecture](architecture/README.md) — component map, data flows, persistence, and integration status.
+
 ## Packages and services
 
 - [Constraint rules](packages/constraint-rules.md) — the integrated TypeScript scheduling rules engine.
 - [IDP client](packages/idp-client.md) — reserved package; not implemented or integrated.
 - [Prospectus parser](packages/prospectus-parser.md) — standalone FastAPI service for extracting selectable PDF text.
 - [Shared types](packages/shared-types.md) — reserved package; no shared types are exported yet.
-- [Solver service](packages/solver-service.md) — standalone OR-Tools service; not integrated into the main app.
+- [Solver service](packages/solver-service.md) — separately deployed OR-Tools service called by backend auto-generation.
 
 ## References
 
