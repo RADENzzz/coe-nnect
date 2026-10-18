@@ -1,11 +1,13 @@
 # CoE-NNECT
 
+<!-- CI & Status Badges -->
 ![Backend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-backend.yml/badge.svg)
 ![Frontend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-frontend.yml/badge.svg)
 ![Vercel](https://img.shields.io/badge/Vercel-Deployed-success)
 ![Railway](https://img.shields.io/badge/Railway-Deployed-blue)
 ![Tests](https://img.shields.io/badge/Tests-190%20Passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
+![Status](https://img.shields.io/badge/Status-Capstone%20Ready-orange)
 
 <p align="center">
   <strong>College of Engineering Scheduling System</strong><br>
@@ -16,7 +18,20 @@
 CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
 
 ## Tech Stack
+<!-- Tech Stack Badges -->
+![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)
 
+## 📖 Table of Contents
+- [Project Information](#project-information)
+- [Capabilities](#capabilities)
+- [Architecture](#architecture)
+- [Get Started](#get-started)
+- [Common Commands](#common-commands)
 - **Monorepo:** pnpm workspaces
 - **Backend:** NestJS, TypeORM, Supabase (PostgreSQL), Swagger
 - **Frontend:** React, Vite, TailwindCSS, React Query, Zustand
@@ -29,6 +44,10 @@ CoE-NNECT supports academic scheduling for the College of Engineering at Western
 - **FR Coverage:** 78/79 (~99% complete)
 - **Constraint Rules:** 27 rules, 190 passing tests
 - **CI/CD:** Fully automated via GitHub Actions
+
+## Capabilities
+Here is the automatic schedule generator in action:
+![Auto-Generate Demo](docs/demo.gif)
 
 ## Project information
 
