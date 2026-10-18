@@ -89,7 +89,16 @@ export default function NotificationBell() {
         <div
           role="dialog"
           aria-label="Recent notifications"
-          className="absolute right-0 mt-2 w-[360px] max-w-[calc(100vw-1.5rem)] bg-white border border-slate-200 shadow-lg rounded-md z-50 overflow-hidden"
+          className="
+            fixed md:absolute
+            left-4 right-4 md:left-auto md:right-0
+            top-[calc(48px+8px)] md:top-auto md:mt-2
+            w-auto md:w-[360px] max-w-none md:max-w-[calc(100vw-1.5rem)]
+            max-h-[calc(100vh-80px)]
+            bg-white border border-slate-200 shadow-xl rounded-lg z-50
+            overflow-hidden flex flex-col
+            animate-fade-in
+          "
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
@@ -127,7 +136,7 @@ export default function NotificationBell() {
           </div>
 
           {/* Body */}
-          <div className="max-h-[400px] overflow-y-auto">
+                    <div className="max-h-[400px] md:max-h-[400px] flex-1 overflow-y-auto">
             {isLoading && (
               <div className="px-4 py-8 text-center text-sm text-slate-500">
                 Loading…
