@@ -18,6 +18,13 @@
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)
 
+## 📖 Table of Contents
+- [Project Information](#project-information)
+- [Capabilities](#capabilities)
+- [Architecture](#architecture)
+- [Get Started](#get-started)
+- [Common Commands](#common-commands)
+
 <p align="center">
   <strong>College of Engineering Scheduling System</strong><br>
   Western Mindanao State University<br>
@@ -26,14 +33,8 @@
 
 CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
 
-## 📖 Table of Contents
-- [Project Information](#project-information)
-- [Capabilities](#capabilities)
-- [Architecture](#architecture)
-- [Get Started](#get-started)
-- [Common Commands](#common-commands)
 
-
+## Tech Stack
 - **Monorepo:** pnpm workspaces
 - **Backend:** NestJS, TypeORM, Supabase (PostgreSQL), Swagger
 - **Frontend:** React, Vite, TailwindCSS, React Query, Zustand
