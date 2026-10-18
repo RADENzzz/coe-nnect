@@ -34,6 +34,9 @@ interface Props {
  *   - Escape to close
  *   - Click outside to close
  *   - Clear (×) button when a value is selected
+ *
+ * z-index: dropdown uses z-[200] so it renders above Modal backdrops
+ * (Modal uses z-[110]). Matches RowActionMenu popover z-[200].
  */
 export default function SearchableSelect({
   value,
@@ -199,7 +202,7 @@ export default function SearchableSelect({
       {open && (
         <div
           className={clsx(
-            'absolute z-50 left-0 right-0 top-0',
+            'absolute z-[200] left-0 right-0 top-0',
             'bg-surface-container-lowest border border-surface-variant rounded-lg shadow-lg',
             'flex flex-col max-h-72',
           )}
