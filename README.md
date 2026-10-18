@@ -66,39 +66,42 @@ See the [documentation index](docs/README.md) for guides and service-specific in
 - pnpm 12.6.0 (the repository pins this version)
 - Git
 - Supabase project credentials and a PostgreSQL database for database-backed features
-
-The parser and solver services have independent Python dependencies; see their guides before running them.
+- Python is required only for the optional parser and solver services.
 
 ## Get started
 
-Clone the repository and install the workspace dependencies:
+Clone the repository, install the JavaScript workspace dependencies, and create local environment files:
 
 ```powershell
 git clone https://github.com/RADENzzz/SCHEDULING-SYSTEM-WMSU-.git
 Set-Location SCHEDULING-SYSTEM-WMSU-
 pnpm install
-```
-
-Create local environment files from the checked-in examples and configure each value for your environment:
-
-```powershell
 Copy-Item apps\backend\.env.example apps\backend\.env
 Copy-Item apps\frontend\.env.example apps\frontend\.env.local
 ```
 
-Configure the backend's Supabase credentials, PostgreSQL `DATABASE_URL`, and the frontend's API and Supabase settings. Never commit real environment files or credentials. Values prefixed with `VITE_` are delivered to the browser and must not contain secrets.
+Configure the backend's Supabase credentials and PostgreSQL `DATABASE_URL`, then set the frontend's API and Supabase settings. Never commit real environment files or credentials. Values prefixed with `VITE_` are delivered to the browser and must not contain secrets.
 
-Run the API and web app in separate terminals:
-
-```powershell
-pnpm --filter @coe-nnect/backend dev
-```
+Start the development system from the repository root:
 
 ```powershell
-pnpm --filter @coe-nnect/frontend dev
+pnpm dev
 ```
 
-By default, Vite serves the frontend at `http://localhost:5173` and the API listens on port `3000` with the `/api` prefix. Read the [backend guide](docs/apps/backend.md) and [frontend guide](docs/apps/frontend.md) for configuration and checks.
+The root development script starts the backend and frontend, plus the parser and solver when their Python virtual environments exist. It prints service logs with labels and shows the local URLs when startup completes. Press `Ctrl+C` to stop the services it started.
+
+To install the Python dependencies and run all four services, run this one-time setup before starting the system:
+
+```powershell
+pnpm setup:venvs
+pnpm dev
+```
+
+The setup command creates virtual environments under `packages\solver-service\.venv` and `packages\prospectus-parser\.venv` and installs each service's requirements. If those environments are absent, `pnpm dev` warns and skips the corresponding Python service while still starting the other available services.
+
+By default, the frontend is at `http://localhost:5173`, the API is at `http://localhost:3000/api`, and the API docs are at `http://localhost:3000/api/docs`. The parser and solver use ports `8001` and `8000`, respectively. The backend requires a configured database; the development script does not start PostgreSQL or Supabase.
+
+To run only one service, use the root shortcuts: `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm dev:parser`, or `pnpm dev:solver`. The `pnpm dev:no-parser` and `pnpm dev:no-solver` commands start the other services without the named service. See the [backend guide](docs/apps/backend.md) and [frontend guide](docs/apps/frontend.md) for configuration and checks.
 
 ## Common commands
 
