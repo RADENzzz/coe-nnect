@@ -9,14 +9,6 @@
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/Status-Capstone%20Ready-orange)
 
-<p align="center">
-  <strong>College of Engineering Scheduling System</strong><br>
-  Western Mindanao State University<br>
-  <em>CPE SD 3 — Management Information System · Academic Year 2026–2027</em>
-</p>
-
-CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
-
 ## Tech Stack
 <!-- Tech Stack Badges -->
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)
@@ -25,6 +17,16 @@ CoE-NNECT supports academic scheduling for the College of Engineering at Western
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)
+
+<p align="center">
+  <strong>College of Engineering Scheduling System</strong><br>
+  Western Mindanao State University<br>
+  <em>CPE SD 3 — Management Information System · Academic Year 2026–2027</em>
+</p>
+
+CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
+
+
 
 ## 📖 Table of Contents
 - [Project Information](#project-information)
