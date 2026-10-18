@@ -1303,7 +1303,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           <p className="text-sm text-on-surface-variant mt-1 flex items-center gap-2 flex-wrap">
             <span>
               {activeTerm
-                ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+                ? `${activeTerm.termName} - AY ${activeTerm.schoolYear}`
                 : 'Loading term…'}
             </span>
             {readOnly && !activeVersion && (
