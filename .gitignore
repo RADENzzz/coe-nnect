@@ -19,7 +19,8 @@ state
 .env.production
 .env.test
 !.env.example
-
+clean_data.sql
+old_database_dump.sql
 # ─────────────────────────────────────────────
 # Node / pnpm
 # ─────────────────────────────────────────────
