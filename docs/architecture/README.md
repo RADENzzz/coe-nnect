@@ -100,7 +100,7 @@ sequenceDiagram
     participant Rules as Constraint rules
 
     UI->>API: POST auto-generate
-    API->>DB: Acquire term lock; load scheduling inputs
+    API->>DB: Acquire term lock and load scheduling inputs
     API->>API: Check unplotted minors and room sufficiency
     API->>Solver: POST /solve with problem data
     Solver-->>API: Candidate schedule and unscheduled blocks
