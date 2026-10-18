@@ -538,7 +538,7 @@ export default function ProspectusPage() {
         <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
         <div className="flex-1">
           <p className="text-blue-900 font-medium">
-            Step 3 of 3 — Academic Structure
+            Step 3 of 3 Academic Structure
           </p>
           <p className="text-blue-800 text-xs mt-0.5">
             Only subjects created in the Subjects page can be mapped here. If
