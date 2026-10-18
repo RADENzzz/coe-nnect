@@ -1,5 +1,7 @@
 # CoE-NNECT
 
+<div align="center">
+
 <!-- CI & Status Badges -->
 ![Backend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-backend.yml/badge.svg)
 ![Frontend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-frontend.yml/badge.svg)
@@ -9,7 +11,8 @@
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/Status-Capstone%20Ready-orange)
 
-## Tech Stack
+<br />
+
 <!-- Tech Stack Badges -->
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
@@ -17,6 +20,8 @@
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)
+
+<br />
 
 
 
