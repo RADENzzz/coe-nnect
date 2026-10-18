@@ -235,6 +235,24 @@ export default function HelpPage() {
           CPE SD 3 — Management Information System · Academic Year 2026–2027
         </p>
 
+        {/* GitHub Repository Link */}
+        <div className="mt-5 flex flex-col items-center justify-center gap-2">
+          <a
+            href="https://github.com/RADENzzz/coe-nnect"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 transition-all hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+          >
+            <span className="material-symbols-outlined text-[18px] transition-transform group-hover:scale-110">
+              code
+            </span>
+            View Source on GitHub
+            <span className="ml-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+              Open Source
+            </span>
+          </a>
+        </div>
+
         <StatsEasterEgg onOverlayChange={setOverlayActive} />
       </footer>
 
