@@ -83,7 +83,15 @@ function setupSwagger(app: any, apiPrefix: string) {
 }
 
 async function createApp() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create(AppModule, {
+  bufferLogs: false,
+  // In dev, hide the noisiest startup categories. Set DEV_VERBOSE_LOGS=true
+  // to see everything (or NODE_ENV=production to see default Nest verbosity).
+  logger:
+    process.env.NODE_ENV === 'development' && process.env.DEV_VERBOSE_LOGS !== 'true'
+      ? ['error', 'warn', 'log', 'fatal']
+      : ['error', 'warn', 'log', 'debug', 'verbose', 'fatal'],
+});
 
   // ─── Security headers (Helmet) ───
   app.use(
