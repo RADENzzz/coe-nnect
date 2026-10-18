@@ -12,6 +12,7 @@ import Icon from '../../components/ui/Icon';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import ApprovalsExportToolbar from './export/ApprovalsExportToolbar';
+import { useNavigate } from 'react-router-dom';
 
 type StatusFilter = 'all' | FacultyRequestStatus;
 type TimeRange = 'all' | '7d' | '30d' | '90d' | 'term';
@@ -76,6 +77,7 @@ function fmtHoursShort(h: number | null): string {
 }
 
 export default function ApprovalsReportPage() {
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const isDH = profile?.role === 'department_head';
@@ -550,6 +552,9 @@ export default function ApprovalsReportPage() {
         hasSourceRows={requests.length > 0}
         emptyMessage="No faculty requests yet."
         noMatchMessage="No requests match your filters."
+        onRowClick={(r) =>
+          navigate(`/dean/approvals?deptFilter=${r.targetDeptId}`)
+        }
       />
     </div>
   );
