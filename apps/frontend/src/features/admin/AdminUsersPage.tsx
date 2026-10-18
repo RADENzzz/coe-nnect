@@ -40,6 +40,7 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState<
     'all' | 'college_dean' | 'department_head'
   >('all');
+  const [deptListFilter, setDeptListFilter] = useState<string>('all');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -86,23 +87,28 @@ export default function AdminUsersPage() {
     return m;
   }, [faculty]);
 
-  // Auto-suggest: when the email typed in create mode matches a
-  // faculty record's email, auto-select that faculty (if not already set).
+  // ── NEW: Auto-suggest respects dept filter ──
+  // When the email typed in create mode matches a faculty record's email
+  // AND that faculty is in the currently-selected department (or no dept
+  // is selected yet), auto-select that faculty.
   useEffect(() => {
     if (mode !== 'create' || !form.email || form.facultyId) return;
     const typed = form.email.trim().toLowerCase();
     if (!typed) return;
+
     const match = faculty.find(
       (f) =>
         f.isActive &&
         f.email &&
-        f.email.trim().toLowerCase() === typed,
+        f.email.trim().toLowerCase() === typed &&
+        // Dept filter: match only if no dept selected OR faculty is in dept
+        (!form.deptId || String(f.deptId ?? '') === String(form.deptId)),
     );
     if (match) {
       setForm((prev) => ({ ...prev, facultyId: match.facultyId }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.email, faculty, mode]);
+  }, [form.email, faculty, mode, form.deptId]);
 
   // When dept changes, clear facultyId if the selected faculty is
   // no longer in the new dept (unless they were manually picked).
@@ -337,6 +343,13 @@ export default function AdminUsersPage() {
     const q = searchQuery.trim().toLowerCase();
     return visibleUsers.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+      if (deptListFilter !== 'all') {
+        const matchDept =
+          String(u.deptId ?? '') === deptListFilter ||
+          // Include Deans without a dept under "no dept" filter
+          (deptListFilter === 'none' && !u.deptId);
+        if (!matchDept) return false;
+      }
       if (!q) return true;
       return (
         u.username.toLowerCase().includes(q) ||
@@ -345,7 +358,7 @@ export default function AdminUsersPage() {
         (u.wmsuId ?? '').toLowerCase().includes(q)
       );
     });
-  }, [visibleUsers, searchQuery, roleFilter]);
+  }, [visibleUsers, searchQuery, roleFilter, deptListFilter]);
 
   // ═══════════════════════════════════════════════════════
   // Columns
@@ -427,8 +440,6 @@ export default function AdminUsersPage() {
     {
       label: u.isActive ? 'Deactivate' : 'Activate',
       icon: u.isActive ? 'toggle_off' : 'toggle_on',
-      // Deactivation is reversible — fire immediately without password.
-      // Deletion is destructive — requires password (see below).
       onClick: () => toggleMutation.mutate(u.userId),
       disabled: toggleMutation.isPending,
     },
@@ -473,6 +484,7 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      {/* Filters */}
       <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
         <div className="flex-1 min-w-[220px]">
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -493,6 +505,29 @@ export default function AdminUsersPage() {
             />
           </div>
         </div>
+
+        {/* ── NEW: Department filter for the list ── */}
+        <div className="min-w-[200px]">
+          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+            Department
+          </label>
+          <select
+            value={deptListFilter}
+            onChange={(e) => setDeptListFilter(e.target.value)}
+            className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+          >
+            <option value="all">All departments</option>
+            <option value="none">— no department —</option>
+            {departments
+              .filter((d) => d.isActive)
+              .map((d) => (
+                <option key={d.deptId} value={d.deptId}>
+                  [{d.deptCode}] {d.deptName}
+                </option>
+              ))}
+          </select>
+        </div>
+
         <div className="min-w-[160px]">
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
             Role
@@ -511,11 +546,13 @@ export default function AdminUsersPage() {
             <option value="department_head">Department Head</option>
           </select>
         </div>
-        {(searchQuery || roleFilter !== 'all') && (
+
+        {(searchQuery || roleFilter !== 'all' || deptListFilter !== 'all') && (
           <button
             onClick={() => {
               setSearchQuery('');
               setRoleFilter('all');
+              setDeptListFilter('all');
             }}
             className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
           >
@@ -542,6 +579,7 @@ export default function AdminUsersPage() {
         onRowClick={(u) => openEdit(u)}
       />
 
+      {/* Create/Edit Modal */}
       <Modal
         open={!!mode}
         onClose={closeForm}
@@ -661,10 +699,7 @@ export default function AdminUsersPage() {
               </select>
             </div>
 
-            {/* ═══════════════════════════════════════════════════ */}
-            {/* FACULTY LINK                                        */}
-            {/* ═══════════════════════════════════════════════════ */}
-
+            {/* Faculty link section */}
             {mode === 'edit' && editing && (
               <div className="md:col-span-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs flex items-center justify-between gap-2">
                 {editing.facultyId ? (
@@ -740,7 +775,6 @@ export default function AdminUsersPage() {
               </p>
             </div>
 
-            {/* Auto-match hint — only when a match exists but is not yet selected */}
             {currentFacultyMatch &&
               String(currentFacultyMatch.facultyId) !== form.facultyId && (
                 <div className="md:col-span-2 -mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2">
@@ -796,6 +830,7 @@ export default function AdminUsersPage() {
         </form>
       </Modal>
 
+      {/* Delete Confirmation */}
       <Modal
         open={!!actionTarget}
         onClose={closeAction}
