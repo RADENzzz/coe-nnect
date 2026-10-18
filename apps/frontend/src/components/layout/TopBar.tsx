@@ -8,6 +8,7 @@ import { useLogout } from '../../hooks/use-logout';
 import { getNavForRole } from '../../lib/constants/nav-config';
 import NotificationBell from '../notifications/NotificationBell';
 import { searchApi, type SearchResult } from '../../api/search.api';
+import { useChatControl } from '../../features/chat/ChatWidget';
 
 const RECENT_SEARCHES_KEY = 'coe-nnect:recent-searches';
 const MAX_RECENT = 5;
@@ -46,13 +47,14 @@ const TYPE_META: Record<
 const MIN_QUERY_LENGTH = 3;
 const DEBOUNCE_MS = 350;
 
-// ── Recent searches helper ──
 function loadRecentSearches(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((s) => typeof s === 'string')
+      : [];
   } catch {
     return [];
   }
@@ -60,13 +62,15 @@ function loadRecentSearches(): string[] {
 
 function saveRecentSearches(list: string[]) {
   try {
-    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(list.slice(0, MAX_RECENT)));
+    localStorage.setItem(
+      RECENT_SEARCHES_KEY,
+      JSON.stringify(list.slice(0, MAX_RECENT)),
+    );
   } catch {
-    /* ignore quota errors */
+    /* ignore */
   }
 }
 
-// Highlight matched substring inside a string
 function Highlighted({ text, query }: { text: string; query: string }) {
   if (!query) return <>{text}</>;
   const q = query.toLowerCase();
@@ -89,6 +93,10 @@ export default function TopBar({ label }: TopBarProps) {
   const logout = useLogout();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ── Chat control (from ChatProvider at shell level) ──
+  const { open: chatOpen, setOpen: setChatOpen, totalUnread } =
+    useChatControl();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -118,7 +126,6 @@ export default function TopBar({ label }: TopBarProps) {
   );
   const shortcutHint = isMac ? '⌘K' : 'Ctrl+K';
 
-  // Debounce input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery.trim());
@@ -140,7 +147,6 @@ export default function TopBar({ label }: TopBarProps) {
 
   const results = useMemo(() => data?.results ?? [], [data]);
 
-  // Group results by type for a nicer dropdown
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SearchResult[]>();
     for (const r of results) {
@@ -151,7 +157,6 @@ export default function TopBar({ label }: TopBarProps) {
     return Array.from(groups.entries());
   }, [results]);
 
-  // Reset on route change
   useEffect(() => {
     setIsSearchOpen(false);
     setMobileSearchOpen(false);
@@ -159,7 +164,6 @@ export default function TopBar({ label }: TopBarProps) {
     setDebouncedQuery('');
   }, [location.pathname]);
 
-  // Click outside
   useEffect(() => {
     function handleClickOutside(event: Event) {
       if (
@@ -183,7 +187,6 @@ export default function TopBar({ label }: TopBarProps) {
     };
   }, []);
 
-  // Ctrl/Cmd+K
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -203,7 +206,10 @@ export default function TopBar({ label }: TopBarProps) {
   const pushRecentSearch = useCallback((term: string) => {
     if (!term || term.length < MIN_QUERY_LENGTH) return;
     setRecentSearches((prev) => {
-      const next = [term, ...prev.filter((s) => s !== term)].slice(0, MAX_RECENT);
+      const next = [term, ...prev.filter((s) => s !== term)].slice(
+        0,
+        MAX_RECENT,
+      );
       saveRecentSearches(next);
       return next;
     });
@@ -243,12 +249,15 @@ export default function TopBar({ label }: TopBarProps) {
 
   const showDropdown =
     isSearchOpen && debouncedQuery.length >= MIN_QUERY_LENGTH;
-  const showRecent = isSearchOpen && !debouncedQuery && recentSearches.length > 0;
+  const showRecent =
+    isSearchOpen && !debouncedQuery && recentSearches.length > 0;
   const showClear = searchQuery.length > 0;
 
-  // ── Render: search dropdown content (shared between desktop and mobile) ──
-  const renderSearchDropdown = (variant: 'desktop' | 'mobile' = 'desktop') => {
-    const widthClass = variant === 'desktop' ? 'w-[22rem] right-0 mt-1' : 'w-full mt-2';
+  const renderSearchDropdown = (
+    variant: 'desktop' | 'mobile' = 'desktop',
+  ) => {
+    const widthClass =
+      variant === 'desktop' ? 'w-[22rem] right-0 mt-1' : 'w-full mt-2';
 
     if (showRecent) {
       return (
@@ -282,8 +291,13 @@ export default function TopBar({ label }: TopBarProps) {
                   }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors"
                 >
-                  <Icon name="history" className="text-slate-400 text-[16px]" />
-                  <span className="text-sm text-slate-700 truncate">{term}</span>
+                  <Icon
+                    name="history"
+                    className="text-slate-400 text-[16px]"
+                  />
+                  <span className="text-sm text-slate-700 truncate">
+                    {term}
+                  </span>
                 </button>
               </li>
             ))}
@@ -300,7 +314,9 @@ export default function TopBar({ label }: TopBarProps) {
         className={`animate-fade-in absolute ${widthClass} max-h-[70vh] overflow-y-auto border border-slate-200 bg-white shadow-lg z-50`}
       >
         {isFetching && results.length === 0 ? (
-          <div className="px-4 py-3 text-xs text-slate-400">Searching…</div>
+          <div className="px-4 py-3 text-xs text-slate-400">
+            Searching…
+          </div>
         ) : results.length === 0 ? (
           <div className="px-4 py-6 text-center text-xs text-slate-500">
             No results for &ldquo;{debouncedQuery}&rdquo;
@@ -312,7 +328,10 @@ export default function TopBar({ label }: TopBarProps) {
               return (
                 <li key={type}>
                   <div className="px-3 py-1.5 flex items-center gap-2 bg-slate-50 border-y border-slate-100">
-                    <Icon name={meta.icon} className="text-slate-400 text-[14px]" />
+                    <Icon
+                      name={meta.icon}
+                      className="text-slate-400 text-[14px]"
+                    />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                       {meta.label}
                     </span>
@@ -331,7 +350,9 @@ export default function TopBar({ label }: TopBarProps) {
                             onClick={() => handleSelect(r)}
                             onMouseEnter={() => setSelectedIndex(i)}
                             className={`flex w-full items-start gap-3 px-3 py-2 text-left transition-colors ${
-                              isSelected ? 'bg-slate-50' : 'hover:bg-slate-50'
+                              isSelected
+                                ? 'bg-slate-50'
+                                : 'hover:bg-slate-50'
                             }`}
                             role="option"
                             aria-selected={isSelected}
@@ -341,7 +362,10 @@ export default function TopBar({ label }: TopBarProps) {
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-medium text-slate-900">
-                                <Highlighted text={r.label} query={debouncedQuery} />
+                                <Highlighted
+                                  text={r.label}
+                                  query={debouncedQuery}
+                                />
                               </div>
                               {r.sublabel && (
                                 <div className="mt-0.5 truncate text-xs text-slate-500">
@@ -467,6 +491,38 @@ export default function TopBar({ label }: TopBarProps) {
 
             {renderSearchDropdown('desktop')}
           </div>
+
+          {/* ── Chat button (new placement) ── */}
+          {profile?.role !== 'viewer' && (
+            <button
+              type="button"
+              onClick={() => setChatOpen(!chatOpen)}
+              className="tap-target hover:bg-slate-50 transition-colors flex items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              aria-label={
+                totalUnread > 0
+                  ? `Chat (${totalUnread} unread)`
+                  : 'Chat'
+              }
+              aria-pressed={chatOpen}
+              title={
+                totalUnread > 0
+                  ? `${totalUnread} unread message${
+                      totalUnread === 1 ? '' : 's'
+                    }`
+                  : 'Chat'
+              }
+            >
+              <Icon name="forum" filled={chatOpen} />
+              {totalUnread > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-[#5c1219] text-white text-[10px] font-bold leading-none border border-white"
+                >
+                  {totalUnread > 9 ? '9+' : totalUnread}
+                </span>
+              )}
+            </button>
+          )}
 
           <NotificationBell />
 
