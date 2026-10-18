@@ -1,5 +1,3 @@
-# CoE-NNECT
-
 <div align="center">
 
 <!-- CI & Status Badges -->
