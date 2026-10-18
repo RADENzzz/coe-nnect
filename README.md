@@ -1,5 +1,12 @@
 # CoE-NNECT
 
+![Backend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-backend.yml/badge.svg)
+![Frontend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-frontend.yml/badge.svg)
+![Vercel](https://img.shields.io/badge/Vercel-Deployed-success)
+![Railway](https://img.shields.io/badge/Railway-Deployed-blue)
+![Tests](https://img.shields.io/badge/Tests-190%20Passing-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
+
 <p align="center">
   <strong>College of Engineering Scheduling System</strong><br>
   Western Mindanao State University<br>
@@ -7,6 +14,21 @@
 </p>
 
 CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
+
+## Tech Stack
+
+- **Monorepo:** pnpm workspaces
+- **Backend:** NestJS, TypeORM, Supabase (PostgreSQL), Swagger
+- **Frontend:** React, Vite, TailwindCSS, React Query, Zustand
+- **Solver Engine:** Python CP-SAT (Google OR-Tools)
+- **PDF Parser:** Python FastAPI (pypdfium2)
+- **Deployment:** Railway (Backend/Solver/Parser) + Vercel (Frontend)
+
+## Project Status
+
+- **FR Coverage:** 78/79 (~99% complete)
+- **Constraint Rules:** 27 rules, 190 passing tests
+- **CI/CD:** Fully automated via GitHub Actions
 
 ## Project information
 
