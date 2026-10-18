@@ -4,7 +4,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileDrawer from './MobileDrawer';
 import BottomNav from './BottomNav';
-import ChatWidget from '../../features/chat/ChatWidget';
+import { ChatProvider } from '../../features/chat/ChatWidget';
 import { useAuthStore } from '../../store/auth.store';
 import { useUiStore } from '../../store/ui.store';
 import { getNavForRole } from '../../lib/constants/nav-config';
@@ -22,9 +22,6 @@ function ShellInner() {
 
   useNotificationSocketBridge();
 
-  // Collapse the sidebar by default on md+ viewports.
-  // Uses a single media query; simpler and equivalent to the old
-  // two-query version.
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
     const set = useUiStore.getState().setSidebarCollapsed;
@@ -40,14 +37,12 @@ function ShellInner() {
     setLastPath(location.pathname);
   }, [location.pathname, setLastPath]);
 
-  // Scroll main content to top on route change.
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [location.pathname]);
 
   return (
     <div className="bg-slate-50 text-slate-900 min-h-screen flex">
-      {/* Skip link for keyboard users */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[200] focus:px-3 focus:py-2 focus:bg-white focus:text-[#5c1219] focus:font-semibold focus:rounded focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#5c1219]"
@@ -76,10 +71,6 @@ function ShellInner() {
       </div>
 
       <BottomNav items={nav.bottom} />
-
-      {profile?.role !== 'viewer' && profile?.role !== 'administrator' && (
-  <ChatWidget />
-)}
     </div>
   );
 }
@@ -87,7 +78,9 @@ function ShellInner() {
 export default function AppShell() {
   return (
     <NotificationSocketProvider>
-      <ShellInner />
+      <ChatProvider>
+        <ShellInner />
+      </ChatProvider>
     </NotificationSocketProvider>
   );
 }
