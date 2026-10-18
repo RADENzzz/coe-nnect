@@ -23,13 +23,11 @@
 
 <br />
 
+<h1>CoE-NNECT</h1>
+<p><strong>College of Engineering Scheduling System</strong><br>
+Western Mindanao State University</p>
 
-
-<p align="center">
-  <strong>College of Engineering Scheduling System</strong><br>
-  Western Mindanao State University<br>
-  <em>CPE SD 3 — Management Information System · Academic Year 2026–2027</em>
-</p>
+</div>
 
 CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
 
