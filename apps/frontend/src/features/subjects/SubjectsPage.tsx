@@ -85,6 +85,18 @@ const EMPTY_FORM: FormState = {
   isMinor: false,
 };
 
+/**
+ * Extract a useful error message from a failed mutation.
+ * NestJS returns `{ message: string | string[], error, statusCode }`.
+ * Returns the server's message if present, else falls back to err.message.
+ */
+function extractErrorMessage(err: any, fallback: string): string {
+  const raw = err?.response?.data?.message;
+  if (Array.isArray(raw)) return raw[0] ?? fallback;
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  return err?.message ?? fallback;
+}
+
 export default function SubjectsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -107,6 +119,12 @@ export default function SubjectsPage() {
     Partial<Record<keyof FormState, string>>
   >({});
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+
+  // ── NEW: dedicated delete-error state ──
+  const [deleteError, setDeleteError] = useState<{
+    subjectCode: string;
+    message: string;
+  } | null>(null);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
@@ -375,9 +393,6 @@ export default function SubjectsPage() {
   ]);
 
   // ── Shared invalidation helper ──
-  // Coverage and unplotted-minors both depend on the subject catalog.
-  // Any subject mutation can change which (subject × section) pairs are
-  // expected, missing, or plottable.
   const invalidateAfterSubjectChange = () => {
     qc.invalidateQueries({ queryKey: ['subjects'] });
     qc.invalidateQueries({ queryKey: ['coverage'] });
@@ -393,7 +408,7 @@ export default function SubjectsPage() {
       invalidateAfterSubjectChange();
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
+      setError(extractErrorMessage(err, 'Failed to create')),
   });
 
   const updateMutation = useMutation({
@@ -410,14 +425,14 @@ export default function SubjectsPage() {
       invalidateAfterSubjectChange();
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
+      setError(extractErrorMessage(err, 'Failed to update')),
   });
 
   const toggleMutation = useMutation({
     mutationFn: toggleSubjectActive,
     onSuccess: () => invalidateAfterSubjectChange(),
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Toggle failed'),
+      setError(extractErrorMessage(err, 'Toggle failed')),
   });
 
   const deleteMutation = useMutation({
@@ -427,8 +442,15 @@ export default function SubjectsPage() {
       setDeleteTarget(null);
       invalidateAfterSubjectChange();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Delete failed'),
+    onError: (err: any) => {
+      // Close the confirm modal, show the dedicated error modal
+      const target = deleteTarget;
+      setDeleteTarget(null);
+      setDeleteError({
+        subjectCode: target?.subjectCode ?? 'this subject',
+        message: extractErrorMessage(err, 'Delete failed'),
+      });
+    },
   });
 
   // ── Form ──
@@ -627,11 +649,8 @@ export default function SubjectsPage() {
   );
 
   const applyPreset = (preset: Preset) => {
-    // Build all URL updates in one go to avoid race conditions
     const next = new URLSearchParams(searchParams);
-    // Reset the relevant fields first
     ['comp', 'minor', 'room'].forEach((k) => next.delete(k));
-    // Apply via a temp delegate
     const setF = (k: string, v: string) => {
       if (!v || v === 'all') next.delete(k);
       else next.set(k, v);
@@ -1684,6 +1703,69 @@ export default function SubjectsPage() {
             </span>
           </div>
         </div>
+      </Modal>
+
+      {/* ── NEW: Delete blocked — dedicated error modal ── */}
+      <Modal
+        open={!!deleteError}
+        onClose={() => setDeleteError(null)}
+        title="Cannot delete subject"
+        size="md"
+        footer={
+          <button
+            type="button"
+            onClick={() => setDeleteError(null)}
+            className="px-5 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg"
+          >
+            Got it
+          </button>
+        }
+      >
+        {deleteError && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-rose-50 border border-rose-200">
+              <Icon
+                name="block"
+                filled
+                size={22}
+                className="text-rose-600 shrink-0 mt-0.5"
+              />
+              <div className="text-sm text-rose-900 min-w-0">
+                <p className="font-semibold">
+                  "{deleteError.subjectCode}" is still in use
+                </p>
+                <p className="mt-1.5 text-rose-800 break-words leading-relaxed">
+                  {deleteError.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Icon name="lightbulb" size={14} className="text-blue-700" />
+                <span className="font-semibold">What you can do</span>
+              </div>
+              <ul className="space-y-1 list-disc list-inside text-blue-800">
+                <li>
+                  <strong>Deactivate</strong> the subject instead — it becomes
+                  unplottable but its history is preserved.
+                </li>
+                <li>
+                  Remove it from all <strong>prospectus entries</strong> first,
+                  then try again.
+                </li>
+                <li>
+                  Delete or reassign the <strong>schedule entries</strong> that
+                  use it.
+                </li>
+                <li>
+                  If a <strong>restriction</strong> references it, remove the
+                  restriction first.
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <RestrictionsPanel
