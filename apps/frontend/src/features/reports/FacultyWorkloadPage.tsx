@@ -232,6 +232,9 @@ export default function FacultyWorkloadPage() {
   const isDH = profile?.role === 'department_head';
   const isDeanOrAdmin =
     profile?.role === 'college_dean' || profile?.role === 'administrator';
+  const prefix = isDeanOrAdmin ? '/dean' : '';
+
+    
 
   const [deptFilter, setDeptFilter] = useState<string>(() =>
     isDH && profile?.dept_id ? String(profile.dept_id) : 'all',
@@ -535,12 +538,12 @@ export default function FacultyWorkloadPage() {
     {
       label: 'Open faculty',
       icon: 'edit',
-      onClick: () => navigate(`/faculty?focus=${r.facultyId}`),
+      onClick: () => navigate(`${prefix}/faculty?focus=${r.facultyId}`),
     },
     {
       label: 'View schedule',
       icon: 'grid_on',
-      onClick: () => navigate(`/timetable?faculty=${r.facultyId}`),
+      onClick: () => navigate(`${prefix}/timetable?faculty=${r.facultyId}`),
     },
   ];
 
@@ -733,7 +736,7 @@ export default function FacultyWorkloadPage() {
         emptyMessage="No faculty to report on."
         noMatchMessage="No faculty match your filters."
         getActions={getActions}
-        onRowClick={(r) => navigate(`/timetable?faculty=${r.facultyId}`)}
+        onRowClick={(r) => navigate(`${prefix}/timetable?faculty=${r.facultyId}`)}
       />
     </div>
   );
