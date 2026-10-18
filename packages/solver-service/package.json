@@ -1,0 +1,9 @@
+{
+  "name": "@coe-nnect/solver-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CP-SAT solver for CoE-NNECT scheduling",
+  "scripts": {
+    "dev": "python -m uvicorn main:app --reload --port 8000"
+  }
+}
