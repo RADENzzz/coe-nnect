@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,6 +17,8 @@ import { SupabaseService } from '../../database/supabase.service';
 
 @Injectable()
 export class ApprovalsService {
+  private readonly logger = new Logger(ApprovalsService.name);
+
   constructor(
     @InjectRepository(FacultyRequest)
     private readonly repo: Repository<FacultyRequest>,
@@ -243,7 +246,8 @@ export class ApprovalsService {
 
     return saved;
   }
-    /**
+
+  /**
    * F1b: when a faculty_request is approved or rejected, clear the
    * pending gate on any schedule rows linked to it.
    */
@@ -263,14 +267,12 @@ export class ApprovalsService {
       if (error) {
         // Non-fatal — the gate stays until the DH retries the status
         // change. Log and move on.
-        // eslint-disable-next-line no-console
-        console.warn(
+        this.logger.warn(
           `F1b: failed to clear pending gate for request ${requestId}: ${error.message}`,
         );
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(
+      this.logger.warn(
         `F1b: unexpected error clearing gate for ${requestId}: ${(err as Error).message}`,
       );
     }
