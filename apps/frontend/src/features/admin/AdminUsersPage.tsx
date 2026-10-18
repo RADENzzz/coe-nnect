@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchUsers,
@@ -11,6 +11,7 @@ import {
 } from '../../api/users.api';
 import { useAuthStore } from '../../store/auth.store';
 import { fetchDepartments } from '../../api/departments.api';
+import { fetchFaculty } from '../../api/faculty.api';
 import { login } from '../../api/auth.api';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
@@ -50,7 +51,7 @@ export default function AdminUsersPage() {
 
   const [actionTarget, setActionTarget] = useState<{
     user: UserRecord;
-    action: 'deactivate' | 'delete';
+    action: 'delete';
   } | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -67,6 +68,68 @@ export default function AdminUsersPage() {
     queryFn: fetchDepartments,
     enabled: !!user,
   });
+
+  const { data: faculty = [] } = useQuery({
+    queryKey: ['faculty', { includeInactive: false }],
+    queryFn: () => fetchFaculty(false),
+    enabled: !!user,
+  });
+
+  // ═══════════════════════════════════════════════════════
+  // Faculty link helpers
+  // ═══════════════════════════════════════════════════════
+
+  // Maps facultyId → FacultyRecord for the "currently linked" badge.
+  const facultyById = useMemo(() => {
+    const m = new Map<string, (typeof faculty)[number]>();
+    for (const f of faculty) m.set(String(f.facultyId), f);
+    return m;
+  }, [faculty]);
+
+  // Auto-suggest: when the email typed in create mode matches a
+  // faculty record's email, auto-select that faculty (if not already set).
+  useEffect(() => {
+    if (mode !== 'create' || !form.email || form.facultyId) return;
+    const typed = form.email.trim().toLowerCase();
+    if (!typed) return;
+    const match = faculty.find(
+      (f) =>
+        f.isActive &&
+        f.email &&
+        f.email.trim().toLowerCase() === typed,
+    );
+    if (match) {
+      setForm((prev) => ({ ...prev, facultyId: match.facultyId }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.email, faculty, mode]);
+
+  // When dept changes, clear facultyId if the selected faculty is
+  // no longer in the new dept (unless they were manually picked).
+  const eligibleFaculty = useMemo(() => {
+    if (!form.deptId) {
+      return faculty.filter((f) => f.isActive);
+    }
+    return faculty.filter(
+      (f) =>
+        f.isActive &&
+        String(f.deptId ?? '') === String(form.deptId),
+    );
+  }, [faculty, form.deptId]);
+
+  const currentFacultyMatch = useMemo(() => {
+    if (!form.email) return null;
+    const typed = form.email.trim().toLowerCase();
+    return (
+      eligibleFaculty.find(
+        (f) => f.email && f.email.trim().toLowerCase() === typed,
+      ) ?? null
+    );
+  }, [eligibleFaculty, form.email]);
+
+  // ═══════════════════════════════════════════════════════
+  // Mutations
+  // ═══════════════════════════════════════════════════════
 
   const createMutation = useMutation({
     mutationFn: createUser,
@@ -99,7 +162,6 @@ export default function AdminUsersPage() {
     mutationFn: toggleUserActive,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
-      closeAction();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
@@ -115,6 +177,10 @@ export default function AdminUsersPage() {
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Delete failed'),
   });
+
+  // ═══════════════════════════════════════════════════════
+  // Form lifecycle
+  // ═══════════════════════════════════════════════════════
 
   const closeForm = () => {
     setMode(null);
@@ -170,7 +236,19 @@ export default function AdminUsersPage() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      // When the department changes, clear the faculty link if the
+      // previously-selected faculty is no longer eligible.
+      if (name === 'deptId' && prev.facultyId) {
+        const fac = facultyById.get(prev.facultyId);
+        if (fac && value && String(fac.deptId ?? '') !== String(value)) {
+          next.facultyId = '';
+        }
+      }
+      return next;
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -237,11 +315,7 @@ export default function AdminUsersPage() {
     setVerifyError(null);
     try {
       await login({ email: user.email, password: adminPassword });
-      if (actionTarget.action === 'deactivate') {
-        toggleMutation.mutate(actionTarget.user.userId);
-      } else {
-        deleteMutation.mutate(actionTarget.user.userId);
-      }
+      deleteMutation.mutate(actionTarget.user.userId);
     } catch (err: any) {
       setVerifyError(err?.response?.data?.message || 'Incorrect password');
       setIsVerifying(false);
@@ -272,6 +346,10 @@ export default function AdminUsersPage() {
       );
     });
   }, [visibleUsers, searchQuery, roleFilter]);
+
+  // ═══════════════════════════════════════════════════════
+  // Columns
+  // ═══════════════════════════════════════════════════════
 
   const columns: Column<UserRecord>[] = [
     {
@@ -306,6 +384,31 @@ export default function AdminUsersPage() {
       render: (u) => deptName(u.deptId),
     },
     {
+      key: 'faculty',
+      header: 'Faculty',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface-variant text-xs',
+      render: (u) => {
+        if (!u.facultyId) {
+          return <span className="text-slate-300">—</span>;
+        }
+        const f = facultyById.get(String(u.facultyId));
+        if (!f) {
+          return (
+            <span className="italic text-slate-400">
+              #{u.facultyId}
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1 text-slate-700">
+            <Icon name="badge" size={11} className="text-slate-400" />
+            {f.lastName}, {f.firstName}
+          </span>
+        );
+      },
+    },
+    {
       key: 'status',
       header: 'Status',
       cardVariant: 'badge',
@@ -324,7 +427,10 @@ export default function AdminUsersPage() {
     {
       label: u.isActive ? 'Deactivate' : 'Activate',
       icon: u.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => setActionTarget({ user: u, action: 'deactivate' }),
+      // Deactivation is reversible — fire immediately without password.
+      // Deletion is destructive — requires password (see below).
+      onClick: () => toggleMutation.mutate(u.userId),
+      disabled: toggleMutation.isPending,
     },
     {
       label: 'Delete',
@@ -333,6 +439,10 @@ export default function AdminUsersPage() {
       onClick: () => setActionTarget({ user: u, action: 'delete' }),
     },
   ];
+
+  // ═══════════════════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════════════════
 
   return (
     <div className="space-y-6">
@@ -429,6 +539,7 @@ export default function AdminUsersPage() {
         emptyMessage="No users yet."
         noMatchMessage="No users match your filters."
         getActions={getActions}
+        onRowClick={(u) => openEdit(u)}
       />
 
       <Modal
@@ -478,6 +589,17 @@ export default function AdminUsersPage() {
                   </p>
                 </div>
               </>
+            )}
+
+            {mode === 'edit' && editing && (
+              <div className="md:col-span-2 p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-start gap-2">
+                <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  Email <strong>{editing.email}</strong> is immutable from
+                  this page. To change it, deactivate this account and create
+                  a new one.
+                </span>
+              </div>
             )}
 
             <div>
@@ -538,6 +660,117 @@ export default function AdminUsersPage() {
                   ))}
               </select>
             </div>
+
+            {/* ═══════════════════════════════════════════════════ */}
+            {/* FACULTY LINK                                        */}
+            {/* ═══════════════════════════════════════════════════ */}
+
+            {mode === 'edit' && editing && (
+              <div className="md:col-span-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs flex items-center justify-between gap-2">
+                {editing.facultyId ? (
+                  <>
+                    <span className="text-slate-700 inline-flex items-center gap-1.5">
+                      <Icon name="badge" size={13} className="text-slate-500" />
+                      Currently linked to faculty record
+                      {facultyById.get(String(editing.facultyId)) ? (
+                        <strong className="text-slate-900">
+                          {' '}
+                          {facultyById.get(String(editing.facultyId))!.lastName}
+                          ,{' '}
+                          {facultyById.get(String(editing.facultyId))!.firstName}
+                        </strong>
+                      ) : (
+                        <strong className="text-slate-900">
+                          {' '}
+                          #{editing.facultyId}
+                        </strong>
+                      )}
+                    </span>
+                    {form.facultyId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((p) => ({ ...p, facultyId: '' }))
+                        }
+                        className="text-red-700 font-semibold hover:underline shrink-0"
+                      >
+                        Unlink
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-slate-500 italic">
+                    Not linked to any faculty record.
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="md:col-span-2">
+              <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Faculty record (optional)
+              </label>
+              <select
+                name="facultyId"
+                value={form.facultyId}
+                onChange={handleChange}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">— not linked —</option>
+                {eligibleFaculty.map((f) => {
+                  const isMatch =
+                    f.email &&
+                    form.email &&
+                    f.email.trim().toLowerCase() ===
+                      form.email.trim().toLowerCase();
+                  return (
+                    <option key={f.facultyId} value={f.facultyId}>
+                      {f.lastName}, {f.firstName}
+                      {f.email ? ` (${f.email})` : ''}
+                      {isMatch ? ' — email matches' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="text-[10px] text-on-surface-variant mt-1 leading-tight">
+                {form.deptId
+                  ? `Showing ${eligibleFaculty.length} faculty in this department. `
+                  : 'Showing all active faculty. '}
+                Auto-suggested when the email matches a faculty record.
+              </p>
+            </div>
+
+            {/* Auto-match hint — only when a match exists but is not yet selected */}
+            {currentFacultyMatch &&
+              String(currentFacultyMatch.facultyId) !== form.facultyId && (
+                <div className="md:col-span-2 -mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2">
+                  <Icon
+                    name="auto_awesome"
+                    size={14}
+                    className="shrink-0 mt-0.5"
+                  />
+                  <span>
+                    Auto-detected:{' '}
+                    <strong>
+                      {currentFacultyMatch.lastName},{' '}
+                      {currentFacultyMatch.firstName}
+                    </strong>{' '}
+                    has this email.
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          facultyId: currentFacultyMatch.facultyId,
+                        }))
+                      }
+                      className="ml-2 font-semibold underline hover:text-emerald-700"
+                    >
+                      Link it
+                    </button>
+                  </span>
+                </div>
+              )}
           </div>
 
           <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant mt-6">
@@ -566,11 +799,7 @@ export default function AdminUsersPage() {
       <Modal
         open={!!actionTarget}
         onClose={closeAction}
-        title={
-          actionTarget?.action === 'delete'
-            ? 'Confirm deletion'
-            : 'Confirm deactivation'
-        }
+        title="Confirm deletion"
         size="sm"
         footer={
           <>
@@ -585,17 +814,9 @@ export default function AdminUsersPage() {
               type="button"
               onClick={handleConfirmAction}
               disabled={isVerifying || !adminPassword}
-              className={`px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 ${
-                actionTarget?.action === 'delete'
-                  ? 'bg-red-600 hover:bg-red-700'
-                  : 'bg-amber-600 hover:bg-amber-700'
-              }`}
+              className="px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-red-600 hover:bg-red-700"
             >
-              {isVerifying
-                ? 'Verifying...'
-                : actionTarget?.action === 'delete'
-                ? 'Delete'
-                : 'Deactivate'}
+              {isVerifying ? 'Verifying...' : 'Delete'}
             </button>
           </>
         }
@@ -607,9 +828,7 @@ export default function AdminUsersPage() {
             {actionTarget?.user.email})
           </p>
           <p className="text-xs text-slate-500">
-            {actionTarget?.action === 'delete'
-              ? 'This will permanently delete the account. Cannot be undone.'
-              : 'This will disable the account until reactivated.'}
+            This will permanently delete the account. Cannot be undone.
           </p>
           {verifyError && (
             <div className="p-2 bg-red-100 text-red-700 text-xs">
