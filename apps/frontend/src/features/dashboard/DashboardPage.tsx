@@ -906,7 +906,7 @@ export default function DashboardPage() {
               Here is the current status of the <strong>{deptName}</strong>{' '}
               department schedule
               {activeTerm
-                ? ` — ${activeTerm.termName} ${activeTerm.schoolYear}.`
+                ? `  ${activeTerm.termName} ${activeTerm.schoolYear}.`
                 : '.'}
             </p>
           </div>
