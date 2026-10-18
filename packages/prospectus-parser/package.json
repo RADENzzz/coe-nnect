@@ -1,0 +1,9 @@
+{
+  "name": "@coe-nnect/prospectus-parser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PDF prospectus parser for CoE-NNECT",
+  "scripts": {
+    "dev": "python -m uvicorn app.main:app --reload --port 8001"
+  }
+}
