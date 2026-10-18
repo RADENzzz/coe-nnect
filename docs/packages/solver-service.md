@@ -1,6 +1,6 @@
 # Schedule solver service
 
-`packages/solver-service` is a standalone Python FastAPI service that uses Google OR-Tools CP-SAT to construct candidate schedules. It is separate from the main NestJS API and is **not currently invoked by the frontend or backend**.
+`packages/solver-service` is a separately deployed Python FastAPI service that uses Google OR-Tools CP-SAT to construct candidate schedules. The NestJS backend invokes it during schedule auto-generation through `SolverClient`; the frontend calls the backend rather than calling this service directly. Configure the backend's `SOLVER_URL` to the service base URL.
 
 ## Endpoints
 
@@ -20,11 +20,13 @@ Set-Location packages\solver-service
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-uvicorn main:app --reload --port 8002
+uvicorn main:app --reload --port 8000
 ```
 
-Open `http://localhost:8002/docs` for the interactive API schema or check `http://localhost:8002/health`.
+Open `http://localhost:8000/docs` for the interactive API schema or check `http://localhost:8000/health`.
 
-## Before integration
+## Integration boundary
 
-Agree on request and response versioning, deployment URL, timeout behavior, and how infeasible or partially scheduled results should be presented. Until that work is complete, do not treat the solver as an application feature.
+The backend prepares the solve request, checks room sufficiency, calls `POST /solve`, validates returned blocks with the TypeScript constraint-rules package, and persists the result only after hard validation passes. The backend client uses a 120-second solve timeout. Solver availability is required for auto-generation, but not for manual schedule plotting or other API features.
+
+The Python solver's optimization constraints and objectives are implemented separately from the TypeScript validation rules. Keep the request/response models in `solver.py`, the backend problem builder, and the backend's post-solve validation behavior in sync when changing this contract. The [system architecture](../architecture/README.md) describes the complete flow.
