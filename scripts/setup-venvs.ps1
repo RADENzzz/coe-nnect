@@ -1,4 +1,4 @@
-# scripts/setup-venvs.ps1
+﻿# scripts/setup-venvs.ps1
 #
 # One-time setup for the Python services.
 # Creates .venv in each package and installs requirements.
