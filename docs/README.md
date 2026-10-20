@@ -10,6 +10,7 @@ Use these guides to set up the applications, understand workspace packages, and 
 ## Architecture
 
 - [System architecture](architecture/README.md) — component map, data flows, persistence, and integration status.
+- [Database structure](DATABASE%20STRUCTURE/README.md) — ERDs, table inventory, enums, constraints, and the current SQL snapshot.
 
 ## Packages and services
 
