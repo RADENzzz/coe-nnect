@@ -327,7 +327,7 @@ function GridBody({
           >
             {/* Sticky day header row */}
             <div
-              className="flex sticky top-0 z-30 bg-surface-container-low"
+              className="flex sticky top-0 z-30 bg-surface-container-low/95 supports-[backdrop-filter]:bg-surface-container-low/85 backdrop-blur-sm"
               style={{ paddingLeft: metrics.axisWidth }}
             >
               {DAYS.map((day, idx) => {
@@ -337,16 +337,17 @@ function GridBody({
                     key={day}
                     style={{ width: metrics.dayWidth, minWidth: metrics.dayWidth }}
                     className={
-                      'py-2.5 text-center text-xs border-b border-l border-surface-variant first:border-l-0 ' +
+                      'relative py-2.5 text-center text-xs border-b border-l border-surface-variant first:border-l-0 transition-colors ' +
                       (isToday
-                        ? 'font-extrabold text-[#5c1219] bg-red-50'
+                        ? 'font-extrabold text-on-surface bg-primary/[0.08]'
                         : 'font-semibold text-on-surface')
                     }
                   >
                     {DAY_LABELS[day]}
                     {isToday && (
-                      <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider">
-                        • Today
+                      <span className="ml-1.5 inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+                        Today
                       </span>
                     )}
                   </div>
@@ -359,7 +360,7 @@ function GridBody({
             <div className="flex" style={{ height: metrics.gridHeight }}>
               {/* Sticky time axis — now includes 19:00 */}
               <div
-                className="sticky left-0 z-20 bg-surface-container-low border-r border-surface-variant shrink-0"
+                className="sticky left-0 z-20 bg-surface-container-low/95 supports-[backdrop-filter]:bg-surface-container-low/85 backdrop-blur-sm border-r border-surface-variant shrink-0"
                 style={{ width: metrics.axisWidth }}
               >
                 {timeBoundaries.map((time, i) => (
@@ -387,14 +388,13 @@ function GridBody({
                 {todayIdx >= 0 && (
                   <div
                     aria-hidden
+                    className="bg-primary/[0.06] pointer-events-none"
                     style={{
                       position: 'absolute',
                       left: todayIdx * metrics.dayWidth,
                       top: 0,
                       width: metrics.dayWidth,
                       height: metrics.gridHeight,
-                      backgroundColor: 'rgba(220, 38, 38, 0.04)',
-                      pointerEvents: 'none',
                       zIndex: 0,
                     }}
                   />
@@ -416,19 +416,44 @@ function GridBody({
                     <div
                       key={`zebra-${i}`}
                       aria-hidden
+                      className="bg-on-surface/[0.035] pointer-events-none"
                       style={{
                         position: 'absolute',
                         left: 0,
                         right: 0,
-                        top: (i + 1) * metrics.slotHeight,
+                        top: i * metrics.slotHeight,
                         height: metrics.slotHeight,
-                        backgroundColor: 'rgba(15, 23, 42, 0.035)',
-                        pointerEvents: 'none',
                         zIndex: 0,
                       }}
                     />
                   );
                 })}
+
+                {/* Horizontal time boundaries */}
+                {timeBoundaries.slice(1).map((time, i) => (
+                  <div
+                    key={`hline-${time}`}
+                    aria-hidden
+                    className="absolute left-0 right-0 border-t border-outline-variant/60 pointer-events-none"
+                    style={{
+                      top: (i + 1) * metrics.slotHeight,
+                      zIndex: 0,
+                    }}
+                  />
+                ))}
+
+                {/* Day-column separators */}
+                {DAYS.slice(1).map((day, i) => (
+                  <div
+                    key={`vline-${day}`}
+                    aria-hidden
+                    className="absolute top-0 bottom-0 border-l border-outline-variant/60 pointer-events-none"
+                    style={{
+                      left: (i + 1) * metrics.dayWidth,
+                      zIndex: 0,
+                    }}
+                  />
+                ))}
 
                 {shouldRenderDropCells &&
                   allCells.map((cell, idx) => {
