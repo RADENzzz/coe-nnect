@@ -33,7 +33,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
-  const { data: conversations = [] } = useConversations(true);
+  // Viewers and the dev account don't get chat.
+  const isEligible =
+    profile?.role !== 'viewer' && profile?.role !== 'administrator';
+
+  const { data: conversations = [] } = useConversations(isEligible);
 
   const totalUnread = useMemo(
     () => conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
@@ -64,12 +68,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  // Viewers don't get chat (CH-1.9)
-  const isEligible = profile?.role !== 'viewer';
-
   const ctxValue = useMemo<ChatContextValue>(
     () => ({
-      open,
+      open: isEligible && open,
       setOpen,
       totalUnread: isEligible ? totalUnread : 0,
     }),
