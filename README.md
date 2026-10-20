@@ -29,7 +29,7 @@ Western Mindanao State University</p>
 
 CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
 
-## 📖 Table of Contents
+## Table of Contents
 - [Project Information](#project-information)
 - [Capabilities](#capabilities)
 - [Architecture](#architecture)
