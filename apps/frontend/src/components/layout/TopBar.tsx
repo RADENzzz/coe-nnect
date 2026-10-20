@@ -38,15 +38,17 @@ const TYPE_META: Record<
   SearchResult['type'],
   { label: string; icon: string }
 > = {
+  action: { label: 'Quick action', icon: 'bolt' },
   subject: { label: 'Subject', icon: 'menu_book' },
   faculty: { label: 'Faculty', icon: 'groups' },
   room: { label: 'Room', icon: 'meeting_room' },
   section: { label: 'Section', icon: 'view_module' },
   user: { label: 'User', icon: 'manage_accounts' },
+  term: { label: 'Academic term', icon: 'calendar_month' },
 };
 
-const MIN_QUERY_LENGTH = 3;
-const DEBOUNCE_MS = 350;
+const MIN_QUERY_LENGTH = 2;
+const DEBOUNCE_MS = 220;
 
 function loadRecentSearches(): string[] {
   try {
@@ -80,7 +82,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-amber-100 text-slate-900 rounded px-0.5">
+      <mark className="bg-amber-100 text-on-surface rounded px-0.5">
         {text.slice(idx, idx + query.length)}
       </mark>
       {text.slice(idx + query.length)}
@@ -88,10 +90,121 @@ function Highlighted({ text, query }: { text: string; query: string }) {
   );
 }
 
+function SearchSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-1 p-2" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 rounded-lg px-2 py-2">
+          <div className="h-8 w-8 animate-pulse rounded-lg bg-surface-container" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="h-3 w-2/3 animate-pulse rounded bg-surface-container" />
+            <div className="h-2.5 w-1/2 animate-pulse rounded bg-surface-container" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface SearchResultsListProps {
+  groupedResults: Array<[string, SearchResult[]]>;
+  results: SearchResult[];
+  query: string;
+  selectedIndex: number;
+  onSelect: (result: SearchResult) => void;
+  onHover: (index: number) => void;
+  idPrefix: string;
+  dense?: boolean;
+}
+
+function SearchResultsList({
+  groupedResults,
+  results,
+  query,
+  selectedIndex,
+  onSelect,
+  onHover,
+  idPrefix,
+  dense = true,
+}: SearchResultsListProps) {
+  const groupPadding = dense ? 'px-3' : 'px-4';
+  const itemPadding = dense ? 'px-3 py-2' : 'px-4 py-3';
+  const iconSize = dense ? 'text-[18px]' : 'text-[20px]';
+
+  return (
+    <ul role="listbox" className="py-1">
+      {groupedResults.map(([type, items]) => {
+        const meta = TYPE_META[type as SearchResult['type']] ?? {
+          label: type,
+          icon: 'search',
+        };
+        return (
+          <li key={type}>
+            <div
+              className={`${groupPadding} flex items-center gap-2 border-y border-outline-variant/60 bg-surface-container-low py-1.5`}
+            >
+              <Icon
+                name={meta.icon}
+                className="text-[14px] text-on-surface-variant"
+              />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                {meta.label}
+              </span>
+              <span className="text-[10px] text-on-surface-variant/70">
+                {items.length}
+              </span>
+            </div>
+            <ul>
+              {items.map((r) => {
+                const i = results.indexOf(r);
+                const isSelected = i === selectedIndex;
+                return (
+                  <li key={`${r.type}-${r.id}`}>
+                    <button
+                      type="button"
+                      id={`${idPrefix}-${i}`}
+                      data-search-index={i}
+                      onClick={() => onSelect(r)}
+                      onMouseEnter={() => onHover(i)}
+                      className={`flex w-full items-start gap-3 text-left transition-colors ${itemPadding} ${
+                        isSelected
+                          ? 'bg-primary/[0.08]'
+                          : 'hover:bg-surface-container'
+                      }`}
+                      role="option"
+                      aria-selected={isSelected}
+                    >
+                      <Icon
+                        name={meta.icon}
+                        className={`mt-0.5 ${iconSize} shrink-0 text-on-surface-variant`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-on-surface">
+                          <Highlighted text={r.label} query={query} />
+                        </div>
+                        {r.sublabel && (
+                          <div className="mt-0.5 truncate text-xs text-on-surface-variant">
+                            {r.sublabel}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default function TopBar({ label }: TopBarProps) {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
   const profile = useAuthStore((s) => s.profile);
   const isDevAccount = profile?.role === 'administrator';
+  const isDean = profile?.role === 'college_dean';
   const logout = useLogout();
   const navigate = useNavigate();
   const location = useLocation();
@@ -118,6 +231,9 @@ export default function TopBar({ label }: TopBarProps) {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const mobileResultsRef = useRef<HTMLDivElement>(null);
 
   const isMac = useMemo(
     () =>
@@ -126,6 +242,11 @@ export default function TopBar({ label }: TopBarProps) {
     [],
   );
   const shortcutHint = isMac ? '⌘K' : 'Ctrl+K';
+
+  const focusSearchInput = useCallback(() => {
+    const target = mobileSearchOpen ? mobileInputRef.current : inputRef.current;
+    target?.focus();
+  }, [mobileSearchOpen]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -138,6 +259,18 @@ export default function TopBar({ label }: TopBarProps) {
     setSelectedIndex(0);
   }, [debouncedQuery]);
 
+  // Keep the keyboard-selected result in view when the list is taller than
+  // the dropdown.
+  useEffect(() => {
+    if (!isSearchOpen && !mobileSearchOpen) return;
+    const container = mobileSearchOpen
+      ? mobileResultsRef.current
+      : resultsRef.current;
+    container
+      ?.querySelector<HTMLElement>(`[data-search-index="${selectedIndex}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex, isSearchOpen, mobileSearchOpen, debouncedQuery]);
+
   const { data, isFetching } = useQuery({
     queryKey: ['global-search', debouncedQuery],
     queryFn: ({ signal }) => searchApi.search(debouncedQuery, signal),
@@ -146,7 +279,31 @@ export default function TopBar({ label }: TopBarProps) {
     gcTime: 60_000,
   });
 
-  const results = useMemo(() => data?.results ?? [], [data]);
+  // Dean-only quick actions surface alongside API results. This is also the
+  // search entry point for creating a term without hunting through Settings.
+  const quickActions = useMemo<SearchResult[]>(() => {
+    if (!isDean || debouncedQuery.length < MIN_QUERY_LENGTH) return [];
+    if (!/\b(term|terms|semester|academic)\b/i.test(debouncedQuery)) return [];
+    return [
+      {
+        type: 'action',
+        id: 'new-academic-term',
+        label: 'New academic term',
+        sublabel: 'Open System Settings and create a term',
+        path: '/dean/system-settings?newTerm=1',
+      },
+    ];
+  }, [debouncedQuery, isDean]);
+
+  const apiResults = useMemo(() => data?.results ?? [], [data]);
+  const results = useMemo(
+    () => [...quickActions, ...apiResults],
+    [apiResults, quickActions],
+  );
+
+  useEffect(() => {
+    if (selectedIndex >= results.length) setSelectedIndex(0);
+  }, [results.length, selectedIndex]);
 
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SearchResult[]>();
@@ -203,7 +360,9 @@ export default function TopBar({ label }: TopBarProps) {
       }
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
+        setMobileSearchOpen(false);
         inputRef.current?.blur();
+        mobileInputRef.current?.blur();
       }
     }
     document.addEventListener('keydown', handleKey);
@@ -235,11 +394,13 @@ export default function TopBar({ label }: TopBarProps) {
     setSearchQuery('');
     setDebouncedQuery('');
     setIsSearchOpen(false);
-    inputRef.current?.focus();
+    focusSearchInput();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (results.length === 0) return;
+    if (debouncedQuery.length < MIN_QUERY_LENGTH || results.length === 0) {
+      return;
+    }
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -255,7 +416,12 @@ export default function TopBar({ label }: TopBarProps) {
   };
 
   const showDropdown =
-    isSearchOpen && debouncedQuery.length >= MIN_QUERY_LENGTH;
+    isSearchOpen &&
+    (debouncedQuery.length >= MIN_QUERY_LENGTH ||
+      (debouncedQuery.length > 0 &&
+        debouncedQuery.length < MIN_QUERY_LENGTH));
+  const isQueryTooShort =
+    debouncedQuery.length > 0 && debouncedQuery.length < MIN_QUERY_LENGTH;
   const showRecent =
     isSearchOpen && !debouncedQuery && recentSearches.length > 0;
   const showClear = searchQuery.length > 0;
@@ -264,10 +430,11 @@ export default function TopBar({ label }: TopBarProps) {
     if (showRecent) {
       return (
         <div
-          className="animate-fade-in absolute w-[22rem] right-0 mt-1 border border-slate-200 bg-white shadow-lg z-50"
+          id="global-search-results"
+          className="animate-fade-in absolute right-0 z-50 mt-1 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-xl"
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low/60 px-3 py-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
               Recent searches
             </span>
             <button
@@ -276,7 +443,7 @@ export default function TopBar({ label }: TopBarProps) {
                 setRecentSearches([]);
                 saveRecentSearches([]);
               }}
-              className="text-[10px] text-slate-400 hover:text-slate-700 font-semibold"
+              className="text-[10px] font-semibold text-on-surface-variant transition-colors hover:text-on-surface"
             >
               Clear
             </button>
@@ -289,15 +456,15 @@ export default function TopBar({ label }: TopBarProps) {
                   onClick={() => {
                     setSearchQuery(term);
                     setIsSearchOpen(true);
-                    inputRef.current?.focus();
+                    focusSearchInput();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-container"
                 >
                   <Icon
                     name="history"
-                    className="text-slate-400 text-[16px]"
+                    className="text-[16px] text-on-surface-variant"
                   />
-                  <span className="text-sm text-slate-700 truncate">
+                  <span className="truncate text-sm text-on-surface">
                     {term}
                   </span>
                 </button>
@@ -313,77 +480,55 @@ export default function TopBar({ label }: TopBarProps) {
     return (
       <div
         id="global-search-results"
-        className="animate-fade-in absolute w-[22rem] right-0 mt-1 max-h-[70vh] overflow-y-auto border border-slate-200 bg-white shadow-lg z-50"
+        ref={resultsRef}
+        className="animate-fade-in absolute right-0 z-50 mt-1 flex max-h-[min(70vh,32rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-xl"
       >
-        {isFetching && results.length === 0 ? (
-          <div className="px-4 py-3 text-xs text-slate-400">
-            Searching…
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {isQueryTooShort ? (
+            <div className="px-4 py-5 text-center">
+              <p className="text-sm font-medium text-on-surface">
+                Keep typing to search
+              </p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Enter at least {MIN_QUERY_LENGTH} characters.
+              </p>
+            </div>
+          ) : isFetching && results.length === 0 ? (
+            <SearchSkeleton />
+          ) : results.length === 0 ? (
+            <div className="px-5 py-8 text-center" role="status">
+              <Icon
+                name="search_off"
+                className="mx-auto mb-2 text-[28px] text-on-surface-variant/50"
+              />
+              <p className="text-sm font-medium text-on-surface">
+                No matches found
+              </p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Try a subject code, faculty name, room, or term.
+              </p>
+            </div>
+          ) : (
+            <SearchResultsList
+              groupedResults={groupedResults}
+              results={results}
+              query={debouncedQuery}
+              selectedIndex={selectedIndex}
+              onSelect={handleSelect}
+              onHover={setSelectedIndex}
+              idPrefix="search-option"
+            />
+          )}
+        </div>
+        {!isQueryTooShort && results.length > 0 && (
+          <div className="flex items-center justify-between gap-2 border-t border-outline-variant bg-surface-container-low/70 px-3 py-1.5 text-[10px] text-on-surface-variant">
+            <span>↑↓ navigate · Enter open · Esc close</span>
+            <span className="shrink-0" aria-live="polite">
+              {isFetching
+                ? 'Searching…'
+                : `${results.length} result${results.length === 1 ? '' : 's'}`}
+            </span>
           </div>
-        ) : results.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-slate-500">
-            No results for &ldquo;{debouncedQuery}&rdquo;
-          </div>
-        ) : (
-          <ul role="listbox" className="py-1">
-            {groupedResults.map(([type, items]) => {
-              const meta = TYPE_META[type as SearchResult['type']];
-              return (
-                <li key={type}>
-                  <div className="px-3 py-1.5 flex items-center gap-2 bg-slate-50 border-y border-slate-100">
-                    <Icon
-                      name={meta.icon}
-                      className="text-slate-400 text-[14px]"
-                    />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      {meta.label}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      {items.length}
-                    </span>
-                  </div>
-                  <ul>
-                    {items.map((r) => {
-                      const i = results.indexOf(r);
-                      const isSelected = i === selectedIndex;
-                      return (
-                        <li key={`${r.type}-${r.id}`}>
-                          <button
-                            type="button"
-                            onClick={() => handleSelect(r)}
-                            onMouseEnter={() => setSelectedIndex(i)}
-                            className={`flex w-full items-start gap-3 px-3 py-2 text-left transition-colors ${
-                              isSelected
-                                ? 'bg-slate-50'
-                                : 'hover:bg-slate-50'
-                            }`}
-                            role="option"
-                            aria-selected={isSelected}
-                          >
-                            <span className="material-symbols-outlined mt-0.5 text-[18px] text-slate-400">
-                              {meta.icon}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-slate-900">
-                                <Highlighted
-                                  text={r.label}
-                                  query={debouncedQuery}
-                                />
-                              </div>
-                              {r.sublabel && (
-                                <div className="mt-0.5 truncate text-xs text-slate-500">
-                                  {r.sublabel}
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </li>
-              );
-            })}
-          </ul>
         )}
       </div>
     );
@@ -392,14 +537,14 @@ export default function TopBar({ label }: TopBarProps) {
   return (
     <>
       <header
-        className="flex justify-between items-center px-4 md:px-6 w-full sticky top-0 z-40 bg-white border-b border-slate-200 pt-safe"
+        className="flex justify-between items-center px-4 md:px-6 w-full sticky top-0 z-40 bg-surface border-b border-outline-variant pt-safe"
         style={{ height: '48px' }}
       >
         {/* Left */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             onClick={openMobileDrawer}
-            className="md:hidden tap-target hover:bg-slate-50 flex items-center justify-center text-slate-600 -ml-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 shrink-0"
+            className="md:hidden tap-target hover:bg-surface-container flex items-center justify-center text-slate-600 -ml-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 shrink-0"
             aria-label="Open menu"
           >
             <Icon name="menu" />
@@ -443,29 +588,48 @@ export default function TopBar({ label }: TopBarProps) {
                 }}
                 onFocus={() => setIsSearchOpen(true)}
                 onKeyDown={handleKeyDown}
-                placeholder={`Search… (${shortcutHint})`}
-                className="pl-8 pr-8 py-1.5 bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 transition-colors w-48 md:w-56 lg:w-72 rounded"
+                placeholder={
+                  isDean
+                    ? 'Search subjects, faculty, rooms, terms…'
+                    : 'Search subjects, faculty, rooms, sections…'
+                }
+                className="pl-8 pr-14 py-1.5 bg-surface-container-low border border-outline-variant text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all w-48 md:w-56 lg:w-72 rounded-lg"
                 aria-label="Global search"
                 aria-autocomplete="list"
                 aria-expanded={showDropdown || showRecent}
-                aria-controls="global-search-results"
+                aria-controls={
+                  showDropdown || showRecent
+                    ? 'global-search-results'
+                    : undefined
+                }
+                aria-activedescendant={
+                  showDropdown && results.length > 0
+                    ? `search-option-${selectedIndex}`
+                    : undefined
+                }
+                autoComplete="off"
+                spellCheck={false}
               />
 
               {isFetching && !showClear ? (
                 <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-on-surface-variant/30 border-t-primary" />
                 </div>
               ) : showClear ? (
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center text-slate-400 hover:text-slate-700 transition-colors rounded"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded text-on-surface-variant transition-colors hover:text-on-surface"
                   aria-label="Clear search"
                   tabIndex={-1}
                 >
                   <Icon name="close" className="text-[16px]" />
                 </button>
-              ) : null}
+              ) : (
+                <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 items-center rounded border border-outline-variant bg-surface px-1.5 py-0.5 font-sans text-[10px] font-medium text-on-surface-variant lg:inline-flex">
+                  {shortcutHint}
+                </kbd>
+              )}
 
               {renderSearchDropdown()}
             </div>
@@ -475,7 +639,7 @@ export default function TopBar({ label }: TopBarProps) {
             <button
               type="button"
               onClick={() => setChatOpen(!chatOpen)}
-              className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="hidden md:flex tap-target hover:bg-surface-container transition-colors items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
               aria-label={
                 totalUnread > 0
                   ? `Chat (${totalUnread} unread)`
@@ -514,7 +678,7 @@ export default function TopBar({ label }: TopBarProps) {
             <button
               type="button"
               onClick={() => navigate(settingsPath)}
-              className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="hidden md:flex tap-target hover:bg-surface-container transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
               aria-label="Settings"
             >
               <Icon name="settings" />
@@ -525,7 +689,7 @@ export default function TopBar({ label }: TopBarProps) {
           <div className="relative" ref={profileRef}>
             <button
               type="button"
-              className="w-9 h-9 rounded-full bg-[#5c1219] text-white overflow-hidden border border-slate-200 cursor-pointer flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="w-9 h-9 rounded-full bg-[#5c1219] text-white overflow-hidden border border-outline-variant cursor-pointer flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               aria-label="Open profile menu"
               aria-expanded={isProfileOpen}
@@ -537,9 +701,9 @@ export default function TopBar({ label }: TopBarProps) {
             {isProfileOpen && (
               <div
                 role="menu"
-                className="absolute right-0 mt-2 w-52 bg-white shadow-md rounded-md py-1 border border-slate-200 z-50"
+                className="absolute right-0 mt-2 w-52 bg-surface shadow-md rounded-md py-1 border border-outline-variant z-50"
               >
-                <div className="px-4 py-2.5 border-b border-slate-100">
+                <div className="px-4 py-2.5 border-b border-outline-variant/60">
                   <p className="text-sm font-semibold text-slate-900 truncate">
                     {profile?.username ?? 'User'}
                   </p>
@@ -553,7 +717,7 @@ export default function TopBar({ label }: TopBarProps) {
                       setIsProfileOpen(false);
                       setMobileSearchOpen(true);
                     }}
-                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-surface-container transition-colors font-medium md:hidden"
                   >
                     <Icon name="search" className="mr-3 text-base" />
                     Search
@@ -565,7 +729,7 @@ export default function TopBar({ label }: TopBarProps) {
                       setIsProfileOpen(false);
                       setChatOpen(true);
                     }}
-                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-surface-container transition-colors font-medium md:hidden"
                   >
                     <Icon name="forum" className="mr-3 text-base" />
                     Chat
@@ -582,7 +746,7 @@ export default function TopBar({ label }: TopBarProps) {
                       setIsProfileOpen(false);
                       navigate(settingsPath);
                     }}
-                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-surface-container transition-colors font-medium md:hidden"
                   >
                     <Icon name="settings" className="mr-3 text-base" />
                     Settings
@@ -590,7 +754,7 @@ export default function TopBar({ label }: TopBarProps) {
                 )}
                 <button
                   onClick={logout}
-                  className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium"
+                  className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-surface-container transition-colors font-medium"
                 >
                   <Icon name="logout" className="mr-3 text-base" />
                   Logout
@@ -603,8 +767,13 @@ export default function TopBar({ label }: TopBarProps) {
 
       {/* ── Mobile full-screen search overlay ── */}
       {!isDevAccount && mobileSearchOpen && (
-        <div className="fixed inset-0 z-[150] bg-white md:hidden flex flex-col">
-          <div className="flex items-center gap-2 p-3 border-b border-slate-200 pt-safe">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search"
+          className="fixed inset-0 z-[150] flex flex-col bg-surface md:hidden"
+        >
+          <div className="flex items-center gap-2 border-b border-outline-variant p-3 pt-safe">
             <button
               type="button"
               onClick={() => {
@@ -612,7 +781,7 @@ export default function TopBar({ label }: TopBarProps) {
                 setSearchQuery('');
                 setDebouncedQuery('');
               }}
-              className="p-2 -ml-2 text-slate-600"
+              className="rounded p-2 -ml-2 text-on-surface-variant hover:bg-surface-container"
               aria-label="Close search"
             >
               <Icon name="arrow_back" />
@@ -623,6 +792,7 @@ export default function TopBar({ label }: TopBarProps) {
                 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
               />
               <input
+                ref={mobileInputRef}
                 autoFocus
                 role="combobox"
                 type="text"
@@ -631,16 +801,40 @@ export default function TopBar({ label }: TopBarProps) {
                   setSearchQuery(e.target.value);
                   setIsSearchOpen(true);
                 }}
+                onFocus={() => setIsSearchOpen(true)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search subjects, faculty, rooms…"
-                className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:border-slate-400 rounded"
+                placeholder={
+                  isDean
+                    ? 'Search subjects, faculty, rooms, terms…'
+                    : 'Search subjects, faculty, rooms, sections…'
+                }
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-low py-2 pl-9 pr-9 text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/10"
                 aria-label="Search"
+                aria-autocomplete="list"
+                aria-expanded={
+                  results.length > 0 ||
+                  isQueryTooShort ||
+                  (debouncedQuery.length < MIN_QUERY_LENGTH &&
+                    recentSearches.length > 0)
+                }
+                aria-controls={
+                  !isQueryTooShort && results.length > 0
+                    ? 'mobile-search-results'
+                    : undefined
+                }
+                aria-activedescendant={
+                  !isQueryTooShort && results.length > 0
+                    ? `mobile-search-option-${selectedIndex}`
+                    : undefined
+                }
+                autoComplete="off"
+                spellCheck={false}
               />
               {showClear && (
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-slate-400 hover:text-slate-700 rounded"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-on-surface-variant hover:text-on-surface"
                   aria-label="Clear"
                 >
                   <Icon name="close" className="text-[18px]" />
@@ -648,19 +842,37 @@ export default function TopBar({ label }: TopBarProps) {
               )}
             </div>
           </div>
-          <div className="relative flex-1 overflow-y-auto">
-            {isFetching && results.length === 0 ? (
-              <div className="px-4 py-3 text-xs text-slate-400">
-                Searching…
+          <div ref={mobileResultsRef} className="relative flex-1 overflow-y-auto">
+            {isQueryTooShort ? (
+              <div className="px-5 py-8 text-center">
+                <p className="text-sm font-medium text-on-surface">
+                  Keep typing to search
+                </p>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  Enter at least {MIN_QUERY_LENGTH} characters.
+                </p>
               </div>
-            ) : results.length === 0 && debouncedQuery.length >= MIN_QUERY_LENGTH ? (
-              <div className="px-4 py-12 text-center text-sm text-slate-500">
-                No results for &ldquo;{debouncedQuery}&rdquo;
+            ) : isFetching && results.length === 0 ? (
+              <SearchSkeleton rows={4} />
+            ) : results.length === 0 &&
+              debouncedQuery.length >= MIN_QUERY_LENGTH ? (
+              <div className="px-5 py-12 text-center" role="status">
+                <Icon
+                  name="search_off"
+                  className="mx-auto mb-2 text-[32px] text-on-surface-variant/50"
+                />
+                <p className="text-sm font-medium text-on-surface">
+                  No matches found
+                </p>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  Try a subject code, faculty name, room, or term.
+                </p>
               </div>
-            ) : debouncedQuery.length < MIN_QUERY_LENGTH && recentSearches.length > 0 ? (
+            ) : debouncedQuery.length < MIN_QUERY_LENGTH &&
+              recentSearches.length > 0 ? (
               <div>
-                <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <div className="flex items-center justify-between border-b border-outline-variant/60 px-3 py-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
                     Recent searches
                   </span>
                   <button
@@ -669,7 +881,7 @@ export default function TopBar({ label }: TopBarProps) {
                       setRecentSearches([]);
                       saveRecentSearches([]);
                     }}
-                    className="text-[10px] text-slate-400 hover:text-slate-700 font-semibold"
+                    className="text-[10px] font-semibold text-on-surface-variant hover:text-on-surface"
                   >
                     Clear
                   </button>
@@ -682,15 +894,15 @@ export default function TopBar({ label }: TopBarProps) {
                         onClick={() => {
                           setSearchQuery(term);
                           setIsSearchOpen(true);
-                          inputRef.current?.focus();
+                          focusSearchInput();
                         }}
-                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-100"
+                        className="flex w-full items-center gap-2 border-b border-outline-variant/60 px-4 py-3 text-left transition-colors hover:bg-surface-container"
                       >
                         <Icon
                           name="history"
-                          className="text-slate-400 text-[18px]"
+                          className="text-[18px] text-on-surface-variant"
                         />
-                        <span className="text-sm text-slate-700 truncate">
+                        <span className="truncate text-sm text-on-surface">
                           {term}
                         </span>
                       </button>
@@ -699,56 +911,19 @@ export default function TopBar({ label }: TopBarProps) {
                 </ul>
               </div>
             ) : null}
-            {results.length > 0 && (
-              <ul role="listbox" className="py-1">
-                {groupedResults.map(([type, items]) => {
-                  const meta = TYPE_META[type as SearchResult['type']];
-                  return (
-                    <li key={type}>
-                      <div className="px-4 py-1.5 flex items-center gap-2 bg-slate-50 border-y border-slate-100">
-                        <Icon
-                          name={meta.icon}
-                          className="text-slate-400 text-[14px]"
-                        />
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          {meta.label}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {items.length}
-                        </span>
-                      </div>
-                      <ul>
-                        {items.map((r) => (
-                          <li key={`${r.type}-${r.id}`}>
-                            <button
-                              type="button"
-                              onClick={() => handleSelect(r)}
-                              className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-                            >
-                              <span className="material-symbols-outlined mt-0.5 text-[20px] text-slate-400">
-                                {meta.icon}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium text-slate-900">
-                                  <Highlighted
-                                    text={r.label}
-                                    query={debouncedQuery}
-                                  />
-                                </div>
-                                {r.sublabel && (
-                                  <div className="mt-0.5 truncate text-xs text-slate-500">
-                                    {r.sublabel}
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  );
-                })}
-              </ul>
+            {!isQueryTooShort && results.length > 0 && (
+              <div id="mobile-search-results">
+                <SearchResultsList
+                  groupedResults={groupedResults}
+                  results={results}
+                  query={debouncedQuery}
+                  selectedIndex={selectedIndex}
+                  onSelect={handleSelect}
+                  onHover={setSelectedIndex}
+                  idPrefix="mobile-search-option"
+                  dense={false}
+                />
+              </div>
             )}
           </div>
         </div>
