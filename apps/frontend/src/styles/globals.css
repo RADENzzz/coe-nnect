@@ -3,6 +3,198 @@
 @tailwind utilities;
 
 /* ============================================
+   Theme tokens
+   Light is the default; `.dark` on <html> flips
+   the tokens. See src/store/theme.store.ts.
+   ============================================ */
+
+:root {
+  color-scheme: light;
+
+  /* Brand */
+  --brand-50: 253 242 243;
+  --brand-100: 251 229 231;
+  --brand-200: 246 201 205;
+  --brand-700: 92 18 25;
+  --primary: 92 18 25;
+  --primary-container: 74 14 20;
+  --surface-tint: 92 18 25;
+
+  /* Neutral scale */
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+  --slate-950: 2 6 23;
+
+  /* Surfaces */
+  --app-root: 2 6 23;
+  --workspace: 248 250 252;
+  --background: 248 250 252;
+  --on-background: 15 23 42;
+  --surface: 255 255 255;
+  --surface-dim: 226 232 240;
+  --surface-bright: 255 255 255;
+  --surface-variant: 226 232 240;
+  --surface-container-lowest: 255 255 255;
+  --surface-container-low: 248 250 252;
+  --surface-container: 241 245 249;
+  --surface-container-high: 226 232 240;
+  --surface-container-highest: 203 213 225;
+  --on-surface: 15 23 42;
+  --on-surface-variant: 100 116 139;
+
+  /* Text */
+  --text-primary: 15 23 42;
+  --text-secondary: 100 116 139;
+  --text-muted: 71 85 105;
+
+  /* Borders */
+  --border-default: 226 232 240;
+  --border-subtle: 241 245 249;
+  --border-outline: 203 213 225;
+  --outline: 203 213 225;
+  --outline-variant: 226 232 240;
+
+  /* Accent tints */
+  --red-50: 254 242 242;
+  --red-100: 254 226 226;
+  --red-200: 254 202 202;
+  --red-300: 252 165 165;
+  --rose-50: 255 241 242;
+  --rose-100: 255 228 230;
+  --rose-200: 254 205 211;
+  --rose-300: 253 164 175;
+  --amber-50: 255 251 235;
+  --amber-100: 254 243 199;
+  --amber-200: 253 230 138;
+  --amber-300: 252 211 77;
+  --emerald-50: 236 253 245;
+  --emerald-100: 209 250 229;
+  --emerald-200: 167 243 208;
+  --emerald-300: 110 231 183;
+  --green-50: 240 253 244;
+  --green-100: 220 252 231;
+  --green-200: 187 247 208;
+  --green-300: 134 239 172;
+  --blue-50: 239 246 255;
+  --blue-100: 219 234 254;
+  --blue-200: 191 219 254;
+  --blue-300: 147 197 253;
+  --purple-50: 250 245 255;
+  --purple-100: 243 232 255;
+  --purple-200: 233 213 255;
+  --purple-300: 216 180 254;
+  --violet-50: 245 243 255;
+  --violet-100: 237 233 254;
+  --violet-200: 221 214 254;
+  --violet-300: 196 181 253;
+  --orange-50: 255 247 237;
+  --orange-100: 255 237 213;
+  --orange-200: 254 215 170;
+  --orange-300: 253 186 116;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Brand */
+  --brand-50: 43 15 19;
+  --brand-100: 58 20 25;
+  --brand-200: 76 26 33;
+  --brand-700: 139 30 45;
+  --primary: 139 30 45;
+  --primary-container: 109 24 34;
+  --surface-tint: 238 161 168;
+
+  /* Neutral scale */
+  --slate-50: 2 6 23;
+  --slate-100: 15 23 42;
+  --slate-200: 30 41 59;
+  --slate-300: 51 65 85;
+  --slate-400: 148 163 184;
+  --slate-500: 148 163 184;
+  --slate-600: 203 213 225;
+  --slate-700: 226 232 240;
+  --slate-800: 241 245 249;
+  --slate-900: 248 250 252;
+  --slate-950: 255 255 255;
+
+  /* Surfaces */
+  --app-root: 2 6 23;
+  --workspace: 2 6 23;
+  --background: 2 6 23;
+  --on-background: 241 245 249;
+  --surface: 15 23 42;
+  --surface-dim: 2 6 23;
+  --surface-bright: 30 41 59;
+  --surface-variant: 30 41 59;
+  --surface-container-lowest: 15 23 42;
+  --surface-container-low: 11 21 38;
+  --surface-container: 19 31 53;
+  --surface-container-high: 30 41 59;
+  --surface-container-highest: 51 65 85;
+  --on-surface: 241 245 249;
+  --on-surface-variant: 148 163 184;
+
+  /* Text */
+  --text-primary: 241 245 249;
+  --text-secondary: 148 163 184;
+  --text-muted: 203 213 225;
+
+  /* Borders */
+  --border-default: 30 41 59;
+  --border-subtle: 22 33 52;
+  --border-outline: 51 65 85;
+  --outline: 51 65 85;
+  --outline-variant: 30 41 59;
+
+  /* Accent tints */
+  --red-50: 43 17 20;
+  --red-100: 58 22 27;
+  --red-200: 76 29 35;
+  --red-300: 105 40 48;
+  --rose-50: 43 17 23;
+  --rose-100: 58 23 31;
+  --rose-200: 76 31 42;
+  --rose-300: 104 42 56;
+  --amber-50: 42 31 11;
+  --amber-100: 57 42 15;
+  --amber-200: 76 55 19;
+  --amber-300: 104 74 23;
+  --emerald-50: 11 35 27;
+  --emerald-100: 15 48 36;
+  --emerald-200: 20 62 47;
+  --emerald-300: 26 82 62;
+  --green-50: 10 35 19;
+  --green-100: 14 48 26;
+  --green-200: 19 63 34;
+  --green-300: 25 82 44;
+  --blue-50: 12 26 46;
+  --blue-100: 16 35 61;
+  --blue-200: 22 47 80;
+  --blue-300: 28 63 105;
+  --purple-50: 28 18 46;
+  --purple-100: 37 24 61;
+  --purple-200: 49 31 80;
+  --purple-300: 65 42 105;
+  --violet-50: 25 19 49;
+  --violet-100: 33 26 66;
+  --violet-200: 44 34 88;
+  --violet-300: 59 45 117;
+  --orange-50: 42 23 11;
+  --orange-100: 56 32 15;
+  --orange-200: 74 42 19;
+  --orange-300: 98 56 24;
+}
+
+/* ============================================
    Sharp-Edge / Slate Design System
    ============================================ */
 
@@ -982,4 +1174,513 @@ html {
   .no-print {
     display: none !important;
   }
+}
+
+/* ═══════════════════════════════════════════════
+   Dark mode refinements
+   Most colors are token-driven (see the variables
+   at the top of this file). The rules below cover
+   the fixed light-only classes still in use.
+   ═══════════════════════════════════════════════ */
+
+/* ── Base ── */
+.dark body {
+  background-color: #020617;
+  color: #f1f5f9;
+}
+
+.dark h1,
+.dark h2,
+.dark h3 {
+  color: #f8fafc;
+}
+
+.dark *:focus-visible {
+  outline-color: #eea1a8;
+}
+
+.dark ::selection {
+  background-color: rgba(238, 161, 168, 0.25);
+  color: inherit;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ── Component classes ── */
+.dark .card {
+  background-color: #0f172a;
+  border-color: #1e293b;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.4),
+    0 1px 3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.dark .card-header {
+  border-color: #1e293b;
+}
+
+.dark .btn-primary {
+  background-color: #8b1e2d;
+}
+
+.dark .btn-secondary {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+.dark .btn-secondary:hover {
+  background-color: #1e293b;
+}
+
+.dark .btn-ghost {
+  color: #94a3b8;
+}
+.dark .btn-ghost:hover {
+  color: #f8fafc;
+}
+
+.dark .btn-danger {
+  background-color: rgba(127, 29, 29, 0.3);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+.dark .btn-danger:hover {
+  background-color: rgba(127, 29, 29, 0.45);
+}
+
+.dark .input {
+  background-color: #0b1526;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+.dark .input::placeholder {
+  color: #64748b;
+}
+.dark .input:focus {
+  box-shadow: 0 0 0 1px #eea1a8;
+}
+
+.dark .label {
+  color: #94a3b8;
+}
+
+.dark .badge-neutral {
+  background-color: #0f172a;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+.dark .badge-success {
+  background-color: rgba(16, 185, 129, 0.14);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+.dark .badge-warning {
+  background-color: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fcd34d;
+}
+.dark .badge-danger {
+  background-color: rgba(239, 68, 68, 0.14);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+}
+.dark .badge-brand {
+  background-color: rgba(238, 161, 168, 0.14);
+  border-color: rgba(238, 161, 168, 0.35);
+  color: #f6c9cd;
+}
+
+.dark .skeleton {
+  background-color: #1e293b;
+}
+.dark .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0) 0%,
+    rgba(71, 85, 105, 0.7) 50%,
+    rgba(30, 41, 59, 0) 100%
+  );
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 41, 59, 0) 0%,
+    rgba(51, 65, 85, 1) 50%,
+    rgba(30, 41, 59, 0) 100%
+  );
+}
+
+.dark .sticky-actions-shadow {
+  box-shadow: -1px 0 0 0 #1e293b;
+}
+
+/* ── White surfaces ── */
+.dark .bg-white {
+  background-color: #0f172a;
+}
+.dark .hover\:bg-white:hover {
+  background-color: #1e293b;
+}
+.dark .focus\:bg-white:focus {
+  background-color: #1e293b;
+}
+.dark .bg-white\/60 {
+  background-color: rgba(15, 23, 42, 0.6);
+}
+.dark .bg-white\/70 {
+  background-color: rgba(15, 23, 42, 0.7);
+}
+.dark .bg-white\/90 {
+  background-color: rgba(15, 23, 42, 0.9);
+}
+.dark .bg-white\/95 {
+  background-color: rgba(15, 23, 42, 0.95);
+}
+
+/* ── Hover / focus surfaces ── */
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-50\/30:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-slate-100\/40:hover,
+.dark .hover\:bg-slate-100\/60:hover,
+.dark .active\:bg-slate-50:active,
+.dark .focus-visible\:bg-slate-50:focus-visible {
+  background-color: #1e293b;
+}
+.dark .hover\:bg-slate-200:hover,
+.dark .hover\:bg-slate-300:hover,
+.dark .group:hover .group-hover\:bg-slate-200 {
+  background-color: #334155;
+}
+
+/* Dark-on-light surfaces that must stay dark in dark mode */
+.dark .bg-slate-900:not(.text-white) {
+  background-color: #f8fafc;
+}
+.dark .bg-slate-900.text-white,
+.dark .bg-slate-900\/90.text-white,
+.dark .hover\:bg-slate-800:hover {
+  background-color: #0f172a;
+}
+.dark .bg-slate-900\/90 {
+  background-color: rgba(15, 23, 42, 0.9);
+}
+.dark .border-slate-700 {
+  border-color: #334155;
+}
+.dark .text-slate-300,
+.dark .text-slate-300\/90 {
+  color: #94a3b8;
+}
+
+/* Dark hero gradient that is dark in both themes */
+.dark .from-slate-900.via-slate-800.to-slate-900 {
+  background-image: linear-gradient(to bottom right, #0f172a, #1e293b, #0f172a);
+}
+
+/* Gradients that faded to white now fade to the dark surface */
+.dark .to-white {
+  --tw-gradient-to: #0f172a var(--tw-gradient-to-position);
+}
+.dark .via-white {
+  --tw-gradient-to: rgb(15 23 42 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from),
+    #0f172a var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+/* ── Brand text / arbitrary brand color ── */
+.dark .text-primary,
+.dark .text-brand-700 {
+  color: #eea1a8;
+}
+.dark .hover\:text-primary:hover,
+.dark .group:hover .group-hover\:text-primary,
+.dark .hover\:text-brand-700:hover,
+.dark .group:hover .group-hover\:text-brand-700 {
+  color: #f6c9cd;
+}
+.dark .text-brand-600 {
+  color: #dd6a75;
+}
+.dark .text-brand-800,
+.dark .hover\:text-brand-800:hover,
+.dark .group:hover .group-hover\:text-brand-800 {
+  color: #f6c9cd;
+}
+.dark .text-brand-900 {
+  color: #fbe5e7;
+}
+.dark .text-\[\#5c1219\],
+.dark .hover\:text-\[\#5c1219\]:hover,
+.dark .focus\:text-\[\#5c1219\]:focus {
+  color: #eea1a8;
+}
+
+/* ── Status text ── */
+.dark .text-red-600,
+.dark .hover\:text-red-600:hover {
+  color: #f87171;
+}
+.dark .text-red-700,
+.dark .hover\:text-red-700:hover {
+  color: #fca5a5;
+}
+.dark .text-red-700\/80 {
+  color: rgba(252, 165, 165, 0.8);
+}
+.dark .text-red-800,
+.dark .hover\:text-red-800:hover {
+  color: #fecaca;
+}
+.dark .text-red-900,
+.dark .hover\:text-red-900:hover,
+.dark .text-red-950 {
+  color: #fee2e2;
+}
+
+.dark .text-rose-600,
+.dark .hover\:text-rose-600:hover {
+  color: #fb7185;
+}
+.dark .text-rose-700 {
+  color: #fda4af;
+}
+.dark .text-rose-800 {
+  color: #fecdd3;
+}
+.dark .text-rose-900 {
+  color: #ffe4e6;
+}
+
+.dark .text-amber-600 {
+  color: #fbbf24;
+}
+.dark .text-amber-700 {
+  color: #fcd34d;
+}
+.dark .text-amber-700\/80 {
+  color: rgba(252, 211, 77, 0.8);
+}
+.dark .text-amber-800 {
+  color: #fde68a;
+}
+.dark .text-amber-900 {
+  color: #fef3c7;
+}
+.dark .text-amber-300 {
+  color: #fcd34d;
+}
+
+.dark .text-emerald-600 {
+  color: #34d399;
+}
+.dark .text-emerald-700,
+.dark .hover\:text-emerald-700:hover {
+  color: #6ee7b7;
+}
+.dark .text-emerald-700\/80 {
+  color: rgba(110, 231, 183, 0.8);
+}
+.dark .text-emerald-800 {
+  color: #a7f3d0;
+}
+.dark .text-emerald-900,
+.dark .hover\:text-emerald-900:hover {
+  color: #d1fae5;
+}
+
+.dark .text-green-600 {
+  color: #4ade80;
+}
+.dark .text-green-700 {
+  color: #86efac;
+}
+.dark .text-green-800 {
+  color: #bbf7d0;
+}
+.dark .text-green-900 {
+  color: #dcfce7;
+}
+
+.dark .text-blue-600 {
+  color: #60a5fa;
+}
+.dark .text-blue-700 {
+  color: #93c5fd;
+}
+.dark .text-blue-800 {
+  color: #bfdbfe;
+}
+.dark .text-blue-900,
+.dark .hover\:text-blue-900:hover {
+  color: #dbeafe;
+}
+
+.dark .text-purple-600 {
+  color: #c084fc;
+}
+.dark .text-purple-700 {
+  color: #d8b4fe;
+}
+.dark .text-purple-800 {
+  color: #e9d5ff;
+}
+.dark .text-purple-900 {
+  color: #f3e8ff;
+}
+
+.dark .text-violet-700 {
+  color: #c4b5fd;
+}
+.dark .text-orange-700 {
+  color: #fdba74;
+}
+.dark .text-orange-900 {
+  color: #fed7aa;
+}
+
+/* ── Borders ── */
+.dark .border-red-700 {
+  border-color: #f87171;
+}
+.dark .border-red-800 {
+  border-color: #fca5a5;
+}
+.dark .border-amber-700 {
+  border-color: #fbbf24;
+}
+.dark .border-orange-700 {
+  border-color: #fb923c;
+}
+.dark .border-brand-700 {
+  border-color: #dd6a75;
+}
+.dark .border-brand-900 {
+  border-color: #eea1a8;
+}
+
+.dark .border-\[\#5c1219\] {
+  border-color: #dd6a75;
+}
+.dark .border-\[\#5c1219\]\/40 {
+  border-color: rgba(221, 106, 117, 0.4);
+}
+.dark .hover\:border-\[\#5c1219\]:hover {
+  border-color: #dd6a75;
+}
+.dark .hover\:border-\[\#5c1219\]\/40:hover {
+  border-color: rgba(221, 106, 117, 0.4);
+}
+.dark .focus\:border-\[\#5c1219\]:focus {
+  border-color: #eea1a8;
+}
+
+/* ── Solid brand surfaces ── */
+.dark .bg-\[\#5c1219\] {
+  background-color: #8b1e2d;
+}
+.dark .bg-tertiary,
+.dark .hover\:bg-tertiary:hover {
+  background-color: #8b1e2d;
+}
+
+/* ── Brand-alpha surfaces ── */
+.dark .bg-primary\/5,
+.dark .hover\:bg-primary\/5:hover,
+.dark .focus-visible\:bg-primary\/5:focus-visible {
+  background-color: rgba(238, 161, 168, 0.08);
+}
+.dark .bg-primary\/10,
+.dark .hover\:bg-primary\/10:hover {
+  background-color: rgba(238, 161, 168, 0.14);
+}
+.dark .bg-primary\/15 {
+  background-color: rgba(238, 161, 168, 0.18);
+}
+.dark .bg-primary\/20 {
+  background-color: rgba(238, 161, 168, 0.22);
+}
+.dark .bg-primary\/40,
+.dark .hover\:bg-primary\/40:hover {
+  background-color: rgba(238, 161, 168, 0.35);
+}
+.dark .bg-\[\#5c1219\]\/5,
+.dark .hover\:bg-\[\#5c1219\]\/5:hover {
+  background-color: rgba(238, 161, 168, 0.08);
+}
+.dark .bg-\[\#5c1219\]\/10,
+.dark .hover\:bg-\[\#5c1219\]\/10:hover {
+  background-color: rgba(238, 161, 168, 0.14);
+}
+
+/* ── Rings ── */
+.dark .ring-primary\/10 {
+  --tw-ring-color: rgba(238, 161, 168, 0.14);
+}
+.dark .ring-primary\/20 {
+  --tw-ring-color: rgba(238, 161, 168, 0.2);
+}
+.dark .ring-primary\/30,
+.dark .focus-visible\:ring-primary\/30:focus-visible {
+  --tw-ring-color: rgba(238, 161, 168, 0.3);
+}
+.dark .ring-primary\/40,
+.dark .focus-visible\:ring-primary\/40:focus-visible {
+  --tw-ring-color: rgba(238, 161, 168, 0.4);
+}
+.dark .focus\:ring-primary\/10:focus {
+  --tw-ring-color: rgba(238, 161, 168, 0.15);
+}
+.dark .ring-\[\#5c1219\] {
+  --tw-ring-color: #dd6a75;
+}
+.dark .focus-visible\:ring-\[\#5c1219\]\/30:focus-visible {
+  --tw-ring-color: rgba(221, 106, 117, 0.3);
+}
+.dark .focus-visible\:ring-\[\#5c1219\]\/40:focus-visible {
+  --tw-ring-color: rgba(221, 106, 117, 0.4);
+}
+.dark .focus-visible\:ring-\[\#5c1219\]:focus-visible,
+.dark .focus\:ring-\[\#5c1219\]:focus,
+.dark .focus\:ring-\[\#5c1219\]\/10:focus {
+  --tw-ring-color: rgba(221, 106, 117, 0.45);
+}
+
+/* ── Accent fills ── */
+.dark .fill-brand-700 {
+  fill: #eea1a8;
+}
+.dark .fill-brand-900 {
+  fill: #f6c9cd;
+}
+.dark .fill-amber-700 {
+  fill: #fcd34d;
+}
+.dark .fill-red-700 {
+  fill: #fca5a5;
+}
+.dark .fill-red-800 {
+  fill: #fecaca;
+}
+.dark .fill-orange-700 {
+  fill: #fdba74;
+}
+
+/* ── Native controls ── */
+.dark input,
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+}
+.dark .accent-\[\#5c1219\],
+.dark .accent-primary {
+  accent-color: #dd6a75;
 }
