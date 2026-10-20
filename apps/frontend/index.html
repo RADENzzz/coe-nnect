@@ -8,6 +8,29 @@
     />
     <meta name="theme-color" content="#5c1219" />
     <meta name="color-scheme" content="light" />
+    <!--
+      Apply the saved theme before first paint. Light is the default;
+      dark is only enabled by an explicit saved preference.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('coe-nnect:theme');
+          var dark = stored === 'dark';
+          var root = document.documentElement;
+          root.classList.toggle('dark', dark);
+          root.classList.toggle('light', !dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          var scheme = document.querySelector('meta[name="color-scheme"]');
+          if (scheme) scheme.setAttribute('content', dark ? 'dark' : 'light');
+          var themeColor = document.querySelector('meta[name="theme-color"]');
+          if (themeColor)
+            themeColor.setAttribute('content', dark ? '#0f172a' : '#5c1219');
+        } catch (e) {
+          /* Ignore unavailable storage; fall back to light. */
+        }
+      })();
+    </script>
     <meta
       name="description"
       content="CoE-NNECT: College of Engineering Scheduling System — Western Mindanao State University"
