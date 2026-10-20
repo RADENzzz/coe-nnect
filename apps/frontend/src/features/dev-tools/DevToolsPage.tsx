@@ -13,6 +13,7 @@ import {
   type DevJob,
   type DevUserRecord,
 } from '../../api/dev-tools.api';
+import { useOnlineUsers } from '../../hooks/use-online-users';
 
 const DEMO_PASSWORD = 'Demo!2345';
 const RESET_CONFIRM_PHRASE = 'RESET DEMO DATA';
@@ -53,6 +54,13 @@ export default function DevToolsPage() {
   const queryClient = useQueryClient();
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
+
+  // ── Live presence (Supabase Realtime) ──
+  const { onlineUsers, isConnected } = useOnlineUsers();
+  const onlineUserIds = useMemo(
+    () => new Set(onlineUsers.map((user) => user.user_id)),
+    [onlineUsers],
+  );
 
   // ── Queries ──
   const {
@@ -590,6 +598,17 @@ export default function DevToolsPage() {
                     </div>
                   );
                 })}
+            <div className="flex items-center gap-2 py-1 text-xs">
+              <Icon
+                name="wifi"
+                size={14}
+                className={isConnected ? 'text-emerald-500' : 'text-slate-400'}
+              />
+              <span className="text-slate-600 flex-1">Online users</span>
+              <span className="font-bold text-slate-900 tabular-nums">
+                {isConnected ? onlineUsers.length : '—'}
+              </span>
+            </div>
           </div>
 
           <button
@@ -671,14 +690,29 @@ export default function DevToolsPage() {
           <div className="divide-y divide-slate-100">
             {filteredUsers.map((u) => {
               const roleMeta = ROLE_TONE[u.role] ?? ROLE_TONE.viewer;
+              const isOnline = onlineUserIds.has(u.userId);
+              const presenceLabel = isOnline
+                ? 'Online'
+                : isConnected
+                  ? 'Offline'
+                  : '—';
               return (
                 <div
                   key={u.userId}
                   className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
-                      {u.username.slice(0, 2).toUpperCase()}
+                    <div className="relative shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+                        {u.username.slice(0, 2).toUpperCase()}
+                      </div>
+                      {isOnline && (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500"
+                          aria-label="Online"
+                          title="Online"
+                        />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -689,6 +723,19 @@ export default function DevToolsPage() {
                           className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border rounded ${roleMeta.className}`}
                         >
                           {roleMeta.label}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${
+                            isOnline ? 'text-emerald-600' : 'text-slate-400'
+                          }`}
+                          aria-label={`Presence: ${presenceLabel}`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isOnline ? 'bg-emerald-500' : 'bg-slate-300'
+                            }`}
+                          />
+                          {presenceLabel}
                         </span>
                         {!u.isActive && (
                           <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">
