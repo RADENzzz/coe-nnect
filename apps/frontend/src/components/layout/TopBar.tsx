@@ -91,6 +91,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 export default function TopBar({ label }: TopBarProps) {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
   const profile = useAuthStore((s) => s.profile);
+  const isDevAccount = profile?.role === 'administrator';
   const logout = useLogout();
   const navigate = useNavigate();
   const location = useLocation();
@@ -140,7 +141,7 @@ export default function TopBar({ label }: TopBarProps) {
   const { data, isFetching } = useQuery({
     queryKey: ['global-search', debouncedQuery],
     queryFn: ({ signal }) => searchApi.search(debouncedQuery, signal),
-    enabled: debouncedQuery.length >= MIN_QUERY_LENGTH,
+    enabled: !isDevAccount && debouncedQuery.length >= MIN_QUERY_LENGTH,
     staleTime: 30_000,
     gcTime: 60_000,
   });
@@ -188,6 +189,8 @@ export default function TopBar({ label }: TopBarProps) {
   }, []);
 
   useEffect(() => {
+    if (isDevAccount) return;
+
     function handleKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -205,7 +208,7 @@ export default function TopBar({ label }: TopBarProps) {
     }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, []);
+  }, [isDevAccount]);
 
   const pushRecentSearch = useCallback((term: string) => {
     if (!term || term.length < MIN_QUERY_LENGTH) return;
@@ -415,56 +418,60 @@ export default function TopBar({ label }: TopBarProps) {
 
         {/* Right */}
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
-          {/* ── Mobile: bell + theme + avatar (search + chat moved elsewhere) ── */}
-          <div className="md:hidden flex items-center gap-1">
-            <NotificationBell />
-          </div>
+          {/* ── Mobile: bell + theme + avatar (dev account hides global actions) ── */}
+          {!isDevAccount && (
+            <div className="md:hidden flex items-center gap-1">
+              <NotificationBell />
+            </div>
+          )}
 
           {/* ── Desktop: search + chat + bell + settings + avatar ── */}
-          <div ref={searchRef} className="relative hidden md:block">
-            <Icon
-              name="search"
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
-            <input
-              ref={inputRef}
-              role="combobox"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setIsSearchOpen(true);
-              }}
-              onFocus={() => setIsSearchOpen(true)}
-              onKeyDown={handleKeyDown}
-              placeholder={`Search… (${shortcutHint})`}
-              className="pl-8 pr-8 py-1.5 bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 transition-colors w-48 md:w-56 lg:w-72 rounded"
-              aria-label="Global search"
-              aria-autocomplete="list"
-              aria-expanded={showDropdown || showRecent}
-              aria-controls="global-search-results"
-            />
+          {!isDevAccount && (
+            <div ref={searchRef} className="relative hidden md:block">
+              <Icon
+                name="search"
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <input
+                ref={inputRef}
+                role="combobox"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchOpen(true);
+                }}
+                onFocus={() => setIsSearchOpen(true)}
+                onKeyDown={handleKeyDown}
+                placeholder={`Search… (${shortcutHint})`}
+                className="pl-8 pr-8 py-1.5 bg-slate-50 border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 transition-colors w-48 md:w-56 lg:w-72 rounded"
+                aria-label="Global search"
+                aria-autocomplete="list"
+                aria-expanded={showDropdown || showRecent}
+                aria-controls="global-search-results"
+              />
 
-            {isFetching && !showClear ? (
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-              </div>
-            ) : showClear ? (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center text-slate-400 hover:text-slate-700 transition-colors rounded"
-                aria-label="Clear search"
-                tabIndex={-1}
-              >
-                <Icon name="close" className="text-[16px]" />
-              </button>
-            ) : null}
+              {isFetching && !showClear ? (
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                </div>
+              ) : showClear ? (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center text-slate-400 hover:text-slate-700 transition-colors rounded"
+                  aria-label="Clear search"
+                  tabIndex={-1}
+                >
+                  <Icon name="close" className="text-[16px]" />
+                </button>
+              ) : null}
 
-            {renderSearchDropdown()}
-          </div>
+              {renderSearchDropdown()}
+            </div>
+          )}
 
-          {profile?.role !== 'viewer' && (
+          {!isDevAccount && profile?.role !== 'viewer' && (
             <button
               type="button"
               onClick={() => setChatOpen(!chatOpen)}
@@ -495,20 +502,24 @@ export default function TopBar({ label }: TopBarProps) {
             </button>
           )}
 
-          <div className="hidden md:block">
-            <NotificationBell />
-          </div>
+          {!isDevAccount && (
+            <div className="hidden md:block">
+              <NotificationBell />
+            </div>
+          )}
 
           <ThemeToggle />
 
-          <button
-            type="button"
-            onClick={() => navigate(settingsPath)}
-            className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
-            aria-label="Settings"
-          >
-            <Icon name="settings" />
-          </button>
+          {!isDevAccount && (
+            <button
+              type="button"
+              onClick={() => navigate(settingsPath)}
+              className="hidden md:flex tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              aria-label="Settings"
+            >
+              <Icon name="settings" />
+            </button>
+          )}
 
           {/* Profile */}
           <div className="relative" ref={profileRef}>
@@ -536,17 +547,19 @@ export default function TopBar({ label }: TopBarProps) {
                     {profile?.email ?? ''}
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setIsProfileOpen(false);
-                    setMobileSearchOpen(true);
-                  }}
-                  className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
-                >
-                  <Icon name="search" className="mr-3 text-base" />
-                  Search
-                </button>
-                {profile?.role !== 'viewer' && (
+                {!isDevAccount && (
+                  <button
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      setMobileSearchOpen(true);
+                    }}
+                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                  >
+                    <Icon name="search" className="mr-3 text-base" />
+                    Search
+                  </button>
+                )}
+                {!isDevAccount && profile?.role !== 'viewer' && (
                   <button
                     onClick={() => {
                       setIsProfileOpen(false);
@@ -563,16 +576,18 @@ export default function TopBar({ label }: TopBarProps) {
                     )}
                   </button>
                 )}
-                <button
-                  onClick={() => {
-                    setIsProfileOpen(false);
-                    navigate(settingsPath);
-                  }}
-                  className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
-                >
-                  <Icon name="settings" className="mr-3 text-base" />
-                  Settings
-                </button>
+                {!isDevAccount && (
+                  <button
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      navigate(settingsPath);
+                    }}
+                    className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium md:hidden"
+                  >
+                    <Icon name="settings" className="mr-3 text-base" />
+                    Settings
+                  </button>
+                )}
                 <button
                   onClick={logout}
                   className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors font-medium"
@@ -587,7 +602,7 @@ export default function TopBar({ label }: TopBarProps) {
       </header>
 
       {/* ── Mobile full-screen search overlay ── */}
-      {mobileSearchOpen && (
+      {!isDevAccount && mobileSearchOpen && (
         <div className="fixed inset-0 z-[150] bg-white md:hidden flex flex-col">
           <div className="flex items-center gap-2 p-3 border-b border-slate-200 pt-safe">
             <button
