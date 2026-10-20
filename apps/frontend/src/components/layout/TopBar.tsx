@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../ui/Icon';
+import ThemeToggle from '../ui/ThemeToggle';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useLogout } from '../../hooks/use-logout';
@@ -414,7 +415,7 @@ export default function TopBar({ label }: TopBarProps) {
 
         {/* Right */}
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
-          {/* ── Mobile: only bell + avatar (search + chat moved elsewhere) ── */}
+          {/* ── Mobile: bell + theme + avatar (search + chat moved elsewhere) ── */}
           <div className="md:hidden flex items-center gap-1">
             <NotificationBell />
           </div>
@@ -497,6 +498,8 @@ export default function TopBar({ label }: TopBarProps) {
           <div className="hidden md:block">
             <NotificationBell />
           </div>
+
+          <ThemeToggle />
 
           <button
             type="button"
