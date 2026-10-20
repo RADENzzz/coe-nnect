@@ -30,9 +30,13 @@ function DropCellBase({ cell, isValidTarget, x, y, width, height }: Props) {
       }}
       className={clsx(
         'transition-colors duration-100',
-        isDropTarget && isValidTarget && 'bg-green-200/60',
-        isDropTarget && !isValidTarget && 'bg-red-200/60',
-        !isDropTarget && 'hover:bg-surface-container/40',
+        isDropTarget &&
+          isValidTarget &&
+          'bg-emerald-500/20 ring-2 ring-inset ring-emerald-500/40',
+        isDropTarget &&
+          !isValidTarget &&
+          'bg-red-500/20 ring-2 ring-inset ring-red-500/40',
+        !isDropTarget && 'hover:bg-surface-container/50',
       )}
     />
   );
