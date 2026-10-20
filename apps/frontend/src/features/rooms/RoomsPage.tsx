@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -64,6 +65,7 @@ export default function RoomsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const [searchParams] = useSearchParams();
 
   const isAdminOrDean =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
@@ -81,11 +83,20 @@ export default function RoomsPage() {
   >({});
   const [confirmClose, setConfirmClose] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get('q') ?? '',
+  );
   const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<RoomRecord | null>(null);
+
+  // Global search links here with ?q=... so the matching room is visible
+  // immediately, including when the page is already mounted.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
+  }, [searchParams]);
 
   const [preferencesTarget, setPreferencesTarget] = useState<RoomRecord | null>(
     null,
