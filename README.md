@@ -185,6 +185,7 @@ See the [system architecture](docs/architecture/README.md) for component boundar
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Database structure](docs/DATABASE%20STRUCTURE/README.md)
 - [Scheduling API contract](docs/interface-contract/docs/interface-contract/scheduling-api.md)
 - [Scheduling rules checklist](docs/reconciliation/scheduling-rules-checklist.md)
 - [Prospectus parser quick reference](packages/prospectus-parser/README.md)
