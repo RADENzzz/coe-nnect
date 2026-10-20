@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
+import ThemeToggle from '../../components/ui/ThemeToggle';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -496,6 +497,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-slate-50 overflow-hidden">
+      {/* Theme toggle — available before signing in */}
+      <div className="fixed top-4 right-4 z-50 rounded-full border border-slate-200 bg-white shadow-sm">
+        <ThemeToggle />
+      </div>
+
       {/* ───────── LEFT: Brand Panel ───────── */}
       <div className="hidden lg:flex lg:w-[45%] relative bg-[#5c1219] overflow-hidden">
         <svg
