@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchUsers,
@@ -31,16 +32,26 @@ const ROLE_TONE: Record<string, 'danger' | 'warning' | 'info' | 'neutral'> = {
 export default function AdminUsersPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<UserRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get('q') ?? '',
+  );
   const [roleFilter, setRoleFilter] = useState<
     'all' | 'college_dean' | 'department_head'
   >('all');
   const [deptListFilter, setDeptListFilter] = useState<string>('all');
+
+  // Global search links here with ?q=... so the matching account is visible
+  // immediately, including when the page is already mounted.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
+  }, [searchParams]);
   const [form, setForm] = useState({
     email: '',
     password: '',
