@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -117,6 +118,7 @@ export default function FacultyPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<FacultyRecord | null>(null);
@@ -134,11 +136,20 @@ export default function FacultyPage() {
 
   // ── Filters ──
   const [filtersExpanded, setFiltersExpanded] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get('q') ?? '',
+  );
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [designationFilter, setDesignationFilter] = useState<string>('all');
   const [classificationFilter, setClassificationFilter] = useState<string>('all');
   const [chips, setChips] = useState<ChipState[]>(INITIAL_CHIPS);
+
+  // Global search links here with ?q=... so the matching faculty row is
+  // visible immediately, including when the page is already mounted.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchQuery(q);
+  }, [searchParams]);
 
   const [deleteTarget, setDeleteTarget] = useState<FacultyRecord | null>(null);
   const [confirmCloseForm, setConfirmCloseForm] = useState(false);
