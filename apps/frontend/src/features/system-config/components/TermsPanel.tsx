@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   fetchTerms,
@@ -57,6 +58,10 @@ const EMPTY_FORM: CreateTermInput = {
 
 export default function TermsPanel({ isAdmin }: Props) {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const newTermRequested = searchParams.get('newTerm') === '1';
+  const highlightedTermId = searchParams.get('termId');
 
   const { data: terms = [], isLoading } = useQuery({
     queryKey: ['terms'],
@@ -76,7 +81,7 @@ export default function TermsPanel({ isAdmin }: Props) {
     qc.invalidateQueries({ queryKey: ['schedules'] });
   };
 
-  const openForm = () => {
+  const openForm = useCallback(() => {
     setError(null);
     setSuccess(null);
     const latest = [...terms].sort((a, b) =>
@@ -116,7 +121,40 @@ export default function TermsPanel({ isAdmin }: Props) {
       setForm(EMPTY_FORM);
     }
     setFormOpen(true);
-  };
+  }, [terms]);
+
+  // A dashboard/search shortcut can deep-link here with ?newTerm=1.
+  // Wait for terms to load so the form can suggest the next school year.
+  useEffect(() => {
+    if (!isAdmin || !newTermRequested || isLoading) return;
+    openForm();
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('newTerm');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [isAdmin, isLoading, newTermRequested, openForm, setSearchParams]);
+
+  // A term search result links here with ?termId=...; make the row easy to find.
+  useEffect(() => {
+    if (!highlightedTermId || isLoading) return;
+    document
+      .getElementById(`term-${highlightedTermId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightedTermId, isLoading, terms.length]);
+
+  // The Dean dashboard's "Manage terms" shortcut uses #academic-terms. Native
+  // hash scrolling can miss the section because the route renders after the
+  // navigation, so scroll once the query has settled.
+  useEffect(() => {
+    if (isLoading || location.hash !== '#academic-terms') return;
+    document
+      .getElementById('academic-terms')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [isLoading, location.hash]);
 
   const createMutation = useMutation({
     mutationFn: createTerm,
@@ -201,7 +239,10 @@ export default function TermsPanel({ isAdmin }: Props) {
   const activeTerm = terms.find((t) => t.isActive);
 
   return (
-    <section className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+    <section
+      id="academic-terms"
+      className="scroll-mt-24 rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden"
+    >
       <header className="flex items-start gap-3 px-5 py-4 border-b border-surface-variant bg-surface-container-low">
         <Icon
           name="calendar_month"
@@ -266,7 +307,12 @@ export default function TermsPanel({ isAdmin }: Props) {
             {terms.map((t) => (
               <div
                 key={t.termId}
+                id={`term-${t.termId}`}
                 className={`flex items-start justify-between gap-3 p-4 rounded-lg border transition-colors ${
+                  highlightedTermId === String(t.termId)
+                    ? 'ring-2 ring-primary/40 '
+                    : ''
+                }${
                   t.isActive
                     ? 'border-[#5c1219]/40 bg-red-50/30'
                     : 'border-surface-variant hover:bg-surface-container-low'
