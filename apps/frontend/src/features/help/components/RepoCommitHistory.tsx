@@ -57,25 +57,11 @@ function formatDay(ymd: string): string {
   });
 }
 
-function formatDayShort(ymd: string): string {
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString('en-PH', {
-    month: 'short',
-    day: '2-digit',
-  });
-}
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-PH', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
-  });
-}
-
-function formatMonthYear(ymd: string): string {
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString('en-PH', {
-    month: 'short',
-    year: 'numeric',
   });
 }
 
@@ -97,27 +83,6 @@ function toYmd(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-// ═══════════════════════════════════════════════════════════
-// Color intensity scale
-// ═══════════════════════════════════════════════════════════
-
-const INTENSITY_BG = [
-  'bg-slate-100 hover:bg-slate-200',
-  'bg-brand-200 hover:bg-brand-300',
-  'bg-brand-400 hover:bg-brand-500',
-  'bg-brand-600 hover:bg-brand-700',
-  'bg-brand-800 hover:bg-brand-900',
-];
-
-function intensityLevel(count: number, max: number): 0 | 1 | 2 | 3 | 4 {
-  if (count === 0) return 0;
-  const ratio = count / Math.max(max, 1);
-  if (ratio <= 0.25) return 1;
-  if (ratio <= 0.5) return 2;
-  if (ratio <= 0.75) return 3;
-  return 4;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -185,209 +150,6 @@ function SummaryTile({
 }
 
 // ═══════════════════════════════════════════════════════════
-// Activity heatmap (GitHub-style calendar) — full range, unfiltered
-// ═══════════════════════════════════════════════════════════
-
-function ActivityHeatmap({
-  days,
-}: {
-  days: Array<{ day: string; count: number }>;
-}) {
-  const max = Math.max(...days.map((d) => d.count), 1);
-
-  const weeks = useMemo(() => {
-    if (days.length === 0) return [];
-    const out: Array<Array<{ day: string; count: number } | null>> = [];
-    let current: Array<{ day: string; count: number } | null> = [];
-
-    const firstDate = new Date(`${days[0].day}T00:00:00`);
-    const firstWeekday = firstDate.getDay();
-    for (let i = 0; i < firstWeekday; i++) current.push(null);
-
-    for (const d of days) {
-      current.push(d);
-      if (current.length === 7) {
-        out.push(current);
-        current = [];
-      }
-    }
-    if (current.length > 0) {
-      while (current.length < 7) current.push(null);
-      out.push(current);
-    }
-    return out;
-  }, [days]);
-
-  const monthLabels = useMemo(() => {
-    const labels: Array<{ index: number; label: string }> = [];
-    let lastMonth = '';
-    weeks.forEach((week, i) => {
-      const firstReal = week.find((d) => d !== null);
-      if (!firstReal) return;
-      const m = new Date(`${firstReal.day}T00:00:00`).getMonth();
-      const key = String(m);
-      if (key !== lastMonth) {
-        labels.push({ index: i, label: formatMonthYear(firstReal.day) });
-        lastMonth = key;
-      }
-    });
-    return labels;
-  }, [weeks]);
-
-  const totalActive = days.filter((d) => d.count > 0).length;
-  const total = days.reduce((s, d) => s + d.count, 0);
-
-  const streak = useMemo(() => {
-    let s = 0;
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (days[i].count > 0) s++;
-      else break;
-    }
-    return s;
-  }, [days]);
-
-  const longestStreak = useMemo(() => {
-    let best = 0;
-    let cur = 0;
-    for (const d of days) {
-      if (d.count > 0) {
-        cur++;
-        best = Math.max(best, cur);
-      } else {
-        cur = 0;
-      }
-    }
-    return best;
-  }, [days]);
-
-  return (
-    <div className="border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-5">
-      {/* Header */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[18px] text-brand-700">
-            grid_view
-          </span>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-800">
-            Contribution Heatmap
-          </h3>
-        </div>
-        <div className="flex items-center gap-3 text-[9px] font-mono text-slate-500">
-          <span>
-            <strong className="text-brand-700">{streak}</strong>-day streak
-          </span>
-          <span className="text-slate-300">·</span>
-          <span>
-            best <strong className="text-brand-700">{longestStreak}</strong>
-          </span>
-          <span className="text-slate-300">·</span>
-          <span>
-            <strong className="text-brand-700">{totalActive}</strong> active
-          </span>
-        </div>
-      </div>
-
-      {/* Heatmap */}
-      <div className="overflow-x-auto pb-1">
-        <div className="inline-block min-w-full">
-          {/* Month labels */}
-          <div className="mb-1 flex gap-[3px] pl-6 text-[9px] text-slate-400">
-            {weeks.map((_, i) => {
-              const lbl = monthLabels.find((m) => m.index === i);
-              return (
-                <div
-                  key={i}
-                  className="w-[11px] shrink-0 whitespace-nowrap"
-                  style={{ minWidth: 11 }}
-                >
-                  {lbl ? (
-                    <span className="block -translate-x-1 font-medium">
-                      {lbl.label}
-                    </span>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-[3px]">
-            {/* Weekday labels */}
-            <div className="mr-1 flex flex-col gap-[3px] text-[8px] text-slate-400">
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                <div
-                  key={i}
-                  className="flex h-[11px] w-4 items-center justify-end pr-0.5"
-                >
-                  {i % 2 === 1 ? d : ''}
-                </div>
-              ))}
-            </div>
-
-            {/* Cells */}
-            {weeks.map((week, wi) => (
-              <div key={wi} className="flex flex-col gap-[3px]">
-                {week.map((d, di) => {
-                  if (!d) {
-                    return (
-                      <div
-                        key={di}
-                        className="h-[11px] w-[11px] bg-transparent"
-                      />
-                    );
-                  }
-                  const lvl = intensityLevel(d.count, max);
-                  return (
-                    <motion.div
-                      key={d.day}
-                      initial={{ opacity: 0, scale: 0.6 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{
-                        duration: 0.25,
-                        delay: Math.min(wi * 0.008, 0.6),
-                        ease: [0.2, 0.9, 0.3, 1],
-                      }}
-                      title={`${formatDay(d.day)} — ${d.count} commit${
-                        d.count === 1 ? '' : 's'
-                      }`}
-                      className={
-                        'group relative h-[11px] w-[11px] cursor-pointer transition-transform hover:scale-125 ' +
-                        INTENSITY_BG[lvl]
-                      }
-                    >
-                      {d.count > 0 && (
-                        <div className="pointer-events-none absolute -top-9 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap border border-brand-700 bg-white px-1.5 py-0.5 text-[9px] font-medium text-brand-700 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-                          {formatDayShort(d.day)} · {d.count}
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="mt-4 flex items-center justify-between border-t border-brand-100 pt-3 text-[9px] text-slate-500">
-        <span>
-          <strong className="text-brand-700">{total.toLocaleString()}</strong>{' '}
-          commits across{' '}
-          <strong className="text-brand-700">{days.length}</strong> days
-        </span>
-        <div className="flex items-center gap-1">
-          <span>Less</span>
-          {INTENSITY_BG.map((bg, i) => (
-            <div key={i} className={`h-[10px] w-[10px] ${bg.split(' ')[0]}`} />
-          ))}
-          <span>More</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
 // Main component
 // ═══════════════════════════════════════════════════════════
 
@@ -413,7 +175,7 @@ export function RepoCommitHistory() {
     };
   }, [data, now]);
 
-  // Build the day-by-day series once, reused by both visualisations
+  // Build the day-by-day series (still needed for span/velocity/busiest day)
   const days = useMemo(() => {
     if (!data) return [];
     const map = new Map<string, number>();
@@ -551,9 +313,6 @@ export function RepoCommitHistory() {
           delay={0.15}
         />
       </div>
-
-      {/* ── Heatmap (full range) ── */}
-      <ActivityHeatmap days={days} />
 
       {/* ── Peak day callout (full dataset) ── */}
       {derived.busiestDay && derived.busiestDay.count > 0 && (
