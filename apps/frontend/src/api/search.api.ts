@@ -1,7 +1,16 @@
 import { api } from './client';
 
+export type SearchResultType =
+  | 'subject'
+  | 'faculty'
+  | 'room'
+  | 'section'
+  | 'user'
+  | 'term'
+  | 'action';
+
 export interface SearchResult {
-  type: 'subject' | 'faculty' | 'room' | 'section' | 'user';
+  type: SearchResultType;
   id: string;
   label: string;
   sublabel?: string;
