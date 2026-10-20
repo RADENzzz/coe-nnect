@@ -128,15 +128,33 @@ export default function DeanDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-5">
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          Dean's Overview
-        </h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          {activeTerm
-            ? `Active term: ${activeTerm.termName} — ${activeTerm.schoolYear}`
-            : 'No active term currently set.'}
-        </p>
+      <div className="border-b border-slate-200 pb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            Dean's Overview
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {activeTerm
+              ? `Active term: ${activeTerm.termName} — ${activeTerm.schoolYear}`
+              : 'No active term currently set.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/dean/system-settings#academic-terms"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-outline-variant bg-surface text-on-surface hover:bg-surface-container transition"
+          >
+            <Icon name="calendar_month" size={15} />
+            Manage terms
+          </Link>
+          <Link
+            to="/dean/system-settings?newTerm=1"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-on-primary hover:opacity-90 transition"
+          >
+            <Icon name="add" size={15} />
+            New term
+          </Link>
+        </div>
       </div>
 
       {/* Stat Cards */}
