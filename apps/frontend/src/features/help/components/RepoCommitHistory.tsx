@@ -49,32 +49,12 @@ function liveRelative(iso: string, now: number): string {
   return `${formatDuration(now - new Date(iso).getTime())} ago`;
 }
 
-function formatDay(ymd: string): string {
-  return new Date(`${ymd}T00:00:00`).toLocaleDateString('en-PH', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-  });
-}
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-PH', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
   });
-}
-
-/** Human label like "Today", "Yesterday", "3 days ago", else formatted date */
-function smartDayLabel(ymd: string): string {
-  const d = new Date(`${ymd}T00:00:00`);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const diffDays = Math.round((today.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  return formatDay(ymd);
 }
 
 /** ISO YYYY-MM-DD for a Date in local time (matches `committedAt.slice(0,10)`) */
@@ -175,7 +155,7 @@ export function RepoCommitHistory() {
     };
   }, [data, now]);
 
-  // Build the day-by-day series (still needed for span/velocity/busiest day)
+  // Build the day-by-day series (still needed for span/velocity)
   const days = useMemo(() => {
     if (!data) return [];
     const map = new Map<string, number>();
@@ -205,17 +185,12 @@ export function RepoCommitHistory() {
   // Derived headline numbers (always from the FULL dataset)
   const derived = useMemo(() => {
     if (days.length === 0)
-      return {
-        spanDays: 0,
-        velocity: '0',
-        busiestDay: null as { day: string; count: number } | null,
-      };
+      return { spanDays: 0, velocity: '0' };
     const total = days.reduce((s, d) => s + d.count, 0);
     const spanDays = days.length;
     const weeks = spanDays / 7;
     const velocity = weeks > 0 ? (total / weeks).toFixed(1) : '0';
-    const busiestDay = days.reduce((a, b) => (b.count > a.count ? b : a));
-    return { spanDays, velocity, busiestDay };
+    return { spanDays, velocity };
   }, [days]);
 
   if (isLoading) {
@@ -313,39 +288,6 @@ export function RepoCommitHistory() {
           delay={0.15}
         />
       </div>
-
-      {/* ── Peak day callout (full dataset) ── */}
-      {derived.busiestDay && derived.busiestDay.count > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="relative overflow-hidden border border-brand-300 bg-gradient-to-r from-brand-100 via-brand-50 to-white p-4"
-        >
-          <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-brand-700 text-white">
-              <span className="material-symbols-outlined text-[20px]">
-                local_fire_department
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-700">
-                Most productive day
-              </div>
-              <div className="mt-0.5 text-sm font-semibold text-slate-900">
-                {smartDayLabel(derived.busiestDay.day)} —{' '}
-                <span className="text-brand-700">
-                  {derived.busiestDay.count} commit
-                  {derived.busiestDay.count === 1 ? '' : 's'}
-                </span>
-              </div>
-            </div>
-            <span className="hidden shrink-0 font-mono text-[10px] text-slate-500 sm:block">
-              {formatDay(derived.busiestDay.day)}
-            </span>
-          </div>
-        </motion.div>
-      )}
 
       {/* ── Footnote ── */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-[10px] text-slate-500">
