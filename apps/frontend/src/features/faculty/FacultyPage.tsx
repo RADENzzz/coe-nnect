@@ -731,7 +731,10 @@ export default function FacultyPage() {
         const hasU = !!s?.hasUnavailability;
         const foreign = isForeign(f);
         return (
-          <div className="flex items-center gap-1">
+          <div
+            className="flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={() => !foreign && openQuals(f)}
