@@ -73,7 +73,7 @@ function ClassBlockBase({
     : isFlagged
     ? 'ring-2 ring-rose-500'
     : isForeign
-    ? 'ring-2 ring-slate-300 ring-offset-1'
+    ? 'ring-2 ring-slate-300 ring-offset-1 ring-offset-surface-container-lowest'
     : '';
 
   const style: React.CSSProperties = {
@@ -119,7 +119,7 @@ function ClassBlockBase({
         className={clsx(
           'rounded-md px-1 py-0.5 text-white leading-tight select-none',
           'overflow-hidden flex items-center gap-1 cursor-pointer',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
           locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
           isLab &&
             '[background-image:repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.15)_5px,rgba(255,255,255,0.15)_10px)]',
@@ -176,7 +176,7 @@ function ClassBlockBase({
       className={clsx(
         'rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
         locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
