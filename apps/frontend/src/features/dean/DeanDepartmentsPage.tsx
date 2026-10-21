@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { fetchDepartments } from '../../api/departments.api';
@@ -12,9 +13,23 @@ import { useNavigate } from 'react-router-dom';
 
 export default function DeanDepartmentsPage() {
   const navigate = useNavigate();
+
+  // Dean sees active AND inactive departments by default — the whole
+  // point of this list is to reactivate one. DHs never see this page.
+  const [showInactive, setShowInactive] = useState(true);
+
   const { data: departments = [], isLoading } = useQuery({
-    queryKey: ['departments'],
-    queryFn: fetchDepartments,
+    queryKey: ['departments', { includeInactive: showInactive }],
+    queryFn: () => fetchDepartments(showInactive),
+  });
+
+  // Lookup tables use the FULL dept list (both active + inactive) so
+  // ownership names show correctly for staff assigned to deactivated
+  // departments.
+  const { data: allDepartments = [] } = useQuery({
+    queryKey: ['departments', { includeInactive: true }],
+    queryFn: () => fetchDepartments(true),
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: users = [] } = useQuery({
@@ -38,7 +53,6 @@ export default function DeanDepartmentsPage() {
     enabled: !!activeTerm?.termId,
   });
 
-  // ── Pre-aggregate counts by dept ──
   const facultyCountByDept = (() => {
     const m = new Map<string, number>();
     for (const f of faculty) {
@@ -67,13 +81,25 @@ export default function DeanDepartmentsPage() {
         u.isActive,
     );
 
+  const inactiveCount = allDepartments.filter((d) => !d.isActive).length;
+
   const columns: Column<Department>[] = [
     {
       key: 'name',
       header: 'Department',
       cardVariant: 'title',
       cellClassName: 'font-semibold text-slate-900',
-      render: (d) => d.deptName,
+      render: (d) => (
+        <span className="inline-flex items-center gap-2">
+          <span className={d.isActive ? '' : 'text-slate-500'}>{d.deptName}</span>
+          {!d.isActive && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+              <Icon name="block" size={9} />
+              Inactive
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'code',
@@ -101,7 +127,7 @@ export default function DeanDepartmentsPage() {
       cellClassName: 'text-slate-500 text-xs max-w-[200px] truncate',
       render: (d) => d.description || '—',
     },
-        {
+    {
       key: 'faculty',
       header: 'Faculty',
       cardVariant: 'meta',
@@ -121,7 +147,7 @@ export default function DeanDepartmentsPage() {
         return <span className="text-slate-700">{n}</span>;
       },
     },
-        {
+    {
       key: 'pending',
       header: 'Pending',
       cardVariant: 'meta',
@@ -151,6 +177,16 @@ export default function DeanDepartmentsPage() {
     },
   ];
 
+  const emptyMessage = (() => {
+    if (allDepartments.length === 0) return 'No departments found.';
+    if (!showInactive && inactiveCount > 0) {
+      return `No active departments. ${inactiveCount} deactivated department${
+        inactiveCount === 1 ? ' is' : 's are'
+      } hidden — turn on "Show deactivated" to reactivate.`;
+    }
+    return 'No departments found.';
+  })();
+
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap">
@@ -160,15 +196,58 @@ export default function DeanDepartmentsPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             All departments under the College of Engineering.
+            {inactiveCount > 0 && (
+              <>
+                {' '}
+                <span className="text-rose-700 font-medium">
+                  {inactiveCount} deactivated
+                </span>
+                .
+              </>
+            )}
           </p>
         </div>
-        <Link
-          to="/dean/departments/manage"
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition"
-        >
-          <Icon name="settings" size={18} />
-          Manage Departments
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowInactive((v) => !v)}
+            aria-pressed={showInactive}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition ${
+              showInactive
+                ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100'
+                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+            }`}
+            title={
+              showInactive
+                ? 'Hide deactivated departments'
+                : 'Show deactivated departments so you can reactivate them'
+            }
+          >
+            <Icon
+              name={showInactive ? 'visibility_off' : 'visibility'}
+              size={14}
+            />
+            {showInactive ? 'Hide' : 'Show'} deactivated
+            {inactiveCount > 0 && (
+              <span
+                className={`ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${
+                  showInactive
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-rose-100 text-rose-800'
+                }`}
+              >
+                {inactiveCount}
+              </span>
+            )}
+          </button>
+          <Link
+            to="/dean/departments/manage"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition"
+          >
+            <Icon name="settings" size={18} />
+            Manage Departments
+          </Link>
+        </div>
       </div>
 
       <ResponsiveTable
@@ -178,7 +257,7 @@ export default function DeanDepartmentsPage() {
         rowTitle={(d) => d.deptName}
         isLoading={isLoading}
         hasSourceRows={departments.length > 0}
-        emptyMessage="No departments found."
+        emptyMessage={emptyMessage}
         noMatchMessage="No departments match your filters."
         onRowClick={() => navigate('/dean/departments/manage')}
       />
