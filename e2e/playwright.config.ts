@@ -80,12 +80,18 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   forbidOnly: !!process.env.CI,
+  // Keep the runner below the workflow step timeout so a stuck browser or
+  // worker produces a real failure and an uploaded report instead of a silent
+  // GitHub Actions cancellation.
+  globalTimeout: 12 * 60_000,
+  maxFailures: 1,
   timeout: 90_000,
   expect: {
     timeout: 15_000,
   },
   reporter: process.env.CI
     ? [
+        ['line'],
         ['github'],
         ['html', { open: 'never', outputFolder: reportDir }],
       ]
@@ -101,9 +107,12 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.CI ? 'off' : 'retain-on-failure',
     actionTimeout: 20_000,
     navigationTimeout: 45_000,
+    launchOptions: {
+      args: ['--disable-dev-shm-usage'],
+    },
   },
   projects: [
     {

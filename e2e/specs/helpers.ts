@@ -26,6 +26,15 @@ export function scheduleBlock(page: Page): Locator {
 }
 
 /**
+ * Navigate to an app route without waiting for every third-party asset (for
+ * example Google Fonts) to finish loading. Tests assert on rendered content
+ * afterwards, so DOM readiness is the meaningful boundary.
+ */
+export async function gotoApp(page: Page, path: string): Promise<void> {
+  await page.goto(path, { waitUntil: 'domcontentloaded' });
+}
+
+/**
  * Sign in through the real login form. Each test starts with a fresh browser
  * context, so this also verifies that the test users can authenticate against
  * the dedicated Supabase project.
@@ -36,7 +45,7 @@ export async function loginAs(page: Page, role: E2eRole): Promise<void> {
   const password =
     role === 'head' ? state.headPassword : state.deanPassword;
 
-  await page.goto('/login');
+  await gotoApp(page, '/login');
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -50,7 +59,7 @@ export async function loginAs(page: Page, role: E2eRole): Promise<void> {
 }
 
 export async function openTimetable(page: Page): Promise<void> {
-  await page.goto('/timetable');
+  await gotoApp(page, '/timetable');
   const plotButton = page.getByRole('button', { name: 'Plot Subject' }).first();
   await expect(plotButton).toBeVisible();
   await expect(plotButton).toBeEnabled();

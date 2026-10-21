@@ -72,7 +72,15 @@ jobs:
       - name: Type-check E2E tests
         run: pnpm typecheck:e2e
 
+      - name: Show test tool versions
+        run: |
+          node --version
+          pnpm exec playwright --version
+
       - name: Run Playwright workflow
+        timeout-minutes: 20
+        env:
+          DEBUG: pw:test,pw:api
         run: pnpm test:e2e
 
       - name: Upload Playwright report

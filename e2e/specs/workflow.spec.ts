@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import {
   e2eState,
+  gotoApp,
   loginAs,
   openScheduleDetails,
   openTimetable,
@@ -22,6 +23,15 @@ let state: E2eState;
 
 test.beforeAll(() => {
   state = e2eState();
+});
+
+test.beforeEach(async ({ page }) => {
+  // Fonts are not part of any assertion. Blocking them keeps the suite from
+  // depending on Google's CDN, which can stall navigation on CI networks.
+  await page.route(
+    /^https:\/\/fonts\.(googleapis|gstatic)\.com\//,
+    (route) => route.abort(),
+  );
 });
 
 test('department head signs in and plots a schedule', async ({ page }) => {
@@ -48,6 +58,7 @@ test('department head signs in and plots a schedule', async ({ page }) => {
     (response) =>
       response.url().includes('/v1/schedules/plot') &&
       response.request().method() === 'POST',
+    { timeout: 30_000 },
   );
   await dialog.getByRole('button', { name: 'Plot subject' }).click();
   const response = await plotResponse;
@@ -69,6 +80,7 @@ test('department head submits the schedule for review', async ({ page }) => {
     (response) =>
       /\/v1\/schedules\/\d+\/status$/.test(response.url()) &&
       response.request().method() === 'PATCH',
+    { timeout: 30_000 },
   );
   await status.selectOption('review');
   const response = await statusResponse;
@@ -81,7 +93,7 @@ test('department head submits the schedule for review', async ({ page }) => {
 
 test('college dean approves the schedule', async ({ page }) => {
   await loginAs(page, 'dean');
-  await page.goto('/dean/approvals');
+  await gotoApp(page, '/dean/approvals');
   await expect(
     page.getByRole('heading', { name: /Approvals/i }),
   ).toBeVisible();
@@ -101,7 +113,7 @@ test('college dean approves the schedule', async ({ page }) => {
 
 test('college dean publishes the finalized schedule', async ({ page }) => {
   await loginAs(page, 'dean');
-  await page.goto('/dean/approvals');
+  await gotoApp(page, '/dean/approvals');
   await expect(
     page.getByRole('heading', { name: /Approvals/i }),
   ).toBeVisible();
