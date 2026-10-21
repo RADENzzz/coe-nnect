@@ -78,7 +78,7 @@ export default function DeanDashboardPage() {
 
   const { data: departments = [], isLoading: deptLoading } = useQuery({
     queryKey: ['departments'],
-    queryFn: fetchDepartments,
+    queryFn: () => fetchDepartments(),
   });
 
   const { data: directory = [] } = useQuery({

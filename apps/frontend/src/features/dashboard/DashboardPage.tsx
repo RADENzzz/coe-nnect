@@ -768,7 +768,7 @@ export default function DashboardPage() {
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
-    queryFn: fetchDepartments,
+    queryFn: () => fetchDepartments(),
   });
 
   const { data: directory = [] } = useQuery({

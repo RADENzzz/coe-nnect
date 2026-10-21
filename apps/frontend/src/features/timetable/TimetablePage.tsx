@@ -436,7 +436,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
-    queryFn: fetchDepartments,
+    queryFn: () => fetchDepartments(),
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });

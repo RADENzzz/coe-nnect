@@ -94,7 +94,7 @@ export default function DeanApprovalsPage() {
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
-    queryFn: fetchDepartments,
+    queryFn: () => fetchDepartments(),
     enabled: !!activeTerm?.termId,
   });
 
