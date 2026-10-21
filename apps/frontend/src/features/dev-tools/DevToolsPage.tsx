@@ -10,16 +10,17 @@ import {
   listDevUsers,
   resetUserPassword,
   renameUser,
+  toggleDevUserActive,
   type DevJob,
   type DevUserRecord,
 } from '../../api/dev-tools.api';
 import { useOnlineUsers } from '../../hooks/use-online-users';
+import { useAuthStore } from '../../store/auth.store';
 
 const DEMO_PASSWORD = 'Demo!2345';
 const RESET_CONFIRM_PHRASE = 'RESET DEMO DATA';
 const USERNAME_RE = /^[a-zA-Z0-9._-]+$/;
 
-// ── Role tone mapping for badges ──
 const ROLE_TONE: Record<string, { label: string; className: string }> = {
   administrator: {
     label: 'Dev',
@@ -51,18 +52,18 @@ const STATUS_ROWS: { key: string; label: string; icon: string }[] = [
 ];
 
 export default function DevToolsPage() {
+  const currentUser = useAuthStore((state) => state.user);
+
   const queryClient = useQueryClient();
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
 
-  // ── Live presence (Supabase Realtime) ──
   const { onlineUsers, isConnected } = useOnlineUsers();
   const onlineUserIds = useMemo(
     () => new Set(onlineUsers.map((user) => user.user_id)),
     [onlineUsers],
   );
 
-  // ── Queries ──
   const {
     data: state,
     refetch: refetchState,
@@ -82,7 +83,6 @@ export default function DevToolsPage() {
     queryFn: listDevUsers,
   });
 
-  // ── UI state ──
   const [activeJob, setActiveJob] = useState<DevJob | null>(null);
   const [lastJobResult, setLastJobResult] = useState<{
     kind: 'seed' | 'reset';
@@ -109,7 +109,10 @@ export default function DevToolsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  // ── Lifecycle cleanup ──
+  const [deactivateTarget, setDeactivateTarget] = useState<DevUserRecord | null>(
+    null,
+  );
+
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -118,21 +121,18 @@ export default function DevToolsPage() {
     };
   }, []);
 
-  // ── Live "relative time" ticker ──
   useEffect(() => {
     if (!lastJobResult) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [lastJobResult]);
 
-  // ── Auto-dismiss success banner ──
   useEffect(() => {
     if (!actionSuccess) return;
     const t = setTimeout(() => setActionSuccess(null), 5_000);
     return () => clearTimeout(t);
   }, [actionSuccess]);
 
-  // ── Filtered users ──
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return users;
@@ -144,7 +144,6 @@ export default function DevToolsPage() {
     );
   }, [users, searchQuery]);
 
-  // ── Password strength helpers ──
   const pwChecks = useMemo(
     () => ({
       length: newPassword.length >= 8,
@@ -157,13 +156,11 @@ export default function DevToolsPage() {
   );
   const pwValid = Object.values(pwChecks).every(Boolean);
 
-  // ── Rename validation ──
   const renameValid =
     !!newUsername &&
     USERNAME_RE.test(newUsername) &&
     newUsername !== renameTarget?.username;
 
-  // ── Job polling ──
   const startPolling = (jobId: string, kind: 'seed' | 'reset') => {
     const poll = async () => {
       try {
@@ -179,7 +176,6 @@ export default function DevToolsPage() {
             finishedAt: Date.now(),
           });
           setNow(Date.now());
-          // Invalidate everything dev-tools to keep queries in sync.
           queryClient.invalidateQueries({ queryKey: ['dev-tools'] });
         }
       } catch {
@@ -192,7 +188,6 @@ export default function DevToolsPage() {
     poll();
   };
 
-  // ── Mutations ──
   const seedMutation = useMutation({
     mutationFn: startSeed,
     onSuccess: ({ jobId }) => {
@@ -250,12 +245,27 @@ export default function DevToolsPage() {
       ),
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: toggleDevUserActive,
+    onSuccess: (data) => {
+      setDeactivateTarget(null);
+      setActionError(null);
+      setActionSuccess(
+        `User is now ${data.isActive ? 'Active' : 'Deactivated'}.`,
+      );
+      refetchUsers();
+    },
+    onError: (err: any) =>
+      setActionError(
+        err?.response?.data?.message ?? err?.message ?? 'Toggle failed',
+      ),
+  });
+
   const isBusy =
     activeJob?.status === 'running' ||
     seedMutation.isPending ||
     resetMutation.isPending;
 
-  // ── Copy password ──
   const handleCopyPassword = async () => {
     try {
       await navigator.clipboard.writeText(newPassword);
@@ -266,7 +276,6 @@ export default function DevToolsPage() {
     }
   };
 
-  // ── Relative time ──
   const formatRelativeTime = (ts: number) => {
     const diff = Math.floor((now - ts) / 1000);
     if (diff < 5) return 'just now';
@@ -275,7 +284,6 @@ export default function DevToolsPage() {
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
-  // ── Elapsed time for running job ──
   const [jobStartedAt, setJobStartedAt] = useState<number | null>(null);
   useEffect(() => {
     if (activeJob?.status === 'running') {
@@ -430,7 +438,6 @@ export default function DevToolsPage() {
             </div>
           )}
 
-          {/* Primary action (hidden on mobile — sticky bar below) */}
           <button
             type="button"
             onClick={openResetModal}
@@ -449,7 +456,6 @@ export default function DevToolsPage() {
             <Icon name="arrow_forward" size={20} className="shrink-0" />
           </button>
 
-          {/* Secondary actions */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
@@ -489,7 +495,6 @@ export default function DevToolsPage() {
             </button>
           </div>
 
-          {/* Job progress */}
           {activeJob && (
             <div
               role="status"
@@ -531,7 +536,6 @@ export default function DevToolsPage() {
                 </button>
               </div>
 
-              {/* Indeterminate progress bar */}
               {activeJob.status === 'running' && (
                 <div
                   className="mt-2 h-1 w-full bg-blue-100 rounded overflow-hidden"
@@ -696,6 +700,7 @@ export default function DevToolsPage() {
                 : isConnected
                   ? 'Offline'
                   : '—';
+              const isSelf = currentUser?.id === u.userId;
               return (
                 <div
                   key={u.userId}
@@ -748,7 +753,7 @@ export default function DevToolsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0 sm:justify-end">
+                  <div className="flex gap-2 shrink-0 sm:justify-end flex-wrap">
                     <button
                       type="button"
                       onClick={() => openPasswordModal(u)}
@@ -764,6 +769,27 @@ export default function DevToolsPage() {
                     >
                       <Icon name="edit" size={14} />
                       Rename
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        u.isActive
+                          ? setDeactivateTarget(u)
+                          : toggleActiveMutation.mutate(u.userId)
+                      }
+                      disabled={toggleActiveMutation.isPending || isSelf}
+                      title={isSelf ? 'You cannot deactivate your own account' : undefined}
+                      className={`flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219] disabled:opacity-50 disabled:cursor-not-allowed ${
+                        u.isActive
+                          ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                          : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                    >
+                      <Icon
+                        name={u.isActive ? 'toggle_off' : 'toggle_on'}
+                        size={14}
+                      />
+                      {u.isActive ? 'Deactivate' : 'Activate'}
                     </button>
                   </div>
                 </div>
@@ -969,7 +995,6 @@ export default function DevToolsPage() {
               </button>
             </div>
 
-            {/* Password requirement checklist */}
             <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
               {[
                 ['length', '8+ chars'],
@@ -1116,6 +1141,50 @@ export default function DevToolsPage() {
               className="px-5 py-2.5 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {renameMutation.isPending ? 'Renaming…' : 'Rename'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ═══════════════ Deactivate Confirmation ═══════════════ */}
+      <Modal
+        open={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        title="Deactivate user?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded flex items-start gap-2">
+            <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">
+                {deactivateTarget?.username} will be immediately locked out.
+              </p>
+              <p className="text-xs mt-1">
+                They will be banned in Supabase Auth and will no longer be able
+                to log in until reactivated.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setDeactivateTarget(null)}
+              className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={toggleActiveMutation.isPending}
+              onClick={() => {
+                if (deactivateTarget) {
+                  toggleActiveMutation.mutate(deactivateTarget.userId);
+                }
+              }}
+              className="px-5 py-2.5 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition rounded-lg disabled:opacity-50"
+            >
+              {toggleActiveMutation.isPending ? 'Deactivating…' : 'Deactivate'}
             </button>
           </div>
         </div>
