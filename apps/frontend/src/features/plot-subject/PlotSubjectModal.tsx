@@ -11,30 +11,14 @@ import {
 import { fetchSections } from '../../api/sections.api';
 import type { ScheduleEntry } from '../timetable/types';
 import Icon from '../../components/ui/Icon';
-import TimeSlotSelect from '../../components/ui/TimeSlotSelect';
 import {
   generateSlotBoundaries,
   formatTime,
 } from '../timetable/utils/time.util';
 import { useAuthStore } from '../../store/auth.store';
-
-const DAYS = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-] as const;
-
-const DAY_ABBR: Record<string, string> = {
-  Monday: 'Mon',
-  Tuesday: 'Tue',
-  Wednesday: 'Wed',
-  Thursday: 'Thu',
-  Friday: 'Fri',
-  Saturday: 'Sat',
-};
+import { SectionHeader, FieldError, HelperText } from './components/PlotFormBits';
+import PlotScheduleFields from './components/PlotScheduleFields';
+import { DAYS, DAY_ABBR, EMPTY_FORM, type MultiDayRow } from './types';
 
 const TIME_OPTIONS = generateSlotBoundaries();
 
@@ -100,92 +84,6 @@ interface Props {
 type PlotMode = 'single' | 'multi';
 type FacultyMode = 'system' | 'external';
 type RoomMode = 'system' | 'external';
-
-const EMPTY_FORM = {
-  subjectId: '',
-  section: '',
-  facultyId: '',
-  externalFacultyName: '',
-  roomId: '',
-  externalRoomName: '',
-  dayOfWeek: 'Monday',
-  startTime: '08:00',
-  endTime: '09:30',
-  loadType: 'lecture' as 'lecture' | 'laboratory' | 'other',
-};
-
-interface MultiDayRow {
-  day: (typeof DAYS)[number];
-  enabled: boolean;
-  startTime: string;
-  endTime: string;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Small presentational helpers
-   ───────────────────────────────────────────────────────────── */
-
-function SectionHeader({
-  step,
-  icon,
-  title,
-  subtitle,
-}: {
-  step?: number;
-  icon: string;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="flex items-start gap-2 mb-3">
-      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5">
-        {step ?? <Icon name={icon} size={13} />}
-      </div>
-      <div>
-        <h3 className="text-sm font-bold text-on-surface leading-tight">
-          {title}
-        </h3>
-        {subtitle && (
-          <p className="text-[11px] text-on-surface-variant leading-snug mt-0.5">
-            {subtitle}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null;
-  return (
-    <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1">
-      <Icon name="error" size={11} filled />
-      {message}
-    </p>
-  );
-}
-
-function HelperText({
-  children,
-  tone = 'muted',
-}: {
-  children: React.ReactNode;
-  tone?: 'muted' | 'info' | 'warn';
-}) {
-  const cls =
-    tone === 'info'
-      ? 'text-blue-700'
-      : tone === 'warn'
-      ? 'text-amber-700'
-      : 'text-on-surface-variant';
-  return (
-    <p className={`text-[10px] mt-1 leading-snug ${cls}`}>{children}</p>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Main component
-   ───────────────────────────────────────────────────────────── */
 
 export default function PlotSubjectModal({
   open,
@@ -1277,225 +1175,22 @@ export default function PlotSubjectModal({
             )}
           </section>
 
-          {/* ── 2. Schedule ── */}
-          <section>
-            <SectionHeader
-              step={2}
-              icon="schedule"
-              title="Schedule"
-              subtitle={
-                mode === 'single'
-                  ? 'When does this class meet?'
-                  : 'Tick each day this class meets.'
-              }
-            />
-
-            {mode === 'single' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Day *
-                  </label>
-                  <select
-                    name="dayOfWeek"
-                    required
-                    value={form.dayOfWeek}
-                    onChange={handleChange}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  >
-                    {DAYS.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Start *
-                  </label>
-                  <TimeSlotSelect
-                    value={form.startTime}
-                    onChange={(v) =>
-                      setForm((prev) => ({ ...prev, startTime: v }))
-                    }
-                    options={startOptions}
-                    ariaLabel="Start time"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    End *
-                  </label>
-                  <TimeSlotSelect
-                    value={form.endTime}
-                    onChange={(v) =>
-                      setForm((prev) => ({ ...prev, endTime: v }))
-                    }
-                    options={endOptions}
-                    ariaLabel="End time"
-                  />
-                </div>
-              </div>
-            )}
-
-            {mode === 'multi' && (
-              <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs text-on-surface-variant">
-                    {multiCount} day{multiCount === 1 ? '' : 's'} selected
-                  </span>
-                  <div className="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        applyPresetDays(['Monday', 'Wednesday', 'Friday'])
-                      }
-                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
-                    >
-                      MWF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        applyPresetDays(['Tuesday', 'Thursday'])
-                      }
-                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
-                    >
-                      TTh
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        applyPresetDays([
-                          'Monday',
-                          'Tuesday',
-                          'Wednesday',
-                          'Thursday',
-                          'Friday',
-                        ])
-                      }
-                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
-                    >
-                      M–F
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyPresetDays([])}
-                      className="px-2 py-1 text-[10px] font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg bg-surface-container-low">
-                  <div className="flex-1 min-w-[120px]">
-                    <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                      Default start
-                    </label>
-                    <TimeSlotSelect
-                      value={multiDays[0].startTime}
-                      onChange={(v) =>
-                        applyDefaultTimes(v, multiDays[0].endTime)
-                      }
-                      options={startOptions}
-                      ariaLabel="Default start time"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-[120px]">
-                    <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                      Default end
-                    </label>
-                    <TimeSlotSelect
-                      value={multiDays[0].endTime}
-                      onChange={(v) =>
-                        applyDefaultTimes(multiDays[0].startTime, v)
-                      }
-                      options={endOptions}
-                      ariaLabel="Default end time"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      applyDefaultTimes(
-                        multiDays[0].startTime,
-                        multiDays[0].endTime,
-                      )
-                    }
-                    className="px-3 py-2 text-xs font-semibold border border-surface-variant rounded-md hover:bg-surface-container-high transition"
-                  >
-                    Apply to all
-                  </button>
-                </div>
-
-                <ul className="divide-y divide-surface-variant">
-                  {multiDays.map((row) => (
-                    <li
-                      key={row.day}
-                      className="py-2.5 flex flex-wrap items-center gap-3"
-                    >
-                      <label className="flex items-center gap-2 min-w-[110px] cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={row.enabled}
-                          onChange={() => toggleDay(row.day)}
-                          className="accent-[#5c1219] w-4 h-4"
-                        />
-                        <span className="text-sm font-semibold text-on-surface">
-                          {DAY_ABBR[row.day] ?? row.day}
-                        </span>
-                      </label>
-                      {row.enabled && (
-                        <>
-                          <div className="flex-1 min-w-[110px]">
-                            <TimeSlotSelect
-                              value={row.startTime}
-                              onChange={(v) =>
-                                updateDayTime(row.day, 'startTime', v)
-                              }
-                              options={startOptions}
-                              ariaLabel={`${row.day} start time`}
-                            />
-                          </div>
-                          <span className="text-xs text-on-surface-variant">
-                            to
-                          </span>
-                          <div className="flex-1 min-w-[110px]">
-                            <TimeSlotSelect
-                              value={row.endTime}
-                              onChange={(v) =>
-                                updateDayTime(row.day, 'endTime', v)
-                              }
-                              options={TIME_OPTIONS.slice(
-                                TIME_OPTIONS.indexOf(row.startTime) + 1,
-                              )}
-                              ariaLabel={`${row.day} end time`}
-                            />
-                          </div>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-
-                {sessionStatus.limit != null && (
-                  <HelperText
-                    tone={
-                      multiCount > sessionStatus.remaining ? 'warn' : 'muted'
-                    }
-                  >
-                    The prospectus allows {sessionStatus.limit} {form.loadType}{' '}
-                    session{sessionStatus.limit === 1 ? '' : 's'}. You have{' '}
-                    {sessionStatus.remaining} left — pick at most{' '}
-                    {sessionStatus.remaining} day
-                    {sessionStatus.remaining === 1 ? '' : 's'}.
-                  </HelperText>
-                )}
-              </div>
-            )}
-          </section>
+          <PlotScheduleFields
+            mode={mode}
+            form={form}
+            setForm={setForm}
+            multiDays={multiDays}
+            startOptions={startOptions}
+            endOptions={endOptions}
+            timeOptions={TIME_OPTIONS}
+            onFieldChange={handleChange}
+            sessionStatus={sessionStatus}
+            multiCount={multiCount}
+            toggleDay={toggleDay}
+            updateDayTime={updateDayTime}
+            applyDefaultTimes={applyDefaultTimes}
+            applyPresetDays={applyPresetDays}
+          />
 
           {/* ── 3. Faculty ── */}
           <section>

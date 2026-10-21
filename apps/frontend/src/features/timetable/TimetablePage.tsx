@@ -3,7 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import TimetableGrid from './components/TimetableGrid';
 import AgendaView from './views/AgendaView';
-import type { ScheduleEntry, Day, LoadType } from './types';
+import type {
+  ScheduleEntry,
+  Day,
+  LoadType,
+  LayoutMode,
+  SubMode,
+  ViewMode,
+} from './types';
 import {
   fetchSchedules,
   fetchActiveTerm,
@@ -49,6 +56,11 @@ import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
 import CoveragePanel from './components/CoveragePanel';
+import TimetableFilterBar from './components/TimetableFilterBar';
+import AutoGenerateButton, {
+  extractApiError,
+  hintsForMessage,
+} from './auto-schedule/auto-generate.utils';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -59,215 +71,6 @@ const DAY_MAP: Record<string, Day> = {
   Saturday: 'SAT',
   Sunday: 'SUN',
 };
-
-// ═══════════════════════════════════════════════════════════════════
-// API error extraction
-// ═══════════════════════════════════════════════════════════════════
-
-/**
- * Unpack an Axios error into a user-facing title, message, and any
- * additional validation details.
- *
- * NestJS returns one of:
- *   - `{ message: "string", error: "Bad Request", statusCode: 400 }`
- *   - `{ message: ["field1 bad", "field2 bad"], error, statusCode }`  (ValidationPipe)
- *
- * Network failures have no `response` — we fall back to `err.message`.
- */
-function extractApiError(err: any): {
-  title: string;
-  message: string;
-  details: string[];
-} {
-  const status = err?.response?.status;
-  const body = err?.response?.data;
-  const rawMessage = body?.message;
-
-  const messages: string[] = Array.isArray(rawMessage)
-    ? rawMessage
-    : rawMessage
-    ? [rawMessage]
-    : [];
-
-  const title =
-    status === 400
-      ? 'Cannot generate schedule'
-      : status === 401
-      ? 'Session expired'
-      : status === 403
-      ? 'Permission denied'
-      : status === 404
-      ? 'Not found'
-      : status === 409
-      ? 'Another generation in progress'
-      : status === 500
-      ? 'Server error'
-      : 'Auto-generate failed';
-
-  const message =
-    messages[0] ??
-    err?.message ??
-    'Something went wrong. Please try again.';
-
-  return { title, message, details: messages.slice(1) };
-}
-
-/**
- * Turn a known server message into one or more actionable hints.
- * These are shown above the technical details so the user knows the
- * next step without needing to understand the error.
- */
-function hintsForMessage(message: string): string[] {
-  const m = message.toLowerCase();
-  const hints: string[] = [];
-
-  if (/no active sections/.test(m)) {
-    hints.push(
-      'Create at least one section for this department under Sections before generating a schedule.',
-    );
-  }
-  if (/no semester|semester.*not set|has no semester/.test(m)) {
-    hints.push(
-      'Set the semester on the active term in System Settings → Terms.',
-    );
-  }
-  if (/no (?:active )?faculty|no faculty/.test(m)) {
-    hints.push(
-      'Add at least one active faculty member to this department before generating.',
-    );
-  }
-  if (/no (?:active )?subjects|no subjects/.test(m)) {
-    hints.push(
-      'Add subjects and prospectus entries for this department before generating.',
-    );
-  }
-  if (/not enough rooms|room deficit/.test(m)) {
-    hints.push(
-      'Add more rooms or reduce the number of sections needing the same room type.',
-    );
-  }
-  if (/unplotted minors|minor subjects/.test(m)) {
-    hints.push(
-      'Plot the outstanding minor subjects first, or choose "Skip and generate anyway" to proceed.',
-    );
-  }
-  if (/already running|in progress/.test(m)) {
-    hints.push(
-      'Wait for the current generation to finish, then try again.',
-    );
-  }
-  if (/forbidden|permission/.test(m)) {
-    hints.push(
-      'Only Department Heads can run auto-generate for their department.',
-    );
-  }
-  if (/session expired|unauthorized/.test(m)) {
-    hints.push('Log out and log back in to refresh your session.');
-  }
-
-  return hints;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Auto-generate progress
-// ═══════════════════════════════════════════════════════════════════
-
-function getGenerationProgressMessage(elapsedMs: number): {
-  label: string;
-  progress: number;
-} {
-  const sec = elapsedMs / 1000;
-  const raw = 1 - Math.exp(-sec / 6);
-  const progress = Math.min(95, Math.round(raw * 100));
-  let label: string;
-  if (sec < 2) label = 'Starting solver…';
-  else if (sec < 5) label = 'Analyzing constraints…';
-  else if (sec < 10) label = 'Solving schedule…';
-  else if (sec < 20) label = 'Placing classes…';
-  else if (sec < 40) label = 'Almost done…';
-  else label = 'Taking longer than expected…';
-  return { label, progress };
-}
-
-interface AutoGenerateButtonProps {
-  isGenerating: boolean;
-  isServerSide: boolean;
-  elapsedMs: number;
-  onClick: () => void;
-  /** When true, the button is greyed out and unclickable. */
-  disabled?: boolean;
-  /** Tooltip / title shown while disabled. */
-  disabledReason?: string;
-}
-
-function AutoGenerateButton({
-  isGenerating,
-  isServerSide,
-  elapsedMs,
-  onClick,
-  disabled = false,
-  disabledReason,
-}: AutoGenerateButtonProps) {
-  const { label, progress } = isServerSide
-    ? { label: 'Other user generating…', progress: 60 }
-    : getGenerationProgressMessage(elapsedMs);
-
-  const isBlocked = disabled && !isGenerating;
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={isGenerating || disabled}
-      title={isBlocked ? disabledReason : undefined}
-      aria-busy={isGenerating}
-      aria-live="polite"
-      aria-disabled={isGenerating || disabled}
-      className={[
-        'relative inline-flex items-center justify-center gap-2',
-        'px-3 w-[240px] h-[38px]',
-        'text-sm font-semibold rounded-lg transition',
-        'overflow-hidden',
-        isGenerating
-          ? 'bg-primary/5 border border-primary text-primary cursor-not-allowed'
-          : isBlocked
-          ? 'bg-surface-container-high border border-surface-variant text-on-surface-variant cursor-not-allowed opacity-70'
-          : 'border border-primary text-primary hover:bg-primary/5',
-      ].join(' ')}
-    >
-      {isGenerating && (
-        <span
-          aria-hidden
-          className="absolute inset-y-0 left-0 bg-primary/15 transition-[width] duration-500 ease-out"
-          style={{ width: `${progress}%` }}
-        />
-      )}
-      {!isGenerating && (
-        <>
-          <Icon
-            name={isBlocked ? 'block' : 'auto_awesome'}
-            size={16}
-            className="relative z-10 shrink-0"
-          />
-          <span className="relative z-10">Auto-Generate</span>
-        </>
-      )}
-      {isGenerating && (
-        <>
-          <span
-            className="w-3.5 h-3.5 border-2 border-primary/40 border-t-primary rounded-full animate-spin relative z-10 shrink-0"
-            aria-hidden
-          />
-          <span className="relative z-10 tabular-nums truncate min-w-0">
-            {label}
-          </span>
-          <span className="relative z-10 tabular-nums text-xs opacity-70 shrink-0">
-            {progress}%
-          </span>
-        </>
-      )}
-    </button>
-  );
-}
 
 function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
@@ -354,17 +157,12 @@ function versionEntryToEntry(
   };
 }
 
-type ViewMode = 'master' | 'byDepartment' | 'byRoom' | 'byFaculty';
-type SubMode = 'all' | 'bySection' | 'byFaculty';
-
 const QUERY_VIEW_MAP: Record<string, ViewMode> = {
   master: 'master',
   department: 'byDepartment',
   room: 'byRoom',
   faculty: 'byFaculty',
 };
-
-export type LayoutMode = 'agenda' | 'grid';
 
 function defaultLayoutForViewport(): LayoutMode {
   if (typeof window === 'undefined') return 'grid';
@@ -1200,11 +998,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [rooms],
   );
 
-  const hasAnyFilter =
+  const hasAnyFilter = Boolean(
     viewMode !== 'master' &&
-    ((viewMode === 'byDepartment' && (viewDeptId || subTargetId)) ||
-      (viewMode === 'byRoom' && roomTargetId) ||
-      (viewMode === 'byFaculty' && facultyTargetId));
+      ((viewMode === 'byDepartment' && (viewDeptId || subTargetId)) ||
+        (viewMode === 'byRoom' && roomTargetId) ||
+        (viewMode === 'byFaculty' && facultyTargetId)),
+  );
 
   const clearFilters = () => {
     setViewMode('master');
@@ -1535,276 +1334,38 @@ export default function TimetablePage({ readOnly = false }: Props) {
           </div>
         )}
 
-      {/* ── Filters + layout toolbar ── */}
-      {activeTerm && (
-        <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[150px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                View
-              </label>
-              <select
-                value={viewMode}
-                onChange={(e) => {
-                  const v = e.target.value as ViewMode;
-                  setViewMode(v);
-                  setSubMode('all');
-                  setSubTargetId('');
-                  setRoomTargetId('');
-                  setFacultyTargetId('');
-                  if (v === 'byDepartment' && myDeptId && isDepartmentHead) {
-                    setViewDeptId(myDeptId);
-                  } else {
-                    setViewDeptId('');
-                  }
-                }}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="master">Master View</option>
-                <option value="byDepartment">By Department</option>
-                <option value="byRoom">By Room</option>
-                <option value="byFaculty">By Faculty</option>
-              </select>
-            </div>
-
-            {viewMode === 'byDepartment' && (
-              <div className="flex-1 min-w-[180px]">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Department
-                </label>
-                <select
-                  value={viewDeptId}
-                  onChange={(e) => {
-                    setViewDeptId(e.target.value);
-                    setSubMode('all');
-                    setSubTargetId('');
-                  }}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="">— select —</option>
-                  {deptOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {viewMode === 'byRoom' && (
-              <div className="flex-1 min-w-[180px]">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Room
-                </label>
-                <select
-                  value={roomTargetId}
-                  onChange={(e) => setRoomTargetId(e.target.value)}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="">— select —</option>
-                  {roomOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {viewMode === 'byFaculty' && (
-              <div className="flex-1 min-w-[180px]">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Faculty
-                </label>
-                <select
-                  value={facultyTargetId}
-                  onChange={(e) => setFacultyTargetId(e.target.value)}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="">— select —</option>
-                  {facultyOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {hasAnyFilter && (
-              <button
-                onClick={clearFilters}
-                className="text-xs px-3 py-2 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
-              >
-                Clear filter
-              </button>
-            )}
-          </div>
-
-          {viewMode === 'byDepartment' && viewDeptId && (
-            <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-surface-variant">
-              <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Refine by
-                </label>
-                <select
-                  value={subMode}
-                  onChange={(e) => {
-                    const v = e.target.value as SubMode;
-                    setSubMode(v);
-                    setSubTargetId('');
-                  }}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="all">All (no refinement)</option>
-                  <option value="bySection">Section</option>
-                  <option value="byFaculty">Faculty</option>
-                </select>
-              </div>
-
-              {subMode === 'bySection' && (
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Section
-                  </label>
-                  <select
-                    value={subTargetId}
-                    onChange={(e) => setSubTargetId(e.target.value)}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">— select —</option>
-                    {sectionOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {subMode === 'byFaculty' && (
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Faculty
-                  </label>
-                  <select
-                    value={subTargetId}
-                    onChange={(e) => setSubTargetId(e.target.value)}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">— select —</option>
-                    {facultyOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-surface-variant">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                Layout
-              </span>
-              <div
-                role="tablist"
-                aria-label="Layout"
-                className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5"
-              >
-                <button
-                  role="tab"
-                  aria-selected={layoutMode === 'agenda'}
-                  onClick={() => {
-                    setLayoutMode('agenda');
-                    setLayoutTouched(true);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                    layoutMode === 'agenda'
-                      ? 'bg-white text-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                  title="Agenda view (A)"
-                >
-                  <Icon name="view_list" size={14} />
-                  Agenda
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={layoutMode === 'grid'}
-                  onClick={() => {
-                    setLayoutMode('grid');
-                    setLayoutTouched(true);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                    layoutMode === 'grid'
-                      ? 'bg-white text-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                  title="Grid view (G)"
-                >
-                  <Icon name="grid_on" size={14} />
-                  Grid
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              {layoutMode === 'grid' && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-                    Density
-                  </span>
-                  <div className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5">
-                    <button
-                      onClick={() => setGridDensity('compact')}
-                      aria-pressed={gridDensity === 'compact'}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                        gridDensity === 'compact'
-                          ? 'bg-white text-primary shadow-sm'
-                          : 'text-on-surface-variant hover:text-on-surface'
-                      }`}
-                    >
-                      Compact
-                    </button>
-                    <button
-                      onClick={() => setGridDensity('comfortable')}
-                      aria-pressed={gridDensity === 'comfortable'}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                        gridDensity === 'comfortable'
-                          ? 'bg-white text-primary shadow-sm'
-                          : 'text-on-surface-variant hover:text-on-surface'
-                      }`}
-                    >
-                      Comfortable
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {!activeVersion && (
-                <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={onlyConflicts}
-                    onChange={(e) => setOnlyConflicts(e.target.checked)}
-                    className="accent-[#5c1219]"
-                  />
-                  <Icon name="warning" size={14} />
-                  Only conflicts
-                  {conflictCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 font-bold">
-                      {conflictCount}
-                    </span>
-                  )}
-                </label>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <TimetableFilterBar
+        activeTerm={activeTerm}
+        activeVersion={activeVersion}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        viewDeptId={viewDeptId}
+        setViewDeptId={setViewDeptId}
+        subMode={subMode}
+        setSubMode={setSubMode}
+        subTargetId={subTargetId}
+        setSubTargetId={setSubTargetId}
+        roomTargetId={roomTargetId}
+        setRoomTargetId={setRoomTargetId}
+        facultyTargetId={facultyTargetId}
+        setFacultyTargetId={setFacultyTargetId}
+        onlyConflicts={onlyConflicts}
+        setOnlyConflicts={setOnlyConflicts}
+        layoutMode={layoutMode}
+        setLayoutMode={setLayoutMode}
+        setLayoutTouched={setLayoutTouched}
+        gridDensity={gridDensity}
+        setGridDensity={setGridDensity}
+        deptOptions={deptOptions}
+        roomOptions={roomOptions}
+        facultyOptions={facultyOptions}
+        sectionOptions={sectionOptions}
+        hasAnyFilter={hasAnyFilter}
+        clearFilters={clearFilters}
+        myDeptId={myDeptId}
+        isDepartmentHead={isDepartmentHead}
+        conflictCount={conflictCount}
+      />
 
       {/* ── Loading / error / empty ── */}
       {isLoading && <LoadingState message="Loading schedule…" />}

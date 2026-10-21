@@ -64,3 +64,7 @@ export interface GridMetrics {
   axisWidth: number;
   gridHeight: number;
 }
+
+export type ViewMode = 'master' | 'byDepartment' | 'byRoom' | 'byFaculty';
+export type SubMode = 'all' | 'bySection' | 'byFaculty';
+export type LayoutMode = 'agenda' | 'grid';

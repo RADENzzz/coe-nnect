@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Icon from '../../../components/ui/Icon';
 import type { ScheduleEntry } from '../types';
-import type { LayoutMode } from '../TimetablePage';
+import type { LayoutMode } from '../types';
 import {
   exportSchedulePdf,
   printSchedulePdf,
