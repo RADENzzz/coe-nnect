@@ -1,3 +1,4 @@
+// apps/backend/src/modules/subjects/subjects.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SubjectsService } from './subjects.service';
@@ -7,6 +8,7 @@ import { SubjectRestriction } from './entities/subject-restriction.entity';
 import { User } from '../users/entities/user.entity';
 import { Schedule } from '../scheduling/entities/schedule.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
+import { DepartmentsModule } from '../departments/departments.module';
 
 @Module({
   imports: [
@@ -17,6 +19,7 @@ import { Prospectus } from '../prospectus/entities/prospectus.entity';
       Schedule,    // required for the FK pre-flight in remove()
       Prospectus,  // required for the FK pre-flight in remove()
     ]),
+    DepartmentsModule,
   ],
   controllers: [SubjectsController],
   providers: [SubjectsService],
