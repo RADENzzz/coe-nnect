@@ -1,3 +1,4 @@
+// apps/backend/src/modules/faculty/faculty.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Faculty } from './entities/faculty.entity';
@@ -10,18 +11,20 @@ import { FacultyService } from './faculty.service';
 import { FacultyController } from './faculty.controller';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { DepartmentsModule } from '../departments/departments.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Faculty,
       FacultyPreference,
-      FacultyUnavailability,   // ← new
+      FacultyUnavailability,
       FacultyQualification,
-      Subject,                 // ← needed by FacultyService
+      Subject,
       User,
     ]),
-    NotificationsModule,       // ← if your service uses the dispatcher
+    NotificationsModule,
+    DepartmentsModule,
   ],
   controllers: [FacultyController],
   providers: [FacultyService, RolesGuard],
