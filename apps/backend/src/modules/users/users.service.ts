@@ -23,10 +23,6 @@ export class UsersService {
 
   /**
    * In-memory rate limit for self-service password changes.
-   *
-   * TODO: If the backend ever runs on multiple replicas, replace with
-   * a shared store (Redis or the DB). For the current single-replica
-   * Railway deploy, this is sufficient.
    */
   private readonly changePasswordAttempts = new Map<string, number[]>();
 
@@ -94,10 +90,6 @@ export class UsersService {
 
   /**
    * Create a user.
-   *
-   * `actingUserId` is the admin performing the action. Used for the
-   * `user.created` notification so we can exclude the creator from
-   * the recipients list (they already know).
    */
   async create(dto: CreateUserDto, actingUserId?: string): Promise<User> {
     // 1. Check for existing email in our public.users
@@ -166,7 +158,7 @@ export class UsersService {
       saved = profile;
     }
 
-    // ═══ Notification: user.created (to admins, excluding the actor) ═══
+    // ═══ Notification: user.created ═══
     const admins = await this.recipients.administrators();
     const recipients = actingUserId
       ? admins.filter((id) => id !== actingUserId)
@@ -196,7 +188,34 @@ export class UsersService {
     user.isActive = !user.isActive;
     const saved = await this.userRepo.save(user);
 
-    // ═══ Notification: user.deactivated (only when transitioning to inactive) ═══
+    // ── Sync with Supabase Auth ──
+    // If deactivated, ban the user so they cannot log in via Supabase.
+    // If activated, remove the ban.
+    try {
+      const { error } = await this.supabase
+        .getAdminClient()
+        .auth.admin.updateUserById(userId, {
+          // '876000h' = 100 years. Supabase enforces this at the Auth layer.
+          ban_duration: saved.isActive ? 'none' : '876000h',
+        });
+      
+      if (error) {
+        this.logger.warn(
+          `Failed to sync ban status for ${userId}: ${error.message}`,
+        );
+      } else {
+        this.logger.log(
+          `Synced Supabase ban status for ${userId} (isActive: ${saved.isActive})`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Unexpected error syncing ban status for ${userId}`,
+        err,
+      );
+    }
+
+    // ═══ Notification: user.deactivated ═══
     if (saved.isActive === false) {
       const admins = await this.recipients.administrators();
       const recipients = actingUserId
@@ -271,16 +290,23 @@ export class UsersService {
       facultyId: saved.facultyId ?? null,
     });
 
-    const { error } = await this.supabase
-      .getAdminClient()
-      .auth.admin.updateUserById(userId, {
-        app_metadata: appMetadata,
-      });
+    // ── Sync with Supabase Auth (app_metadata + ban status) ──
+    try {
+      const { error } = await this.supabase
+        .getAdminClient()
+        .auth.admin.updateUserById(userId, {
+          app_metadata: appMetadata,
+          // Just in case the user was deactivated via the Edit modal
+          ban_duration: saved.isActive ? 'none' : '876000h',
+        });
 
-    if (error) {
-      this.logger.warn(
-        `Failed to sync app_metadata for ${userId}: ${error.message}`,
-      );
+      if (error) {
+        this.logger.warn(
+          `Failed to sync app_metadata/ban for ${userId}: ${error.message}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(`Unexpected error syncing auth for ${userId}`, err);
     }
 
     return saved;
@@ -290,21 +316,6 @@ export class UsersService {
   // SELF-SERVICE PASSWORD CHANGE
   // ════════════════════════════════════════════
 
-  /**
-   * Change the currently-authenticated user's password.
-   *
-   * Flow:
-   *   1. Re-authenticate with Supabase using the provided current
-   *      password. This proves the caller knows it — a stolen session
-   *      alone is not enough.
-   *   2. Use the admin client to set the new password. We deliberately
-   *      do NOT sign the user out — the existing JWT stays valid.
-   *   3. Rate limit: 5 failed attempts per user per 5 min.
-   *
-   * Security: the new password is never written to the audit trail,
-   * only the fact that a change occurred (via @Auditable on the
-   * controller). The password is never logged anywhere.
-   */
   async changeOwnPassword(
     userId: string,
     userEmail: string,
@@ -365,12 +376,6 @@ export class UsersService {
 
   /**
    * True if the user holds the hidden dev-only `administrator` role.
-   *
-   * This exists so services can distinguish "actual dev account" from
-   * "Dean acting as top role" — they are deliberately not the same.
-   * Do NOT use this to gate normal business logic; use
-   * `role === 'college_dean'` for that. This is only for dev-tooling
-   * paths (demo reset, seed, etc.).
    */
   isDevAccount(user: Pick<User, 'role'>): boolean {
     return user.role === 'administrator';
