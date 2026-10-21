@@ -1,3 +1,4 @@
+// apps/backend/src/modules/rooms/rooms.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -12,6 +13,7 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 import { User } from '../users/entities/user.entity';
 import { RoomPreference } from './entities/room-preference.entity';
+import { DepartmentsService } from '../departments/departments.service';
 
 @Injectable()
 export class RoomsService {
@@ -20,21 +22,9 @@ export class RoomsService {
     private readonly repo: Repository<Room>,
     @InjectRepository(RoomPreference)
     private readonly preferenceRepo: Repository<RoomPreference>,
+    private readonly departments: DepartmentsService,
   ) {}
 
-  /**
-   * Ownership rule (B):
-   *   Dean  → full access to any room
-   *   DH    → may edit rooms that are either:
-   *             • owned by their own department, OR
-   *             • shared (dept_id IS NULL)
-   *           but NOT another department's exclusive room.
-   *   others → reject (fail-closed)
-   *
-   * NOTE: the `administrator` role is still accepted so the hidden
-   * dev account retains full access. It is NOT used for user-facing
-   * authorization — the Dean is the top role.
-   */
   private async assertOwnership(
     roomId: string,
     profile: User | undefined,
@@ -53,13 +43,9 @@ export class RoomsService {
       );
     }
 
-    // Shared room → any DH can edit
     if (!room.deptId) return room;
-
-    // Owned room → must be the DH's own department
     if (String(room.deptId) === String(profile.deptId)) return room;
 
-    // Otherwise → reject
     throw new ForbiddenException(
       "You can only modify rooms owned by your department, or shared rooms.",
     );
@@ -83,10 +69,6 @@ export class RoomsService {
   }
 
   async create(dto: CreateRoomDto, profile: User): Promise<Room> {
-    // DHs may create:
-    //   • shared rooms (deptId omitted / null)
-    //   • rooms owned by their own department
-    // DHs may NOT create rooms for another department.
     if (profile.role === 'department_head') {
       if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
         throw new ForbiddenException(
@@ -94,6 +76,9 @@ export class RoomsService {
         );
       }
     }
+
+    // ── NEW: target dept must be active ──
+    await this.departments.assertDepartmentActive(dto.deptId);
 
     const existing = await this.repo.findOne({
       where: { roomNumber: dto.roomNumber, building: dto.building },
@@ -121,9 +106,6 @@ export class RoomsService {
   ): Promise<Room> {
     const found = await this.assertOwnership(id, profile);
 
-    // DHs may convert their own room → shared (deptId = null),
-    // or leave it alone. They may NOT assign an owned room to
-    // another department.
     if (
       profile.role === 'department_head' &&
       dto.deptId !== undefined &&
@@ -133,6 +115,13 @@ export class RoomsService {
       throw new ForbiddenException(
         'You cannot assign rooms to another department.',
       );
+    }
+
+    // ── NEW: current or target dept must be active ──
+    if (dto.deptId !== undefined && dto.deptId !== found.deptId) {
+      await this.departments.assertDepartmentActive(dto.deptId);
+    } else {
+      await this.departments.assertDepartmentActive(found.deptId);
     }
 
     if (dto.roomNumber !== undefined) found.roomNumber = dto.roomNumber;
@@ -146,24 +135,18 @@ export class RoomsService {
 
   async toggleActive(id: string, profile: User): Promise<Room> {
     const found = await this.assertOwnership(id, profile);
+    await this.departments.assertDepartmentActive(found.deptId);
     found.isActive = !found.isActive;
     return this.repo.save(found);
   }
 
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, profile);
+    await this.departments.assertDepartmentActive(found.deptId);
     await this.repo.remove(found);
     return { success: true };
   }
 
-  // ════════════════════════════════════════════
-  // ROOM PREFERENCES (F3)
-  // ════════════════════════════════════════════
-
-  /**
-   * List preferences for a specific room. Dean sees all;
-   * DH sees their own dept's row plus an aggregate count.
-   */
   async findPreferencesForRoom(
     roomId: string,
     user: any,
@@ -199,17 +182,6 @@ export class RoomsService {
     }));
   }
 
-  /**
-   * Bulk list: every preference across every shared room.
-   *
-   * Used by:
-   *   - The Rooms page "Preferred" tile (count + row flag)
-   *   - Any future per-dept preference audit
-   *
-   * NOT dept-scoped — everyone with role access sees the full set.
-   * The dataset is small (departments × shared rooms), so we return
-   * everything in one call rather than fanning out per room.
-   */
   async findAllPreferences(): Promise<
     Array<{
       preferenceId: string;
@@ -242,10 +214,6 @@ export class RoomsService {
     }));
   }
 
-  /**
-   * List all preferences for a department. Used by the solver
-   * payload builder.
-   */
   async findPreferencesForDept(deptId: string): Promise<RoomPreference[]> {
     return this.preferenceRepo.find({
       where: { deptId },
@@ -253,16 +221,10 @@ export class RoomsService {
     });
   }
 
-  /**
-   * Create or update a preference. Enforces:
-   *   - Room must be shared (dept_id IS NULL)
-   *   - DH must own the dept they're preferring for
-   */
   async upsertPreference(
     dto: { roomId: string; deptId: string; priority?: number },
     user: any,
   ): Promise<RoomPreference> {
-    // Ownership: DH can only act for their own department
     if (
       user.role === 'department_head' &&
       String(user.deptId) !== String(dto.deptId)
@@ -272,7 +234,9 @@ export class RoomsService {
       );
     }
 
-    // Room must exist
+    // ── NEW: preference's dept must be active ──
+    await this.departments.assertDepartmentActive(dto.deptId);
+
     const room = await this.repo.findOne({
       where: { roomId: dto.roomId },
       select: ['roomId', 'deptId', 'roomNumber'],
@@ -281,7 +245,6 @@ export class RoomsService {
       throw new NotFoundException(`Room ${dto.roomId} not found`);
     }
 
-    // Owned rooms can't be preferred — fail loud
     if (room.deptId !== null) {
       throw new BadRequestException(
         `Room ${room.roomNumber} is owned by another department and cannot be preferred.`,
@@ -308,9 +271,6 @@ export class RoomsService {
     return this.preferenceRepo.save(entity);
   }
 
-  /**
-   * Remove a preference. DH can only remove their own dept's row.
-   */
   async removePreference(id: string, user: any): Promise<{ success: boolean }> {
     const found = await this.preferenceRepo.findOne({
       where: { preferenceId: id },
@@ -327,6 +287,9 @@ export class RoomsService {
         'You can only remove preferences for your own department.',
       );
     }
+
+    // ── NEW: preference's dept must be active ──
+    await this.departments.assertDepartmentActive(found.deptId);
 
     await this.preferenceRepo.remove(found);
     return { success: true };
