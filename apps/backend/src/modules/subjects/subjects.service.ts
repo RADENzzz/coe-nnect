@@ -1,3 +1,4 @@
+// apps/backend/src/modules/subjects/subjects.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -16,11 +17,8 @@ import { UpdateSubjectRestrictionDto } from './dto/update-subject-restriction.dt
 import { User } from '../users/entities/user.entity';
 import { Schedule } from '../scheduling/entities/schedule.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
+import { DepartmentsService } from '../departments/departments.service';
 
-/**
- * Postgres error code for foreign key violations.
- * @see https://www.postgresql.org/docs/current/errcodes-appendix.html
- */
 const PG_FK_VIOLATION = '23503';
 
 @Injectable()
@@ -34,19 +32,9 @@ export class SubjectsService {
     private readonly scheduleRepo: Repository<Schedule>,
     @InjectRepository(Prospectus)
     private readonly prospectusRepo: Repository<Prospectus>,
+    private readonly departments: DepartmentsService,
   ) {}
 
-  // ────────────────────────────────────────────
-  // Cross-department protection
-  //
-  // Dean        → any subject
-  // DH          → only subjects owned by own dept
-  // Others      → reject (fail-closed)
-  //
-  // NOTE: the `administrator` role is still accepted here so the
-  // hidden dev account retains full access. It is NOT used for
-  // user-facing authorization — the Dean is the top role.
-  // ────────────────────────────────────────────
   private async assertOwnership(
     subjectId: string,
     profile: User | undefined,
@@ -74,10 +62,6 @@ export class SubjectsService {
     return subject;
   }
 
-  // ────────────────────────────────────────────
-  // Reads
-  // ────────────────────────────────────────────
-
   findAll(): Promise<Subject[]> {
     return this.repo.find({
       where: { isActive: true },
@@ -95,12 +79,7 @@ export class SubjectsService {
     return found;
   }
 
-  // ────────────────────────────────────────────
-  // Writes
-  // ────────────────────────────────────────────
-
   async create(dto: CreateSubjectDto, profile: User): Promise<Subject> {
-    // DHs can only create subjects in their own department.
     if (profile.role === 'department_head') {
       if (dto.deptId && String(dto.deptId) !== String(profile.deptId)) {
         throw new ForbiddenException(
@@ -109,6 +88,9 @@ export class SubjectsService {
       }
       dto.deptId = String(profile.deptId);
     }
+
+    // ── NEW: refuse if the target dept is deactivated ──
+    await this.departments.assertDepartmentActive(dto.deptId);
 
     const existing = await this.repo.findOne({
       where: { subjectCode: dto.subjectCode },
@@ -145,7 +127,6 @@ export class SubjectsService {
   ): Promise<Subject> {
     const found = await this.assertOwnership(id, profile);
 
-    // DHs cannot move subjects to a different department.
     if (
       profile.role === 'department_head' &&
       dto.deptId !== undefined &&
@@ -154,6 +135,14 @@ export class SubjectsService {
       throw new ForbiddenException(
         'You cannot move subjects to a different department.',
       );
+    }
+
+    // ── NEW: refuse if either the current dept (still inactive) or the
+    //          target dept (if being moved) is deactivated ──
+    if (dto.deptId !== undefined && dto.deptId !== found.deptId) {
+      await this.departments.assertDepartmentActive(dto.deptId);
+    } else {
+      await this.departments.assertDepartmentActive(found.deptId);
     }
 
     if (dto.subjectCode !== undefined) found.subjectCode = dto.subjectCode;
@@ -177,28 +166,14 @@ export class SubjectsService {
 
   async toggleActive(id: string, profile: User): Promise<Subject> {
     const found = await this.assertOwnership(id, profile);
+    await this.departments.assertDepartmentActive(found.deptId);
     found.isActive = !found.isActive;
     return this.repo.save(found);
   }
 
-  /**
-   * Delete a subject.
-   *
-   * A subject cannot be deleted while it is referenced by:
-   *   - schedule rows (FK: schedule_subject_id_fkey)
-   *   - prospectus entries (FK on prospectus.subject_id)
-   *   - subject restrictions (either side of the pair)
-   *
-   * We check these *before* issuing the DELETE so the user gets a
-   * specific, actionable message instead of a raw Postgres FK error.
-   * A catch-all converts any remaining FK violation (e.g. a table we
-   * haven't enumerated yet) into the same clean 409 shape.
-   *
-   * The alternative when references exist is to deactivate the
-   * subject instead — we suggest that in the error message.
-   */
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, profile);
+    await this.departments.assertDepartmentActive(found.deptId);
 
     const [scheduleCount, prospectusCount, restrictionCount] =
       await Promise.all([
@@ -238,8 +213,6 @@ export class SubjectsService {
     try {
       await this.repo.remove(found);
     } catch (err) {
-      // Safety net: any remaining FK violation (a table we didn't
-      // enumerate above) still surfaces as a clean 409, never a 500.
       if (
         err instanceof QueryFailedError &&
         (err as any).driverError?.code === PG_FK_VIOLATION
@@ -255,15 +228,7 @@ export class SubjectsService {
     return { success: true };
   }
 
-  // ────────────────────────────────────────────
-  // S-11 — Subject Restrictions
-  //
-  // Restrictions link two subjects. A DH can only create/update/delete a
-  // restriction if they own BOTH subjects. Dean can manage any.
-  //
-  // NOTE: the `administrator` role is still accepted (dev account
-  // bypass). It is NOT used for user-facing authorization.
-  // ────────────────────────────────────────────
+  // ── Restrictions — unchanged except for the active-dept guard ──
 
   async findAllRestrictions(termId?: string): Promise<SubjectRestriction[]> {
     const qb = this.restrictions
@@ -295,7 +260,10 @@ export class SubjectsService {
       throw new NotFoundException('One or both subjects not found.');
     }
 
-    // Ownership check: a DH can only restrict subjects they own.
+    // ── NEW: both subjects' depts must be active ──
+    await this.departments.assertDepartmentActive(a.deptId);
+    await this.departments.assertDepartmentActive(b.deptId);
+
     if (profile.role === 'department_head') {
       const myDept = String(profile.deptId);
       if (String(a.deptId) !== myDept || String(b.deptId) !== myDept) {
@@ -348,12 +316,16 @@ export class SubjectsService {
     });
     if (!found) throw new NotFoundException('Restriction not found');
 
-    // Ownership check: DH can only update restrictions on their own subjects.
+    const [a, b] = await Promise.all([
+      this.repo.findOne({ where: { subjectId: found.subjectId1 } }),
+      this.repo.findOne({ where: { subjectId: found.subjectId2 } }),
+    ]);
+
+    // ── NEW: both subjects' depts must be active ──
+    if (a) await this.departments.assertDepartmentActive(a.deptId);
+    if (b) await this.departments.assertDepartmentActive(b.deptId);
+
     if (profile.role === 'department_head') {
-      const [a, b] = await Promise.all([
-        this.repo.findOne({ where: { subjectId: found.subjectId1 } }),
-        this.repo.findOne({ where: { subjectId: found.subjectId2 } }),
-      ]);
       const myDept = String(profile.deptId);
       if (
         !a ||
@@ -390,12 +362,16 @@ export class SubjectsService {
     });
     if (!found) throw new NotFoundException('Restriction not found');
 
-    // Ownership check: DH can only remove restrictions on their own subjects.
+    const [a, b] = await Promise.all([
+      this.repo.findOne({ where: { subjectId: found.subjectId1 } }),
+      this.repo.findOne({ where: { subjectId: found.subjectId2 } }),
+    ]);
+
+    // ── NEW: both subjects' depts must be active ──
+    if (a) await this.departments.assertDepartmentActive(a.deptId);
+    if (b) await this.departments.assertDepartmentActive(b.deptId);
+
     if (profile.role === 'department_head') {
-      const [a, b] = await Promise.all([
-        this.repo.findOne({ where: { subjectId: found.subjectId1 } }),
-        this.repo.findOne({ where: { subjectId: found.subjectId2 } }),
-      ]);
       const myDept = String(profile.deptId);
       if (
         !a ||
