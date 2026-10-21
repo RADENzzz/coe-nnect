@@ -43,9 +43,10 @@ export default function DeanDepartmentsManagePage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
+  // ALWAYS include inactive — this is the reactivation surface.
   const { data: departments = [], isLoading } = useQuery({
-    queryKey: ['departments'],
-    queryFn: fetchDepartments,
+    queryKey: ['departments', { includeInactive: true }],
+    queryFn: () => fetchDepartments(true),
     enabled: !!user,
   });
 
@@ -55,24 +56,18 @@ export default function DeanDepartmentsManagePage() {
     enabled: !!user,
   });
 
-  // ── Eligible DHs for the current form selection ──
-  // A user is eligible if:
-  //   - role === 'department_head'
-  //   - isActive === true
-  //   - either: no deptId yet (unassigned) OR deptId === current editing department
   const eligibleHeads = useMemo(() => {
     const editingDeptId = editing?.deptId ? String(editing.deptId) : null;
     return allUsers.filter((u) => {
       if (u.role !== 'department_head') return false;
       if (!u.isActive) return false;
       const userDept = u.deptId ? String(u.deptId) : null;
-      if (userDept === null) return true; // unassigned
-      if (editingDeptId && userDept === editingDeptId) return true; // current dept
-      return false; // assigned to another dept
+      if (userDept === null) return true;
+      if (editingDeptId && userDept === editingDeptId) return true;
+      return false;
     });
   }, [allUsers, editing]);
 
-  // ── Current head of the editing department ──
   const currentHead = useMemo(() => {
     if (!editing) return null;
     return (
@@ -85,20 +80,33 @@ export default function DeanDepartmentsManagePage() {
     );
   }, [allUsers, editing]);
 
-  // ── Create ──
+  // Shared invalidation — any change to a dept's active state can
+  // affect schedule visibility, coverage, and every picker.
+  const invalidateAfterDeptChange = () => {
+    qc.invalidateQueries({ queryKey: ['departments'] });
+    qc.invalidateQueries({ queryKey: ['schedules'] });
+    qc.invalidateQueries({ queryKey: ['coverage'] });
+    qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+    qc.invalidateQueries({ queryKey: ['sections'] });
+    qc.invalidateQueries({ queryKey: ['subjects'] });
+    qc.invalidateQueries({ queryKey: ['faculty'] });
+    qc.invalidateQueries({ queryKey: ['rooms'] });
+    qc.invalidateQueries({ queryKey: ['prospectus'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-all'] });
+    qc.invalidateQueries({ queryKey: ['programs'] });
+  };
+
   const createMutation = useMutation({
     mutationFn: createDepartment,
     onSuccess: async (dept) => {
-      // If a head was selected, assign them to this new dept
       if (form.headUserId) {
         try {
           await updateUser(form.headUserId, { deptId: dept.deptId });
         } catch (err) {
-          // Dept created but head assignment failed — surface the error
           setError(
             'Department created, but head assignment failed. Use the Users page to assign a head.',
           );
-          qc.invalidateQueries({ queryKey: ['departments'] });
+          invalidateAfterDeptChange();
           qc.invalidateQueries({ queryKey: ['users'] });
           closeForm();
           return;
@@ -106,7 +114,7 @@ export default function DeanDepartmentsManagePage() {
       }
       setSuccess(`Department "${dept.deptName}" created.`);
       closeForm();
-      qc.invalidateQueries({ queryKey: ['departments'] });
+      invalidateAfterDeptChange();
       qc.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (err: any) => {
@@ -116,7 +124,6 @@ export default function DeanDepartmentsManagePage() {
     },
   });
 
-  // ── Update ──
   const updateMutation = useMutation({
     mutationFn: ({
       id,
@@ -128,7 +135,7 @@ export default function DeanDepartmentsManagePage() {
     onSuccess: (dept) => {
       setSuccess(`Department "${dept.deptName}" updated.`);
       closeForm();
-      qc.invalidateQueries({ queryKey: ['departments'] });
+      invalidateAfterDeptChange();
     },
     onError: (err: any) => {
       setError(
@@ -137,13 +144,18 @@ export default function DeanDepartmentsManagePage() {
     },
   });
 
-  // ── Toggle active ──
   const toggleMutation = useMutation({
     mutationFn: toggleDepartmentActive,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['departments'] });
+    onSuccess: (dept) => {
+      // Confirm the state change clearly so the Dean knows it stuck.
+      setSuccess(
+        dept.isActive
+          ? `Department "${dept.deptName}" reactivated. Its schedules are visible again.`
+          : `Department "${dept.deptName}" deactivated. Its schedules are now hidden from DHs.`,
+      );
       setDeactivateTarget(null);
       setAdminPassword('');
+      invalidateAfterDeptChange();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Toggle failed'),
@@ -182,19 +194,15 @@ export default function DeanDepartmentsManagePage() {
     if (mode === 'create') {
       createMutation.mutate(payload);
     } else if (mode === 'edit' && editing) {
-      // 1. Update dept fields
       updateMutation.mutate({ id: editing.deptId, input: payload });
 
-      // 2. Handle head change (async, after update succeeds)
       const currentHeadId = currentHead ? currentHead.userId : '';
       const targetHeadId = form.headUserId;
       if (currentHeadId !== targetHeadId) {
         try {
-          // Unassign the old head
           if (currentHeadId) {
             await updateUser(currentHeadId, { deptId: null });
           }
-          // Assign the new head
           if (targetHeadId) {
             await updateUser(targetHeadId, { deptId: editing.deptId });
           }
@@ -242,7 +250,8 @@ export default function DeanDepartmentsManagePage() {
     setError(null);
   };
 
-  // ── Columns ──
+  const inactiveCount = departments.filter((d) => !d.isActive).length;
+
   const columns: Column<Department>[] = [
     {
       key: 'code',
@@ -256,7 +265,19 @@ export default function DeanDepartmentsManagePage() {
       header: 'Name',
       cardVariant: 'subtitle',
       cellClassName: 'text-on-surface font-medium',
-      render: (d) => d.deptName,
+      render: (d) => (
+        <span className="inline-flex items-center gap-2">
+          <span className={d.isActive ? '' : 'text-slate-500'}>
+            {d.deptName}
+          </span>
+          {!d.isActive && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200">
+              <Icon name="block" size={9} />
+              Inactive
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'head',
@@ -312,6 +333,7 @@ export default function DeanDepartmentsManagePage() {
         if (d.isActive) {
           setDeactivateTarget(d.deptId);
         } else {
+          // Reactivation needs no password confirmation — it's additive.
           toggleMutation.mutate(d.deptId);
         }
       },
@@ -325,7 +347,15 @@ export default function DeanDepartmentsManagePage() {
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Departments</h1>
           <p className="text-on-surface-variant text-sm mt-1">
-            {departments.length} department(s) registered
+            {departments.length} department(s)
+            {inactiveCount > 0 && (
+              <>
+                {' · '}
+                <span className="text-rose-700 font-medium">
+                  {inactiveCount} deactivated
+                </span>
+              </>
+            )}
           </p>
         </div>
         <button
@@ -348,7 +378,6 @@ export default function DeanDepartmentsManagePage() {
         </div>
       )}
 
-      {/* Create / Edit modal */}
       <Modal
         open={!!mode}
         onClose={closeForm}
@@ -387,6 +416,16 @@ export default function DeanDepartmentsManagePage() {
           onSubmit={handleSubmit}
           className="space-y-4"
         >
+          {editing && !editing.isActive && (
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2">
+              <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+              <span>
+                This department is currently <strong>deactivated</strong>. Save
+                changes to its details here, then close and reactivate it via
+                the Activate action in the table.
+              </span>
+            </div>
+          )}
           <div>
             <label className="block text-xs text-on-surface-variant mb-1.5 uppercase tracking-wider">
               Department Code *
@@ -456,7 +495,6 @@ export default function DeanDepartmentsManagePage() {
         </form>
       </Modal>
 
-      {/* Deactivate confirmation (unchanged) */}
       <Modal
         open={!!deactivateTarget}
         onClose={() => {
@@ -494,6 +532,14 @@ export default function DeanDepartmentsManagePage() {
           <p className="text-sm text-slate-600">
             Please enter your password to confirm this action.
           </p>
+          <div className="p-2.5 rounded bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
+            <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Deactivating a department <strong>preserves</strong> its faculty,
+              rooms, subjects, and schedule history — but hides them from DH
+              views and blocks new schedule changes until it's reactivated.
+            </span>
+          </div>
           {verifyError && (
             <div className="p-2 bg-red-100 text-red-700 text-xs">
               {verifyError}
