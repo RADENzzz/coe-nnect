@@ -75,3 +75,12 @@ export async function renameUser(
   );
   return data.data;
 }
+
+export async function toggleDevUserActive(
+  userId: string,
+): Promise<{ userId: string; isActive: boolean }> {
+  const { data } = await api.patch(
+    `/v1/dev-tools/users/${userId}/toggle-active`,
+  );
+  return data.data;
+}
