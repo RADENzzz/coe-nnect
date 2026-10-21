@@ -184,9 +184,15 @@ export class UsersService {
    * Toggle is_active. `actingUserId` is the admin performing the action.
    */
   async toggleActive(userId: string, actingUserId?: string): Promise<User> {
+    if (actingUserId && userId === actingUserId) {
+      throw new ConflictException(
+        'You cannot deactivate your own account.',
+      );
+    }
+
     const user = await this.findOne(userId);
     user.isActive = !user.isActive;
-    const saved = await this.userRepo.save(user);
+    const saved = await this.userRepo.save(user)
 
     // ── Sync with Supabase Auth ──
     // If deactivated, ban the user so they cannot log in via Supabase.
