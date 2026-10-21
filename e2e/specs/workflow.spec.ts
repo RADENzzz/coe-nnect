@@ -75,7 +75,7 @@ test('department head submits the schedule for review', async ({ page }) => {
   expect(response.ok(), await response.text()).toBeTruthy();
 
   await expect(status).toHaveValue('review');
-  await drawer.getByRole('button', { name: 'Close' }).click();
+  await drawer.getByLabel('Close').click();
   await expect(drawer).toBeHidden();
 });
 

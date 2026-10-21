@@ -80,7 +80,10 @@ export async function selectTime(
 export async function openScheduleDetails(page: Page): Promise<void> {
   const block = scheduleBlock(page);
   await expect(block).toBeVisible();
-  await block.click();
+  // Locked/published blocks are non-draggable and expose aria-disabled, but
+  // clicking still opens their details. Force bypasses Playwright's
+  // actionability check for the drag-disabled attribute.
+  await block.click({ force: true });
   await expect(
     page.getByRole('dialog', { name: 'Class details' }),
   ).toBeVisible();
