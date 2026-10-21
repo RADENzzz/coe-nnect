@@ -111,6 +111,7 @@ export class UsersController {
 
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
+    // req.user.id comes from the JWT payload
     const data = await this.service.toggleActive(id, req.user?.id);
     return { data };
   }
