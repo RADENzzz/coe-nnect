@@ -105,6 +105,17 @@ pnpm test:e2e:ui          # interactive Playwright UI
 Failure screenshots, videos, and traces are written under
 `e2e/test-results/`; the HTML report is `e2e/playwright-report/`.
 
+### CI behavior
+
+`ci-e2e.yml` runs the suite against a disposable local Supabase stack on Ubuntu.
+It is serial (one worker, no retries) and seeds the E2E term in
+`e2e/global-setup.ts`. Playwright starts the backend and Vite itself; both dev
+servers use graceful `SIGTERM` shutdown so the Vite/esbuild process tree closes
+its stdio pipes before Playwright exits. A Chromium launch preflight fails the
+job in under a minute if the runner cannot start the browser, and the 12-minute
+global timeout, 20-minute workflow step timeout, and `line` reporter ensure a
+future stall fails visibly and still uploads the Playwright report.
+
 ## Database migrations
 
 Tracked migrations live in `supabase/migrations/`. The initial migration is a
