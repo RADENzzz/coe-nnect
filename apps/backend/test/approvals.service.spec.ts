@@ -18,6 +18,8 @@ const pendingRequest = () => ({
   responseRemarks: null,
 });
 
+type PendingRequest = ReturnType<typeof pendingRequest>;
+
 const users = [
   {
     userId: 'user-requester',
@@ -47,7 +49,7 @@ const users = [
 
 describe('ApprovalsService', () => {
   let service: ApprovalsService;
-  let requestRepo: ReturnType<typeof createFakeRepository>;
+  let requestRepo: ReturnType<typeof createFakeRepository<PendingRequest>>;
   let dispatcher: { dispatch: jest.Mock };
   let recipients: {
     departmentHeadsOf: jest.Mock;
