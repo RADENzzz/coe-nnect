@@ -17,11 +17,19 @@
     "kill": "powershell -NoProfile -Command \"try { Get-NetTCPConnection -LocalPort 3000,5173,8000,8001 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } } catch {} ; exit 0\"",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:ui": "playwright test --config e2e/playwright.config.ts --ui",
+    "test:e2e:list": "playwright test --config e2e/playwright.config.ts --list",
+    "typecheck:e2e": "tsc -p e2e/tsconfig.json",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@supabase/supabase-js": "^2.118.0",
+    "@types/node": "^26.6.5",
     "prettier": "^3.3.3",
     "typescript": "^5.5.4"
   },

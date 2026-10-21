@@ -4,6 +4,7 @@
 ![Backend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-backend.yml/badge.svg)
 ![Frontend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-frontend.yml/badge.svg)
 ![Database Migrations](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-migrations.yml/badge.svg)
+![Browser E2E](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-e2e.yml/badge.svg)
 ![Vercel](https://img.shields.io/badge/Vercel-Deployed-success)
 ![Railway](https://img.shields.io/badge/Railway-Deployed-blue)
 ![Tests](https://img.shields.io/badge/Tests-190%20Passing-brightgreen)
@@ -163,6 +164,8 @@ Run from the repository root:
 | `pnpm --filter @coe-nnect/constraint-rules test` | Test the scheduling rules package                                |
 | `pnpm --filter @coe-nnect/backend test`          | Run backend unit tests                                           |
 | `pnpm --filter @coe-nnect/backend test:e2e`      | Run backend integration tests                                    |
+| `pnpm test:e2e`                                  | Run the Playwright scheduling workflow (test project required)   |
+| `pnpm typecheck:e2e`                             | Type-check the Playwright tests                                  |
 | `pnpm --filter @coe-nnect/frontend lint`         | Lint the frontend                                                |
 | `pnpm --filter @coe-nnect/backend seed:demo`     | Seed demo data in the configured database                        |
 

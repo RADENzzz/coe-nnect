@@ -1,7 +1,7 @@
 -- Local and CI seed file.
 --
 -- This file is intentionally data-free. The schema migration is the source of
--- truth for both local resets and CI validation. Deterministic E2E fixtures
--- (test users, terms, departments) will be added here in the Playwright phase.
+-- truth for both local resets and CI validation. Playwright creates its own
+-- disposable fixtures through the Supabase Admin API in e2e/seed.ts.
 --
 -- Never run this seed against production.

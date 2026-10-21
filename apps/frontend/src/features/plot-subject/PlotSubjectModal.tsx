@@ -960,7 +960,12 @@ export default function PlotSubjectModal({
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEditMode ? 'Edit class' : 'Plot a subject'}
+        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant sticky top-0 bg-surface-container-lowest z-10">
           <div>
