@@ -21,18 +21,9 @@ type DevJob = {
   error: string | null;
 };
 
-/**
- * Dev-only operations.
- *
- * Every method is guarded by @Roles('administrator') at the
- * controller layer. Do NOT reuse these methods from production code
- * paths — they intentionally bypass normal business rules.
- */
 @Injectable()
 export class DevToolsService {
   private readonly logger = new Logger(DevToolsService.name);
-
-  /** In-memory job tracker. Cleared on backend restart. */
   private readonly jobs = new Map<string, DevJob>();
 
   constructor(
@@ -100,7 +91,7 @@ export class DevToolsService {
   }
 
   // ════════════════════════════════════════════
-  // Seed / Reset — spawn pnpm, stream output
+  // Seed / Reset
   // ════════════════════════════════════════════
 
   async startSeed(): Promise<{ jobId: string }> {
@@ -137,48 +128,23 @@ export class DevToolsService {
     return { jobId };
   }
 
-  /**
-   * Spawn `pnpm --filter @coe-nnect/backend <script>` as a child
-   * process and capture its stdout/stderr into the job record.
-   *
-   * Running the CLI script directly is more reliable than dynamic
-   * `import()` of the seed module — the CLI is exactly what a dev
-   * would run by hand, so behavior is guaranteed identical.
-   */
   private async spawnJob(jobId: string, script: string): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
-    // Resolve the monorepo root: this file lives at
-    // apps/backend/dist/modules/dev-tools/dev-tools.service.js
-    // after build, or apps/backend/src/modules/dev-tools/... in dev.
-    // Either way, ../../../../../ from __dirname lands on the repo root.
     const repoRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
-
     const isWindows = process.platform === 'win32';
     const pnpm = isWindows ? 'pnpm.cmd' : 'pnpm';
 
     return new Promise((resolve) => {
-      const child = spawn(
-        pnpm,
-        ['--filter', '@coe-nnect/backend', script],
-        {
-          cwd: repoRoot,
-          env: {
-            ...process.env,
-            // reset.ts prompts via readline; skip it
-            SKIP_CONFIRM: '1',
-            // Force non-interactive output
-            CI: '1',
-          },
-          shell: isWindows, // pnpm.cmd needs a shell on Windows
-        },
-      );
+      const child = spawn(pnpm, ['--filter', '@coe-nnect/backend', script], {
+        cwd: repoRoot,
+        env: { ...process.env, SKIP_CONFIRM: '1', CI: '1' },
+        shell: isWindows,
+      });
 
       const append = (chunk: Buffer) => {
-        const text = chunk.toString('utf-8');
-        job.output += text;
-        // Cap the buffer at ~32 KB so a runaway process can't OOM us
+        job.output += chunk.toString('utf-8');
         if (job.output.length > 32_000) {
           job.output = job.output.slice(-32_000);
         }
@@ -191,7 +157,6 @@ export class DevToolsService {
         job.status = 'failed';
         job.finishedAt = Date.now();
         job.error = err.message;
-        this.logger.error(`Job ${jobId} spawn error: ${err.message}`);
         resolve();
       });
 
@@ -200,11 +165,9 @@ export class DevToolsService {
         if (code === 0) {
           job.status = 'success';
           job.output += `\n[exited ${code}]`;
-          this.logger.log(`Job ${jobId} (${script}) completed`);
         } else {
           job.status = 'failed';
           job.error = `Process exited with code ${code}`;
-          this.logger.error(`Job ${jobId} (${script}) exited ${code}`);
         }
         resolve();
       });
@@ -257,9 +220,7 @@ export class DevToolsService {
       );
     }
 
-    this.logger.warn(
-      `DEV: password reset for ${user.email} (${user.username})`,
-    );
+    this.logger.warn(`DEV: password reset for ${user.email} (${user.username})`);
     return { success: true };
   }
 
@@ -282,7 +243,6 @@ export class DevToolsService {
     user.username = newUsername;
     await this.userRepo.save(user);
 
-    // Sync to auth app_metadata so the JWT reflects it on next login.
     const { data: authUser } = await this.supabase
       .getAdminClient()
       .auth.admin.getUserById(userId);
@@ -292,19 +252,55 @@ export class DevToolsService {
       unknown
     >;
 
-    const { error } = await this.supabase
+    await this.supabase
       .getAdminClient()
       .auth.admin.updateUserById(userId, {
         app_metadata: { ...existingMetadata, username: newUsername },
       });
 
-    if (error) {
-      this.logger.warn(
-        `Rename: profile updated but auth sync failed for ${userId}: ${error.message}`,
+    this.logger.warn(`DEV: renamed user ${userId} to "${newUsername}"`);
+    return { success: true, username: newUsername };
+  }
+
+  // ════════════════════════════════════════════
+  // NEW: Toggle user active state (Dev-only)
+  // ════════════════════════════════════════════
+
+  async toggleUserActive(
+    userId: string,
+    actingUserId: string, // <-- NEW parameter
+  ): Promise<{ userId: string; isActive: boolean }> {
+    if (userId === actingUserId) {
+      throw new BadRequestException(
+        'You cannot deactivate your own developer account.',
       );
     }
 
-    this.logger.warn(`DEV: renamed user ${userId} to "${newUsername}"`);
-    return { success: true, username: newUsername };
+    const user = await this.userRepo.findOne({ where: { userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    user.isActive = !user.isActive;
+    await this.userRepo.save(user);
+
+    try {
+      await this.supabase
+        .getAdminClient()
+        .auth.admin.updateUserById(userId, {
+          ban_duration: user.isActive ? 'none' : '876000h',
+        });
+      this.logger.log(
+        `DEV: synced auth ban for ${userId} (isActive: ${user.isActive})`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `DEV: failed to sync auth ban for ${userId}: ${(err as Error).message}`,
+      );
+    }
+
+    this.logger.warn(
+      `DEV: toggled active state for ${user.email} -> ${user.isActive}`,
+    );
+
+    return { userId: user.userId, isActive: user.isActive };
   }
 }
