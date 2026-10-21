@@ -4,7 +4,9 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -16,14 +18,6 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 
-/**
- * Developer-only tools.
- *
- * Restricted to the hidden `administrator` role. Dean/DH have zero
- * access — the class-level @Roles enforces it.
- *
- * Route ordering: static prefixes before `:id` routes.
- */
 @ApiTags('Dev Tools')
 @ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -85,6 +79,18 @@ export class DevToolsController {
     @Body() dto: RenameUserDto,
   ) {
     const data = await this.service.renameUser(userId, dto.newUsername);
+    return { data };
+  }
+
+  @Patch('users/:userId/toggle-active')
+  @HttpCode(200)
+  @Auditable({ action: 'dev.user.toggle_active', source: 'DevTools' })
+  async toggleActive(
+    @Param('userId') userId: string,
+    @Req() req: any, // <-- req.profile is attached by JwtAuthGuard/RolesGuard
+  ) {
+    // req.profile.userId is the logged-in dev account's ID
+    const data = await this.service.toggleUserActive(userId, req.profile.userId);
     return { data };
   }
 }
