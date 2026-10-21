@@ -52,6 +52,7 @@ export default function AdminUsersPage() {
     const q = searchParams.get('q');
     if (q) setSearchQuery(q);
   }, [searchParams]);
+
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -91,17 +92,12 @@ export default function AdminUsersPage() {
   // Faculty link helpers
   // ═══════════════════════════════════════════════════════
 
-  // Maps facultyId → FacultyRecord for the "currently linked" badge.
   const facultyById = useMemo(() => {
     const m = new Map<string, (typeof faculty)[number]>();
     for (const f of faculty) m.set(String(f.facultyId), f);
     return m;
   }, [faculty]);
 
-  // ── NEW: Auto-suggest respects dept filter ──
-  // When the email typed in create mode matches a faculty record's email
-  // AND that faculty is in the currently-selected department (or no dept
-  // is selected yet), auto-select that faculty.
   useEffect(() => {
     if (mode !== 'create' || !form.email || form.facultyId) return;
     const typed = form.email.trim().toLowerCase();
@@ -112,7 +108,6 @@ export default function AdminUsersPage() {
         f.isActive &&
         f.email &&
         f.email.trim().toLowerCase() === typed &&
-        // Dept filter: match only if no dept selected OR faculty is in dept
         (!form.deptId || String(f.deptId ?? '') === String(form.deptId)),
     );
     if (match) {
@@ -121,8 +116,6 @@ export default function AdminUsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.email, faculty, mode, form.deptId]);
 
-  // When dept changes, clear facultyId if the selected faculty is
-  // no longer in the new dept (unless they were manually picked).
   const eligibleFaculty = useMemo(() => {
     if (!form.deptId) {
       return faculty.filter((f) => f.isActive);
@@ -256,8 +249,6 @@ export default function AdminUsersPage() {
     const { name, value } = e.target;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
-      // When the department changes, clear the faculty link if the
-      // previously-selected faculty is no longer eligible.
       if (name === 'deptId' && prev.facultyId) {
         const fac = facultyById.get(prev.facultyId);
         if (fac && value && String(fac.deptId ?? '') !== String(value)) {
@@ -357,7 +348,6 @@ export default function AdminUsersPage() {
       if (deptListFilter !== 'all') {
         const matchDept =
           String(u.deptId ?? '') === deptListFilter ||
-          // Include Deans without a dept under "no dept" filter
           (deptListFilter === 'none' && !u.deptId);
         if (!matchDept) return false;
       }
@@ -446,21 +436,26 @@ export default function AdminUsersPage() {
     },
   ];
 
-  const getActions = (u: UserRecord): RowAction[] => [
-    { label: 'Edit', icon: 'edit', onClick: () => openEdit(u) },
-    {
-      label: u.isActive ? 'Deactivate' : 'Activate',
-      icon: u.isActive ? 'toggle_off' : 'toggle_on',
-      onClick: () => toggleMutation.mutate(u.userId),
-      disabled: toggleMutation.isPending,
-    },
-    {
-      label: 'Delete',
-      icon: 'delete',
-      danger: true,
-      onClick: () => setActionTarget({ user: u, action: 'delete' }),
-    },
-  ];
+  const getActions = (u: UserRecord): RowAction[] => {
+    const isSelf = user?.id === u.userId;
+
+    return [
+      { label: 'Edit', icon: 'edit', onClick: () => openEdit(u) },
+      {
+        label: u.isActive ? 'Deactivate' : 'Activate',
+        icon: u.isActive ? 'toggle_off' : 'toggle_on',
+        onClick: () => toggleMutation.mutate(u.userId),
+        disabled: toggleMutation.isPending || isSelf,
+      },
+      {
+        label: 'Delete',
+        icon: 'delete',
+        danger: true,
+        onClick: () => setActionTarget({ user: u, action: 'delete' }),
+        disabled: isSelf,
+      },
+    ];
+  };
 
   // ═══════════════════════════════════════════════════════
   // Render
@@ -517,7 +512,6 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
-        {/* ── NEW: Department filter for the list ── */}
         <div className="min-w-[200px]">
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
             Department
