@@ -1,3 +1,4 @@
+// apps/backend/src/modules/sections/sections.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -11,16 +12,8 @@ import { Program } from '../programs/entities/program.entity';
 import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { User } from '../users/entities/user.entity';
+import { DepartmentsService } from '../departments/departments.service';
 
-/**
- * Section management service.
- *
- * Cross-department protection: a DH can only modify sections whose
- * program resolves to their own department. The `administrator` role
- * is still accepted at the top of every ownership check so the hidden
- * dev account retains full access — it is NOT used for user-facing
- * authorization. The Dean is the top role.
- */
 @Injectable()
 export class SectionsService {
   constructor(
@@ -28,12 +21,9 @@ export class SectionsService {
     private readonly repo: Repository<Section>,
     @InjectRepository(Program)
     private readonly programs: Repository<Program>,
+    private readonly departments: DepartmentsService,
   ) {}
 
-  /**
-   * Resolve the section's owning department through program → dept_id.
-   * Returns null if the section has no program or the program is missing.
-   */
   private async resolveSectionDeptId(
     section: Section,
   ): Promise<string | null> {
@@ -52,8 +42,6 @@ export class SectionsService {
 
     const section = await this.findOne(sectionId);
 
-    // `administrator` retained for the hidden dev account (recovery).
-    // `college_dean` is the top user-facing role after consolidation.
     if (profile.role === 'administrator' || profile.role === 'college_dean') {
       return section;
     }
@@ -74,14 +62,10 @@ export class SectionsService {
     return section;
   }
 
-  /**
-   * A DH may only assign a section to one of their own department's programs.
-   */
   private async assertProgramBelongsToCaller(
     programId: string | null | undefined,
     profile: User,
   ): Promise<void> {
-    // `administrator` retained for the hidden dev account.
     if (profile.role === 'administrator' || profile.role === 'college_dean') {
       return;
     }
@@ -124,6 +108,17 @@ export class SectionsService {
   async create(dto: CreateSectionDto, profile: User): Promise<Section> {
     await this.assertProgramBelongsToCaller(dto.programId, profile);
 
+    // ── NEW: target program's dept must be active ──
+    if (dto.programId) {
+      const program = await this.programs.findOne({
+        where: { programId: dto.programId },
+        select: ['deptId'],
+      });
+      if (program) {
+        await this.departments.assertDepartmentActive(program.deptId);
+      }
+    }
+
     const existing = await this.repo.findOne({
       where: { sectionCode: dto.sectionCode },
     });
@@ -148,10 +143,21 @@ export class SectionsService {
   ): Promise<Section> {
     const found = await this.assertOwnership(id, profile);
 
-    // If the DH is moving the section to a different program, that program
-    // must also belong to them.
+    // ── NEW: current or target dept must be active ──
     if (dto.programId !== undefined && dto.programId !== found.programId) {
       await this.assertProgramBelongsToCaller(dto.programId, profile);
+      if (dto.programId) {
+        const newProgram = await this.programs.findOne({
+          where: { programId: dto.programId },
+          select: ['deptId'],
+        });
+        if (newProgram) {
+          await this.departments.assertDepartmentActive(newProgram.deptId);
+        }
+      }
+    } else {
+      const currentDeptId = await this.resolveSectionDeptId(found);
+      await this.departments.assertDepartmentActive(currentDeptId);
     }
 
     if (dto.sectionCode !== undefined) found.sectionCode = dto.sectionCode;
@@ -164,12 +170,16 @@ export class SectionsService {
 
   async toggleActive(id: string, profile: User): Promise<Section> {
     const found = await this.assertOwnership(id, profile);
+    const ownerDeptId = await this.resolveSectionDeptId(found);
+    await this.departments.assertDepartmentActive(ownerDeptId);
     found.isActive = !found.isActive;
     return this.repo.save(found);
   }
 
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, profile);
+    const ownerDeptId = await this.resolveSectionDeptId(found);
+    await this.departments.assertDepartmentActive(ownerDeptId);
     await this.repo.remove(found);
     return { success: true };
   }
