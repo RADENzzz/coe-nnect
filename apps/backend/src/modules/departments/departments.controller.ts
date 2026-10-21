@@ -1,3 +1,4 @@
+// apps/backend/src/modules/departments/departments.controller.ts
 import {
   Body,
   Controller,
@@ -6,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -16,21 +18,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 
-/**
- * Department management.
- *
- * After the Admin→Dean consolidation:
- *   - College Dean has full department lifecycle control. The Dean
- *     inherits the admin capability.
- *   - Department Head does NOT manage departments.
- *
- * `administrator` is intentionally absent from every @Roles() list.
- *
- * NOTE per v21 §D2: the Dean is denied "delete another department's
- * data" in the sense of cross-department destructive actions, but
- * department CRUD itself stays available to them. The disallowed
- * action is a future feature — not this one.
- */
 @ApiTags('Departments')
 @ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -38,9 +25,16 @@ import { Roles } from '../../common/decorators/roles.decorator';
 export class DepartmentsController {
   constructor(private service: DepartmentsService) {}
 
+  /**
+   * List departments.
+   *
+   * Query param `includeInactive=true` — the Dean's "Manage Departments"
+   * page needs this so an inactive dept is visible and can be
+   * reactivated. DHs and pickers omit it (active only).
+   */
   @Get()
-  async findAll() {
-    const data = await this.service.findAll();
+  async findAll(@Query('includeInactive') includeInactive?: string) {
+    const data = await this.service.findAll(includeInactive === 'true');
     return { data };
   }
 
