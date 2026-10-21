@@ -1,19 +1,10 @@
+// apps/backend/src/modules/scheduling/scheduling.service.ts
 import {
   Injectable,
   BadRequestException,
   Logger,
   ForbiddenException,
 } from '@nestjs/common';
-
-
-
-// TODO(FR 6.1.x): schedule.conflict_detected — fire when a foreign-dept
-// plot invalidates an existing entry. Deferred to a follow-up batch;
-// the other 15 triggers cover the demo scope. Implement by:
-//   1. In plot()/plotMulti(), detect hardConflicts that target an
-//      existing schedule row with dept_id !== current subject's dept.
-//   2. Dispatch to that row's owner DH.
-
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Schedule } from './entities/schedule.entity';
@@ -34,6 +25,7 @@ import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
+import { DepartmentsService } from '../departments/departments.service';
 
 type DayOfWeek =
   | 'Monday'
@@ -62,29 +54,67 @@ export class SchedulingService {
     private readonly supabase: SupabaseService,
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
+    private readonly departments: DepartmentsService,
   ) {}
-
-  // ════════════════════════════════════════════
-  // Queries
-  // ════════════════════════════════════════════
 
   async getActiveTerm(): Promise<Term | null> {
     return this.termRepo.findOne({ where: { isActive: true } });
   }
 
-  async findByTerm(termId: string): Promise<Schedule[]> {
-    return this.scheduleRepo.find({
-      where: { termId },
-      relations: ['subject', 'faculty', 'room', 'timeSlot'],
-      order: { scheduleId: 'ASC' },
-    });
+  /**
+   * List schedules for a term.
+   *
+   * By default, excludes rows whose dept_id points at a deactivated
+   * department. The Dean can pass includeInactiveDepts=true to see all
+   * rows (needed for the reactivation workflow's visibility, and for
+   * archive / cleanup pages).
+   */
+  async findByTerm(
+    termId: string,
+    includeInactiveDepts = false,
+  ): Promise<Schedule[]> {
+    const qb = this.scheduleRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.subject', 'subject')
+      .leftJoinAndSelect('s.faculty', 'faculty')
+      .leftJoinAndSelect('s.room', 'room')
+      .leftJoinAndSelect('s.timeSlot', 'timeSlot')
+      .where('s.term_id = :termId', { termId })
+      .orderBy('s.schedule_id', 'ASC');
+
+    if (!includeInactiveDepts) {
+      // Only include rows whose dept is active OR has no dept (shared/
+      // legacy rows). A row with no dept should still render.
+      qb.andWhere(
+        `(s.dept_id IS NULL OR EXISTS (
+          SELECT 1 FROM department d
+          WHERE d.dept_id = s.dept_id AND d.is_active = true
+        ))`,
+      );
+    }
+
+    return qb.getMany();
   }
 
-  async findAll(): Promise<Schedule[]> {
-    return this.scheduleRepo.find({
-      relations: ['subject', 'faculty', 'room', 'timeSlot'],
-      order: { scheduleId: 'ASC' },
-    });
+  async findAll(includeInactiveDepts = false): Promise<Schedule[]> {
+    const qb = this.scheduleRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.subject', 'subject')
+      .leftJoinAndSelect('s.faculty', 'faculty')
+      .leftJoinAndSelect('s.room', 'room')
+      .leftJoinAndSelect('s.timeSlot', 'timeSlot')
+      .orderBy('s.schedule_id', 'ASC');
+
+    if (!includeInactiveDepts) {
+      qb.andWhere(
+        `(s.dept_id IS NULL OR EXISTS (
+          SELECT 1 FROM department d
+          WHERE d.dept_id = s.dept_id AND d.is_active = true
+        ))`,
+      );
+    }
+
+    return qb.getMany();
   }
 
   async validate(dto: ValidatePlotDto): Promise<{
@@ -95,6 +125,28 @@ export class SchedulingService {
   }> {
     const guards: Array<{ ruleId: string; ruleName: string; reason: string }> =
       [];
+
+    // ── NEW: reject early if the subject's dept is deactivated ──
+    const subjectDept = await this.lookupSubjectDept(dto.subjectId);
+    if (subjectDept) {
+      const active = await this.departments.isActive(subjectDept);
+      if (!active) {
+        return {
+          valid: false,
+          hardConflicts: [
+            {
+              ruleId: 'DEPT-INACTIVE',
+              ruleName: 'Department Active',
+              reason:
+                'The subject belongs to a deactivated department. ' +
+                'Reactivate the department before plotting.',
+            },
+          ],
+          softWarnings: [],
+          alternatives: [],
+        };
+      }
+    }
 
     const startMin = this.timeToMinutes(dto.startTime);
     const endMin = this.timeToMinutes(dto.endTime);
@@ -145,10 +197,6 @@ export class SchedulingService {
 
     const engineResult = this.constraints.evaluate(context);
 
-    // ── F1b: F-8 is not meaningful during pre-flight validate ──
-    // The plot path auto-creates the cross-department faculty_request.
-    // The validate path is read-only and cannot. Filter F-8 out so the
-    // DH isn't blocked by a rule the plot path itself will satisfy.
     const filteredHard = engineResult.hardConflicts.filter(
       (c) => c.ruleId !== 'F-8',
     );
@@ -170,16 +218,12 @@ export class SchedulingService {
     user: any,
   ): Promise<Schedule> {
     const found = await this.faculty.assertOwnership(id, user);
+    await this.departments.assertDepartmentActive(found.deptId);
     found.remarks = remarks;
     return this.scheduleRepo.save(found);
   }
 
-  // ════════════════════════════════════════════
-  // Mutations
-  // ════════════════════════════════════════════
-
   async plot(dto: PlotSubjectDto, user?: any): Promise<Schedule> {
-    // ── F1: at least one faculty source, never both ──
     const hasSystemFaculty = !!dto.facultyId;
     const extTrimmed = dto.externalFacultyName?.trim() ?? '';
     const hasExternalFaculty = extTrimmed.length > 0;
@@ -212,20 +256,7 @@ export class SchedulingService {
       );
     }
 
-    const { data: subjectRow, error: subjErr } = await this.supabase
-      .getAdminClient()
-      .from('subject')
-      .select('dept_id')
-      .eq('subject_id', dto.subjectId)
-      .maybeSingle();
-
-    if (subjErr) {
-      this.logger.warn(`plot: subject lookup failed: ${subjErr.message}`);
-    }
-
-    const subjectDeptId = subjectRow?.dept_id
-      ? String(subjectRow.dept_id)
-      : null;
+    const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
 
     if (user && user.role === 'department_head') {
       const myDept = user.deptId != null ? String(user.deptId) : null;
@@ -236,8 +267,9 @@ export class SchedulingService {
       }
     }
 
-    // ── F1b: create the cross-dept request BEFORE the engine runs
-    //          so F-8 sees the pending request in the context ──
+    // ── NEW: refuse if subject's dept is deactivated ──
+    await this.departments.assertDepartmentActive(subjectDeptId);
+
     const gate = await this.faculty.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
       subjectDeptId,
@@ -264,7 +296,6 @@ export class SchedulingService {
     const engineResult = this.constraints.evaluate(context);
 
     if (!engineResult.valid) {
-      // ── F1b: roll back the gate if the engine rejects ──
       if (gate) {
         try {
           const db = this.supabase.getAdminClient();
@@ -321,13 +352,11 @@ export class SchedulingService {
     });
     const saved = await this.scheduleRepo.save(entry);
 
-    // ── F1b: notify the faculty's dept head ──
     if (gate) {
       try {
         const targetDHs = await this.recipients.departmentHeadsOf(
           gate.facultyDeptId,
         );
-        const subject = subjectRow as any;
         await this.dispatcher.dispatch('faculty_request.created', {
           recipientUserIds: targetDHs,
           title: 'Cross-department faculty request',
@@ -350,7 +379,6 @@ export class SchedulingService {
       }
     }
 
-    // Fire-and-forget overload check — only for system faculty
     if (dto.facultyId) {
       void this.faculty.checkFacultyOverload(dto.facultyId, dto.termId);
     }
@@ -359,7 +387,6 @@ export class SchedulingService {
   }
 
   async plotMulti(dto: PlotMultiDto, user?: any): Promise<Schedule[]> {
-    // ── F1: at least one faculty source, never both ──
     const hasSystemFaculty = !!dto.facultyId;
     const extTrimmed = dto.externalFacultyName?.trim() ?? '';
     const hasExternalFaculty = extTrimmed.length > 0;
@@ -379,22 +406,7 @@ export class SchedulingService {
       throw new BadRequestException('At least one session is required.');
     }
 
-    const { data: subjectRow, error: subjErr } = await this.supabase
-      .getAdminClient()
-      .from('subject')
-      .select('dept_id')
-      .eq('subject_id', dto.subjectId)
-      .maybeSingle();
-
-    if (subjErr) {
-      this.logger.warn(
-        `plotMulti: subject lookup failed: ${subjErr.message}`,
-      );
-    }
-
-    const subjectDeptId = subjectRow?.dept_id
-      ? String(subjectRow.dept_id)
-      : null;
+    const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
 
     if (user && user.role === 'department_head') {
       const myDept = user.deptId != null ? String(user.deptId) : null;
@@ -405,8 +417,9 @@ export class SchedulingService {
       }
     }
 
+    // ── NEW: refuse if subject's dept is deactivated ──
+    await this.departments.assertDepartmentActive(subjectDeptId);
 
-    // ── F1b: create the cross-dept request BEFORE the engine runs ──
     const gate = await this.faculty.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
       subjectDeptId,
@@ -415,9 +428,6 @@ export class SchedulingService {
       user,
     });
 
-    // ── External room name (2026-10-15) ──
-    // Trimmed once here and reused in every session's context + in the
-    // final rows array. Empty string → undefined (treated as not set).
     const extRoomName = dto.externalRoomName?.trim() || undefined;
 
     const errors: Array<{ dayOfWeek: string; reason: string }> = [];
@@ -474,7 +484,6 @@ export class SchedulingService {
     }
 
     if (errors.length > 0) {
-      // ── F1b: roll back the gate if the engine rejected ──
       if (gate) {
         try {
           const db = this.supabase.getAdminClient();
@@ -505,14 +514,13 @@ export class SchedulingService {
       );
     }
 
-
     const rows = dto.sessions.map((s) => ({
       termId: dto.termId,
       subjectId: dto.subjectId,
       facultyId: dto.facultyId ?? null,
       externalFacultyName: hasExternalFaculty ? extTrimmed : null,
       roomId: dto.roomId ?? null,
-      externalRoomName: extRoomName ?? null,        // ← NEW
+      externalRoomName: extRoomName ?? null,
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
@@ -529,7 +537,6 @@ export class SchedulingService {
     const created = this.scheduleRepo.create(rows);
     const saved = await this.scheduleRepo.save(created);
 
-    // Fire-and-forget overload check — only for system faculty
     if (dto.facultyId) {
       void this.faculty.checkFacultyOverload(dto.facultyId, dto.termId);
     }
@@ -543,6 +550,9 @@ export class SchedulingService {
     user: any,
   ): Promise<Schedule> {
     const found = await this.faculty.assertOwnership(id, user);
+
+    // ── NEW: refuse if the row's dept is deactivated ──
+    await this.departments.assertDepartmentActive(found.deptId);
 
     if (found.status === 'finalized' || found.status === 'published') {
       throw new BadRequestException(
@@ -578,18 +588,16 @@ export class SchedulingService {
     }
     if (dto.roomId !== undefined) found.roomId = dto.roomId;
 
-        if (dto.externalRoomName !== undefined) {
+    if (dto.externalRoomName !== undefined) {
       const trimmed = (dto.externalRoomName ?? '').trim();
       found.externalRoomName = trimmed.length > 0 ? trimmed : null;
     }
 
     if (dto.loadType !== undefined) found.loadType = dto.loadType;
 
-    // ── F1: faculty source — system OR external, never both ──
     const sysFacultyProvided = dto.facultyId !== undefined;
     const extFacultyProvided = dto.externalFacultyName !== undefined;
 
-    // Compute what the caller is trying to SET (non-empty, non-null)
     const sysFacultySet =
       sysFacultyProvided &&
       dto.facultyId !== null &&
@@ -597,61 +605,42 @@ export class SchedulingService {
     const extRaw = (dto.externalFacultyName ?? '').trim();
     const extFacultySet = extFacultyProvided && extRaw !== '';
 
-    // Reject if both are being set simultaneously
     if (sysFacultySet && extFacultySet) {
       throw new BadRequestException(
         'Cannot set both facultyId and externalFacultyName. Pick one.',
       );
     }
 
-    // ── Track the pre-edit gate so we can clean up if it's no longer needed ──
     const previousRequestId = found.pendingFacultyRequestId;
 
     if (sysFacultySet) {
-      // Setting a system faculty → clears external
       found.facultyId = dto.facultyId as string;
       found.externalFacultyName = null;
     } else if (extFacultySet) {
-      // Setting an external name → clears system faculty
       found.externalFacultyName = extRaw;
       found.facultyId = null;
     } else if (sysFacultyProvided && dto.facultyId === null) {
-      // Explicit clear of system faculty
       found.facultyId = null;
     } else if (
       extFacultyProvided &&
       (dto.externalFacultyName === null || extRaw === '')
     ) {
-      // Explicit clear of external faculty
       found.externalFacultyName = null;
     }
 
-    // ── F1b: if the faculty source changed, re-evaluate the gate ──
-    // Cases where the gate is no longer needed:
-    //   - faculty is now external (no system faculty → no dept to approve)
-    //   - faculty is cleared entirely
-    //   - faculty changed to one from the same dept as the subject
-    //
-    // We compute the NEW gate state below and reconcile after save.
     let needsGateRefresh = false;
-
     if (!found.facultyId) {
-      // No system faculty anymore → gate no longer needed
       needsGateRefresh = true;
     } else if (found.facultyId !== (dto.facultyId ?? null)) {
-      // Faculty changed — re-check whether it's still cross-dept
       needsGateRefresh = true;
     }
-
     if (needsGateRefresh) {
       found.pendingFacultyRequestId = null;
       found.pendingFacultyDeptId = null;
     }
 
-    // ── Section handling — sectionId takes precedence, supports explicit clear ──
     if (dto.sectionId !== undefined) {
       if (dto.sectionId === null || dto.sectionId === '') {
-        // Explicit clear via sectionId
         found.sectionId = null;
         found.section = null;
       } else {
@@ -669,11 +658,9 @@ export class SchedulingService {
       }
     } else if (dto.section !== undefined) {
       if (dto.section === null || dto.section === '') {
-        // Explicit clear via section code
         found.section = null;
         found.sectionId = null;
       } else {
-        // Set (or change) — fail loud if the code doesn't resolve
         const resolved = await this.resolveSectionId(dto.section);
         if (!resolved) {
           throw new BadRequestException(
@@ -687,7 +674,6 @@ export class SchedulingService {
 
     const saved = await this.scheduleRepo.save(found);
 
-    // ── F1b: cancel the old request if we dropped the gate ──
     if (
       previousRequestId &&
       previousRequestId !== saved.pendingFacultyRequestId
@@ -695,20 +681,13 @@ export class SchedulingService {
       await this.faculty.cancelOrphanedFacultyRequest(previousRequestId);
     }
 
-    // ── F1b: if the new faculty is cross-dept, ensure a fresh gate ──
     if (!saved.pendingFacultyRequestId && saved.facultyId) {
-      const { data: subjRow } = await this.supabase
-        .getAdminClient()
-        .from('subject')
-        .select('dept_id')
-        .eq('subject_id', saved.subjectId)
-        .maybeSingle();
-      const subjectDeptId = subjRow?.dept_id ? String(subjRow.dept_id) : null;
+      const subjDeptId = await this.lookupSubjectDept(saved.subjectId);
 
-      if (subjectDeptId) {
+      if (subjDeptId) {
         const gate = await this.faculty.ensureCrossDeptFacultyRequest({
           facultyId: saved.facultyId,
-          subjectDeptId,
+          subjectDeptId: subjDeptId,
           termId: saved.termId,
           subjectId: saved.subjectId,
           user,
@@ -749,19 +728,8 @@ export class SchedulingService {
     }
 
     return saved;
-  } 
+  }
 
-  /**
-   * Update a schedule entry's status.
-   *
-   * When transitioning to 'finalized', snapshot the entire term's
-   * schedule into schedule_version (FR 5.1.8a). All-or-nothing: if the
-   * snapshot write fails, the status change is rejected.
-   *
-   * The DB trigger (trg_schedule_status_flow) enforces legal transitions
-   * at the row level; this method additionally ensures we only snapshot
-   * when the entry actually becomes finalized.
-   */
   async updateStatus(
     id: string,
     status: Schedule['status'],
@@ -769,7 +737,9 @@ export class SchedulingService {
   ): Promise<Schedule> {
     const found = await this.faculty.assertOwnership(id, user);
 
-        // ── F1b: cannot finalize while pending cross-dept approval ──
+    // ── NEW: refuse if the row's dept is deactivated ──
+    await this.departments.assertDepartmentActive(found.deptId);
+
     if (status === 'finalized' && found.pendingFacultyRequestId) {
       throw new BadRequestException(
         'This entry has a pending cross-department faculty approval. ' +
@@ -784,7 +754,6 @@ export class SchedulingService {
     found.status = status;
     const saved = await this.scheduleRepo.save(found);
 
-      // ═══ Notification: status changed ═══
     if (previousStatus !== status) {
       const recipients = await this.recipients.departmentHeadsOfSchedule(id);
       await this.dispatcher.dispatch('schedule.status_changed', {
@@ -808,9 +777,6 @@ export class SchedulingService {
         this.logger.error(
           `Schedule version snapshot failed for term=${found.termId}: ${(err as Error).message}`,
         );
-        // Best-effort: the status change is already committed by the DB
-        // trigger, so we don't roll it back. Log and move on. The version
-        // can be created later via a re-finalize or a manual trigger.
       }
     }
 
@@ -819,6 +785,9 @@ export class SchedulingService {
 
   async remove(id: string, user: any): Promise<{ success: boolean }> {
     const found = await this.faculty.assertOwnership(id, user);
+
+    // ── NEW: refuse if the row's dept is deactivated ──
+    await this.departments.assertDepartmentActive(found.deptId);
 
     if (found.status === 'finalized' || found.status === 'published') {
       throw new BadRequestException(
@@ -830,7 +799,6 @@ export class SchedulingService {
 
     await this.scheduleRepo.delete(id);
 
-    // ── F1b: if we just orphaned a pending cross-dept request, cancel it ──
     if (requestId) {
       await this.faculty.cancelOrphanedFacultyRequest(requestId);
     }
@@ -838,7 +806,7 @@ export class SchedulingService {
     return { success: true };
   }
 
-  // Public facade: version history lives in ScheduleVersionService.
+  // ── facades ──
 
   findVersions(termId: string) {
     return this.scheduleVersions.findVersions(termId);
@@ -852,8 +820,6 @@ export class SchedulingService {
     return this.scheduleVersions.compareVersions(versionAId, versionBId);
   }
 
-  // Public facade: flag handling lives in ScheduleFlagService.
-
   flagSchedule(id: string, reason: string, user: User) {
     return this.scheduleFlags.flagSchedule(id, reason, user);
   }
@@ -866,8 +832,6 @@ export class SchedulingService {
     return this.scheduleFlags.findFlagged(termId, user);
   }
 
-  // Public facade: coverage queries live in SchedulingCoverageService.
-
   findUnplottedMinors(termId: string, deptId: string) {
     return this.coverage.findUnplottedMinors(termId, deptId);
   }
@@ -876,9 +840,7 @@ export class SchedulingService {
     return this.coverage.getCoverage(termId, deptId);
   }
 
-  // ════════════════════════════════════════════
-  // Helpers
-  // ════════════════════════════════════════════
+  // ── helpers ──
 
   private timeToMinutes(t: string): number {
     const [h, m] = t.split(':').map(Number);
@@ -896,8 +858,26 @@ export class SchedulingService {
     return section?.sectionId ?? null;
   }
 
-
-  // Public facade: auto-generation and room capacity live in AutoGenerateService.
+  /**
+   * Look up a subject's owning department. Used by plot/validate paths
+   * to feed the dept-active guard + cross-dept gate.
+   */
+  private async lookupSubjectDept(
+    subjectId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('subject')
+      .select('dept_id')
+      .eq('subject_id', subjectId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `lookupSubjectDept(${subjectId}) failed: ${error.message}`,
+      );
+    }
+    return data?.dept_id ? String(data.dept_id) : null;
+  }
 
   autoGenerate(
     termId: string,
