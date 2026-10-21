@@ -2,9 +2,12 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
+import * as http from 'http';
+import * as https from 'https';
 
 export interface ParserColumnSpec {
   role: 'code' | 'title' | 'prereq' | 'lec' | 'lab' | 'total';
@@ -59,58 +62,162 @@ export interface ParserPageInfo {
 }
 
 @Injectable()
-export class ProspectusParserClient {
+export class ProspectusParserClient implements OnModuleInit {
   private readonly logger = new Logger(ProspectusParserClient.name);
   private readonly http: AxiosInstance;
+  private readonly healthHttp: AxiosInstance;
   private readonly baseUrl: string;
+
+  // ── Warm-state cache + single-flight guard ──
+  private isWarm = false;
+  private wakePromise: Promise<void> | null = null;
+  private lastWarmAt = 0;
+
+  private static readonly HEALTH_TIMEOUT_MS = 30_000;
+  private static readonly WARM_TTL_MS = 10 * 60 * 1000; // 10 min (Render sleeps at 15)
+  private static readonly REQUEST_TIMEOUT_MS = 60_000;
 
   constructor(private readonly config: ConfigService) {
     this.baseUrl =
       this.config.get<string>('PROSPECTUS_PARSER_URL') ??
       'http://localhost:8001';
-    this.http = axios.create({
+
+    // Keep-alive agents reuse TCP/TLS connections — big win on warm instances
+    const agentOpts = { keepAlive: true, maxSockets: 20 };
+    const common = {
       baseURL: this.baseUrl,
-      timeout: 60_000,
       // Base64 payloads can be large (a 5MB PDF → ~7MB base64)
       maxBodyLength: 50 * 1024 * 1024,
       maxContentLength: 50 * 1024 * 1024,
+      headers: { 'Content-Type': 'application/json' },
+      httpAgent: new http.Agent(agentOpts),
+      httpsAgent: new https.Agent(agentOpts),
+    };
+
+    this.http = axios.create({
+      ...common,
+      timeout: ProspectusParserClient.REQUEST_TIMEOUT_MS,
     });
+
+    // /health must fail fast — 30s not 90s. If the container is dead,
+    // Render's proxy will 502 us around the 30s mark anyway.
+    this.healthHttp = axios.create({
+      ...common,
+      timeout: ProspectusParserClient.HEALTH_TIMEOUT_MS,
+    });
+
     this.logger.log(`Prospectus parser client → ${this.baseUrl}`);
   }
 
   /**
-   * Render's free tier spins down services after 15 minutes of inactivity.
-   * Pinging /health wakes up the Python container. Once awake, the
-   * subsequent POST requests go through instantly.
+   * Warm the parser as soon as the backend boots, so the first real user
+   * request doesn't pay the cold-start penalty.
+   */
+  async onModuleInit() {
+    void this.wakeUp().catch(() => undefined);
+  }
+
+  /**
+   * Single-flight warm-up:
+   *  - If already warm within TTL → resolve immediately.
+   *  - If a wake-up is in progress → await the SAME promise (no thundering herd).
+   *  - Otherwise → fire one /health ping.
+   *
+   * Unlike the original, this THROWS on failure so the caller can return a
+   * fast 503 instead of hanging 90s and then 60s more on /extract.
    */
   private async wakeUp(): Promise<void> {
-    try {
-      this.logger.log(`Waking up parser service at ${this.baseUrl}...`);
-      // 90 second timeout to allow Render to cold-start
-      await this.http.get('/health', { timeout: 90_000 });
-      this.logger.log(`Parser service is awake.`);
-    } catch (err) {
-      this.logger.warn(
-        `Parser wake-up ping failed: ${(err as Error).message}. Proceeding anyway.`,
-      );
+    if (
+      this.isWarm &&
+      Date.now() - this.lastWarmAt < ProspectusParserClient.WARM_TTL_MS
+    ) {
+      return;
     }
+    if (this.wakePromise) {
+      return this.wakePromise;
+    }
+
+    this.wakePromise = (async () => {
+      const started = Date.now();
+      this.logger.log(`Waking up parser service at ${this.baseUrl}...`);
+      try {
+        await this.healthHttp.get('/health');
+        this.isWarm = true;
+        this.lastWarmAt = Date.now();
+        this.logger.log(`Parser awake in ${Date.now() - started}ms`);
+      } catch (err) {
+        this.isWarm = false;
+        this.logger.warn(
+          `Parser wake-up failed after ${Date.now() - started}ms: ${
+            (err as Error).message
+          }`,
+        );
+        throw err;
+      } finally {
+        this.wakePromise = null;
+      }
+    })();
+
+    return this.wakePromise;
+  }
+
+  /**
+   * POST with transient retry. Retries on:
+   *  - no response (network / ECONNRESET / timeout)
+   *  - 502 / 503 / 504 (Render proxy cold-start codes)
+   *
+   * On a transient failure we invalidate the warm flag and re-wake,
+   * because the proxy may have killed the container mid-request.
+   */
+  private async postWithRetry<T>(
+    url: string,
+    body: unknown,
+    attempts = 3,
+  ): Promise<T> {
+    let lastErr: unknown;
+
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await this.wakeUp();
+        const { data } = await this.http.post<T>(url, body);
+        return data;
+      } catch (err) {
+        lastErr = err;
+        const e = err as AxiosError;
+        const transient =
+          !e.response ||
+          e.response.status === 502 ||
+          e.response.status === 503 ||
+          e.response.status === 504;
+
+        if (!transient || i === attempts - 1) {
+          throw err;
+        }
+
+        // Container likely died mid-request — force a re-wake on next loop
+        this.isWarm = false;
+        const delay = 1500 * (i + 1); // 1.5s, 3s
+        this.logger.warn(
+          `Parser ${url} transient error (${
+            e.response?.status ?? e.code ?? 'network'
+          }), retry ${i + 1}/${attempts - 1} in ${delay}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+
+    throw lastErr;
   }
 
   async extract(params: {
     pdfBase64: string;
     regions: ParserRegionInput[];
   }): Promise<ParserExtractResponse> {
-    await this.wakeUp(); // <-- Wake up the container first
-
     try {
-      const { data } = await this.http.post<ParserExtractResponse>(
-        '/extract',
-        {
-          pdf_base64: params.pdfBase64,
-          regions: params.regions,
-        },
-      );
-      return data;
+      return await this.postWithRetry<ParserExtractResponse>('/extract', {
+        pdf_base64: params.pdfBase64,
+        regions: params.regions,
+      });
     } catch (err) {
       const msg = axios.isAxiosError(err)
         ? `${err.response?.status ?? 'network'} ${err.message}`
@@ -123,13 +230,10 @@ export class ProspectusParserClient {
   }
 
   async getPageInfo(pdfBase64: string): Promise<ParserPageInfo> {
-    await this.wakeUp(); // <-- Wake up the container first
-
     try {
-      const { data } = await this.http.post<ParserPageInfo>('/info', {
+      return await this.postWithRetry<ParserPageInfo>('/info', {
         pdf_base64: pdfBase64,
       });
-      return data;
     } catch (err) {
       const msg = axios.isAxiosError(err)
         ? `${err.response?.status ?? 'network'} ${err.message}`
@@ -146,7 +250,7 @@ export class ProspectusParserClient {
     service: string;
     version: string;
   }> {
-    const { data } = await this.http.get('/health');
+    const { data } = await this.healthHttp.get('/health');
     return data;
   }
 }
