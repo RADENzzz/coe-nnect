@@ -12,11 +12,8 @@ import { Schedule } from '../entities/schedule.entity';
 import { RuleContextBuilder } from './rule-context.builder';
 import { SchedulingCoverageService } from './scheduling-coverage.service';
 import { SolverClient } from './solver.client';
+import { DepartmentsService } from '../../departments/departments.service';
 
-/**
- * Solver problem construction, auto-generation, draft persistence, room
- * sufficiency, and the row-based auto-generate lock.
- */
 @Injectable()
 export class AutoGenerateService {
   private readonly logger = new Logger(AutoGenerateService.name);
@@ -30,11 +27,8 @@ export class AutoGenerateService {
     private readonly coverage: SchedulingCoverageService,
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
+    private readonly departments: DepartmentsService,
   ) {}
-
-  // ════════════════════════════════════════════
-  // AUTOSOLVER
-  // ════════════════════════════════════════════
 
   async autoGenerate(
     termId: string,
@@ -45,6 +39,9 @@ export class AutoGenerateService {
     this.logger.log(
       `Auto-generate requested: term=${termId} dept=${deptId} by=${userId}`,
     );
+
+    // ── NEW: refuse auto-generate for a deactivated department ──
+    await this.departments.assertDepartmentActive(deptId);
 
     if (this.autoGenerateInFlight.has(termId)) {
       this.logger.warn(
@@ -71,10 +68,6 @@ export class AutoGenerateService {
       };
     }
 
-    // ── Pre-flight: unplotted minors check ──
-    // Minor subjects are fixed obstacles. Generating without them
-    // produces a schedule that would break when they're plotted later.
-    // Refuse unless the caller explicitly acknowledges the risk.
     if (!options.acknowledgeUnplottedMinors) {
       try {
         const unplottedMinors = await this.coverage.findUnplottedMinors(
@@ -86,7 +79,6 @@ export class AutoGenerateService {
             `Auto-generate blocked: ${unplottedMinors.length} unplotted minor(s) for term=${termId} dept=${deptId}`,
           );
 
-          // Release the lock immediately — we're not running the solver.
           await this.releaseAutoGenerateLock(termId, userId);
 
           return {
@@ -108,8 +100,6 @@ export class AutoGenerateService {
           };
         }
       } catch (err) {
-        // Fail open — don't block generation because the check itself
-        // errored. Log and continue.
         this.logger.warn(
           `Unplotted-minors pre-flight check failed (continuing): ${(err as Error).message}`,
         );
@@ -118,7 +108,6 @@ export class AutoGenerateService {
 
     this.autoGenerateInFlight.add(termId);
 
-    // ═══ Notification: auto-generate started ═══
     const starterDHs = await this.recipients.departmentHeadsOf(deptId);
     await this.dispatcher.dispatch('auto_generate.started', {
       recipientUserIds: starterDHs,
@@ -129,8 +118,6 @@ export class AutoGenerateService {
       payload: { deptId, triggeredBy: userId },
     });
 
-    
-
     try {
       const problem = await this.buildSolverProblem(termId, deptId);
 
@@ -138,7 +125,6 @@ export class AutoGenerateService {
       if (!sufficiency.sufficient) {
         this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
 
-        // ═══ Notification: room sufficiency below threshold ═══
         const admins = await this.recipients.administrators();
         const dean = await this.recipients.collegeDean();
         await this.dispatcher.dispatch('room_sufficiency.below_threshold', {
@@ -150,7 +136,6 @@ export class AutoGenerateService {
           payload: { deptId, deficits: sufficiency.deficits },
         });
 
-        // ═══ Notification: auto-generate failed (to the requester) ═══
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
           title: 'Auto-generate failed',
@@ -175,7 +160,6 @@ export class AutoGenerateService {
 
       let result: any;
       try {
-        
         result = await this.solverClient.solve(problem);
       } catch (err) {
         this.logger.error('Solver service call failed', err as Error);
@@ -208,10 +192,7 @@ export class AutoGenerateService {
           body: result.message ?? 'Solver returned no solution.',
           entityType: 'term',
           entityId: termId,
-          payload: {
-            deptId,
-            reason: 'no_solution',
-          },
+          payload: { deptId, reason: 'no_solution' },
         });
 
         return {
@@ -264,7 +245,6 @@ export class AutoGenerateService {
       await this.markAutoGeneratePending(termId, userId);
       this.autoGenerateInFlight.delete(termId);
 
-      // ═══ Notification: auto-generate finished ═══
       await this.dispatcher.dispatch('auto_generate.finished', {
         recipientUserIds: starterDHs,
         title: 'Auto-generate finished',
