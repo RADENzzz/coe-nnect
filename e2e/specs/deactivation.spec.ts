@@ -12,7 +12,7 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
   await gotoApp(page, '/dean/departments/manage');
 
   await expect(
-    page.getByText(`[${state.deptCode}]`, { exact: false }).first(),
+    page.getByText(state.deptCode, { exact: true }).first(),
   ).toBeVisible();
 
   // Find the row specifically containing the deptCode
