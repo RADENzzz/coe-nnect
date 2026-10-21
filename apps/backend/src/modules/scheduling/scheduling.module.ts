@@ -1,3 +1,4 @@
+// apps/backend/src/modules/scheduling/scheduling.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Schedule } from './entities/schedule.entity';
@@ -20,6 +21,7 @@ import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ScheduleVersion } from './entities/schedule-version.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { DepartmentsModule } from '../departments/departments.module';
 
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Section,
     ]),
     NotificationsModule,
+    DepartmentsModule,
   ],
   controllers: [SchedulingController],
   providers: [
