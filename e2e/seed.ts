@@ -51,6 +51,7 @@ export const E2E_SCHEDULE = {
 
 export interface E2eState {
   departmentId: string;
+  deptCode: string;         // <-- ADDED
   programId: string;
   subjectId: string;
   subjectCode: string;
@@ -152,7 +153,7 @@ async function ensureDepartment(db: Db): Promise<string> {
     dept_code: E2E_DATA.deptCode,
     dept_name: E2E_DATA.deptName,
     description: 'Disposable department for Playwright workflow tests.',
-    is_active: true,
+    is_active: true, 
   };
 
   if (existing) {
@@ -373,9 +374,6 @@ async function clearTermWork(
   db: Db,
   termId: string,
 ): Promise<void> {
-  // Order matters: schedules can reference faculty requests, and version
-  // snapshots reference the term. Removing schedules first keeps the cleanup
-  // safe even if a prior run failed midway through the workflow.
   await deleteByTerm(db, 'schedule', termId);
   await deleteByTerm(db, 'schedule_version', termId);
   await deleteByTerm(db, 'schedule_unscheduled', termId);
@@ -424,6 +422,7 @@ async function ensureUser(
       email_confirm: true,
       app_metadata: appMetadata,
       user_metadata: userMetadata,
+      ban_duration: 'none',   // ALWAYS unban on seed
     });
     if (error || !data.user) {
       throw new Error(`Could not update E2E user: ${error?.message ?? 'no user'}`);
@@ -443,8 +442,6 @@ async function ensureUser(
     userId = data.user.id;
   }
 
-  // The auth trigger normally creates this row. Upserting makes the seed
-  // idempotent and repairs profiles if a previous run was interrupted.
   const { error: profileError } = await db
     .from('users')
     .delete()
@@ -477,8 +474,6 @@ export async function seedE2eData(): Promise<E2eState> {
 
   const supabaseUrl = requireEnv('E2E_SUPABASE_URL');
   const serviceRoleKey = requireEnv('E2E_SUPABASE_SERVICE_ROLE_KEY');
-  // The seed only needs the service role, but the app cannot sign in without
-  // the anon key. Fail before Playwright starts two dev servers if it is absent.
   requireEnv('E2E_SUPABASE_ANON_KEY');
 
   const db = createClient(supabaseUrl, serviceRoleKey, {
@@ -524,6 +519,7 @@ export async function seedE2eData(): Promise<E2eState> {
 
   const state: E2eState = {
     departmentId,
+    deptCode: E2E_DATA.deptCode,  // <-- ADDED
     programId,
     subjectId,
     subjectCode: E2E_DATA.subjectCode,
