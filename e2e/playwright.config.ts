@@ -132,6 +132,7 @@ export default defineConfig({
           url: `${apiURL}/docs`,
           timeout: 240_000,
           reuseExistingServer: false,
+          gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
           env: webServerEnv,
         },
         {
@@ -141,6 +142,7 @@ export default defineConfig({
           url: baseURL,
           timeout: 120_000,
           reuseExistingServer: false,
+          gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
           env: webServerEnv,
         },
       ],

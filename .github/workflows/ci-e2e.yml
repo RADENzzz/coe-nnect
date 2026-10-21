@@ -87,7 +87,7 @@ jobs:
       - name: Run Playwright workflow
         timeout-minutes: 20
         env:
-          DEBUG: pw:test,pw:api
+          DEBUG: pw:test,pw:api,pw:webserver
         run: pnpm test:e2e
 
       - name: Upload Playwright report
