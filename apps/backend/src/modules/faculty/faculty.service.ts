@@ -1,3 +1,4 @@
+// apps/backend/src/modules/faculty/faculty.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -8,11 +9,9 @@ import {
 import {
   abbrToFull,
   fullToAbbr,
-  abbrToFullSafe,
-  fullToAbbrSafe,
 } from '../../common/utils/day-mapping.util';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Faculty } from './entities/faculty.entity';
 import { FacultyQualification } from './entities/faculty-qualification.entity';
 import { Subject } from '../subjects/entities/subject.entity';
@@ -27,11 +26,8 @@ import { User } from '../users/entities/user.entity';
 import { FacultyUnavailability } from './entities/faculty-unavailability.entity';
 import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
 import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
+import { DepartmentsService } from '../departments/departments.service';
 import type { FacultyStatusSummaryRow } from './dto/faculty-status-summary.dto';
-
-// ────────────────────────────────────────────
-// day_of_week mapping
-// ────────────────────────────────────────────
 
 function normalizeTime(t: string): string {
   return t.length === 5 ? `${t}:00` : t;
@@ -50,11 +46,9 @@ export class FacultyService {
     private readonly subjects: Repository<Subject>,
     @InjectRepository(FacultyUnavailability)
     private readonly unavailabilityRepo: Repository<FacultyUnavailability>,
+    private readonly departments: DepartmentsService,
   ) {}
 
-  // ────────────────────────────────────────────
-  // Cross-department protection
-  // ────────────────────────────────────────────
   private async assertOwnership(
     facultyId: string,
     profile: User | undefined,
@@ -66,7 +60,7 @@ export class FacultyService {
     const faculty = await this.findOne(facultyId);
 
     if (profile.role === 'administrator' || profile.role === 'college_dean') {
-      return faculty; // full access
+      return faculty;
     }
 
     if (profile.role !== 'department_head') {
@@ -113,6 +107,9 @@ export class FacultyService {
       dto.deptId = profile.deptId as any;
     }
 
+    // ── NEW: target dept must be active ──
+    await this.departments.assertDepartmentActive(dto.deptId);
+
     const entity = this.repo.create({
       firstName: dto.firstName,
       lastName: dto.lastName,
@@ -145,6 +142,13 @@ export class FacultyService {
       );
     }
 
+    // ── NEW: current or target dept must be active ──
+    if (dto.deptId !== undefined && dto.deptId !== found.deptId) {
+      await this.departments.assertDepartmentActive(dto.deptId);
+    } else {
+      await this.departments.assertDepartmentActive(found.deptId);
+    }
+
     if (dto.firstName !== undefined) found.firstName = dto.firstName;
     if (dto.lastName !== undefined) found.lastName = dto.lastName;
     if (dto.email !== undefined) found.email = dto.email ?? null;
@@ -164,27 +168,19 @@ export class FacultyService {
 
   async toggleActive(id: string, profile: User): Promise<Faculty> {
     const found = await this.assertOwnership(id, profile);
+    await this.departments.assertDepartmentActive(found.deptId);
     found.isActive = !found.isActive;
     return this.repo.save(found);
   }
 
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
     const found = await this.assertOwnership(id, profile);
+    await this.departments.assertDepartmentActive(found.deptId);
     await this.repo.remove(found);
     return { success: true };
   }
 
-  // ────────────────────────────────────────────
-  // FR 3.1.3 — Bulk status summary
-  //
-  // Returns one row per faculty (optionally dept-scoped) with counts
-  // across the three "has X" relations. Powers the Faculty page's
-  // quick-filter chips + the Status column.
-  //
-  // 4 queries total, no N+1.
-  // ────────────────────────────────────────────
   async getStatusSummary(deptId?: string): Promise<FacultyStatusSummaryRow[]> {
-    // 1. Faculty in scope
     const facultyQuery = this.repo
       .createQueryBuilder('f')
       .select(['f.faculty_id AS faculty_id']);
@@ -201,7 +197,6 @@ export class FacultyService {
 
     const ids = facultyRows.map((r) => String(r.faculty_id));
 
-    // 2. Counts from each relation — TypeORM In() + groupBy
     const [qualCounts, prefCounts, unavailCounts] = await Promise.all([
       this.quals
         .createQueryBuilder('q')
@@ -238,7 +233,6 @@ export class FacultyService {
     const pMap = toMap(prefCounts);
     const uMap = toMap(unavailCounts);
 
-    // 3. Join in memory
     return facultyRows.map((row) => {
       const id = String(row.faculty_id);
       const qc = qMap.get(id) ?? 0;
@@ -256,10 +250,6 @@ export class FacultyService {
     });
   }
 
-  // ────────────────────────────────────────────
-  // Faculty Qualification CRUD
-  // ────────────────────────────────────────────
-
   async findQualifications(facultyId: string): Promise<FacultyQualification[]> {
     await this.findOne(facultyId);
     return this.quals.find({
@@ -274,7 +264,8 @@ export class FacultyService {
     dto: CreateQualificationDto,
     profile: User,
   ): Promise<FacultyQualification> {
-    await this.assertOwnership(facultyId, profile);
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
 
     const subject = await this.subjects.findOne({
       where: { subjectId: dto.subjectId },
@@ -310,7 +301,8 @@ export class FacultyService {
     dto: UpdateQualificationDto,
     profile: User,
   ): Promise<FacultyQualification> {
-    await this.assertOwnership(facultyId, profile);
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
 
     const found = await this.quals.findOne({
       where: { qualId, facultyId },
@@ -351,7 +343,8 @@ export class FacultyService {
     qualId: string,
     profile: User,
   ): Promise<{ success: boolean }> {
-    await this.assertOwnership(facultyId, profile);
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
     const found = await this.quals.findOne({
       where: { qualId, facultyId },
     });
@@ -359,10 +352,6 @@ export class FacultyService {
     await this.quals.remove(found);
     return { success: true };
   }
-
-  // ────────────────────────────────────────────
-  // Faculty Preference CRUD
-  // ────────────────────────────────────────────
 
   async findPreferences(facultyId: string): Promise<FacultyPreference[]> {
     await this.findOne(facultyId);
@@ -381,7 +370,8 @@ export class FacultyService {
     dto: CreateFacultyPreferenceDto,
     profile: User,
   ): Promise<FacultyPreference> {
-    await this.assertOwnership(facultyId, profile);
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
 
     const start = normalizeTime(dto.preferredStartTime);
     const end = normalizeTime(dto.preferredEndTime);
@@ -424,7 +414,8 @@ export class FacultyService {
     dto: UpdateFacultyPreferenceDto,
     profile: User,
   ): Promise<FacultyPreference> {
-    await this.assertOwnership(facultyId, profile);
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
 
     const found = await this.prefs.findOne({
       where: { preferenceId, facultyId },
@@ -462,7 +453,8 @@ export class FacultyService {
     preferenceId: string,
     profile: User,
   ): Promise<{ success: boolean }> {
-    await this.assertOwnership(facultyId, profile);
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
 
     const found = await this.prefs.findOne({
       where: { preferenceId, facultyId },
@@ -471,10 +463,6 @@ export class FacultyService {
     await this.prefs.remove(found);
     return { success: true };
   }
-
-  // ═══════════════════════════════════════════════════════════
-  // FACULTY UNAVAILABILITY — H-14 (hard constraint)
-  // ═══════════════════════════════════════════════════════════
 
   async findUnavailability(
     facultyId: string,
@@ -499,7 +487,8 @@ export class FacultyService {
     facultyId: string,
     dto: CreateFacultyUnavailabilityDto,
   ): Promise<FacultyUnavailability> {
-    await this.findOne(facultyId);
+    const faculty = await this.findOne(facultyId);
+    await this.departments.assertDepartmentActive(faculty.deptId);
 
     if (dto.startTime >= dto.endTime) {
       throw new BadRequestException('endTime must be after startTime');
@@ -525,6 +514,9 @@ export class FacultyService {
     unavailabilityId: string,
     dto: UpdateFacultyUnavailabilityDto,
   ): Promise<FacultyUnavailability> {
+    const faculty = await this.findOne(facultyId);
+    await this.departments.assertDepartmentActive(faculty.deptId);
+
     const found = await this.unavailabilityRepo.findOne({
       where: { unavailabilityId, facultyId },
     });
@@ -555,6 +547,9 @@ export class FacultyService {
     facultyId: string,
     unavailabilityId: string,
   ): Promise<{ success: boolean }> {
+    const faculty = await this.findOne(facultyId);
+    await this.departments.assertDepartmentActive(faculty.deptId);
+
     const found = await this.unavailabilityRepo.findOne({
       where: { unavailabilityId, facultyId },
     });
@@ -568,7 +563,6 @@ export class FacultyService {
     return { success: true };
   }
 
-  /** Convert 'HH:MM' → 'HH:MM:00' so Postgres time comparison works reliably. */
   private normalizeTime(t: string): string {
     return /^\d{2}:\d{2}$/.test(t) ? `${t}:00` : t;
   }
