@@ -77,17 +77,12 @@ jobs:
           node --version
           pnpm exec playwright --version
 
-      - name: Allow Chromium under Ubuntu 24.04 AppArmor
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - name: Verify Playwright Chromium launches
         run: |
           timeout 60s node -e "const { chromium } = require('@playwright/test'); chromium.launch().then(async (browser) => { console.log('Chromium launched'); await browser.close(); process.exit(0); }).catch((error) => { console.error(error); process.exit(1); });"
 
       - name: Run Playwright workflow
         timeout-minutes: 20
-        env:
-          DEBUG: pw:test,pw:api,pw:webserver
         run: pnpm test:e2e
 
       - name: Upload Playwright report

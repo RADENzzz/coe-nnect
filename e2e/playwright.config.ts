@@ -122,6 +122,9 @@ export default defineConfig({
       },
     },
   ],
+  // Playwright's default SIGKILL can leave Vite/esbuild holding the webServer
+  // stdio pipes on Linux, so the run never exits or prints its summary. SIGTERM
+  // lets the dev servers close their children before Playwright tears down.
   webServer: skipWebServer
     ? undefined
     : [
