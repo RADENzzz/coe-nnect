@@ -460,8 +460,37 @@ export default function LoginPage() {
         role = profile.role;
       }
 
-      // Redirect based on role.
-      if (from) {
+      // Fetch the authoritative dept_active flag from the backend
+      // BEFORE navigating, so we can decide whether a DH should be
+      // routed to the wall or the dashboard.
+      // We use the DB directly (not the API) to avoid a token-round-trip
+      // right after sign-in — the token is available on `data.session`.
+      let deptActive: boolean | null = null;
+      if (role === 'department_head') {
+        const { data: deptRow } = await supabase
+          .from('users')
+          .select(
+            `dept_id, department:dept_id ( is_active, dept_code, dept_name )`,
+          )
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+        const dept = Array.isArray((deptRow as any)?.department)
+          ? (deptRow as any)?.department[0]
+          : (deptRow as any)?.department;
+        if (dept) deptActive = dept.is_active === true;
+      } else if (role === 'college_dean' || role === 'administrator') {
+        deptActive = true;
+      }
+
+      // Redirect based on role + dept state.
+      if (
+        role === 'department_head' &&
+        deptActive === false
+      ) {
+        // Walled — bypass `from` because `from` might point at a page
+        // the DH can't load anyway.
+        navigate('/department-deactivated', { replace: true });
+      } else if (from) {
         navigate(from, { replace: true });
       } else if (role === 'administrator' || role === 'college_dean') {
         navigate('/dean/dashboard', { replace: true });
