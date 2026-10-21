@@ -13,6 +13,12 @@ export interface AuthUser {
   deptId: string | null;
   deptCode: string | null;
   deptName: string | null;
+  /**
+   * true  → DH with active dept, or Dean/Admin (never walled)
+   * false → DH whose dept is deactivated (show wall)
+   * null  → no dept linked (data-integrity edge case)
+   */
+  deptActive: boolean | null;
   facultyId: string | null;
   firstName: string;
 }
