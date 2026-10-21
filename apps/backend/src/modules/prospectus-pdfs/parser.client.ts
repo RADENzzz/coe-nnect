@@ -78,10 +78,30 @@ export class ProspectusParserClient {
     this.logger.log(`Prospectus parser client → ${this.baseUrl}`);
   }
 
+  /**
+   * Render's free tier spins down services after 15 minutes of inactivity.
+   * Pinging /health wakes up the Python container. Once awake, the
+   * subsequent POST requests go through instantly.
+   */
+  private async wakeUp(): Promise<void> {
+    try {
+      this.logger.log(`Waking up parser service at ${this.baseUrl}...`);
+      // 90 second timeout to allow Render to cold-start
+      await this.http.get('/health', { timeout: 90_000 });
+      this.logger.log(`Parser service is awake.`);
+    } catch (err) {
+      this.logger.warn(
+        `Parser wake-up ping failed: ${(err as Error).message}. Proceeding anyway.`,
+      );
+    }
+  }
+
   async extract(params: {
     pdfBase64: string;
     regions: ParserRegionInput[];
   }): Promise<ParserExtractResponse> {
+    await this.wakeUp(); // <-- Wake up the container first
+
     try {
       const { data } = await this.http.post<ParserExtractResponse>(
         '/extract',
@@ -103,6 +123,8 @@ export class ProspectusParserClient {
   }
 
   async getPageInfo(pdfBase64: string): Promise<ParserPageInfo> {
+    await this.wakeUp(); // <-- Wake up the container first
+
     try {
       const { data } = await this.http.post<ParserPageInfo>('/info', {
         pdf_base64: pdfBase64,
