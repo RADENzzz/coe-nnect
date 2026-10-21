@@ -6,7 +6,7 @@ The `apps/backend` directory contains the NestJS API used by CoE-NNECT. It provi
 
 Feature modules are registered in `src/app.module.ts`. They cover users and authentication; departments, programs, terms, faculty, subjects, prospectuses, sections, and rooms; schedules, constraints, and approvals; system configuration, audit, chat, and notifications; and prospectus PDF management.
 
-The global API prefix defaults to `/api` and can be changed with `API_PREFIX`. Routes use NestJS validation, and CORS is configured from `FRONTEND_URL`. Socket.IO gateways support real-time features. See the [scheduling API reference](../interface-contract/docs/interface-contract/scheduling-api.md) for schedule routes and payload conventions.
+The global API prefix defaults to `/api` and can be changed with `API_PREFIX`. Routes use NestJS validation. Socket.IO gateways support real-time features. See the [scheduling API reference](../interface-contract/docs/interface-contract/scheduling-api.md) for schedule routes and payload conventions.
 
 ## Setup and local development
 
@@ -24,6 +24,15 @@ pnpm --filter @coe-nnect/backend dev
 ```
 
 The API listens on port `3000` by default; set `PORT` to change it. Refer to the [backend environment template](../../apps/backend/.env.example) for all supported values, including `DATABASE_URL`, Supabase credentials, `FRONTEND_URL`, and `PROSPECTUS_PARSER_URL`.
+
+## Security and observability
+
+- **CORS:** production accepts only the exact origins listed in `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS`. Development and test additionally allow loopback origins. Wildcard Vercel previews and private LAN addresses are not accepted in production.
+- **Swagger:** available outside production. In production it stays disabled unless `ENABLE_SWAGGER=true` and both `SWAGGER_USER` and `SWAGGER_PASSWORD` are set; the docs are then protected with HTTP basic auth.
+- **CSP and headers:** Helmet applies a Content-Security-Policy, HSTS in production, a no-referrer policy, and frame-ancestor denial. Swagger-specific inline allowances are enabled only when the docs are mounted.
+- **Rate limiting:** HTTP requests are limited globally (`THROTTLE_LIMIT`, default 300 per `THROTTLE_TTL_MS`, default 60 seconds). Login is limited separately (`LOGIN_THROTTLE_LIMIT`, default 10 per minute). Set `TRUST_PROXY=true` only behind a trusted proxy; Vercel deployments do this automatically.
+- **Logs:** production emits one JSON object per line with a request correlation id (`X-Request-Id`), status, duration, and user id. Set `LOG_FORMAT=json` to opt in locally. Do not log request bodies or authorization headers.
+- **Backups:** follow the [backup and restore runbook](../operations/backup-restore.md) before schema changes or production migrations.
 
 ## Database and seed scripts
 

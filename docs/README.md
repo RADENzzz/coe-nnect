@@ -13,6 +13,10 @@ Use these guides to set up the applications, understand workspace packages, and 
 - [Database structure](DATABASE%20STRUCTURE/README.md) — ERDs, table inventory, enums, constraints, and the current SQL snapshot.
 - [Testing and database validation](testing.md) — backend test commands, fake adapters, migration checks, and CI coverage.
 
+## Operations
+
+- [Backup and restore](operations/backup-restore.md) — database, storage, verification, and production restore procedure.
+
 ## Packages and services
 
 - [Constraint rules](packages/constraint-rules.md) — the integrated TypeScript scheduling rules engine.
