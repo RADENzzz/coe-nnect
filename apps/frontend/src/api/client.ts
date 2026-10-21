@@ -1,27 +1,27 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { supabase } from '../lib/supabase';
 
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api';
 
-/**
- * Long-running endpoints that need > the default 30s window.
- * Matched against `config.url` (path + query).
- */
+const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_RETRIES = 3;
+
 const LONG_ENDPOINT_TIMEOUTS: Array<[RegExp, number]> = [
-  [/\/solve(\?|$)/, 150_000], // backend allows 120s + network overhead
+  [/\/solve(\?|$)/, 150_000],
   [/\/extract(\?|$)/, 120_000],
   [/\/prospectus\/.*\/info(\?|$)/, 90_000],
 ];
 
-const DEFAULT_TIMEOUT_MS = 30_000;
-const MAX_RETRIES = 3;
-
-/** Endpoints safe to retry after a transient failure. */
-const IDEMPOTENT_POST = [/\/solve(\?|$)/, /\/login(\?|$)/];
+const RETRYABLE_POST = [/\/solve(\?|$)/, /\/login(\?|$)/];
 
 interface RetryableConfig extends InternalAxiosRequestConfig {
   _retryCount?: number;
+  _timeoutApplied?: boolean;
 }
 
 function timeoutFor(url: string | undefined): number {
@@ -32,41 +32,13 @@ function timeoutFor(url: string | undefined): number {
   return DEFAULT_TIMEOUT_MS;
 }
 
-function isRetryable(
-  error: AxiosError,
-  method: string,
-  url: string,
-): boolean {
-  const status = error.response?.status;
-  const transient =
-    !error.response ||
-    status === 502 ||
-    status === 503 ||
-    status === 504 ||
-    error.code === 'ECONNRESET' ||
-    error.code === 'ETIMEDOUT' ||
-    error.code === 'ERR_NETWORK';
-
-  if (!transient) return false;
-
-  // GETs are always idempotent
-  if (method === 'get') return true;
-
-  // POSTs only if explicitly whitelisted
-  if (method === 'post') {
-    return IDEMPOTENT_POST.some((re) => re.test(url));
-  }
-
-  return false;
-}
-
 export const api = axios.create({
   baseURL: BASE_URL,
   timeout: DEFAULT_TIMEOUT_MS,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// ── Request: attach Supabase JWT ──
+// ── Request interceptor: auth + per-endpoint timeout ──
 api.interceptors.request.use(async (config) => {
   const {
     data: { session },
@@ -74,35 +46,49 @@ api.interceptors.request.use(async (config) => {
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;
   }
-  return config;
-});
 
-// ── Request: apply per-endpoint timeout ──
-api.interceptors.request.use((config) => {
-  // Only override if the caller didn't set an explicit timeout
-  if (config.timeout === DEFAULT_TIMEOUT_MS || !config.timeout) {
-    config.timeout = timeoutFor(config.url);
+  const c = config as RetryableConfig;
+  if (!c._timeoutApplied) {
+    if (c.timeout == null || c.timeout === DEFAULT_TIMEOUT_MS) {
+      c.timeout = timeoutFor(c.url);
+    }
+    c._timeoutApplied = true;
   }
+
   return config;
 });
 
-// ── Response: cold-start retry + auth handling ──
+// ── Response interceptor: cold-start retry + 401 handling ──
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const status = error.response?.status;
     const cfg = error.config as RetryableConfig | undefined;
+    const status = error.response?.status;
     const method = (cfg?.method ?? 'get').toLowerCase();
     const url = cfg?.url ?? '';
 
-    // ── Cold-start / transient retry with exponential backoff ──
-    if (cfg && isRetryable(error, method, url)) {
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+
+    if (cfg) {
+      const hasResponse = !!error.response;
+      const is5xx =
+        status === 502 || status === 503 || status === 504;
+      const isNetwork = !hasResponse || error.code === 'ERR_NETWORK';
+      const isConnKill =
+        error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT';
+
+      const transient = is5xx || isConnKill || (isNetwork && method === 'get');
+
+      const postAllowed =
+        method === 'post' && RETRYABLE_POST.some((re) => re.test(url));
+
+      const retryable = transient && (method === 'get' || postAllowed);
+
       const attempt = (cfg._retryCount ?? 0) + 1;
 
-      if (attempt <= MAX_RETRIES) {
-        cfg._retryCount = attempt;
-
-        // 3s → 6s → 12s
+      if (retryable && attempt <= MAX_RETRIES) {
         const delay = 3000 * Math.pow(2, attempt - 1);
 
         console.warn(
@@ -111,7 +97,6 @@ api.interceptors.response.use(
             `Retry ${attempt}/${MAX_RETRIES} in ${delay}ms`,
         );
 
-        // Let the UI know on the first retry only
         if (attempt === 1) {
           window.dispatchEvent(
             new CustomEvent('api:cold-start', { detail: { url, method } }),
@@ -120,15 +105,22 @@ api.interceptors.response.use(
 
         await new Promise((r) => setTimeout(r, delay));
 
-        // Reset the per-attempt timeout so it doesn't stack across retries
-        const retryCfg = { ...cfg } as RetryableConfig;
-        retryCfg.timeout = timeoutFor(url);
+        // Build a real AxiosHeaders instance (not a plain object spread)
+        // so we don't lose the AxiosHeaders prototype/methods.
+        const freshHeaders = AxiosHeaders.from(cfg.headers);
+        freshHeaders.delete('Authorization'); // interceptor re-adds if session exists
+
+        const retryCfg: RetryableConfig = {
+          ...cfg,
+          _retryCount: attempt,
+          _timeoutApplied: false,
+          headers: freshHeaders,
+        };
 
         return api(retryCfg);
       }
     }
 
-    // ── 401 → sign out & redirect to login ──
     if (status === 401) {
       await supabase.auth.signOut();
       if (window.location.pathname !== '/login') {
