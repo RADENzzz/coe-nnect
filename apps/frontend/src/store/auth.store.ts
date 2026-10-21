@@ -1,21 +1,6 @@
 import { create } from 'zustand';
 import { User } from '@supabase/supabase-js';
 
-/**
- * Role type — kept in sync with the Postgres `user_role` enum.
- *
- * User-facing roles after the Admin→Dean consolidation:
- *   - college_dean     (top user-facing role; inherits all admin powers)
- *   - department_head  (scoped to one department)
- *
- * Internal roles (never shown in the UI, retained for dev/demo):
- *   - administrator    (hidden dev account, seed-only)
- *   - viewer           (legacy; no active users, retained for enum sync)
- *
- * Frontend routing only cares about the user-facing roles. The
- * `administrator` role redirects to the Dean portal (see
- * ProtectedRoute fallback logic).
- */
 export type UserRole =
   | 'administrator'
   | 'college_dean'
@@ -30,6 +15,12 @@ export interface UserProfile {
   dept_id: number | null;
   dept_code: string | null;
   dept_name: string | null;
+  /**
+   * true → DH with active dept, or Dean/Admin (never walled)
+   * false → DH whose dept is deactivated — frontend shows the wall
+   * null → unknown / not yet resolved
+   */
+  dept_active: boolean | null;
   faculty_id: number | null;
   first_name: string;
 }
