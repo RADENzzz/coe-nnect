@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ext ts,tsx"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@dnd-kit/react": "^0.5.0",
@@ -34,6 +34,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.9.0",
     "@hookform/resolvers": "^3.9.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^18.3.4",
@@ -43,8 +44,9 @@
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.9.0",
-    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.10",
+    "globals": "^14.0.0",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",

@@ -11,6 +11,7 @@ Use these guides to set up the applications, understand workspace packages, and 
 
 - [System architecture](architecture/README.md) — component map, data flows, persistence, and integration status.
 - [Database structure](DATABASE%20STRUCTURE/README.md) — ERDs, table inventory, enums, constraints, and the current SQL snapshot.
+- [Testing and database validation](testing.md) — backend test commands, fake adapters, migration checks, and CI coverage.
 
 ## Packages and services
 

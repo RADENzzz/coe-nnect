@@ -13,11 +13,13 @@
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:ci": "jest --runInBand",
     "db:reset": "ts-node -r tsconfig-paths/register -r dotenv/config src/database/seeds/reset.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc -p tsconfig.spec.json",
     "reset:demo": "ts-node -r tsconfig-paths/register src/database/seeds/reset.ts"
   },
   "dependencies": {

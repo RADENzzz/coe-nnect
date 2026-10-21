@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint frontend
+        run: pnpm --filter @coe-nnect/frontend lint
+
       - name: Type-check frontend
         run: pnpm --filter @coe-nnect/frontend typecheck
 

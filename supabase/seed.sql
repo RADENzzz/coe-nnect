@@ -1,0 +1,7 @@
+-- Local and CI seed file.
+--
+-- This file is intentionally data-free. The schema migration is the source of
+-- truth for both local resets and CI validation. Deterministic E2E fixtures
+-- (test users, terms, departments) will be added here in the Playwright phase.
+--
+-- Never run this seed against production.

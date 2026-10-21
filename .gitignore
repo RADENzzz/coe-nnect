@@ -87,7 +87,6 @@ desktop.ini
 # ─────────────────────────────────────────────
 supabase/.branches/
 supabase/.temp/
-supabase/config.toml
 
 # ─────────────────────────────────────────────
 # Railway / Vercel

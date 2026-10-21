@@ -41,5 +41,14 @@ jobs:
       - name: Type-check backend
         run: pnpm --filter @coe-nnect/backend typecheck
 
+      - name: Type-check backend tests
+        run: pnpm --filter @coe-nnect/backend typecheck:test
+
+      - name: Run backend unit tests
+        run: pnpm --filter @coe-nnect/backend test:ci
+
+      - name: Run backend integration tests
+        run: pnpm --filter @coe-nnect/backend test:e2e
+
       - name: Test scheduling rules
         run: pnpm --filter @coe-nnect/constraint-rules test

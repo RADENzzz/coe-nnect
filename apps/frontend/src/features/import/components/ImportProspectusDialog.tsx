@@ -28,7 +28,7 @@ interface ImportProspectusDialogProps {
 type Step = 'select' | 'review' | 'result';
 
 const SUBJECT_CODE_RE =
-  /^[A-Za-z][A-Za-z0-9&.\-]{1,11}(?:\s+[A-Za-z0-9&.\-]{1,16}){0,4}$/;
+  /^[A-Za-z][A-Za-z0-9&.-]{1,11}(?:\s+[A-Za-z0-9&.-]{1,16}){0,4}$/;
 
 interface ReviewRow {
   key: string;

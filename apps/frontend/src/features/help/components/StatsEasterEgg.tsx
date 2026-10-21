@@ -254,7 +254,6 @@ export function StatsEasterEgg({ onOverlayChange }: Props) {
             {/* ⭐ Inject literal-value keyframes per name — no CSS vars */}
             {discoActive && (
               <style
-                // eslint-disable-next-line react/no-danger
                 dangerouslySetInnerHTML={{ __html: keyframesCss }}
               />
             )}
