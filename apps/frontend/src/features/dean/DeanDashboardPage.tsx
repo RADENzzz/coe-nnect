@@ -76,9 +76,13 @@ function initials(username: string): string {
 export default function DeanDashboardPage() {
   const profile = useAuthStore((s) => s.profile);
 
+  // ALL departments (active + inactive) — the dashboard needs the full
+  // list to (a) show the correct "X total" count, (b) show "N deactivated"
+  // hint, and (c) render the heads list for deactivated depts too.
+  // The "Active Departments" stat filters `activeDepts` downstream.
   const { data: departments = [], isLoading: deptLoading } = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => fetchDepartments(),
+    queryKey: ['departments', { includeInactive: true }],
+    queryFn: () => fetchDepartments(true),
   });
 
   const { data: directory = [] } = useQuery({
@@ -100,12 +104,12 @@ export default function DeanDashboardPage() {
   const { onlineUsers, isConnected } = useOnlineUsers();
 
   const activeDepts = departments.filter((d) => d.isActive);
+  const inactiveDepts = departments.filter((d) => !d.isActive);
   const reviewSchedules = schedules.filter((s) => s.status === 'review');
   const finalizedSchedules = schedules.filter(
     (s) => s.status === 'finalized' || s.status === 'published',
   );
 
-  // Directory is a minimal projection: user_id, username, role, dept_id, is_active
   const deptHeads = directory.filter(
     (u) => u.role === 'department_head' && u.is_active,
   );
@@ -157,13 +161,47 @@ export default function DeanDashboardPage() {
         </div>
       </div>
 
+      {/* Deactivated warning strip — only if any exist */}
+      {inactiveDepts.length > 0 && (
+        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-sm flex items-start gap-3 flex-wrap">
+          <Icon
+            name="warning"
+            filled
+            size={18}
+            className="shrink-0 mt-0.5"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">
+              {inactiveDepts.length} department
+              {inactiveDepts.length === 1 ? ' is' : 's are'} currently
+              deactivated
+            </p>
+            <p className="text-xs text-rose-800 mt-0.5">
+              {inactiveDepts.map((d) => d.deptCode).join(', ')} — hidden from
+              DH views. Reactivate from Departments.
+            </p>
+          </div>
+          <Link
+            to="/dean/departments"
+            className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold underline text-rose-900 hover:text-rose-700"
+          >
+            Go to Departments
+            <Icon name="arrow_forward" size={12} />
+          </Link>
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon="corporate_fare"
           label="Active Departments"
           value={deptLoading ? '—' : activeDepts.length}
-          sub={`${departments.length} total`}
+          sub={
+            inactiveDepts.length > 0
+              ? `${departments.length} total · ${inactiveDepts.length} inactive`
+              : `${departments.length} total`
+          }
           color="brand"
           to="/dean/departments"
         />
@@ -189,7 +227,6 @@ export default function DeanDashboardPage() {
           value={`${onlineDHs} / ${deptsWithHeads.filter((x) => x.head).length}`}
           sub={isConnected ? 'Live' : 'Connecting…'}
           color={onlineDHs > 0 ? 'green' : 'blue'}
-          // Not clickable — presence has no dedicated page
         />
       </div>
 
@@ -199,7 +236,7 @@ export default function DeanDashboardPage() {
         <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">
-              Departments
+              Active Departments
             </h2>
             <div className="flex items-center gap-3 text-xs text-slate-400">
               <span>{activeDepts.length} active</span>
@@ -215,7 +252,16 @@ export default function DeanDashboardPage() {
             </div>
           ) : activeDepts.length === 0 ? (
             <div className="py-12 text-center text-sm text-slate-400">
-              No departments found.
+              No active departments.
+              {inactiveDepts.length > 0 && (
+                <Link
+                  to="/dean/departments"
+                  className="block mt-2 text-xs text-[#5c1219] hover:underline"
+                >
+                  View {inactiveDepts.length} deactivated department
+                  {inactiveDepts.length === 1 ? '' : 's'} →
+                </Link>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -337,6 +383,7 @@ export default function DeanDashboardPage() {
               const dept = departments.find(
                 (d) => String(d.deptId) === String(head.dept_id),
               );
+              const isInactive = dept && !dept.isActive;
               return (
                 <div
                   key={head.user_id}
@@ -348,7 +395,9 @@ export default function DeanDashboardPage() {
                     </div>
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
-                        isOnline ? 'bg-emerald-500' : 'bg-slate-300'
+                        isOnline && !isInactive
+                          ? 'bg-emerald-500'
+                          : 'bg-slate-300'
                       }`}
                     />
                   </div>
@@ -362,19 +411,30 @@ export default function DeanDashboardPage() {
                       )}
                     </p>
                     <p className="text-xs text-slate-500 truncate">
-                      {dept
-                        ? `[${dept.deptCode}] ${dept.deptName}`
-                        : 'No department'}
+                      {dept ? (
+                        <>
+                          [{dept.deptCode}] {dept.deptName}
+                          {isInactive && (
+                            <span className="ml-1.5 text-rose-700 font-semibold">
+                              · Deactivated
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        'No department'
+                      )}
                     </p>
                   </div>
                   <span
                     className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-0.5 shrink-0 ${
-                      isOnline
+                      isInactive
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : isOnline
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-slate-50 text-slate-500 border-slate-200'
                     }`}
                   >
-                    {isOnline ? 'Online' : 'Offline'}
+                    {isInactive ? 'Walled' : isOnline ? 'Online' : 'Offline'}
                   </span>
                 </div>
               );
