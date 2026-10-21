@@ -20,8 +20,18 @@ export interface UpdateDepartmentInput {
   description?: string;
 }
 
-export async function fetchDepartments(): Promise<Department[]> {
-  const { data } = await api.get('/v1/departments');
+/**
+ * List departments.
+ *
+ * @param includeInactive — when true, returns ALL departments (active
+ *   AND deactivated). The Dean uses this to reactivate a dept. DHs and
+ *   pickers omit it (active-only default).
+ */
+export async function fetchDepartments(
+  includeInactive = false,
+): Promise<Department[]> {
+  const params = includeInactive ? { includeInactive: 'true' } : {};
+  const { data } = await api.get('/v1/departments', { params });
   return data.data;
 }
 
