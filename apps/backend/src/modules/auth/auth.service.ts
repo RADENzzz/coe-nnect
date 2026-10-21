@@ -47,12 +47,27 @@ export class AuthService {
 
   /**
    * Shapes the User entity into the response the frontend expects.
-   * `firstName` falls back to the username when no faculty record is linked,
-   * so the UI can always show "Welcome back, {firstName}" without special-casing.
+   *
+   * `deptActive`:
+   *   - true  → DH whose dept is active, or a Dean/Admin (never walled)
+   *   - false → DH whose dept is inactive (frontend renders wall)
+   *   - null  → no dept linked at all (data-integrity edge case)
+   *
+   * The frontend uses `profile.deptActive === false && role === 'department_head'`
+   * as the sole "show wall" predicate.
    */
   private serializeProfile(profile: User) {
     const firstName =
       profile.faculty?.firstName ?? profile.username ?? 'User';
+
+    // Dean/Admin are never walled — they need to see all departments to
+    // reactivate one. Return true regardless of any dept.
+    let deptActive: boolean | null = null;
+    if (profile.role === 'college_dean' || profile.role === 'administrator') {
+      deptActive = true;
+    } else if (profile.department) {
+      deptActive = profile.department.isActive === true;
+    }
 
     return {
       id: profile.userId,
@@ -62,6 +77,7 @@ export class AuthService {
       deptId: profile.deptId,
       deptCode: profile.department?.deptCode ?? null,
       deptName: profile.department?.deptName ?? null,
+      deptActive,
       facultyId: profile.facultyId,
       firstName,
     };
