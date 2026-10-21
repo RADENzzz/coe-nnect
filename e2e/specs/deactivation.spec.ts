@@ -12,7 +12,7 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
   await gotoApp(page, '/dean/departments/manage');
 
   await expect(
-    page.getByText(state.deptCode, { exact: true }).first(),
+    page.getByText(`[${state.deptCode}]`, { exact: false }).first(),
   ).toBeVisible();
 
   // Find the row specifically containing the deptCode
@@ -26,7 +26,9 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
   await confirm.getByPlaceholder('Admin password').fill(state.deanPassword);
   await confirm.getByRole('button', { name: 'Confirm' }).click();
 
-  await expect(page.getByText(/deactivated/i)).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText(/Department .* deactivated/i),
+  ).toBeVisible({ timeout: 15_000 });
 
   // ── 2. Fresh context: DH login should land on the wall ──
   const dhContext = await browser.newContext();
@@ -49,7 +51,9 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
     .getByRole('button', { name: 'Row actions' })
     .click();
   await page.getByRole('menuitem', { name: 'Activate' }).click();
-  await expect(page.getByText(/reactivated/i)).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText(/Department .* reactivated/i),
+  ).toBeVisible({ timeout: 15_000 });
 
   await dhContext.close();
 });
