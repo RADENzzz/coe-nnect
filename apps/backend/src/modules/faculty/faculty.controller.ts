@@ -16,6 +16,7 @@ import { CreateFacultyDto } from './dto/create-faculty.dto';
 import { UpdateFacultyDto } from './dto/update-faculty.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 import { UpdateQualificationDto } from './dto/update-qualification.dto';
+import { BulkDeleteQualificationsDto } from './dto/bulk-delete-qualifications.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -95,7 +96,28 @@ export class FacultyController {
     @Req() req: any,
   ) {
     return {
-      data: await this.faculty.updateQualification(id, qualId, dto, req.profile),
+      data: await this.faculty.updateQualification(
+        id,
+        qualId,
+        dto,
+        req.profile,
+      ),
+    };
+  }
+
+  @Roles('college_dean', 'department_head')
+  @Post(':id/qualifications/bulk-delete')
+  @Auditable({
+    action: 'faculty.qualification.bulk_delete',
+    source: 'Faculty',
+  })
+  async bulkRemoveQualifications(
+    @Param('id') id: string,
+    @Body() dto: BulkDeleteQualificationsDto,
+    @Req() req: any,
+  ) {
+    return {
+      data: await this.faculty.removeQualifications(id, dto, req.profile),
     };
   }
 
