@@ -1,8 +1,8 @@
 # Database structure
 
-> **Snapshot:** [`coe-nnect-database-structure.sql`](coe-nnect-database-structure.sql) — generated 20 October 2026 from PostgreSQL 17.6 / Supabase. It contains the public schema only: tables, enum types, functions, triggers, indexes, RLS policies, and grants. It contains no row data.
+> **Snapshot:** [`coe-nnect-database-structure.sql`](coe-nnect-database-structure.sql) — generated 22 October 2026 from PostgreSQL 17.11 / Supabase. It contains the public schema only: tables, enum types, functions, triggers, indexes, RLS policies, and grants. It contains no row data.
 
-**At a glance:** 33 tables · 69 foreign keys · 9 enum types · 65 explicit indexes · 49 RLS policies. Row-level security is enabled on all 33 tables.
+**At a glance:** 34 tables · 70 foreign keys · 9 enum types · 65 explicit indexes · 51 RLS policies · 19 functions · 12 triggers. Row-level security is enabled on all 34 tables.
 
 CoE-NNECT uses PostgreSQL (Supabase) as its system of record. The NestJS API accesses it through TypeORM; the frontend uses Supabase Auth and Realtime. This page is the visual reference for the schema. The SQL snapshot remains the authoritative DDL.
 
@@ -71,12 +71,18 @@ flowchart LR
         prospectus_pdf_table[prospectus_pdf_table]
     end
 
+    subgraph platform["Platform status"]
+        direction TB
+        system_status[system_status]
+    end
+
     identity --> catalog
     identity --> requests
     catalog --> scheduling
     requests --> scheduling
     catalog --> pdf
     scheduling --> collaboration
+    identity --> platform
 ```
 
 ## 1. Identity, organization, and academic catalog
@@ -459,6 +465,7 @@ erDiagram
 Key constraints and behavior:
 
 - `schedule.status` follows `draft`, `review`, `finalized`, `published`; the `trg_schedule_status_flow` trigger rejects transitions outside the allowed flow.
+- The `trg_schedule_active_dept` trigger (`BEFORE INSERT OR UPDATE OF dept_id`) rejects writes whose `dept_id` points at a missing or deactivated department, so deactivated departments cannot accumulate timetable rows.
 - `schedule.is_finalized` is a generated column: true for `finalized` and `published`.
 - Partial unique indexes prevent the same faculty member or room from being booked twice in the same term/timeslot:
   - `(term_id, faculty_id, timeslot_id)` where both keys are present
@@ -659,57 +666,93 @@ Key constraints and behavior:
 - `prospectus_pdf_table` is unique on `(pdf_id, year_level, semester)` and is cascade-deleted with its parent PDF.
 - `prospectus_pdf_table.columns` and `.rows` hold the parsed table structure as JSONB; the remaining numeric fields are copied totals for quick display.
 
+## 7. Platform status
+
+`system_status` holds the single system-wide banner (outage notices, maintenance
+windows) rendered on the login page and in the app shell. It is a singleton:
+the `status_id` check constraint pins the table to a single row.
+
+```mermaid
+erDiagram
+    USERS |o--o| SYSTEM_STATUS : "updated by"
+
+    USERS {
+        uuid user_id PK
+    }
+    SYSTEM_STATUS {
+        smallint status_id PK
+        boolean enabled
+        text severity
+        text title
+        text message
+        timestamptz suppress_until
+        uuid updated_by FK
+        timestamptz updated_at
+    }
+```
+
+Key constraints and behavior:
+
+- `system_status.status_id` is constrained to `1`, so the table holds at most one banner row.
+- `severity` is checked against `info`, `warning`, `critical`, `maintenance`.
+- `chk_system_status_title_required` requires a non-empty `title` whenever `enabled` is true; `message` is optional.
+- `updated_by` references `users(user_id)` with `ON DELETE SET NULL`, so the banner survives a deleted user.
+- `trg_system_status_touch` refreshes `updated_at` on every update.
+- `suppress_until` mutes the banner without deleting it; the API reports the banner as disabled while `suppress_until` is in the future.
+- RLS exposes the row as read-only to `anon` and `authenticated`. Writes are administrator-only and go through the NestJS `PATCH /v1/system-status` endpoint, which also writes an `audit_trail` entry.
+
 ## Table inventory
 
-| Table | Primary key | Purpose |
-|---|---|---|
-| `audit_trail` | `audit_id` | Append-oriented audit events with actor, action, JSON data, and source system. |
-| `auto_generate_lock` | `term_id` | One row per term used to serialize auto-generation runs. |
-| `conversation` | `conversation_id` | Chat thread header. |
-| `conversation_member` | `(conversation_id, user_id)` | Conversation membership and last-read marker. |
-| `cross_department_request` | `request_id` (UUID) | Cross-department request with a specific timeslot and free-text status. |
-| `department` | `dept_id` | Academic department. |
-| `designation` | `designation_id` | Faculty designation and release hours. |
-| `faculty` | `faculty_id` | Faculty profile, department, designation, and sync state. |
-| `faculty_commitment` | `commitment_id` | Fixed external commitments that block availability. |
-| `faculty_preference` | `preference_id` | Preferred teaching day and time window. |
-| `faculty_qualification` | `qual_id` | Faculty-to-subject qualification mapping. |
-| `faculty_request` | `request_id` | Typed cross-department faculty request and approval workflow. |
-| `faculty_unavailability` | `unavailability_id` | Local or IDP-sourced unavailable time blocks. |
-| `message` | `message_id` | Chat message body and sender. |
-| `minor_subject_schedule` | `minor_id` | Auxiliary timetable for minor subjects. |
-| `notification` | `notification_id` | Per-user notification with read state and JSON payload. |
-| `program` | `program_id` | Degree program offered by a department. |
-| `prospectus` | `prospectus_id` | Program/subject curriculum mapping with year, semester, and session durations. |
-| `prospectus_pdf` | `pdf_id` | Uploaded prospectus PDF metadata and storage pointer. |
-| `prospectus_pdf_table` | `table_id` | User-defined table region and parsed rows inside a PDF. |
-| `room` | `room_id` | Room inventory and owning department. |
-| `room_preference` | `preference_id` | Department priority for a shared room. |
-| `schedule` | `schedule_id` | Scheduled class/session row. |
-| `schedule_unscheduled` | `unscheduled_id` | Sessions the generator could not place. |
-| `schedule_version` | `version_id` | JSON snapshot of a generated schedule version. |
-| `scheduling_setting` | `setting_key` | Global scheduling configuration key/value. |
-| `section` | `section_id` | Student section/cohort within a program. |
-| `subject` | `subject_id` | Course catalog entry. |
-| `subject_restriction` | `restriction_id` | Pairwise subject restriction with an optional term. |
-| `term` | `term_id` | Academic term with school year, dates, and semester. |
-| `time_slot` | `timeslot_id` | Reusable day/start/end slot with generated duration. |
-| `user_notification_setting` | `(user_id, trigger_key)` | Per-user notification opt-in. |
-| `users` | `user_id` | Application profile linked to a Supabase Auth user. |
+| Table                       | Primary key                  | Purpose                                                                        |
+| --------------------------- | ---------------------------- | ------------------------------------------------------------------------------ |
+| `audit_trail`               | `audit_id`                   | Append-oriented audit events with actor, action, JSON data, and source system. |
+| `auto_generate_lock`        | `term_id`                    | One row per term used to serialize auto-generation runs.                       |
+| `conversation`              | `conversation_id`            | Chat thread header.                                                            |
+| `conversation_member`       | `(conversation_id, user_id)` | Conversation membership and last-read marker.                                  |
+| `cross_department_request`  | `request_id` (UUID)          | Cross-department request with a specific timeslot and free-text status.        |
+| `department`                | `dept_id`                    | Academic department.                                                           |
+| `designation`               | `designation_id`             | Faculty designation and release hours.                                         |
+| `faculty`                   | `faculty_id`                 | Faculty profile, department, designation, and sync state.                      |
+| `faculty_commitment`        | `commitment_id`              | Fixed external commitments that block availability.                            |
+| `faculty_preference`        | `preference_id`              | Preferred teaching day and time window.                                        |
+| `faculty_qualification`     | `qual_id`                    | Faculty-to-subject qualification mapping.                                      |
+| `faculty_request`           | `request_id`                 | Typed cross-department faculty request and approval workflow.                  |
+| `faculty_unavailability`    | `unavailability_id`          | Local or IDP-sourced unavailable time blocks.                                  |
+| `message`                   | `message_id`                 | Chat message body and sender.                                                  |
+| `minor_subject_schedule`    | `minor_id`                   | Auxiliary timetable for minor subjects.                                        |
+| `notification`              | `notification_id`            | Per-user notification with read state and JSON payload.                        |
+| `program`                   | `program_id`                 | Degree program offered by a department.                                        |
+| `prospectus`                | `prospectus_id`              | Program/subject curriculum mapping with year, semester, and session durations. |
+| `prospectus_pdf`            | `pdf_id`                     | Uploaded prospectus PDF metadata and storage pointer.                          |
+| `prospectus_pdf_table`      | `table_id`                   | User-defined table region and parsed rows inside a PDF.                        |
+| `room`                      | `room_id`                    | Room inventory and owning department.                                          |
+| `room_preference`           | `preference_id`              | Department priority for a shared room.                                         |
+| `schedule`                  | `schedule_id`                | Scheduled class/session row.                                                   |
+| `schedule_unscheduled`      | `unscheduled_id`             | Sessions the generator could not place.                                        |
+| `schedule_version`          | `version_id`                 | JSON snapshot of a generated schedule version.                                 |
+| `scheduling_setting`        | `setting_key`                | Global scheduling configuration key/value.                                     |
+| `section`                   | `section_id`                 | Student section/cohort within a program.                                       |
+| `subject`                   | `subject_id`                 | Course catalog entry.                                                          |
+| `subject_restriction`       | `restriction_id`             | Pairwise subject restriction with an optional term.                            |
+| `system_status`             | `status_id`                  | Singleton row holding the system-wide status banner.                           |
+| `term`                      | `term_id`                    | Academic term with school year, dates, and semester.                           |
+| `time_slot`                 | `timeslot_id`                | Reusable day/start/end slot with generated duration.                           |
+| `user_notification_setting` | `(user_id, trigger_key)`     | Per-user notification opt-in.                                                  |
+| `users`                     | `user_id`                    | Application profile linked to a Supabase Auth user.                            |
 
 ## Enum types
 
-| Enum | Values |
-|---|---|
-| `day_of_week` | `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, `Sunday` |
-| `faculty_class` | `regular`, `part_time`, `visiting_lecturer`, `other` |
-| `faculty_request_status` | `pending`, `approved`, `rejected`, `cancelled` |
-| `load_type` | `lecture`, `laboratory`, `other` |
-| `room_type` | `lecture_room`, `laboratory`, `computer_lab`, `drafting_room`, `other`, `any` |
-| `schedule_status` | `draft`, `review`, `finalized`, `published` |
-| `semester_type` | `1st`, `2nd`, `summer` |
-| `sync_status` | `pending`, `synced`, `failed` |
-| `user_role` | `administrator`, `college_dean`, `department_head`, `viewer` |
+| Enum                     | Values                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| `day_of_week`            | `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, `Sunday`  |
+| `faculty_class`          | `regular`, `part_time`, `visiting_lecturer`, `other`                          |
+| `faculty_request_status` | `pending`, `approved`, `rejected`, `cancelled`                                |
+| `load_type`              | `lecture`, `laboratory`, `other`                                              |
+| `room_type`              | `lecture_room`, `laboratory`, `computer_lab`, `drafting_room`, `other`, `any` |
+| `schedule_status`        | `draft`, `review`, `finalized`, `published`                                   |
+| `semester_type`          | `1st`, `2nd`, `summer`                                                        |
+| `sync_status`            | `pending`, `synced`, `failed`                                                 |
+| `user_role`              | `administrator`, `college_dean`, `department_head`, `viewer`                  |
 
 ## Important database behavior
 
@@ -720,15 +763,17 @@ Key constraints and behavior:
 
 ### Row-level security
 
-- RLS is enabled on all 33 tables.
-- There are 49 policies. They use `auth.uid()`, `public.current_user_role()`, and `public.current_user_dept()` for ownership and role checks.
+- RLS is enabled on all 34 tables.
+- There are 51 policies. They use `auth.uid()`, `public.current_user_role()`, and `public.current_user_dept()` for ownership and role checks.
+- `system_status` is the one table with intentionally public read access: `system_status_public_read` (anon) and `system_status_authenticated_read` (authenticated) both allow `SELECT` for everyone, because the banner is shown before sign-in. No write policy exists, so direct writes are impossible even for authenticated users.
+- `REVOKE USAGE ON SCHEMA public FROM PUBLIC` keeps the schema reachable only through the `anon`, `authenticated`, and `service_role` roles.
 - The backend connects through the trusted PostgreSQL role and applies application-level guards. RLS is the boundary for direct Supabase client access.
 
 ### Generated and derived values
 
 - `schedule.is_finalized` is generated from `schedule.status`.
 - `time_slot.duration` is generated from `end_time - start_time`.
-- `updated_at` columns are maintained by `set_updated_at()` or `touch_updated_at()` triggers where present.
+- `updated_at` columns are maintained by `set_updated_at()`, `touch_updated_at()`, or `tg_system_status_touch()` triggers where present.
 
 ### Schedule integrity
 
@@ -744,20 +789,23 @@ Key constraints and behavior:
 - Other status transitions are rejected.
 - Partial unique indexes enforce one faculty booking and one room booking per term/timeslot.
 - `schedule` retains both normalized IDs and snapshot values for imported/historical rows.
+- `trg_schedule_active_dept` rejects inserts and `dept_id` updates when the referenced department is deactivated or missing, mirroring the API-side department-active guards.
 
 ### JSONB fields
 
-| Table | Columns |
-|---|---|
-| `audit_trail` | `affected_data` |
-| `notification` | `payload` |
+| Table                  | Columns           |
+| ---------------------- | ----------------- |
+| `audit_trail`          | `affected_data`   |
+| `notification`         | `payload`         |
 | `prospectus_pdf_table` | `columns`, `rows` |
-| `schedule_version` | `snapshot` |
-| `scheduling_setting` | `value` |
+| `schedule_version`     | `snapshot`        |
+| `scheduling_setting`   | `value`           |
 
 ### Schema workflow
 
 - TypeORM synchronization is disabled (`synchronize: false`).
 - Schema changes are applied through the Supabase SQL workflow and captured in `coe-nnect-database-structure.sql`.
 - The SQL file contains the public schema only; the `on_auth_user_created` trigger on `auth.users` is appended separately because a public-only `pg_dump` does not include it.
+- The snapshot is regenerated from the live database with `scripts/dump-database-schema.ps1`, which reads `DATABASE_URL` from `apps/backend/.env` and writes this folder's SQL file. Schema-only dumps are used, so no row data is ever committed.
 - When the schema changes, regenerate the snapshot and update the diagrams/counts on this page.
+- Tracked migrations in `supabase/migrations/` mirror the same schema; every change to the live database also needs a migration file so `supabase db reset` reproduces it.
