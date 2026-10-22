@@ -91,7 +91,9 @@ supabase/.temp/
 # ─────────────────────────────────────────────
 # Railway / Vercel
 # ─────────────────────────────────────────────
-.railway/
+# Keep local Railway link state out of git, but track the IaC file.
+.railway/*
+!.railway/railway.ts
 .vercel/
 .vercel_build_output/
 
