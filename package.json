@@ -14,6 +14,7 @@
     "dev:parser": "node scripts/dev.mjs --only=parser",
     "dev:web": "pnpm --parallel --filter \"./apps/*\" dev",
     "setup:venvs": "powershell -ExecutionPolicy Bypass -File scripts/setup-venvs.ps1",
+    "db:snapshot": "powershell -ExecutionPolicy Bypass -File scripts/dump-database-schema.ps1",
     "kill": "powershell -NoProfile -Command \"try { Get-NetTCPConnection -LocalPort 3000,5173,8000,8001 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } } catch {} ; exit 0\"",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
