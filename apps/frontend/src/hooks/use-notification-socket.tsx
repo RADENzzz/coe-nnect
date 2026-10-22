@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../store/auth.store';
+import { resolveSocketOrigin } from '../lib/api-base';
 
 // ────────────────────────────────────────────
 // Context shape
@@ -38,18 +39,16 @@ const NotificationSocketContext =
 // ────────────────────────────────────────────
 
 /**
- * The API base is `VITE_API_BASE_URL` (e.g. http://localhost:3000/api).
- * Socket.IO connects to the host WITHOUT the `/api` prefix.
+ * Socket.IO connects to the origin of the API base, without any path prefix.
+ *
+ * - Absolute base (`http://localhost:3000/api`) → `http://localhost:3000`
+ * - Relative base (`/api`, the proxy/tunnel setup) → the page's own origin
+ *
+ * Tunnel and LAN visitors also fall back to the page origin when the
+ * configured API points at their own localhost. See `lib/api-base.ts`.
  */
-function resolveSocketUrl(): string | null {
-  const base = import.meta.env.VITE_API_BASE_URL as string | undefined;
-  if (!base) return null;
-  try {
-    const url = new URL(base);
-    return `${url.protocol}//${url.host}`;
-  } catch {
-    return null;
-  }
+function resolveSocketUrl(): string {
+  return resolveSocketOrigin();
 }
 
 // ────────────────────────────────────────────
@@ -67,15 +66,15 @@ export function NotificationSocketProvider({ children }: ProviderProps) {
   const socketRef = useRef<Socket | null>(null);
 
   // Map of registered listeners, applied on (re)connect.
-  const listenersRef = useRef<
-    Map<string, Set<(payload: unknown) => void>>
-  >(new Map());
+  const listenersRef = useRef<Map<string, Set<(payload: unknown) => void>>>(
+    new Map(),
+  );
 
   // ── Connect on login, disconnect on logout ──
   useEffect(() => {
     const url = resolveSocketUrl();
 
-    if (!user || !url) {
+    if (!user) {
       // Clean teardown
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
@@ -153,7 +152,10 @@ export function NotificationSocketProvider({ children }: ProviderProps) {
 
   // ── subscribe() implementation ──
   const subscribe = useCallback(
-    <T = unknown,>(event: string, handler: (payload: T) => void): (() => void) => {
+    <T = unknown,>(
+      event: string,
+      handler: (payload: T) => void,
+    ): (() => void) => {
       const wrapped = handler as (payload: unknown) => void;
 
       // Track it so future reconnects can re-attach.
