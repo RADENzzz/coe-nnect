@@ -30,6 +30,6 @@ export class UpdateSystemStatusDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(5000)
   message?: string | null;
 }
