@@ -10,6 +10,7 @@ import { useUiStore } from '../../store/ui.store';
 import { getNavForRole } from '../../lib/constants/nav-config';
 import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
+import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
 
 function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
@@ -66,6 +67,7 @@ function ShellInner() {
           tabIndex={-1}
           className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 focus:outline-none"
         >
+          <SystemStatusBanner />
           <Outlet />
         </main>
       </div>
