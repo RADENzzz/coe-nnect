@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import BbcodeEditor from '../../components/ui/BbcodeEditor';
+import { Bbcode } from '../../lib/bbcode';
 import {
   fetchSystemState,
   startSeed,
@@ -25,6 +27,8 @@ import { useAuthStore } from '../../store/auth.store';
 const DEMO_PASSWORD = 'Demo!2345';
 const RESET_CONFIRM_PHRASE = 'RESET DEMO DATA';
 const USERNAME_RE = /^[a-zA-Z0-9._-]+$/;
+/** Raw BBCode counts toward the limit, so leave headroom for markup. */
+const MESSAGE_MAX_LENGTH = 5000;
 
 const ROLE_TONE: Record<string, { label: string; className: string }> = {
   administrator: {
@@ -114,9 +118,8 @@ export default function DevToolsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  const [deactivateTarget, setDeactivateTarget] = useState<DevUserRecord | null>(
-    null,
-  );
+  const [deactivateTarget, setDeactivateTarget] =
+    useState<DevUserRecord | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -331,7 +334,9 @@ export default function DevToolsPage() {
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Internal panel for demo prep. Only{' '}
-              <code className="text-amber-700 font-semibold">administrator</code>{' '}
+              <code className="text-amber-700 font-semibold">
+                administrator
+              </code>{' '}
               accounts can access this page.
             </p>
           </div>
@@ -525,7 +530,11 @@ export default function DevToolsPage() {
                     size={18}
                   />
                 ) : (
-                  <Icon name="error" className="text-red-600 shrink-0" size={18} />
+                  <Icon
+                    name="error"
+                    className="text-red-600 shrink-0"
+                    size={18}
+                  />
                 )}
                 <p className="text-xs font-bold uppercase tracking-wider flex-1">
                   {activeJob.kind} — {activeJob.status}
@@ -786,7 +795,11 @@ export default function DevToolsPage() {
                           : toggleActiveMutation.mutate(u.userId)
                       }
                       disabled={toggleActiveMutation.isPending || isSelf}
-                      title={isSelf ? 'You cannot deactivate your own account' : undefined}
+                      title={
+                        isSelf
+                          ? 'You cannot deactivate your own account'
+                          : undefined
+                      }
                       className={`flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219] disabled:opacity-50 disabled:cursor-not-allowed ${
                         u.isActive
                           ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
@@ -992,7 +1005,9 @@ export default function DevToolsPage() {
               <button
                 type="button"
                 onClick={handleCopyPassword}
-                aria-label={passwordCopied ? 'Password copied' : 'Copy password'}
+                aria-label={
+                  passwordCopied ? 'Password copied' : 'Copy password'
+                }
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-2 py-1 rounded bg-white border border-slate-200 text-slate-600 hover:text-[#5c1219] hover:border-[#5c1219] transition flex items-center gap-1"
               >
                 <Icon
@@ -1212,8 +1227,7 @@ function SystemStatusCard() {
   });
 
   const [enabled, setEnabled] = useState(false);
-  const [severity, setSeverity] =
-    useState<SystemStatusSeverity>('warning');
+  const [severity, setSeverity] = useState<SystemStatusSeverity>('warning');
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
@@ -1245,9 +1259,7 @@ function SystemStatusCard() {
       queryClient.setQueryData(['system-status'], next);
       queryClient.invalidateQueries({ queryKey: ['dev-tools'] });
       setSaved(
-        enabled
-          ? 'Banner updated — visible on login page.'
-          : 'Banner hidden.',
+        enabled ? 'Banner updated — visible on login page.' : 'Banner hidden.',
       );
     },
     onError: (err: any) => {
@@ -1281,8 +1293,8 @@ function SystemStatusCard() {
             System Status Banner
           </h2>
           <p className="text-xs text-slate-500 mt-1 max-w-lg">
-            Shown on the login page for everyone. Use it to warn about
-            downtime, maintenance, or a reset in progress.
+            Shown on the login page for everyone. Use it to warn about downtime,
+            maintenance, or a reset in progress.
           </p>
         </div>
         <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
@@ -1347,24 +1359,26 @@ function SystemStatusCard() {
         >
           Message <span className="text-slate-400">(optional)</span>
         </label>
-        <textarea
+        <BbcodeEditor
           id="ss-message"
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          maxLength={2000}
-          rows={3}
-          placeholder="Explain what's happening and when it will be back. Line breaks are preserved."
-          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10 resize-y min-h-[72px]"
+          onChange={setMessage}
+          maxLength={MESSAGE_MAX_LENGTH}
           disabled={isLoading}
+          label="Status banner message"
         />
-        <p className="text-[10px] text-slate-400 mt-1 text-right tabular-nums">
-          {message.length}/2000
+        <p className="text-[11px] text-slate-500 mt-1.5">
+          Select text, then click a toolbar button to format it. Links, lists,
+          quotes and code blocks are all supported.
         </p>
       </div>
 
       {/* Live preview */}
       {(title.trim() || message.trim()) && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div
+          key={severity}
+          className="rounded-lg border border-slate-200 bg-slate-50 p-3 animate-dialog-pop"
+        >
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
             Status popup preview
           </p>
@@ -1418,7 +1432,7 @@ function SystemStatusCard() {
         <div
           role="status"
           aria-live="polite"
-          className="text-xs px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-1.5"
+          className="text-xs px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-1.5 animate-slide-up"
         >
           <Icon name="check_circle" size={14} />
           {saved}
@@ -1446,7 +1460,13 @@ function SystemStatusBannerPreview({
 }) {
   const THEME: Record<
     SystemStatusSeverity,
-    { panel: string; accent: string; icon: string; iconName: string; pill: string }
+    {
+      panel: string;
+      accent: string;
+      icon: string;
+      iconName: string;
+      pill: string;
+    }
   > = {
     info: {
       panel: 'border-blue-200',
@@ -1485,14 +1505,24 @@ function SystemStatusBannerPreview({
         enabled ? '' : 'opacity-50'
       }`}
     >
-      <div className={`h-1.5 w-full ${t.accent}`} aria-hidden="true" />
+      <div
+        className={`relative h-1.5 w-full overflow-hidden ${t.accent}`}
+        aria-hidden="true"
+      >
+        <span className="absolute inset-0 -translate-x-full animate-accent-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent" />
+      </div>
 
       <div className="p-4">
         <div className="flex items-start gap-2.5">
           <span
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${t.icon}`}
           >
-            <Icon name={t.iconName} filled size={20} />
+            <Icon
+              name={t.iconName}
+              filled
+              size={20}
+              className="animate-icon-pop"
+            />
           </span>
           <div className="min-w-0 flex-1">
             <span
@@ -1507,10 +1537,17 @@ function SystemStatusBannerPreview({
         </div>
 
         {message && (
-          <p className="mt-2.5 whitespace-pre-line text-xs leading-relaxed text-slate-700">
-            {message}
-          </p>
+          <div className="mt-2.5 whitespace-pre-line text-xs leading-relaxed text-slate-700">
+            <Bbcode
+              text={message}
+              linkClassName="font-semibold text-[#5c1219] underline underline-offset-2"
+            />
+          </div>
         )}
+      </div>
+
+      <div className="h-0.5 w-full bg-slate-100" aria-hidden="true">
+        <div className={`h-full w-full ${t.accent}`} />
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
