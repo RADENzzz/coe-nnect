@@ -8,6 +8,47 @@ import {
 
 const DISMISSED_KEY = 'coe-nnect:dismissed-status';
 
+/**
+ * How long we wait before deciding the backend is "asleep" and
+ * rendering the fallback banner. This window exists so a healthy
+ * backend (which responds in <100ms) never flashes the fallback.
+ *
+ * Too short → banner flashes on every login (bad UX).
+ * Too long  → user stares at a blank form for too long (bad UX).
+ * 1.5s is the sweet spot — long enough for the fetch to land,
+ * short enough that the warning appears before the user gives up.
+ */
+const FALLBACK_GRACE_MS = 1500;
+
+/**
+ * Hardcoded fallback that renders when the backend doesn't answer in
+ * time. This is the whole point of the feature: if the backend is
+ * asleep, we can't fetch a warning *from the backend*.
+ *
+ * Set `enabled: false` to disable the fallback entirely.
+ */
+const FALLBACK: {
+  enabled: boolean;
+  severity: SystemStatusSeverity;
+  title: string;
+  message: string;
+} = {
+  enabled: true,
+  severity: 'warning',
+  title:
+    'Backend, Solver (Automatic Generation) and PDF parser are currently on Render',
+  message:
+    'Railway is experiencing a global platform outage, so the backend, ' +
+    'solver, and PDF parser have been moved to Render in the meantime.\n\n' +
+    'Render is a downgrade, so you may experience:\n' +
+    '• Long loading wait times\n' +
+    '• Auto Generation failures\n' +
+    '• PDF parser failures\n\n' +
+    'This is because these services need to stay awake to function.\n\n' +
+    'Once Railway is fixed, we will move back.\n\n' +
+    'Thank you for your understanding.\n— RadenZ',
+};
+
 interface SeverityTheme {
   wrap: string;
   icon: string;
@@ -52,22 +93,57 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
   },
 };
 
-/**
- * Login-page banner driven by the `system_status` table.
- *
- * Behavior:
- *  - Fetched on mount (public endpoint — no auth required).
- *  - Renders nothing when `enabled=false` or when the user has dismissed
- *    this exact version (keyed by `updatedAt` so a NEW message re-shows).
- *  - Dismissible per browser session via sessionStorage.
- */
 export default function SystemStatusBanner() {
-  const { data, isLoading } = useQuery({
+  const { data, isError, isLoading } = useQuery({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatus,
-    staleTime: 60_000,
-    retry: 1,
+    retry: false,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
   });
+
+  /**
+   * Grace timer — flips to `true` after FALLBACK_GRACE_MS if the
+   * backend hasn't answered yet. This is what prevents the fallback
+   * from flashing for 50ms on every healthy login.
+   */
+  const [graceElapsed, setGraceElapsed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setGraceElapsed(true), FALLBACK_GRACE_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Decide what to render:
+  //
+  //  1. Fetch succeeded with enabled=true  → LIVE
+  //  2. Fetch succeeded with enabled=false → NOTHING (backend is fine)
+  //  3. Fetch errored                      → FALLBACK (backend is down)
+  //  4. Fetch still loading, grace elapsed → FALLBACK (backend is slow)
+  //  5. Fetch still loading, grace pending → NOTHING (wait for it)
+  //
+  const showLive = !!data?.enabled && !!data.title;
+  const showFallback =
+    FALLBACK.enabled &&
+    (isError || (!data && !isLoading && graceElapsed) || (!data && isLoading && graceElapsed));
+
+  const active = showLive
+    ? {
+        severity: data!.severity,
+        title: data!.title!,
+        message: data!.message,
+        updatedAt: data!.updatedAt,
+        isFallback: false,
+      }
+    : showFallback
+      ? {
+          severity: FALLBACK.severity,
+          title: FALLBACK.title,
+          message: FALLBACK.message,
+          updatedAt: 'fallback',
+          isFallback: true,
+        }
+      : null;
 
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(
     () => {
@@ -79,11 +155,10 @@ export default function SystemStatusBanner() {
     },
   );
 
+  // New message from server → clear dismissed state so user sees it.
   useEffect(() => {
-    // When the server sends a different version (different updatedAt),
-    // clear the dismissed state so the user sees the new message.
-    if (!data?.updatedAt) return;
-    if (dismissedVersion && dismissedVersion !== data.updatedAt) {
+    if (!active?.updatedAt) return;
+    if (dismissedVersion && dismissedVersion !== active.updatedAt) {
       setDismissedVersion(null);
       try {
         sessionStorage.removeItem(DISMISSED_KEY);
@@ -91,18 +166,17 @@ export default function SystemStatusBanner() {
         /* ignore */
       }
     }
-  }, [data?.updatedAt, dismissedVersion]);
+  }, [active?.updatedAt, dismissedVersion]);
 
-  if (isLoading || !data?.enabled) return null;
-  if (!data.title) return null;
-  if (dismissedVersion === data.updatedAt) return null;
+  if (!active) return null;
+  if (dismissedVersion === active.updatedAt) return null;
 
-  const theme = THEMES[data.severity];
+  const theme = THEMES[active.severity];
 
   const dismiss = () => {
-    setDismissedVersion(data.updatedAt);
+    setDismissedVersion(active.updatedAt);
     try {
-      sessionStorage.setItem(DISMISSED_KEY, data.updatedAt);
+      sessionStorage.setItem(DISMISSED_KEY, active.updatedAt);
     } catch {
       /* ignore */
     }
@@ -123,13 +197,18 @@ export default function SystemStatusBanner() {
 
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-semibold leading-snug ${theme.title}`}>
-            {data.title}
+            {active.title}
           </p>
-          {data.message && (
+          {active.message && (
             <p
               className={`text-xs mt-1 whitespace-pre-line leading-relaxed ${theme.body}`}
             >
-              {data.message}
+              {active.message}
+            </p>
+          )}
+          {active.isFallback && (
+            <p className={`text-[10px] mt-2 opacity-70 ${theme.body}`}>
+              (Live status unavailable — showing cached notice)
             </p>
           )}
         </div>
