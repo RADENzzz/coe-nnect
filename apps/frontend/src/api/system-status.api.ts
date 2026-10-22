@@ -1,6 +1,5 @@
-// apps/frontend/src/api/system-status.api.ts
-import { api } from './client';
 import { supabase } from '../lib/supabase';
+import { api } from './client';
 
 export type SystemStatusSeverity =
   | 'info'
@@ -17,11 +16,14 @@ export interface SystemStatus {
 }
 
 /**
- * READ — hits Supabase directly (anon key + RLS).
+ * READ — goes to Supabase directly (anon key + RLS).
  *
- * Why not the backend? Because the whole point of the login banner is
- * to warn users the BACKEND is asleep. Fetching the warning from a
+ * Why not the backend? Because the whole point of this banner is to
+ * warn users the BACKEND is asleep. Fetching the warning from a
  * sleeping backend defeats the purpose. Supabase is always up.
+ *
+ * RLS policy `system_status_public_read` (TO anon, FOR SELECT,
+ * USING true) is what makes this work without auth.
  */
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const { data, error } = await supabase
@@ -55,8 +57,8 @@ export async function fetchSystemStatus(): Promise<SystemStatus> {
  * WRITE — goes through the backend so we keep validation
  * (title required when enabled) and the @Auditable trail.
  *
- * The backend enforces @Roles('administrator'); this cannot be
- * called by a DH or Dean.
+ * Backend enforces @Roles('administrator'). Only the dev account
+ * can write.
  */
 export async function updateSystemStatus(input: {
   enabled?: boolean;
