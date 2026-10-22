@@ -1,5 +1,5 @@
 -- CoE-NNECT database schema
--- Generated: 2026-10-20T12:56:02.325Z
+-- Generated: 2026-10-22T01:03:16.124Z
 --
 -- This file contains the public schema only (tables, types, functions,
 -- triggers, RLS policies, indexes, and grants). It does not contain row data.
@@ -11,7 +11,7 @@
 --
 
 
--- Dumped from database version 17.6
+-- Dumped from database version 17.11
 -- Dumped by pg_dump version 18.6
 
 SET statement_timeout = 0;
@@ -204,6 +204,49 @@ $$;
 
 
 --
+-- Name: enforce_active_department_on_schedule(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.enforce_active_department_on_schedule() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  dept_active boolean;
+  dept_label  text;
+BEGIN
+  IF NEW.dept_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT is_active,
+         dept_code || ' — ' || dept_name
+    INTO dept_active, dept_label
+    FROM public.department
+   WHERE dept_id = NEW.dept_id;
+
+  IF dept_active IS NULL THEN
+    -- dept_id points at a non-existent department
+    RAISE EXCEPTION
+      'schedule.dept_id=% does not reference an existing department',
+      NEW.dept_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF dept_active IS FALSE THEN
+    -- Single format string with ONE % placeholder for dept_label.
+    -- No || concatenation — that's the PL/pgSQL RAISE gotcha.
+    RAISE EXCEPTION
+      'Cannot write schedule row: department "%" is deactivated. Reactivate the department from Dean → Departments before making changes.',
+      dept_label
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: enforce_schedule_status_flow(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -382,6 +425,20 @@ begin
   new.updated_at = now();
   return new;
 end;
+$$;
+
+
+--
+-- Name: tg_system_status_touch(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.tg_system_status_touch() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
 $$;
 
 
@@ -1198,7 +1255,7 @@ CREATE TABLE public.schedule_unscheduled (
     session_index integer DEFAULT 0 NOT NULL,
     reason text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT schedule_unscheduled_kind_check CHECK (((kind)::text = ANY ((ARRAY['lecture'::character varying, 'lab'::character varying])::text[])))
+    CONSTRAINT schedule_unscheduled_kind_check CHECK (((kind)::text = ANY (ARRAY[('lecture'::character varying)::text, ('lab'::character varying)::text])))
 );
 
 
@@ -1354,6 +1411,25 @@ ALTER TABLE public.subject ALTER COLUMN subject_id ADD GENERATED ALWAYS AS IDENT
     NO MINVALUE
     NO MAXVALUE
     CACHE 1
+);
+
+
+--
+-- Name: system_status; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.system_status (
+    status_id smallint DEFAULT 1 NOT NULL,
+    enabled boolean DEFAULT false NOT NULL,
+    severity text DEFAULT 'info'::text NOT NULL,
+    title text,
+    message text,
+    suppress_until timestamp with time zone,
+    updated_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_system_status_title_required CHECK (((enabled = false) OR ((title IS NOT NULL) AND (length(btrim(title)) > 0)))),
+    CONSTRAINT system_status_severity_check CHECK ((severity = ANY (ARRAY['info'::text, 'warning'::text, 'critical'::text, 'maintenance'::text]))),
+    CONSTRAINT system_status_status_id_check CHECK ((status_id = 1))
 );
 
 
@@ -1788,6 +1864,14 @@ ALTER TABLE ONLY public.subject_restriction
 
 ALTER TABLE ONLY public.subject
     ADD CONSTRAINT subject_subject_code_key UNIQUE (subject_code);
+
+
+--
+-- Name: system_status system_status_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_status
+    ADD CONSTRAINT system_status_pkey PRIMARY KEY (status_id);
 
 
 --
@@ -2361,6 +2445,13 @@ CREATE TRIGGER trg_room_preference_updated_at BEFORE UPDATE ON public.room_prefe
 
 
 --
+-- Name: schedule trg_schedule_active_dept; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_schedule_active_dept BEFORE INSERT OR UPDATE OF dept_id ON public.schedule FOR EACH ROW EXECUTE FUNCTION public.enforce_active_department_on_schedule();
+
+
+--
 -- Name: schedule trg_schedule_status_flow; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -2386,6 +2477,13 @@ CREATE TRIGGER trg_scheduling_setting_updated_at BEFORE UPDATE ON public.schedul
 --
 
 CREATE TRIGGER trg_section_updated_at BEFORE UPDATE ON public.section FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+--
+-- Name: system_status trg_system_status_touch; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_system_status_touch BEFORE UPDATE ON public.system_status FOR EACH ROW EXECUTE FUNCTION public.tg_system_status_touch();
 
 
 --
@@ -2916,6 +3014,14 @@ ALTER TABLE ONLY public.subject_restriction
 
 
 --
+-- Name: system_status system_status_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_status
+    ADD CONSTRAINT system_status_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(user_id) ON DELETE SET NULL;
+
+
+--
 -- Name: user_notification_setting user_notification_setting_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3349,6 +3455,26 @@ ALTER TABLE public.subject ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subject_restriction ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: system_status; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.system_status ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: system_status system_status_authenticated_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY system_status_authenticated_read ON public.system_status FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: system_status system_status_public_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY system_status_public_read ON public.system_status FOR SELECT TO anon USING (true);
+
+
+--
 -- Name: term; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -3502,7 +3628,7 @@ CREATE POLICY write_staff ON public.subject_restriction TO authenticated USING (
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: -
 --
 
-GRANT USAGE ON SCHEMA public TO postgres;
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO service_role;
@@ -3542,6 +3668,15 @@ GRANT ALL ON FUNCTION public.current_user_dept() TO service_role;
 GRANT ALL ON FUNCTION public.current_user_role() TO anon;
 GRANT ALL ON FUNCTION public.current_user_role() TO authenticated;
 GRANT ALL ON FUNCTION public.current_user_role() TO service_role;
+
+
+--
+-- Name: FUNCTION enforce_active_department_on_schedule(); Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON FUNCTION public.enforce_active_department_on_schedule() TO anon;
+GRANT ALL ON FUNCTION public.enforce_active_department_on_schedule() TO authenticated;
+GRANT ALL ON FUNCTION public.enforce_active_department_on_schedule() TO service_role;
 
 
 --
@@ -3623,6 +3758,15 @@ GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_user
 GRANT ALL ON FUNCTION public.set_updated_at() TO anon;
 GRANT ALL ON FUNCTION public.set_updated_at() TO authenticated;
 GRANT ALL ON FUNCTION public.set_updated_at() TO service_role;
+
+
+--
+-- Name: FUNCTION tg_system_status_touch(); Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON FUNCTION public.tg_system_status_touch() TO anon;
+GRANT ALL ON FUNCTION public.tg_system_status_touch() TO authenticated;
+GRANT ALL ON FUNCTION public.tg_system_status_touch() TO service_role;
 
 
 --
@@ -4148,6 +4292,15 @@ GRANT ALL ON SEQUENCE public.subject_subject_id_seq TO service_role;
 
 
 --
+-- Name: TABLE system_status; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.system_status TO anon;
+GRANT ALL ON TABLE public.system_status TO authenticated;
+GRANT ALL ON TABLE public.system_status TO service_role;
+
+
+--
 -- Name: TABLE term; Type: ACL; Schema: public; Owner: -
 --
 
@@ -4212,10 +4365,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENC
 
 
 --
--- Name: DEFAULT PRIVILEGES FOR SEQUENCES; Type: DEFAULT ACL; Schema: public; Owner: -
---
-
---
 -- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: -
 --
 
@@ -4224,10 +4373,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIO
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO service_role;
 
-
---
--- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: public; Owner: -
---
 
 --
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: -
@@ -4240,13 +4385,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 
 
 --
--- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: -
---
-
---
 -- PostgreSQL database dump complete
 --
-
 
 
 -- Custom trigger on Supabase's auth.users table.
