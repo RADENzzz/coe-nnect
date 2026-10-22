@@ -1366,7 +1366,7 @@ function SystemStatusCard() {
       {(title.trim() || message.trim()) && (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-            Login page preview
+            Status popup preview
           </p>
           <SystemStatusBannerPreview
             severity={severity}
@@ -1429,7 +1429,7 @@ function SystemStatusCard() {
 }
 
 /**
- * Local mirror of the login-page banner styling.
+ * Local mirror of the system status popup styling.
  * Intentionally duplicated so Dev Tools doesn't depend on the auth feature
  * folder (different bundle chunk).
  */
@@ -1446,56 +1446,85 @@ function SystemStatusBannerPreview({
 }) {
   const THEME: Record<
     SystemStatusSeverity,
-    { wrap: string; icon: string; iconName: string }
+    { panel: string; accent: string; icon: string; iconName: string; pill: string }
   > = {
     info: {
-      wrap: 'bg-blue-50 border-blue-200',
+      panel: 'border-blue-200',
+      accent: 'bg-blue-500',
       icon: 'bg-blue-100 text-blue-700',
       iconName: 'info',
+      pill: 'bg-blue-100 text-blue-700',
     },
     warning: {
-      wrap: 'bg-amber-50 border-amber-200',
+      panel: 'border-amber-200',
+      accent: 'bg-amber-500',
       icon: 'bg-amber-100 text-amber-700',
       iconName: 'warning',
+      pill: 'bg-amber-100 text-amber-700',
     },
     critical: {
-      wrap: 'bg-red-50 border-red-200',
+      panel: 'border-red-200',
+      accent: 'bg-red-500',
       icon: 'bg-red-100 text-red-700',
       iconName: 'error',
+      pill: 'bg-red-100 text-red-700',
     },
     maintenance: {
-      wrap: 'bg-violet-50 border-violet-200',
+      panel: 'border-violet-200',
+      accent: 'bg-violet-500',
       icon: 'bg-violet-100 text-violet-700',
       iconName: 'build',
+      pill: 'bg-violet-100 text-violet-700',
     },
   };
   const t = THEME[severity];
 
   return (
     <div
-      className={`rounded-lg border ${t.wrap} p-3 ${
+      className={`overflow-hidden rounded-xl border bg-white shadow-lg ${t.panel} ${
         enabled ? '' : 'opacity-50'
       }`}
     >
-      <div className="flex items-start gap-2.5">
-        <span
-          className={`shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${t.icon}`}
-        >
-          <Icon name={t.iconName} filled size={16} />
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-900 leading-snug">
-            {title || 'Title preview'}
-          </p>
-          {message && (
-            <p className="text-xs mt-0.5 whitespace-pre-line leading-relaxed text-slate-700">
-              {message}
+      <div className={`h-1.5 w-full ${t.accent}`} aria-hidden="true" />
+
+      <div className="p-4">
+        <div className="flex items-start gap-2.5">
+          <span
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${t.icon}`}
+          >
+            <Icon name={t.iconName} filled size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <span
+              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${t.pill}`}
+            >
+              {severity}
+            </span>
+            <p className="mt-1 text-sm font-bold leading-snug text-slate-900">
+              {title || 'Title preview'}
             </p>
-          )}
+          </div>
         </div>
+
+        {message && (
+          <p className="mt-2.5 whitespace-pre-line text-xs leading-relaxed text-slate-700">
+            {message}
+          </p>
+        )}
       </div>
+
+      <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
+        <p className="text-[11px] text-slate-500">
+          Please read the notice before closing.
+        </p>
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-500">
+          <Icon name="schedule" size={16} className="animate-pulse" />
+          <span className="tabular-nums">3s</span>
+        </span>
+      </div>
+
       {!enabled && (
-        <p className="text-[10px] text-slate-500 mt-2 italic">
+        <p className="border-t border-slate-200 px-4 py-2 text-[10px] italic text-slate-500">
           Hidden — this is what it would look like if enabled.
         </p>
       )}
