@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { SystemStatus } from './system-status.api';
 
 export interface DevSystemState {
   counts: Record<string, number>;
@@ -82,5 +83,11 @@ export async function toggleDevUserActive(
   const { data } = await api.patch(
     `/v1/dev-tools/users/${userId}/toggle-active`,
   );
+  return data.data;
+}
+
+export async function fetchSystemStatusForDev(): Promise<SystemStatus> {
+  // Same public endpoint — no need for a separate dev-only route.
+  const { data } = await api.get('/v1/system-status');
   return data.data;
 }
