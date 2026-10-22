@@ -10,7 +10,7 @@ import {
 const DISMISSED_KEY = 'coe-nnect:dismissed-status';
 const FALLBACK_GRACE_MS = 1500;
 /** How long the popup stays un-closable before the close button appears. */
-const CLOSE_DELAY_SECONDS = 3;
+const CLOSE_DELAY_SECONDS = 5;
 
 const FALLBACK: {
   enabled: boolean;
