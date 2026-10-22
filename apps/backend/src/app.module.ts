@@ -25,6 +25,7 @@ import { SearchModule } from './modules/search/search.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { DevToolsModule } from './modules/dev-tools/dev-tools.module';
 import { SystemStatusModule } from './modules/system-status/system-status.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { SystemStatusModule } from './modules/system-status/system-status.module
     NotificationsModule,
     DevToolsModule,
     SystemStatusModule,
+    HealthModule,
   ],
   providers: [
     {
