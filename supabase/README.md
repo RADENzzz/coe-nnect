@@ -3,6 +3,18 @@
 The tracked schema lives in `migrations/`. There is no demo seed in this
 directory; `seed.sql` is reserved for deterministic local/test fixtures.
 
+## Tracked migrations
+
+| File                                                       | Contents                                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20261021000000_initial_schema.sql`                        | Baseline snapshot of the public schema as of 20 October 2026.                                                                               |
+| `20261022000000_system_status_and_schedule_dept_guard.sql` | `system_status` banner table, the `trg_schedule_active_dept` deactivated-department guard, and `REVOKE USAGE ON SCHEMA public FROM PUBLIC`. |
+
+Every change applied to the hosted database also needs a migration file here so
+`supabase db reset` reproduces it. The matching DDL snapshot lives in
+`docs/DATABASE STRUCTURE/coe-nnect-database-structure.sql` and is regenerated
+with `scripts/dump-database-schema.ps1`.
+
 ## Local reset
 
 Docker is required for the local Supabase stack.
