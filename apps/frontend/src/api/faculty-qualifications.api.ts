@@ -50,3 +50,15 @@ export async function removeFacultyQualification(
 ): Promise<void> {
   await api.delete(`/v1/faculty/${facultyId}/qualifications/${qualId}`);
 }
+
+/** Batch delete — one request for any number of selected qualifications. */
+export async function removeFacultyQualificationsBulk(
+  facultyId: string,
+  qualIds: string[],
+): Promise<{ deleted: number }> {
+  const { data } = await api.post(
+    `/v1/faculty/${facultyId}/qualifications/bulk-delete`,
+    { qualIds },
+  );
+  return data.data;
+}
