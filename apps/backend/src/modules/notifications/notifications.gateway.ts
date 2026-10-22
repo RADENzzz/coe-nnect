@@ -7,6 +7,7 @@ import {
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { SupabaseService } from '../../database/supabase.service';
+import { isCorsOriginAllowed } from '../../config/security.config';
 
 /**
  * WebSocket gateway for real-time notification push.
@@ -25,8 +26,11 @@ import { SupabaseService } from '../../database/supabase.service';
 @WebSocketGateway({
   cors: {
     origin: (origin, callback) => {
-      // Mirror the HTTP CORS logic
+      // Mirror the HTTP CORS logic. This supports exact origins plus the
+      // leading-wildcard entries (https://*.example.com) configured through
+      // FRONTEND_URL / CORS_ALLOWED_ORIGINS.
       if (!origin) return callback(null, true);
+      if (isCorsOriginAllowed(origin)) return callback(null, true);
 
       const envOrigins = (
         process.env.FRONTEND_URL ?? 'http://localhost:5173'
