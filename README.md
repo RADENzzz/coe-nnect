@@ -1,6 +1,7 @@
 <div align="center">
 
 <!-- CI & Status Badges -->
+
 ![Backend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-backend.yml/badge.svg)
 ![Frontend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-frontend.yml/badge.svg)
 ![Database Migrations](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-migrations.yml/badge.svg)
@@ -14,6 +15,7 @@
 <br />
 
 <!-- Tech Stack Badges -->
+
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
@@ -32,6 +34,7 @@ Western Mindanao State University</p>
 CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
 
 ## Table of Contents
+
 - [Project Information](#project-information)
 - [Capabilities](#capabilities)
 - [Architecture](#architecture)
@@ -39,6 +42,7 @@ CoE-NNECT supports academic scheduling for the College of Engineering at Western
 - [Common Commands](#common-commands)
 
 ## Tech Stack
+
 - **Monorepo:** pnpm workspaces
 - **Backend:** NestJS, TypeORM, Supabase (PostgreSQL), Swagger
 - **Frontend:** React, Vite, TailwindCSS, React Query, Zustand
@@ -53,6 +57,7 @@ CoE-NNECT supports academic scheduling for the College of Engineering at Western
 - **CI/CD:** Fully automated via GitHub Actions
 
 ## Capabilities
+
 Here is the automatic schedule generator in action:
 ![Auto-Generate Demo](docs/demo.gif)
 
@@ -151,6 +156,14 @@ By default, the frontend is at `http://localhost:5173`, the API is at `http://lo
 
 To run only one service, use the root shortcuts: `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm dev:parser`, or `pnpm dev:solver`. The `pnpm dev:no-parser` and `pnpm dev:no-solver` commands start the other services without the named service. See the [backend guide](docs/apps/backend.md) and [frontend guide](docs/apps/frontend.md) for configuration and checks.
 
+To share the running app through a temporary public URL — for a demo or remote testing without deploying — install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/), keep `pnpm dev` running, and in a second terminal run:
+
+```powershell
+pnpm online
+```
+
+It prints an `https://<random-words>.trycloudflare.com` link that anyone can open; `Ctrl+C` closes the public link while the local app keeps running. `pnpm dev:online` starts the app and the tunnel together in one terminal. The URL changes on every restart. The setup (same-origin API proxy, CORS, websocket/HMR handling), Supabase redirect requirements, and Cloudflare's request limits are covered in the [Cloudflare Tunnel guide](docs/operations/cloudflare-tunnel.md).
+
 ## Common commands
 
 Run from the repository root:
@@ -167,6 +180,8 @@ Run from the repository root:
 | `pnpm test:e2e`                                  | Run the Playwright scheduling workflow (test project required)   |
 | `pnpm typecheck:e2e`                             | Type-check the Playwright tests                                  |
 | `pnpm --filter @coe-nnect/frontend lint`         | Lint the frontend                                                |
+| `pnpm online`                                    | Temporary public Cloudflare link for the app already running     |
+| `pnpm dev:online`                                | Dev services plus the temporary public link, one terminal        |
 | `pnpm --filter @coe-nnect/backend seed:demo`     | Seed demo data in the configured database                        |
 
 Review scripts and database targets before running them. Python services use the commands in their respective guides.
