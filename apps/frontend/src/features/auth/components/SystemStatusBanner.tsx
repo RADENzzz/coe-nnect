@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, Fragment } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
+import { Bbcode } from '../../../lib/bbcode';
 import {
   fetchSystemStatus,
   type SystemStatusSeverity,
@@ -96,102 +97,6 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
     pill: 'bg-violet-100 text-violet-700',
   },
 };
-
-/**
- * Parses a plain-text message into React nodes, supporting:
- *   - **bold**           → <strong>
- *   - [label](url)       → <a href="url">label</a>
- *   - bare https:// URLs → <a href="url">url</a>
- *   - \n                 → line breaks (via whitespace-pre-line on parent)
- *
- * No `dangerouslySetInnerHTML`. Every string is rendered by React, so
- * HTML in the message is escaped automatically and cannot execute.
- * Only http/https URLs are linked — `javascript:` / `data:` / `mailto:`
- * are rejected to prevent scheme-based XSS.
- */
-function RichMessage({
-  text,
-  linkClassName,
-}: {
-  text: string;
-  linkClassName: string;
-}) {
-  // Split on markdown links OR bare URLs OR **bold** — in one pass.
-  // Group 1: markdown label, Group 2: markdown url,
-  // Group 3: bold text,
-  // Group 4: bare url
-  const TOKEN_RE =
-    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|(https?:\/\/[^\s]+)/g;
-
-  const nodes: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
-
-  while ((match = TOKEN_RE.exec(text)) !== null) {
-    const [fullMatch, mdLabel, mdUrl, boldText, bareUrl] = match;
-
-    // Push the plain text between the previous match and this one
-    if (match.index > lastIndex) {
-      nodes.push(
-        <Fragment key={`t-${key++}`}>
-          {text.slice(lastIndex, match.index)}
-        </Fragment>,
-      );
-    }
-
-    if (mdLabel && mdUrl) {
-      // [label](url)
-      nodes.push(
-        <a
-          key={`md-${key++}`}
-          href={mdUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={linkClassName}
-        >
-          {mdLabel}
-        </a>,
-      );
-    } else if (boldText) {
-      // **bold**
-      nodes.push(
-        <strong key={`b-${key++}`} className="font-semibold">
-          {boldText}
-        </strong>,
-      );
-    } else if (bareUrl) {
-      // bare https://...  — strip trailing punctuation like .,),,
-      const cleaned = bareUrl.replace(/[.,;!?)]+$/, '');
-      const trailing = bareUrl.slice(cleaned.length);
-      nodes.push(
-        <a
-          key={`u-${key++}`}
-          href={cleaned}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`${linkClassName} break-all`}
-        >
-          {cleaned}
-        </a>,
-      );
-      if (trailing) {
-        nodes.push(<Fragment key={`tr-${key++}`}>{trailing}</Fragment>);
-      }
-    }
-
-    lastIndex = match.index + fullMatch.length;
-  }
-
-  // Push the remaining text
-  if (lastIndex < text.length) {
-    nodes.push(
-      <Fragment key={`tail-${key++}`}>{text.slice(lastIndex)}</Fragment>,
-    );
-  }
-
-  return <>{nodes}</>;
-}
 
 export default function SystemStatusBanner() {
   const { data, isError, isLoading, refetch } = useQuery({
@@ -381,19 +286,38 @@ export default function SystemStatusBanner() {
         aria-labelledby="system-status-title"
         aria-describedby={message ? 'system-status-message' : undefined}
         tabIndex={-1}
-        className={`relative w-full max-w-lg overflow-hidden rounded-xl border bg-white shadow-2xl outline-none animate-fade-up ${theme.panel}`}
+        className={`relative w-full max-w-lg overflow-hidden rounded-xl border bg-white shadow-2xl outline-none animate-dialog-pop ${theme.panel}`}
       >
-        <div className={`h-1.5 w-full ${theme.accent}`} aria-hidden="true" />
+        <div
+          className={`relative h-1.5 w-full overflow-hidden ${theme.accent}`}
+          aria-hidden="true"
+        >
+          <span className="absolute inset-0 -translate-x-full animate-accent-sweep bg-gradient-to-r from-transparent via-white/60 to-transparent" />
+        </div>
 
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-3">
             <span
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${theme.icon}`}
+              className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${theme.icon}`}
             >
-              <Icon name={theme.iconName} filled size={22} />
+              {severity === 'critical' && (
+                <span
+                  className="absolute inset-0 animate-ping-slow rounded-lg bg-red-400/50"
+                  aria-hidden="true"
+                />
+              )}
+              <Icon
+                name={theme.iconName}
+                filled
+                size={22}
+                className="relative animate-icon-pop"
+              />
             </span>
 
-            <div className="min-w-0 flex-1">
+            <div
+              className="min-w-0 flex-1 animate-reveal"
+              style={{ animationDelay: '60ms' }}
+            >
               <span
                 className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${theme.pill}`}
               >
@@ -411,16 +335,29 @@ export default function SystemStatusBanner() {
           {message && (
             <div
               id="system-status-message"
-              className={`mt-3 max-h-[45vh] overflow-y-auto whitespace-pre-line text-sm leading-relaxed ${theme.body}`}
+              className={`mt-3 max-h-[45vh] overflow-y-auto whitespace-pre-line text-sm leading-relaxed animate-reveal ${theme.body}`}
+              style={{ animationDelay: '120ms' }}
             >
-              <RichMessage text={message} linkClassName={theme.link} />
+              <Bbcode text={message} linkClassName={theme.link} />
             </div>
           )}
 
           {isFallback && (
-            <p className={`mt-3 text-[11px] opacity-70 ${theme.body}`}>
+            <p
+              className={`mt-3 text-[11px] opacity-70 animate-reveal ${theme.body}`}
+              style={{ animationDelay: '160ms' }}
+            >
               (Live status unavailable — showing cached notice)
             </p>
+          )}
+        </div>
+
+        <div className="h-0.5 w-full bg-slate-100" aria-hidden="true">
+          {locked && (
+            <div
+              className={`h-full origin-left animate-countdown ${theme.accent}`}
+              style={{ animationDuration: `${CLOSE_DELAY_SECONDS}s` }}
+            />
           )}
         </div>
 
@@ -441,10 +378,10 @@ export default function SystemStatusBanner() {
                 ? `Close notice available in ${secondsLeft} second${secondsLeft === 1 ? '' : 's'}`
                 : 'Close notice'
             }
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${
               locked
                 ? 'cursor-not-allowed bg-slate-200 text-slate-500'
-                : 'bg-slate-900 text-white hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1'
+                : 'bg-slate-900 text-white hover:bg-slate-700 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1'
             }`}
           >
             {locked ? (
@@ -454,7 +391,7 @@ export default function SystemStatusBanner() {
               </>
             ) : (
               <>
-                <Icon name="close" size={16} />
+                <Icon name="close" size={16} className="animate-icon-pop" />
                 Close
               </>
             )}
