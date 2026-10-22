@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import {
@@ -9,11 +9,6 @@ import {
 const DISMISSED_KEY = 'coe-nnect:dismissed-status';
 const FALLBACK_GRACE_MS = 1500;
 
-/**
- * Hardcoded fallback that renders when the backend/Supabase can't be
- * reached in time. The whole point of the banner is to warn about
- * outages — so the warning itself must not depend on a healthy backend.
- */
 const FALLBACK: {
   enabled: boolean;
   severity: SystemStatusSeverity;
@@ -43,6 +38,7 @@ interface SeverityTheme {
   title: string;
   body: string;
   close: string;
+  link: string;
 }
 
 const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
@@ -53,6 +49,7 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
     title: 'text-blue-900',
     body: 'text-blue-800',
     close: 'text-blue-500 hover:text-blue-700',
+    link: 'text-blue-700 underline underline-offset-2 hover:text-blue-900 font-semibold',
   },
   warning: {
     wrap: 'bg-amber-50 border-amber-200',
@@ -61,6 +58,7 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
     title: 'text-amber-900',
     body: 'text-amber-800',
     close: 'text-amber-500 hover:text-amber-700',
+    link: 'text-amber-800 underline underline-offset-2 hover:text-amber-950 font-semibold',
   },
   critical: {
     wrap: 'bg-red-50 border-red-200',
@@ -69,6 +67,7 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
     title: 'text-red-900',
     body: 'text-red-800',
     close: 'text-red-500 hover:text-red-700',
+    link: 'text-red-700 underline underline-offset-2 hover:text-red-950 font-semibold',
   },
   maintenance: {
     wrap: 'bg-violet-50 border-violet-200',
@@ -77,33 +76,118 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
     title: 'text-violet-900',
     body: 'text-violet-800',
     close: 'text-violet-500 hover:text-violet-700',
+    link: 'text-violet-700 underline underline-offset-2 hover:text-violet-950 font-semibold',
   },
 };
+
+/**
+ * Parses a plain-text message into React nodes, supporting:
+ *   - **bold**           → <strong>
+ *   - [label](url)       → <a href="url">label</a>
+ *   - bare https:// URLs → <a href="url">url</a>
+ *   - \n                 → line breaks (via whitespace-pre-line on parent)
+ *
+ * No `dangerouslySetInnerHTML`. Every string is rendered by React, so
+ * HTML in the message is escaped automatically and cannot execute.
+ * Only http/https URLs are linked — `javascript:` / `data:` / `mailto:`
+ * are rejected to prevent scheme-based XSS.
+ */
+function RichMessage({
+  text,
+  linkClassName,
+}: {
+  text: string;
+  linkClassName: string;
+}) {
+  // Split on markdown links OR bare URLs OR **bold** — in one pass.
+  // Group 1: markdown label, Group 2: markdown url,
+  // Group 3: bold text,
+  // Group 4: bare url
+  const TOKEN_RE =
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*|(https?:\/\/[^\s]+)/g;
+
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = TOKEN_RE.exec(text)) !== null) {
+    const [fullMatch, mdLabel, mdUrl, boldText, bareUrl] = match;
+
+    // Push the plain text between the previous match and this one
+    if (match.index > lastIndex) {
+      nodes.push(
+        <Fragment key={`t-${key++}`}>
+          {text.slice(lastIndex, match.index)}
+        </Fragment>,
+      );
+    }
+
+    if (mdLabel && mdUrl) {
+      // [label](url)
+      nodes.push(
+        <a
+          key={`md-${key++}`}
+          href={mdUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClassName}
+        >
+          {mdLabel}
+        </a>,
+      );
+    } else if (boldText) {
+      // **bold**
+      nodes.push(
+        <strong key={`b-${key++}`} className="font-semibold">
+          {boldText}
+        </strong>,
+      );
+    } else if (bareUrl) {
+      // bare https://...  — strip trailing punctuation like .,),,
+      const cleaned = bareUrl.replace(/[.,;!?)]+$/, '');
+      const trailing = bareUrl.slice(cleaned.length);
+      nodes.push(
+        <a
+          key={`u-${key++}`}
+          href={cleaned}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${linkClassName} break-all`}
+        >
+          {cleaned}
+        </a>,
+      );
+      if (trailing) {
+        nodes.push(<Fragment key={`tr-${key++}`}>{trailing}</Fragment>);
+      }
+    }
+
+    lastIndex = match.index + fullMatch.length;
+  }
+
+  // Push the remaining text
+  if (lastIndex < text.length) {
+    nodes.push(
+      <Fragment key={`tail-${key++}`}>{text.slice(lastIndex)}</Fragment>,
+    );
+  }
+
+  return <>{nodes}</>;
+}
 
 export default function SystemStatusBanner() {
   const { data, isError, isLoading, refetch } = useQuery({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatus,
     retry: false,
-    // Safety net — poll every 30s while the tab is visible
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
-    // Fires on minimize→restore / alt+tab within the OS
     refetchOnWindowFocus: true,
-    // Fires when the network comes back online
     refetchOnReconnect: true,
     staleTime: 0,
   });
 
-  /**
-   * The `refetchOnWindowFocus` option covers OS-level focus events
-   * (minimize/restore, alt+tab between apps). It does NOT fire on
-   * tab-switch within the same browser window — e.g. user opens
-   * /login in tab A, switches to tab B to read Slack, comes back to
-   * tab A. `visibilitychange` fires in both cases, so we listen to it
-   * to guarantee the banner refreshes the moment the user returns to
-   * the page. This also covers mobile Safari/Chrome lock→unlock.
-   */
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -116,7 +200,6 @@ export default function SystemStatusBanner() {
     };
   }, [refetch]);
 
-  // Grace timer — prevents the fallback from flashing on healthy loads
   const [graceElapsed, setGraceElapsed] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setGraceElapsed(true), FALLBACK_GRACE_MS);
@@ -158,8 +241,6 @@ export default function SystemStatusBanner() {
     },
   );
 
-  // New message from the server → clear dismissed state so the user
-  // sees the fresh notice.
   useEffect(() => {
     if (!active?.updatedAt) return;
     if (dismissedVersion && dismissedVersion !== active.updatedAt) {
@@ -207,7 +288,7 @@ export default function SystemStatusBanner() {
             <p
               className={`text-xs mt-1 whitespace-pre-line leading-relaxed ${theme.body}`}
             >
-              {active.message}
+              <RichMessage text={active.message} linkClassName={theme.link} />
             </p>
           )}
           {active.isFallback && (
