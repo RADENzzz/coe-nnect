@@ -7,25 +7,12 @@ import {
 } from '../../../api/system-status.api';
 
 const DISMISSED_KEY = 'coe-nnect:dismissed-status';
-
-/**
- * How long we wait before deciding the backend is "asleep" and
- * rendering the fallback banner. This window exists so a healthy
- * backend (which responds in <100ms) never flashes the fallback.
- *
- * Too short → banner flashes on every login (bad UX).
- * Too long  → user stares at a blank form for too long (bad UX).
- * 1.5s is the sweet spot — long enough for the fetch to land,
- * short enough that the warning appears before the user gives up.
- */
 const FALLBACK_GRACE_MS = 1500;
 
 /**
- * Hardcoded fallback that renders when the backend doesn't answer in
- * time. This is the whole point of the feature: if the backend is
- * asleep, we can't fetch a warning *from the backend*.
- *
- * Set `enabled: false` to disable the fallback entirely.
+ * Hardcoded fallback that renders when the backend/Supabase can't be
+ * reached in time. The whole point of the banner is to warn about
+ * outages — so the warning itself must not depend on a healthy backend.
  */
 const FALLBACK: {
   enabled: boolean;
@@ -36,7 +23,7 @@ const FALLBACK: {
   enabled: true,
   severity: 'warning',
   title:
-    'Backend, Solver (Automatic Generation) and PDF parser are currently on Render',
+    'Backend, Solver (Automatic Generation), and PDF Parser migrated to Render',
   message:
     'Railway is experiencing a global platform outage, so the backend, ' +
     'solver, and PDF parser have been moved to Render in the meantime.\n\n' +
@@ -94,38 +81,54 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
 };
 
 export default function SystemStatusBanner() {
-  const { data, isError, isLoading } = useQuery({
+  const { data, isError, isLoading, refetch } = useQuery({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatus,
     retry: false,
+    // Safety net — poll every 30s while the tab is visible
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
+    // Fires on minimize→restore / alt+tab within the OS
+    refetchOnWindowFocus: true,
+    // Fires when the network comes back online
+    refetchOnReconnect: true,
     staleTime: 0,
   });
 
   /**
-   * Grace timer — flips to `true` after FALLBACK_GRACE_MS if the
-   * backend hasn't answered yet. This is what prevents the fallback
-   * from flashing for 50ms on every healthy login.
+   * The `refetchOnWindowFocus` option covers OS-level focus events
+   * (minimize/restore, alt+tab between apps). It does NOT fire on
+   * tab-switch within the same browser window — e.g. user opens
+   * /login in tab A, switches to tab B to read Slack, comes back to
+   * tab A. `visibilitychange` fires in both cases, so we listen to it
+   * to guarantee the banner refreshes the moment the user returns to
+   * the page. This also covers mobile Safari/Chrome lock→unlock.
    */
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refetch();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refetch]);
+
+  // Grace timer — prevents the fallback from flashing on healthy loads
   const [graceElapsed, setGraceElapsed] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setGraceElapsed(true), FALLBACK_GRACE_MS);
     return () => clearTimeout(t);
   }, []);
 
-  // Decide what to render:
-  //
-  //  1. Fetch succeeded with enabled=true  → LIVE
-  //  2. Fetch succeeded with enabled=false → NOTHING (backend is fine)
-  //  3. Fetch errored                      → FALLBACK (backend is down)
-  //  4. Fetch still loading, grace elapsed → FALLBACK (backend is slow)
-  //  5. Fetch still loading, grace pending → NOTHING (wait for it)
-  //
   const showLive = !!data?.enabled && !!data.title;
   const showFallback =
     FALLBACK.enabled &&
-    (isError || (!data && !isLoading && graceElapsed) || (!data && isLoading && graceElapsed));
+    (isError ||
+      (!data && !isLoading && graceElapsed) ||
+      (!data && isLoading && graceElapsed));
 
   const active = showLive
     ? {
@@ -155,7 +158,8 @@ export default function SystemStatusBanner() {
     },
   );
 
-  // New message from server → clear dismissed state so user sees it.
+  // New message from the server → clear dismissed state so the user
+  // sees the fresh notice.
   useEffect(() => {
     if (!active?.updatedAt) return;
     if (dismissedVersion && dismissedVersion !== active.updatedAt) {
