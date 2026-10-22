@@ -18,6 +18,40 @@ function normalizeOrigin(origin: string): string | null {
 }
 
 /**
+ * Cloudflare quick tunnels hand out a random hostname on every run
+ * (https://<random-words>.trycloudflare.com), so a fixed allowlist cannot
+ * work. These are enabled automatically outside production — `pnpm dev` then
+ * `pnpm online` works without restarting the backend — and by
+ * CORS_ALLOW_TUNNEL=true when a deployed instance needs them (demos only).
+ */
+const TUNNEL_ORIGIN_PATTERNS = ['https://*.trycloudflare.com'];
+
+/**
+ * Compare a browser origin against one allowlist entry.
+ *
+ * Entries are either an exact origin ("https://coe.example.edu") or a
+ * subdomain wildcard ("https://*.trycloudflare.com"). The wildcard must be
+ * the leading "*." label of the hostname and the scheme must match, so
+ * "https://*.example.com" accepts "https://a.example.com" but not
+ * "http://a.example.com", "https://example.com", or "https://a.example.com.evil".
+ */
+export function matchesOriginPattern(pattern: string, origin: string): boolean {
+  const normalizedPattern = normalizeOrigin(pattern) ?? pattern;
+  if (!normalizedPattern.includes('*')) return normalizedPattern === origin;
+
+  const parsed = /^(https?:\/\/)\*\.([^/:*]+)$/i.exec(normalizedPattern);
+  if (!parsed) return false;
+
+  const [, scheme, wildcardHost] = parsed;
+  if (!origin.startsWith(scheme)) return false;
+
+  const host = origin.slice(scheme.length);
+  return (
+    host.length > wildcardHost.length + 1 && host.endsWith(`.${wildcardHost}`)
+  );
+}
+
+/**
  * Production uses an explicit allowlist only. Development and test keep a
  * loopback convenience rule so a local Vite server on any port still works.
  */
@@ -32,12 +66,18 @@ export function isCorsOriginAllowed(
   const normalized = normalizeOrigin(origin);
   if (!normalized) return false;
 
+  const allowTunnelOrigins =
+    env.CORS_ALLOW_TUNNEL === 'true' || env.NODE_ENV !== 'production';
+
   const allowed = [
     ...splitOrigins(env.FRONTEND_URL),
     ...splitOrigins(env.CORS_ALLOWED_ORIGINS),
+    ...(allowTunnelOrigins ? TUNNEL_ORIGIN_PATTERNS : []),
   ];
 
-  if (allowed.includes(normalized)) return true;
+  if (allowed.some((pattern) => matchesOriginPattern(pattern, normalized))) {
+    return true;
+  }
 
   if (env.NODE_ENV === 'production') return false;
 
@@ -58,11 +98,7 @@ export function buildCorsOptions(env: Env = process.env) {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Request-Id',
-    ],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
     exposedHeaders: ['X-Request-Id'],
     maxAge: 86400,
   };
