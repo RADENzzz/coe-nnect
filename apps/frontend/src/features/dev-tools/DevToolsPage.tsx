@@ -11,9 +11,14 @@ import {
   resetUserPassword,
   renameUser,
   toggleDevUserActive,
+  fetchSystemStatusForDev,
   type DevJob,
   type DevUserRecord,
 } from '../../api/dev-tools.api';
+import {
+  updateSystemStatus,
+  type SystemStatusSeverity,
+} from '../../api/system-status.api';
 import { useOnlineUsers } from '../../hooks/use-online-users';
 import { useAuthStore } from '../../store/auth.store';
 
@@ -389,6 +394,9 @@ export default function DevToolsPage() {
           </button>
         </div>
       )}
+
+      {/* ═══════════════ System Status ═══════════════ */}
+      <SystemStatusCard />
 
       {/* ═══════════════ Top grid ═══════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1189,6 +1197,308 @@ export default function DevToolsPage() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// System Status card — write path for the login-page banner
+// ─────────────────────────────────────────────────────────────
+function SystemStatusCard() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['system-status'],
+    queryFn: fetchSystemStatusForDev,
+  });
+
+  const [enabled, setEnabled] = useState(false);
+  const [severity, setSeverity] =
+    useState<SystemStatusSeverity>('warning');
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [saved, setSaved] = useState<string | null>(null);
+
+  // Hydrate from server on first load / refetch
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.enabled);
+    setSeverity(data.severity);
+    setTitle(data.title ?? '');
+    setMessage(data.message ?? '');
+  }, [data?.updatedAt]);
+
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(null), 4000);
+    return () => clearTimeout(t);
+  }, [saved]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateSystemStatus({
+        enabled,
+        severity,
+        title: title.trim(),
+        message: message.trim() || null,
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(['system-status'], next);
+      queryClient.invalidateQueries({ queryKey: ['dev-tools'] });
+      setSaved(
+        enabled
+          ? 'Banner updated — visible on login page.'
+          : 'Banner hidden.',
+      );
+    },
+    onError: (err: any) => {
+      alert(
+        err?.response?.data?.message ??
+          err?.message ??
+          'Failed to save system status.',
+      );
+    },
+  });
+
+  const SEVERITY_OPTIONS: Array<{
+    value: SystemStatusSeverity;
+    label: string;
+    dot: string;
+  }> = [
+    { value: 'info', label: 'Info', dot: 'bg-blue-500' },
+    { value: 'warning', label: 'Warning', dot: 'bg-amber-500' },
+    { value: 'critical', label: 'Critical', dot: 'bg-red-500' },
+    { value: 'maintenance', label: 'Maintenance', dot: 'bg-violet-500' },
+  ];
+
+  const titleMissing = enabled && title.trim().length === 0;
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+            <Icon name="campaign" size={20} className="text-[#5c1219]" />
+            System Status Banner
+          </h2>
+          <p className="text-xs text-slate-500 mt-1 max-w-lg">
+            Shown on the login page for everyone. Use it to warn about
+            downtime, maintenance, or a reset in progress.
+          </p>
+        </div>
+        <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="w-4 h-4 accent-[#5c1219]"
+            disabled={isLoading}
+          />
+          {enabled ? 'Visible' : 'Hidden'}
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {SEVERITY_OPTIONS.map((opt) => {
+          const active = severity === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setSeverity(opt.value)}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                active
+                  ? 'border-[#5c1219] bg-[#5c1219]/5 text-[#5c1219]'
+                  : 'border-slate-200 text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div>
+        <label
+          htmlFor="ss-title"
+          className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider"
+        >
+          Title {titleMissing && <span className="text-red-600">*</span>}
+        </label>
+        <input
+          id="ss-title"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={120}
+          placeholder="e.g. Scheduling solver is temporarily unavailable"
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+          disabled={isLoading}
+        />
+        <p className="text-[10px] text-slate-400 mt-1 text-right tabular-nums">
+          {title.length}/120
+        </p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="ss-message"
+          className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider"
+        >
+          Message <span className="text-slate-400">(optional)</span>
+        </label>
+        <textarea
+          id="ss-message"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          maxLength={2000}
+          rows={3}
+          placeholder="Explain what's happening and when it will be back. Line breaks are preserved."
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10 resize-y min-h-[72px]"
+          disabled={isLoading}
+        />
+        <p className="text-[10px] text-slate-400 mt-1 text-right tabular-nums">
+          {message.length}/2000
+        </p>
+      </div>
+
+      {/* Live preview */}
+      {(title.trim() || message.trim()) && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+            Login page preview
+          </p>
+          <SystemStatusBannerPreview
+            severity={severity}
+            title={title}
+            message={message}
+            enabled={enabled}
+          />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+        <div className="text-[11px] text-slate-500">
+          {data && (
+            <>
+              Last updated{' '}
+              {new Date(data.updatedAt).toLocaleString(undefined, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+            </>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => saveMutation.mutate()}
+          disabled={titleMissing || saveMutation.isPending || isLoading}
+          title={titleMissing ? 'Add a title first' : undefined}
+          className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white rounded-lg hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+        >
+          {saveMutation.isPending ? (
+            <>
+              <Icon
+                name="progress_activity"
+                size={14}
+                className="animate-spin"
+              />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Icon name="save" size={14} />
+              Save banner
+            </>
+          )}
+        </button>
+      </div>
+
+      {saved && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="text-xs px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-1.5"
+        >
+          <Icon name="check_circle" size={14} />
+          {saved}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Local mirror of the login-page banner styling.
+ * Intentionally duplicated so Dev Tools doesn't depend on the auth feature
+ * folder (different bundle chunk).
+ */
+function SystemStatusBannerPreview({
+  severity,
+  title,
+  message,
+  enabled,
+}: {
+  severity: SystemStatusSeverity;
+  title: string;
+  message: string;
+  enabled: boolean;
+}) {
+  const THEME: Record<
+    SystemStatusSeverity,
+    { wrap: string; icon: string; iconName: string }
+  > = {
+    info: {
+      wrap: 'bg-blue-50 border-blue-200',
+      icon: 'bg-blue-100 text-blue-700',
+      iconName: 'info',
+    },
+    warning: {
+      wrap: 'bg-amber-50 border-amber-200',
+      icon: 'bg-amber-100 text-amber-700',
+      iconName: 'warning',
+    },
+    critical: {
+      wrap: 'bg-red-50 border-red-200',
+      icon: 'bg-red-100 text-red-700',
+      iconName: 'error',
+    },
+    maintenance: {
+      wrap: 'bg-violet-50 border-violet-200',
+      icon: 'bg-violet-100 text-violet-700',
+      iconName: 'build',
+    },
+  };
+  const t = THEME[severity];
+
+  return (
+    <div
+      className={`rounded-lg border ${t.wrap} p-3 ${
+        enabled ? '' : 'opacity-50'
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className={`shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${t.icon}`}
+        >
+          <Icon name={t.iconName} filled size={16} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-900 leading-snug">
+            {title || 'Title preview'}
+          </p>
+          {message && (
+            <p className="text-xs mt-0.5 whitespace-pre-line leading-relaxed text-slate-700">
+              {message}
+            </p>
+          )}
+        </div>
+      </div>
+      {!enabled && (
+        <p className="text-[10px] text-slate-500 mt-2 italic">
+          Hidden — this is what it would look like if enabled.
+        </p>
+      )}
     </div>
   );
 }
