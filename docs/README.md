@@ -16,6 +16,7 @@ Use these guides to set up the applications, understand workspace packages, and 
 ## Operations
 
 - [Backup and restore](operations/backup-restore.md) — database, storage, verification, and production restore procedure.
+- [Temporary public link with Cloudflare Tunnel](operations/cloudflare-tunnel.md) — share the local app through a quick `trycloudflare.com` URL for demos.
 
 ## Packages and services
 
