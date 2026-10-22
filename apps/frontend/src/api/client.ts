@@ -4,9 +4,11 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { supabase } from '../lib/supabase';
+import { resolveApiBaseUrl } from '../lib/api-base';
 
-const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api';
+// Absolute (http://localhost:3000/api) or same-origin (/api). See api-base.ts
+// for the tunnel/LAN fallback to the Vite proxy.
+const BASE_URL = resolveApiBaseUrl();
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 3;
@@ -73,8 +75,7 @@ api.interceptors.response.use(
 
     if (cfg) {
       const hasResponse = !!error.response;
-      const is5xx =
-        status === 502 || status === 503 || status === 504;
+      const is5xx = status === 502 || status === 503 || status === 504;
       const isNetwork = !hasResponse || error.code === 'ERR_NETWORK';
       const isConnKill =
         error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT';
