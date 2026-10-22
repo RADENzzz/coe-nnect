@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-process.noDeprecation = true;  // suppress DEP0190 for shell:true (dev-only)
+process.noDeprecation = true; // suppress DEP0190 for shell:true (dev-only)
 
 // scripts/dev.mjs
 //
@@ -19,6 +19,7 @@ const COLORS = {
   frontend: '\x1b[35m',
   solver: '\x1b[33m',
   parser: '\x1b[32m',
+  tunnel: '\x1b[34m',
   reset: '\x1b[0m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
@@ -30,11 +31,13 @@ const LABELS = {
   frontend: '[FRONTEND] ',
   solver: '[SOLVER]    ',
   parser: '[PARSER]    ',
+  tunnel: '[TUNNEL]    ',
 };
 
 const args = process.argv.slice(2);
 const skipSolver = args.includes('--no-solver');
 const skipParser = args.includes('--no-parser');
+const withTunnel = args.includes('--tunnel');
 const only = args.find((a) => a.startsWith('--only='))?.split('=')[1];
 
 function resolveVenvPython(pkgDir) {
@@ -88,6 +91,9 @@ const services = [
     readyMarker: 'Local:',
     url: 'http://localhost:5173/',
     boxLabel: 'Frontend',
+    // In tunnel mode the browser talks only to the tunnel origin, so the API
+    // base becomes relative and Vite proxies /api + /socket.io to the backend.
+    env: withTunnel ? { VITE_TUNNEL: '1', VITE_API_BASE_URL: '/api' } : {},
   },
   {
     name: 'backend',
@@ -98,6 +104,20 @@ const services = [
     readyMarker: 'Backend running on port',
     url: 'http://localhost:3000/api',
     boxLabel: 'Backend ',
+    // Quick tunnels rotate hostnames, so accept the whole trycloudflare zone.
+    env: withTunnel ? { CORS_ALLOW_TUNNEL: 'true' } : {},
+  },
+  {
+    name: 'tunnel',
+    cwd: root,
+    command: 'cloudflared',
+    args: ['tunnel', '--url', 'http://localhost:5173', '--no-autoupdate'],
+    skip: !withTunnel,
+    shellWrapper: false,
+    readyMarker: null,
+    url: 'waiting for Cloudflare…',
+    boxLabel: 'Tunnel  ',
+    installHint: 'winget install --id Cloudflare.cloudflared',
   },
 ];
 
@@ -147,12 +167,42 @@ function stripAnsi(str) {
 
 // ── Boot tracking ──
 const bootStart = Date.now();
+// The tunnel has no readiness marker (it becomes usable whenever Cloudflare
+// hands out a URL), so the summary does not wait for it.
+const readinessExpected = runnable.filter((s) => s.readyMarker);
 const readyFlags = {};
-for (const svc of runnable) {
+for (const svc of readinessExpected) {
   readyFlags[svc.name] = false;
 }
 
 let summaryPrinted = false;
+let tunnelUrl = null;
+const TUNNEL_URL_RE = /https:\/\/[a-z0-9][a-z0-9-]*\.trycloudflare\.com/i;
+
+function printTunnelBanner(url) {
+  const rule = `${COLORS.box}──────────────────────────────────────────────────────────${COLORS.reset}`;
+  console.log('');
+  console.log(`  ${rule}`);
+  console.log(
+    `  ${COLORS.box}│${COLORS.reset} ${COLORS.bold}Public tunnel ready${COLORS.reset}`,
+  );
+  console.log(
+    `  ${COLORS.box}│${COLORS.reset} ${COLORS.bold}${COLORS.tunnel}${url}${COLORS.reset}`,
+  );
+  console.log(
+    `  ${COLORS.box}│${COLORS.reset} ${COLORS.dim}Temporary URL — it changes when cloudflared restarts.${COLORS.reset}`,
+  );
+  console.log(`  ${rule}`);
+  console.log('');
+}
+
+function captureTunnelUrl(svc, line) {
+  if (svc.name !== 'tunnel' || tunnelUrl) return;
+  const match = TUNNEL_URL_RE.exec(line);
+  if (!match) return;
+  tunnelUrl = match[0];
+  printTunnelBanner(tunnelUrl);
+}
 
 function printSummary() {
   if (summaryPrinted) return;
@@ -162,8 +212,14 @@ function printSummary() {
 
   const BOX_WIDTH = 58;
   const BOX = {
-    tl: '╔', tr: '╗', bl: '╚', br: '╝',
-    h: '═', v: '║', ml: '╠', mr: '╣',
+    tl: '╔',
+    tr: '╗',
+    bl: '╚',
+    br: '╝',
+    h: '═',
+    v: '║',
+    ml: '╠',
+    mr: '╣',
   };
 
   function visibleLength(str) {
@@ -197,7 +253,8 @@ function printSummary() {
   const serviceRows = runnable.map((svc) => {
     const color = COLORS[svc.name];
     const label = `${COLORS.bold}${color}${svc.boxLabel}${COLORS.reset}`;
-    const url = `${COLORS.dim}${svc.url}${COLORS.reset}`;
+    const target = svc.name === 'tunnel' && tunnelUrl ? tunnelUrl : svc.url;
+    const url = `${COLORS.dim}${target}${COLORS.reset}`;
     return `  ${label}   ${url}`;
   });
 
@@ -216,12 +273,14 @@ function printSummary() {
     console.log(boxRow(docsRow));
   }
   console.log(boxBorder(BOX.bl, BOX.br));
-  console.log(`  ${COLORS.dim}Press Ctrl+C to stop all services${COLORS.reset}`);
+  console.log(
+    `  ${COLORS.dim}Press Ctrl+C to stop all services${COLORS.reset}`,
+  );
   console.log('');
 }
 
 function checkAllReady() {
-  const expected = runnable.map((s) => s.name);
+  const expected = readinessExpected.map((s) => s.name);
   const ready = expected.filter((n) => readyFlags[n]);
   if (ready.length === expected.length) {
     setTimeout(printSummary, 400);
@@ -245,8 +304,9 @@ function prefixStream(stream, svc) {
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
-      markReadyIfMatched(svc, line);
       const stripped = stripAnsi(line);
+      markReadyIfMatched(svc, line);
+      captureTunnelUrl(svc, stripped);
       if (NOISE_PATTERNS.some((p) => stripped.includes(p))) continue;
       process.stdout.write(`${color}${label}${COLORS.reset} ${line}\n`);
     }
@@ -254,6 +314,7 @@ function prefixStream(stream, svc) {
   stream.on('end', () => {
     if (buffer) {
       markReadyIfMatched(svc, buffer);
+      captureTunnelUrl(svc, stripAnsi(buffer));
       process.stdout.write(`${color}${label}${COLORS.reset} ${buffer}\n`);
     }
   });
@@ -262,7 +323,7 @@ function prefixStream(stream, svc) {
 for (const svc of runnable) {
   const child = spawn(svc.command, svc.args, {
     cwd: svc.cwd,
-    env: { ...process.env, FORCE_COLOR: '1' },
+    env: { ...process.env, FORCE_COLOR: '1', ...(svc.env ?? {}) },
     shell,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -270,6 +331,17 @@ for (const svc of runnable) {
 
   prefixStream(child.stdout, svc);
   prefixStream(child.stderr, svc);
+
+  child.on('error', (err) => {
+    console.error(
+      `${COLORS[svc.name]}${LABELS[svc.name]} could not start (${err.message})${COLORS.reset}`,
+    );
+    if (svc.installHint) {
+      console.error(
+        `${COLORS[svc.name]}${LABELS[svc.name]} install it with: ${svc.installHint}${COLORS.reset}`,
+      );
+    }
+  });
 
   child.on('exit', (code, signal) => {
     const isCleanExit =
@@ -333,3 +405,9 @@ console.log(
     .map((s) => s.name)
     .join(', ')}${COLORS.reset}\n`,
 );
+
+if (withTunnel) {
+  console.log(
+    `${COLORS.tunnel}▶ Cloudflare quick tunnel requested — the public URL appears once cloudflared connects.${COLORS.reset}\n`,
+  );
+}
