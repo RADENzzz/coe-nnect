@@ -6,12 +6,9 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import {
-  abbrToFull,
-  fullToAbbr,
-} from '../../common/utils/day-mapping.util';
+import { abbrToFull, fullToAbbr } from '../../common/utils/day-mapping.util';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Faculty } from './entities/faculty.entity';
 import { FacultyQualification } from './entities/faculty-qualification.entity';
 import { Subject } from '../subjects/entities/subject.entity';
@@ -19,6 +16,7 @@ import { CreateFacultyDto } from './dto/create-faculty.dto';
 import { UpdateFacultyDto } from './dto/update-faculty.dto';
 import { CreateQualificationDto } from './dto/create-qualification.dto';
 import { UpdateQualificationDto } from './dto/update-qualification.dto';
+import { BulkDeleteQualificationsDto } from './dto/bulk-delete-qualifications.dto';
 import { FacultyPreference } from './entities/faculty-preference.entity';
 import { CreateFacultyPreferenceDto } from './dto/create-faculty-preference.dto';
 import { UpdateFacultyPreferenceDto } from './dto/update-faculty-preference.dto';
@@ -351,6 +349,39 @@ export class FacultyService {
     if (!found) throw new NotFoundException('Qualification not found');
     await this.quals.remove(found);
     return { success: true };
+  }
+
+  /**
+   * Batch delete — removes every qualification in `dto.qualIds` that
+   * belongs to this faculty in a single statement.
+   *
+   * Ids that do not belong to the faculty are silently ignored, so a
+   * stale list in the UI cannot delete another faculty's rows. Returns
+   * the number of rows actually deleted.
+   */
+  async removeQualifications(
+    facultyId: string,
+    dto: BulkDeleteQualificationsDto,
+    profile: User,
+  ): Promise<{ deleted: number }> {
+    const faculty = await this.assertOwnership(facultyId, profile);
+    await this.departments.assertDepartmentActive(faculty.deptId);
+
+    const qualIds = [...new Set(dto.qualIds)];
+    if (qualIds.length === 0) {
+      throw new BadRequestException('No qualifications selected.');
+    }
+
+    const result = await this.quals.delete({
+      facultyId,
+      qualId: In(qualIds),
+    });
+    const deleted = result.affected ?? 0;
+
+    if (deleted === 0) {
+      throw new NotFoundException('Qualifications not found');
+    }
+    return { deleted };
   }
 
   async findPreferences(facultyId: string): Promise<FacultyPreference[]> {
