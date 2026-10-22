@@ -30,9 +30,9 @@ describe('security configuration', () => {
       });
 
       expect(isCorsOriginAllowed('http://localhost:5173', config)).toBe(false);
-      expect(
-        isCorsOriginAllowed('https://preview.vercel.app', config),
-      ).toBe(false);
+      expect(isCorsOriginAllowed('https://preview.vercel.app', config)).toBe(
+        false,
+      );
     });
 
     it('supports an additional explicit allowlist', () => {
@@ -60,6 +60,88 @@ describe('security configuration', () => {
     it('keeps loopback convenience in development', () => {
       const config = env({ NODE_ENV: 'development' });
       expect(isCorsOriginAllowed('http://127.0.0.1:5174', config)).toBe(true);
+      expect(isCorsOriginAllowed('https://evil.example.edu', config)).toBe(
+        false,
+      );
+    });
+
+    it('supports subdomain wildcards in configured origins', () => {
+      const config = env({
+        NODE_ENV: 'production',
+        FRONTEND_URL: 'https://*.trycloudflare.com',
+      });
+
+      expect(
+        isCorsOriginAllowed(
+          'https://calm-river-1234.trycloudflare.com',
+          config,
+        ),
+      ).toBe(true);
+      expect(isCorsOriginAllowed('https://trycloudflare.com', config)).toBe(
+        false,
+      );
+      expect(
+        isCorsOriginAllowed('https://trycloudflare.com.evil.test', config),
+      ).toBe(false);
+      expect(
+        isCorsOriginAllowed('http://calm-river-1234.trycloudflare.com', config),
+      ).toBe(false);
+      expect(isCorsOriginAllowed('https://evil.example.edu', config)).toBe(
+        false,
+      );
+    });
+
+    it('ignores unsupported wildcard shapes', () => {
+      const config = env({
+        NODE_ENV: 'production',
+        CORS_ALLOWED_ORIGINS: 'https://*.*.example.com,https://*.',
+      });
+
+      expect(isCorsOriginAllowed('https://a.example.com', config)).toBe(false);
+      expect(isCorsOriginAllowed('https://example.com', config)).toBe(false);
+    });
+
+    it('allows rotating quick-tunnel hosts when CORS_ALLOW_TUNNEL is set', () => {
+      const config = env({
+        NODE_ENV: 'production',
+        FRONTEND_URL: 'https://coe.example.edu',
+        CORS_ALLOW_TUNNEL: 'true',
+      });
+
+      expect(
+        isCorsOriginAllowed(
+          'https://quiet-hill-9876.trycloudflare.com',
+          config,
+        ),
+      ).toBe(true);
+      expect(isCorsOriginAllowed('https://evil.example.edu', config)).toBe(
+        false,
+      );
+
+      const disabled = env({
+        NODE_ENV: 'production',
+        FRONTEND_URL: 'https://coe.example.edu',
+      });
+      expect(
+        isCorsOriginAllowed(
+          'https://quiet-hill-9876.trycloudflare.com',
+          disabled,
+        ),
+      ).toBe(false);
+    });
+
+    it('accepts quick-tunnel hosts outside production without extra flags', () => {
+      const config = env({
+        NODE_ENV: 'development',
+        FRONTEND_URL: 'http://localhost:5173',
+      });
+
+      expect(
+        isCorsOriginAllowed(
+          'https://quiet-hill-9876.trycloudflare.com',
+          config,
+        ),
+      ).toBe(true);
       expect(isCorsOriginAllowed('https://evil.example.edu', config)).toBe(
         false,
       );
