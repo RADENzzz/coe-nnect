@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
   <title id="title">CoE-NNECT database schema overview</title>
-  <desc id="desc">Domain map of the 33-table CoE-NNECT PostgreSQL schema, grouped into identity, academic catalog, prospectus import, faculty constraints, scheduling, and collaboration domains.</desc>
+  <desc id="desc">Domain map of the 34-table CoE-NNECT PostgreSQL schema, grouped into identity, academic catalog, prospectus import, faculty constraints, scheduling, platform status, and collaboration domains.</desc>
 
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -28,8 +28,8 @@
   <rect x="64" y="44" width="8" height="52" rx="4" fill="#0f766e"/>
   <text x="88" y="72" class="title" font-size="30">CoE-NNECT database schema</text>
   <text x="88" y="100" class="subtitle" font-size="14">Public PostgreSQL schema · domain overview</text>
-  <text x="1536" y="72" text-anchor="end" class="panel-meta" font-size="13">PostgreSQL 17.6 · Supabase</text>
-  <text x="1536" y="94" text-anchor="end" class="panel-meta" font-size="12">Snapshot: 20 October 2026</text>
+  <text x="1536" y="72" text-anchor="end" class="panel-meta" font-size="13">PostgreSQL 17.11 · Supabase</text>
+  <text x="1536" y="94" text-anchor="end" class="panel-meta" font-size="12">Snapshot: 22 October 2026</text>
 
   <!-- Identity -->
   <g filter="url(#soft-shadow)">
@@ -78,6 +78,18 @@
     <circle cx="1042" cy="248" r="3" fill="#f59e0b"/><text x="1054" y="252" class="table-name">storage_path + table regions</text>
   </g>
   <text x="1038" y="284" class="note">PDF metadata, storage pointers, and parsed table regions.</text>
+
+  <!-- Platform status -->
+  <g filter="url(#soft-shadow)">
+    <rect x="1014" y="330" width="522" height="110" rx="16" fill="#fdf2f8" stroke="#fbcfe8" stroke-width="1.5"/>
+  </g>
+  <circle cx="1038" cy="356" r="4" fill="#db2777"/>
+  <text x="1050" y="362" class="panel-title" fill="#be185d">Platform status</text>
+  <text x="1512" y="360" text-anchor="end" class="panel-meta">1 table</text>
+  <g>
+    <circle cx="1042" cy="400" r="3" fill="#db2777"/><text x="1054" y="404" class="table-name">system_status</text>
+  </g>
+  <text x="1038" y="424" class="note">Singleton banner row for outage and maintenance notices.</text>
 
   <!-- Faculty constraints -->
   <g filter="url(#soft-shadow)">
@@ -144,11 +156,11 @@
 
   <g>
     <rect x="88" y="812" width="130" height="54" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
-    <text x="153" y="840" text-anchor="middle" class="stat-number">33</text>
+    <text x="153" y="840" text-anchor="middle" class="stat-number">34</text>
     <text x="153" y="856" text-anchor="middle" class="stat-label">tables</text>
 
     <rect x="230" y="812" width="130" height="54" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
-    <text x="295" y="840" text-anchor="middle" class="stat-number">69</text>
+    <text x="295" y="840" text-anchor="middle" class="stat-number">70</text>
     <text x="295" y="856" text-anchor="middle" class="stat-label">foreign keys</text>
 
     <rect x="372" y="812" width="130" height="54" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
@@ -156,11 +168,11 @@
     <text x="437" y="856" text-anchor="middle" class="stat-label">enum types</text>
 
     <rect x="514" y="812" width="130" height="54" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
-    <text x="579" y="840" text-anchor="middle" class="stat-number">49</text>
+    <text x="579" y="840" text-anchor="middle" class="stat-number">51</text>
     <text x="579" y="856" text-anchor="middle" class="stat-label">RLS policies</text>
   </g>
 
-  <text x="88" y="900" class="note">RLS is enabled on all 33 tables.</text>
+  <text x="88" y="900" class="note">RLS is enabled on all 34 tables.</text>
   <text x="88" y="922" class="note">Column-level ERDs: README.md in this folder.</text>
 
   <!-- Arrows -->
@@ -182,5 +194,5 @@
   <path d="M 1130 760 L 1130 800" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
   <text x="1142" y="784" class="arrow-label">activity</text>
 
-  <text x="1536" y="986" text-anchor="end" class="footer">Source: coe-nnect-database-structure.sql · generated 20 Oct 2026</text>
+  <text x="1536" y="986" text-anchor="end" class="footer">Source: coe-nnect-database-structure.sql · generated 22 Oct 2026</text>
 </svg>
