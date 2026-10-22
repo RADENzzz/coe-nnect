@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
+import SystemStatusBanner from './components/SystemStatusBanner';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -609,6 +610,8 @@ export default function LoginPage() {
               <p className="text-[11px] text-slate-500">WMSU Scheduling</p>
             </div>
           </div>
+
+          <SystemStatusBanner />
 
           <div className="mb-7">
             <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
