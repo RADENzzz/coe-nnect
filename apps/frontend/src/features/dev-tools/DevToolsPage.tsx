@@ -107,8 +107,8 @@ export default function DevToolsPage() {
   const [now, setNow] = useState(Date.now());
 
   const [resetModalOpen, setResetModalOpen] = useState(false);
-  // Reset + Reseed is the normal demo workflow; Reset only is available for
-  // debugging a clean database.
+  // Reset + Reseed is the normal demo workflow. Reset only leaves the database
+  // empty so the seed can be tested independently.
   const [resetMode, setResetMode] = useState<'reset' | 'reset-and-seed'>(
     'reset-and-seed',
   );
