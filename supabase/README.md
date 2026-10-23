@@ -25,7 +25,15 @@ supabase db reset
 ```
 
 `db reset` recreates the local database, applies every migration in order, and
-then runs `seed.sql`.
+then runs `seed.sql`. That seed is intentionally data-free. To load the demo
+departments and accounts after a reset, run:
+
+```powershell
+pnpm --filter @coe-nnect/backend seed:demo
+```
+
+For a hosted database, use the guarded backend `db:reset` script instead; see
+[the backend guide](../docs/apps/backend.md#database-and-seed-scripts).
 
 ## CI validation
 
