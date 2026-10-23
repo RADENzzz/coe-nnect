@@ -42,6 +42,8 @@ export async function startSeed(): Promise<{ jobId: string }> {
   return data.data;
 }
 
+// The backend owns the reset/seed process. The frontend only starts the job
+// and polls its status, so the signed-in administrator survives a reset.
 export async function startReset(
   reseed = false,
 ): Promise<{ jobId: string }> {
