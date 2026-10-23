@@ -20,9 +20,11 @@ export interface DevUserRecord {
   deptId: string | null;
 }
 
+export type DevJobKind = 'seed' | 'reset' | 'reset-and-seed';
+
 export interface DevJob {
   jobId: string;
-  kind: 'seed' | 'reset';
+  kind: DevJobKind;
   status: 'running' | 'success' | 'failed';
   startedAt: number;
   finishedAt: number | null;
@@ -40,8 +42,10 @@ export async function startSeed(): Promise<{ jobId: string }> {
   return data.data;
 }
 
-export async function startReset(): Promise<{ jobId: string }> {
-  const { data } = await api.post('/v1/dev-tools/reset');
+export async function startReset(
+  reseed = false,
+): Promise<{ jobId: string }> {
+  const { data } = await api.post('/v1/dev-tools/reset', { reseed });
   return data.data;
 }
 

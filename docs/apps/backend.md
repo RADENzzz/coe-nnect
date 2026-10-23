@@ -77,6 +77,26 @@ re-synchronises the matching `public.users` profiles.
 Both commands affect the database configured in the environment. Review the
 script and target before running; `db:reset` is destructive.
 
+### Dev Tools reset behavior
+
+The Dev Tools page uses the same scripts but runs them from the backend:
+
+- **Reset + Reseed** hard-resets the database, then immediately runs the demo
+  seed.
+- **Reset only** hard-resets without seeding.
+- **Seed only** runs the demo seed without deleting existing data.
+
+In production the backend runs the compiled files in
+`apps/backend/dist/database/seeds/` with Node, so the Railway runtime does not
+need `ts-node` or `src/`. The reset job passes `ALLOW_REMOTE_RESET=1` and
+`SKIP_CONFIRM=1`; this is safe only because the endpoint is administrator-only
+and the UI requires the confirmation phrase.
+
+The Dev Tools reset preserves the signed-in administrator's Supabase Auth user
+and `public.users` profile (via `PRESERVE_AUTH_USER_ID`), so the job can be
+polled to completion without logging you out. The CLI `db:reset` has no such
+exception and deletes every Auth user.
+
 ## Build and checks
 
 Run from the repository root:

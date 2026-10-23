@@ -13,6 +13,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DevToolsService } from './dev-tools.service';
 import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
 import { RenameUserDto } from './dto/rename-user.dto';
+import { ResetDemoDto } from './dto/reset-demo.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -42,9 +43,14 @@ export class DevToolsController {
 
   @Post('reset')
   @HttpCode(202)
-  @Auditable({ action: 'dev.reset', source: 'DevTools' })
-  async startReset() {
-    const data = await this.service.startReset();
+  // Intentionally not @Auditable: the reset truncates audit_trail, so a
+  // fire-and-forget audit row written after this handler would leave the
+  // freshly reset database with a stray entry.
+  async startReset(@Req() req: any, @Body() dto: ResetDemoDto) {
+    const data = await this.service.startReset(
+      req.profile.userId,
+      dto?.reseed === true,
+    );
     return { data };
   }
 

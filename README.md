@@ -185,7 +185,7 @@ Run from the repository root:
 | `pnpm --filter @coe-nnect/backend db:reset`      | Hard-reset the configured database (destructive)                 |
 | `pnpm --filter @coe-nnect/backend seed:demo`     | Seed four departments and six demo accounts                      |
 
-Review scripts and database targets before running them. Python services use the commands in their respective guides.
+Review scripts and database targets before running them. Python services use the commands in their respective guides. The Dev Tools page runs the same reset and seed operations from the backend; in production it uses the compiled scripts and preserves the signed-in administrator during a reset.
 
 ## Architecture
 

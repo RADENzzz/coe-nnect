@@ -8,6 +8,8 @@ config();
 const databaseUrl = process.env.DATABASE_URL;
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const preserveAuthUserId =
+  process.env.PRESERVE_AUTH_USER_ID?.trim() || null;
 
 if (!databaseUrl || !supabaseUrl || !serviceKey) {
   console.error(
@@ -46,7 +48,13 @@ async function confirmOrAbort() {
   console.log(`   Target: ${targetLabel()}`);
   console.log('\n   This will permanently delete:');
   console.log('   - Every row in every public table');
-  console.log('   - Every Supabase Auth user');
+  if (preserveAuthUserId) {
+    console.log(
+      '   - Every Supabase Auth user except the signed-in Dev Tools administrator',
+    );
+  } else {
+    console.log('   - Every Supabase Auth user');
+  }
   console.log(
     '   - All schedules, subjects, faculty, programs, rooms, terms, chat,',
   );
@@ -117,7 +125,78 @@ async function restoreSystemStatus(client: Client) {
   console.log('  Restored the disabled system_status singleton.');
 }
 
-async function deleteAllAuthUsers() {
+type PreservedProfile = {
+  user_id: string;
+  username: string;
+  email: string;
+  employee_id: string | null;
+  wmsu_id: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+
+/**
+ * The Dev Tools reset runs while an administrator is signed in. Preserve that
+ * auth user and its public profile so the in-flight job can keep polling and
+ * the administrator is not logged out mid-reset. The demo seed will refresh
+ * the profile afterwards.
+ */
+async function loadPreservedProfile(
+  client: Client,
+  userId: string,
+): Promise<PreservedProfile | null> {
+  const { rows } = await client.query<PreservedProfile>(
+    `SELECT user_id, username, email, employee_id, wmsu_id, role,
+            is_active, created_at, updated_at
+       FROM public.users
+      WHERE user_id = $1`,
+    [userId],
+  );
+  return rows[0] ?? null;
+}
+
+async function restorePreservedProfile(
+  client: Client,
+  profile: PreservedProfile,
+) {
+  // Department/faculty rows are truncated, so clear those references. The
+  // seed restores the dev account's (null) department afterwards.
+  await client.query(
+    `INSERT INTO public.users (
+       user_id, username, email, employee_id, wmsu_id, role,
+       dept_id, faculty_id, is_active, created_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6::public.user_role,
+               NULL, NULL, $7, $8, $9)
+     ON CONFLICT (user_id) DO UPDATE
+       SET username = EXCLUDED.username,
+           email = EXCLUDED.email,
+           employee_id = EXCLUDED.employee_id,
+           wmsu_id = EXCLUDED.wmsu_id,
+           role = EXCLUDED.role,
+           dept_id = NULL,
+           faculty_id = NULL,
+           is_active = EXCLUDED.is_active,
+           updated_at = EXCLUDED.updated_at`,
+    [
+      profile.user_id,
+      profile.username,
+      profile.email,
+      profile.employee_id,
+      profile.wmsu_id,
+      profile.role,
+      profile.is_active,
+      profile.created_at,
+      profile.updated_at,
+    ],
+  );
+  console.log(
+    `  Preserved public profile for ${profile.email} (${profile.user_id}).`,
+  );
+}
+
+async function deleteAllAuthUsers(preserveId: string | null) {
   const perPage = 1000;
   const users: Array<{ id: string; email?: string }> = [];
   let page = 1;
@@ -137,7 +216,14 @@ async function deleteAllAuthUsers() {
     page += 1;
   }
 
-  for (const user of users) {
+  const preserved = preserveId
+    ? users.find((user) => user.id === preserveId)
+    : undefined;
+  const toDelete = preserveId
+    ? users.filter((user) => user.id !== preserveId)
+    : users;
+
+  for (const user of toDelete) {
     const { error } = await supabase.auth.admin.deleteUser(user.id, false);
     if (error) {
       throw new Error(
@@ -146,8 +232,15 @@ async function deleteAllAuthUsers() {
     }
   }
 
-  console.log(`  Deleted ${users.length} auth user(s).`);
-  return users.length;
+  console.log(`  Deleted ${toDelete.length} auth user(s).`);
+  if (preserveId) {
+    console.log(
+      preserved
+        ? `  Preserved signed-in auth user ${preserved.email ?? preserved.id}.`
+        : `  Signed-in auth user ${preserveId} was not found; nothing preserved.`,
+    );
+  }
+  return toDelete.length;
 }
 
 async function main() {
@@ -167,7 +260,15 @@ async function main() {
   await client.connect();
   try {
     await client.query('BEGIN');
+
+    const preservedProfile = preserveAuthUserId
+      ? await loadPreservedProfile(client, preserveAuthUserId)
+      : null;
+
     await truncatePublicSchema(client);
+    if (preservedProfile) {
+      await restorePreservedProfile(client, preservedProfile);
+    }
     await restoreSystemStatus(client);
     await client.query('COMMIT');
   } catch (error) {
@@ -177,12 +278,17 @@ async function main() {
     await client.end();
   }
 
-  await deleteAllAuthUsers();
+  await deleteAllAuthUsers(preserveAuthUserId);
 
   console.log('\n=== Reset complete ===\n');
-  console.log(
-    'The database is empty. Public identity columns will start at 1.',
-  );
+  if (preserveAuthUserId) {
+    console.log(
+      'The database is empty except for the signed-in Dev Tools administrator.',
+    );
+  } else {
+    console.log('The database is empty.');
+  }
+  console.log('Public identity columns will start at 1.');
   console.log('Run `pnpm --filter @coe-nnect/backend seed:demo` to create the');
   console.log('four departments and six demo user accounts.\n');
 }

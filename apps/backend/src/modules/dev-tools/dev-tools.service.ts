@@ -7,18 +7,27 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 
+type DevJobKind = 'seed' | 'reset' | 'reset-and-seed';
+
 type DevJob = {
   jobId: string;
-  kind: 'seed' | 'reset';
+  kind: DevJobKind;
   status: 'running' | 'success' | 'failed';
   startedAt: number;
   finishedAt: number | null;
   output: string;
   error: string | null;
+};
+
+type DevJobStep = {
+  script: 'seed' | 'reset';
+  label: string;
+  env?: NodeJS.ProcessEnv;
 };
 
 @Injectable()
@@ -95,53 +104,127 @@ export class DevToolsService {
   // ════════════════════════════════════════════
 
   async startSeed(): Promise<{ jobId: string }> {
-    const jobId = `seed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const jobId = this.createJob('seed');
+    void this.runJob(jobId, [{ script: 'seed', label: 'seed' }]);
+    return { jobId };
+  }
+
+  async startReset(
+    actingUserId: string,
+    reseed = false,
+  ): Promise<{ jobId: string }> {
+    const kind: DevJobKind = reseed ? 'reset-and-seed' : 'reset';
+    const jobId = this.createJob(kind);
+    const steps: DevJobStep[] = [
+      {
+        script: 'reset',
+        label: 'reset',
+        env: {
+          // This is an administrator-only, explicitly confirmed action.
+          ALLOW_REMOTE_RESET: '1',
+          // Keep the signed-in administrator's auth session and public
+          // profile alive so the job can be polled to completion.
+          PRESERVE_AUTH_USER_ID: actingUserId,
+        },
+      },
+    ];
+    if (reseed) steps.push({ script: 'seed', label: 'seed' });
+    void this.runJob(jobId, steps);
+    return { jobId };
+  }
+
+  private createJob(kind: DevJobKind): string {
+    const prefix = kind === 'seed' ? 'seed' : 'reset';
+    const jobId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.jobs.set(jobId, {
       jobId,
-      kind: 'seed',
+      kind,
       status: 'running',
       startedAt: Date.now(),
       finishedAt: null,
       output: '',
       error: null,
     });
-    this.spawnJob(jobId, 'seed:demo').catch((err) => {
-      this.logger.error(`Seed job ${jobId} failed: ${err.message}`);
-    });
-    return { jobId };
+    return jobId;
   }
 
-  async startReset(): Promise<{ jobId: string }> {
-    const jobId = `reset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.jobs.set(jobId, {
-      jobId,
-      kind: 'reset',
-      status: 'running',
-      startedAt: Date.now(),
-      finishedAt: null,
-      output: '',
-      error: null,
-    });
-    this.spawnJob(jobId, 'reset:demo').catch((err) => {
-      this.logger.error(`Reset job ${jobId} failed: ${err.message}`);
-    });
-    return { jobId };
-  }
-
-  private async spawnJob(jobId: string, script: string): Promise<void> {
+  private async runJob(jobId: string, steps: DevJobStep[]): Promise<void> {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
     const repoRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+    const backendRoot = path.join(repoRoot, 'apps', 'backend');
     const isWindows = process.platform === 'win32';
-    const pnpm = isWindows ? 'pnpm.cmd' : 'pnpm';
 
-    return new Promise((resolve) => {
-      const child = spawn(pnpm, ['--filter', '@coe-nnect/backend', script], {
-        cwd: repoRoot,
-        env: { ...process.env, SKIP_CONFIRM: '1', CI: '1' },
-        shell: isWindows,
-      });
+    try {
+      for (const step of steps) {
+        await this.runStep(job, step, repoRoot, backendRoot, isWindows);
+      }
+      job.status = 'success';
+      job.finishedAt = Date.now();
+      job.output += `\n[${job.kind} complete]`;
+      this.logger.log(`DEV: ${job.kind} job ${jobId} completed`);
+    } catch (err) {
+      job.status = 'failed';
+      job.finishedAt = Date.now();
+      job.error = (err as Error).message;
+      this.logger.error(
+        `DEV: ${job.kind} job ${jobId} failed: ${job.error}`,
+      );
+    }
+  }
+
+  private runStep(
+    job: DevJob,
+    step: DevJobStep,
+    repoRoot: string,
+    backendRoot: string,
+    isWindows: boolean,
+  ): Promise<void> {
+    const compiled = path.join(
+      backendRoot,
+      'dist',
+      'database',
+      'seeds',
+      step.script === 'seed' ? 'demo-seed.js' : 'reset.js',
+    );
+    // The Railway runtime may not contain ts-node or src/. Prefer the compiled
+    // seed scripts in production; keep pnpm/ts-node as a local-dev fallback.
+    const useCompiled =
+      process.env.NODE_ENV === 'production' && existsSync(compiled);
+
+    let command: string;
+    let args: string[];
+    let cwd: string;
+    let shell = false;
+
+    if (useCompiled) {
+      command = process.execPath;
+      args = [compiled];
+      cwd = backendRoot;
+    } else {
+      command = isWindows ? 'pnpm.cmd' : 'pnpm';
+      args = [
+        '--filter',
+        '@coe-nnect/backend',
+        step.script === 'seed' ? 'seed:demo' : 'reset:demo',
+      ];
+      cwd = repoRoot;
+      shell = isWindows;
+    }
+
+    const env = {
+      ...process.env,
+      SKIP_CONFIRM: '1',
+      CI: '1',
+      ...step.env,
+    };
+
+    job.output += `\n[${step.label}] $ ${command} ${args.join(' ')}\n`;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const child = spawn(command, args, { cwd, env, shell });
 
       const append = (chunk: Buffer) => {
         job.output += chunk.toString('utf-8');
@@ -154,22 +237,20 @@ export class DevToolsService {
       child.stderr?.on('data', append);
 
       child.on('error', (err) => {
-        job.status = 'failed';
-        job.finishedAt = Date.now();
-        job.error = err.message;
-        resolve();
+        if (settled) return;
+        settled = true;
+        reject(err);
       });
 
       child.on('close', (code) => {
-        job.finishedAt = Date.now();
+        if (settled) return;
+        settled = true;
         if (code === 0) {
-          job.status = 'success';
-          job.output += `\n[exited ${code}]`;
+          job.output += `\n[${step.label}] exited 0\n`;
+          resolve();
         } else {
-          job.status = 'failed';
-          job.error = `Process exited with code ${code}`;
+          reject(new Error(`${step.label} exited with code ${code}`));
         }
-        resolve();
       });
     });
   }

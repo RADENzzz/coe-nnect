@@ -15,6 +15,7 @@ import {
   toggleDevUserActive,
   fetchSystemStatusForDev,
   type DevJob,
+  type DevJobKind,
   type DevUserRecord,
 } from '../../api/dev-tools.api';
 import {
@@ -26,6 +27,11 @@ import { useAuthStore } from '../../store/auth.store';
 
 const DEMO_PASSWORD = 'Demo!2345';
 const RESET_CONFIRM_PHRASE = 'RESET DEMO DATA';
+const JOB_LABEL: Record<DevJobKind, string> = {
+  seed: 'seed',
+  reset: 'reset',
+  'reset-and-seed': 'reset + reseed',
+};
 const USERNAME_RE = /^[a-zA-Z0-9._-]+$/;
 /** Raw BBCode counts toward the limit, so leave headroom for markup. */
 const MESSAGE_MAX_LENGTH = 5000;
@@ -94,13 +100,16 @@ export default function DevToolsPage() {
 
   const [activeJob, setActiveJob] = useState<DevJob | null>(null);
   const [lastJobResult, setLastJobResult] = useState<{
-    kind: 'seed' | 'reset';
+    kind: DevJobKind;
     status: 'success' | 'failed';
     finishedAt: number;
   } | null>(null);
   const [now, setNow] = useState(Date.now());
 
   const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetMode, setResetMode] = useState<'reset' | 'reset-and-seed'>(
+    'reset-and-seed',
+  );
   const [resetPhrase, setResetPhrase] = useState('');
   const [seedModalOpen, setSeedModalOpen] = useState(false);
 
@@ -169,7 +178,7 @@ export default function DevToolsPage() {
     USERNAME_RE.test(newUsername) &&
     newUsername !== renameTarget?.username;
 
-  const startPolling = (jobId: string, kind: 'seed' | 'reset') => {
+  const startPolling = (jobId: string, kind: DevJobKind) => {
     const poll = async () => {
       try {
         const job = await fetchJob(jobId);
@@ -208,13 +217,13 @@ export default function DevToolsPage() {
   });
 
   const resetMutation = useMutation({
-    mutationFn: startReset,
-    onSuccess: ({ jobId }) => {
+    mutationFn: (reseed: boolean) => startReset(reseed),
+    onSuccess: ({ jobId }, reseed) => {
       setResetModalOpen(false);
       setResetPhrase('');
       setActionError(null);
       setActionSuccess(null);
-      startPolling(jobId, 'reset');
+      startPolling(jobId, reseed ? 'reset-and-seed' : 'reset');
     },
     onError: (err: any) => setActionError(err?.message ?? 'Reset failed'),
   });
@@ -302,7 +311,8 @@ export default function DevToolsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJob?.status]);
 
-  const openResetModal = () => {
+  const openResetModal = (mode: 'reset' | 'reset-and-seed') => {
+    setResetMode(mode);
     setResetPhrase('');
     setResetModalOpen(true);
   };
@@ -356,7 +366,7 @@ export default function DevToolsPage() {
                 }
                 size={14}
               />
-              Last {lastJobResult.kind}: {lastJobResult.status} ·{' '}
+              Last {JOB_LABEL[lastJobResult.kind]}: {lastJobResult.status} ·{' '}
               {formatRelativeTime(lastJobResult.finishedAt)}
             </div>
           )}
@@ -446,14 +456,15 @@ export default function DevToolsPage() {
                 className="text-amber-600 shrink-0"
               />
               <div className="text-xs text-amber-800">
-                No active term. Seed the demo to create one.
+                No active term configured. The demo seed only creates
+                departments and accounts.
               </div>
             </div>
           )}
 
           <button
             type="button"
-            onClick={openResetModal}
+            onClick={() => openResetModal('reset-and-seed')}
             disabled={isBusy}
             className="hidden sm:flex w-full items-center justify-between gap-3 rounded-xl border-2 border-[#5c1219] bg-gradient-to-r from-[#5c1219] to-[#7a1f28] p-5 text-left text-white hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
           >
@@ -462,7 +473,8 @@ export default function DevToolsPage() {
               <div className="min-w-0">
                 <p className="text-base font-bold">Reset + Reseed</p>
                 <p className="text-[11px] text-white/80 mt-0.5">
-                  Fresh demo state in ~45 seconds. Use this before every demo.
+                  Hard reset, then recreate the four departments and six demo
+                  accounts.
                 </p>
               </div>
             </div>
@@ -484,13 +496,13 @@ export default function DevToolsPage() {
               <div className="min-w-0">
                 <p className="text-xs font-bold text-emerald-900">Seed only</p>
                 <p className="text-[10px] text-emerald-700 mt-0.5 truncate">
-                  Add missing rows
+                  Departments + accounts
                 </p>
               </div>
             </button>
             <button
               type="button"
-              onClick={openResetModal}
+              onClick={() => openResetModal('reset')}
               disabled={isBusy}
               className="flex items-center gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-left hover:bg-red-100 transition disabled:opacity-50 min-h-[56px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
             >
@@ -537,7 +549,7 @@ export default function DevToolsPage() {
                   />
                 )}
                 <p className="text-xs font-bold uppercase tracking-wider flex-1">
-                  {activeJob.kind} — {activeJob.status}
+                  {JOB_LABEL[activeJob.kind]} — {activeJob.status}
                   {activeJob.status === 'running' && jobStartedAt && (
                     <span className="text-[10px] font-normal text-blue-700 ml-2 normal-case">
                       ({Math.floor((now - jobStartedAt) / 1000)}s elapsed)
@@ -824,7 +836,7 @@ export default function DevToolsPage() {
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <button
           type="button"
-          onClick={openResetModal}
+          onClick={() => openResetModal('reset-and-seed')}
           disabled={isBusy}
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#5c1219] to-[#7a1f28] py-3 text-white font-bold text-sm disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
         >
@@ -842,9 +854,11 @@ export default function DevToolsPage() {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            This adds any missing rows from the demo seed. It{' '}
+            This creates or updates the four demo departments and six demo
+            accounts. It{' '}
             <strong className="text-slate-900">does not</strong> delete existing
-            data — safe to run repeatedly.
+            data, and it does not create subjects, faculty, terms, rooms, or
+            schedules. Safe to run repeatedly.
           </p>
           <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2 font-mono break-all">
             pnpm --filter @coe-nnect/backend seed:demo
@@ -876,22 +890,32 @@ export default function DevToolsPage() {
           setResetModalOpen(false);
           setResetPhrase('');
         }}
-        title="Confirm demo data reset"
+        title={
+          resetMode === 'reset-and-seed'
+            ? 'Confirm reset + reseed'
+            : 'Confirm demo data reset'
+        }
         size="md"
       >
         <div className="space-y-4">
           <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-sm rounded">
             <p className="font-bold mb-1">This will delete:</p>
             <ul className="text-xs list-disc pl-5 space-y-0.5">
-              <li>Schedules, versions, unscheduled entries</li>
-              <li>Chat conversations and messages</li>
-              <li>Faculty requests and notifications</li>
-              <li>Faculty, subjects, sections, prospectus</li>
-              <li>Terms and audit trail</li>
+              <li>Every row in every public table</li>
+              <li>
+                Every Supabase Auth account except your signed-in dev account
+              </li>
+              <li>Schedules, subjects, faculty, programs, rooms, and terms</li>
+              <li>Chat, notifications, prospectus, and audit history</li>
             </ul>
             <p className="mt-2 text-xs">
-              Departments, programs, rooms, settings, and{' '}
-              <strong>user accounts</strong> are kept.
+              Public identity columns restart at 1. Your dev account stays
+              signed in.
+            </p>
+            <p className="mt-2 text-xs font-semibold">
+              {resetMode === 'reset-and-seed'
+                ? 'Afterward, the four departments and six demo accounts (including your dev account) are recreated.'
+                : 'The database is left empty except for your dev account. Run “Seed only” afterward to restore demo data.'}
             </p>
           </div>
 
@@ -935,10 +959,18 @@ export default function DevToolsPage() {
               disabled={
                 resetPhrase !== RESET_CONFIRM_PHRASE || resetMutation.isPending
               }
-              onClick={() => resetMutation.mutate()}
+              onClick={() =>
+                resetMutation.mutate(resetMode === 'reset-and-seed')
+              }
               className="px-5 py-2.5 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {resetMutation.isPending ? 'Resetting…' : 'Reset demo data'}
+              {resetMutation.isPending
+                ? resetMode === 'reset-and-seed'
+                  ? 'Resetting + seeding…'
+                  : 'Resetting…'
+                : resetMode === 'reset-and-seed'
+                  ? 'Reset + reseed'
+                  : 'Reset only'}
             </button>
           </div>
         </div>

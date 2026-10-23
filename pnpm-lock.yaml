@@ -247,6 +247,9 @@ importers:
       class-validator:
         specifier: ^0.14.1
         version: 0.14.4
+      dotenv:
+        specifier: ^18.0.5
+        version: 18.0.8
       express-rate-limit:
         specifier: 8.1.0
         version: 8.1.0(express@5.2.1(supports-color@8.1.1))
@@ -326,9 +329,6 @@ importers:
       '@vercel/node':
         specifier: ^17.0.0
         version: 17.0.0(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@vercel/build-utils@14.14.0)(rollup@4.64.7)(supports-color@8.1.1)
-      dotenv:
-        specifier: ^18.0.5
-        version: 18.0.8
       eslint:
         specifier: ^9.9.0
         version: 9.39.5(jiti@1.21.7)(supports-color@8.1.1)
