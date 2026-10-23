@@ -182,7 +182,8 @@ Run from the repository root:
 | `pnpm --filter @coe-nnect/frontend lint`         | Lint the frontend                                                |
 | `pnpm online`                                    | Temporary public Cloudflare link for the app already running     |
 | `pnpm dev:online`                                | Dev services plus the temporary public link, one terminal        |
-| `pnpm --filter @coe-nnect/backend seed:demo`     | Seed demo data in the configured database                        |
+| `pnpm --filter @coe-nnect/backend db:reset`      | Hard-reset the configured database (destructive)                 |
+| `pnpm --filter @coe-nnect/backend seed:demo`     | Seed four departments and six demo accounts                      |
 
 Review scripts and database targets before running them. Python services use the commands in their respective guides.
 
