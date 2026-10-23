@@ -16,9 +16,20 @@ import { fileURLToPath } from "node:url";
 const here = fileURLToPath(new URL(".", import.meta.url));
 const distDir = resolve(here, "dist");
 
+const isRailway = Boolean(
+  process.env.RAILWAY_ENVIRONMENT ||
+    process.env.RAILWAY_SERVICE_NAME ||
+    process.env.RAILWAY_PROJECT_ID,
+);
+
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
-const backendHost = process.env.BACKEND_HOST?.trim() || "localhost";
-const backendPort = Number.parseInt(process.env.BACKEND_PORT ?? "3000", 10);
+const backendHost =
+  process.env.BACKEND_HOST?.trim() ||
+  (isRailway ? "coe-nnectbackend.railway.internal" : "localhost");
+const backendPort = Number.parseInt(
+  process.env.BACKEND_PORT ?? (isRailway ? "8080" : "3000"),
+  10,
+);
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error(`Invalid PORT: ${process.env.PORT}`);
