@@ -14,6 +14,8 @@ const TUNNEL_MODE =
 // domain, ngrok, ...) can be added as a comma-separated list.
 const allowedHosts = [
   '.trycloudflare.com',
+  // Railway-generated public domains.
+  '.up.railway.app',
   ...(process.env.VITE_ALLOWED_HOSTS ?? '')
     .split(',')
     .map((host) => host.trim())
