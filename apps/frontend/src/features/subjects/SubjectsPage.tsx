@@ -849,20 +849,18 @@ export default function SubjectsPage() {
       key: 'dept',
       header: <SortHeader label="Dept" sortKeyName="dept" />,
       cardVariant: 'meta',
-      cellClassName: 'text-on-surface-variant text-xs font-mono',
+      cellClassName: 'text-xs',
       render: (s) => {
         const foreign = isForeign(s);
+        const code = deptName(s.deptId);  // already returns "—" for null
+        const tone = deptTone(code === '—' ? null : code);
         return (
-          <span className="inline-flex items-center gap-1.5">
-            {foreign && (
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
-                title="Other department — read only"
-              />
-            )}
-            <span className={foreign ? 'text-slate-500' : ''}>
-              {deptName(s.deptId)}
-            </span>
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono font-bold text-[11px] border ${tone.bg} ${tone.fg} ${tone.border}`}
+            title={foreign ? `Owned by ${code} — read only` : `Owned by ${code}`}
+          >
+            {foreign && <Icon name="lock" size={9} />}
+            {code}
           </span>
         );
       },
@@ -1061,9 +1059,10 @@ export default function SubjectsPage() {
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
           <Icon name="info" size={16} className="mt-0.5 shrink-0" />
           <span>
-            Subjects marked with an{' '}
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />{' '}
-            amber dot belong to another department and are read-only.
+            Each row shows its <strong>owning department</strong> in a colored
+            badge. Rows with a <Icon name="lock" size={11} className="inline -mb-0.5" />{' '}
+            lock icon belong to another department and are read-only. Use the{' '}
+            <strong>Department filter</strong> to narrow the list.
           </span>
         </div>
       )}
@@ -1687,6 +1686,50 @@ function FormField({
       ) : null}
     </div>
   );
+}
+
+// Deterministic dept color — works for any dept that exists,
+// including ones created after this file was written.
+// Uses the dept code (stable) rather than the ID (may reorder on reset).
+
+const DEPT_PALETTE = [
+  { bg: 'bg-rose-50',    fg: 'text-rose-800',    border: 'border-rose-300' },
+  { bg: 'bg-blue-50',    fg: 'text-blue-800',    border: 'border-blue-300' },
+  { bg: 'bg-emerald-50', fg: 'text-emerald-800', border: 'border-emerald-300' },
+  { bg: 'bg-amber-50',   fg: 'text-amber-800',   border: 'border-amber-300' },
+  { bg: 'bg-violet-50',  fg: 'text-violet-800',  border: 'border-violet-300' },
+  { bg: 'bg-cyan-50',    fg: 'text-cyan-800',    border: 'border-cyan-300' },
+  { bg: 'bg-lime-50',    fg: 'text-lime-800',    border: 'border-lime-300' },
+  { bg: 'bg-fuchsia-50', fg: 'text-fuchsia-800', border: 'border-fuchsia-300' },
+  { bg: 'bg-sky-50',     fg: 'text-sky-800',     border: 'border-sky-300' },
+  { bg: 'bg-orange-50',  fg: 'text-orange-800',  border: 'border-orange-300' },
+];
+
+
+
+/**
+ * Stable color for a department. Hashes the dept code (not the ID,
+ * since IDs may be reset). Falls back to a neutral tone for unknown
+ * or null codes, which only happens for orphaned subjects (Dean-only).
+ */
+function deptTone(code: string | null | undefined): {
+  bg: string;
+  fg: string;
+  border: string;
+} {
+  if (!code || code.trim() === '' || code === '—') {
+    return {
+      bg: 'bg-slate-100',
+      fg: 'text-slate-600',
+      border: 'border-slate-300',
+    };
+  }
+  const normalized = code.trim().toUpperCase();
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+  return DEPT_PALETTE[hash % DEPT_PALETTE.length];
 }
 
 function inputClass(hasError: boolean): string {
