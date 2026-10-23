@@ -57,9 +57,28 @@ function railwayBackendTarget() {
 
 const apiTarget = process.env.VITE_API_PROXY_TARGET ?? railwayBackendTarget();
 
+function proxyErrorHandler(proxy: any) {
+  proxy.on('error', (err: Error, _req: unknown, res: any) => {
+    console.error(`[vite proxy] ${apiTarget}: ${err.message}`);
+    if (res && !res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Backend unavailable' }));
+    }
+  });
+}
+
 const proxy = {
-  '/api': { target: apiTarget, changeOrigin: true },
-  '/socket.io': { target: apiTarget, changeOrigin: true, ws: true },
+  '/api': {
+    target: apiTarget,
+    changeOrigin: true,
+    configure: proxyErrorHandler,
+  },
+  '/socket.io': {
+    target: apiTarget,
+    changeOrigin: true,
+    ws: true,
+    configure: proxyErrorHandler,
+  },
 };
 
 export default defineConfig({
