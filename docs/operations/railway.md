@@ -7,12 +7,12 @@ The Railway project is defined with **Infrastructure as Code** in
 
 ## Services
 
-| Service    | Source                       | Public? | Healthcheck      |
-| ---------- | ---------------------------- | ------- | ---------------- |
-| `frontend` | repo root (Vite build)       | Yes     | `/`              |
-| `backend`  | repo root (NestJS build)     | No      | `/api/v1/health` |
-| `solver`   | `packages/solver-service`    | No      | `/health`        |
-| `parser`   | `packages/prospectus-parser` | No      | `/health`        |
+| Service             | Source                       | Public? | Healthcheck      |
+| ------------------- | ---------------------------- | ------- | ---------------- |
+| `coe-nnectfrontend` | repo root (Vite build)       | Yes     | `/`              |
+| `coe-nnectbackend`  | repo root (NestJS build)     | No      | `/api/v1/health` |
+| `coe-nnectsolver`   | `packages/solver-service`    | No      | `/health`        |
+| `coe-nnectparser`   | `packages/prospectus-parser` | No      | `/health`        |
 
 The browser only talks to the **frontend** origin. `apps/frontend/server.mjs`
 serves the Vite build and proxies `/api` and `/socket.io` to the backend over
@@ -60,9 +60,9 @@ service and click **Deploy** (or push another commit to `main`).
 If Railway reports that an existing service is managed by `railway.json`,
 delete that service (or disconnect its config-as-code setting) before applying.
 A service can only be managed by one system at a time. Services created by this
-file are named `frontend`, `backend`, `solver`, and `parser`; rename or remove
-older services with different names before applying if you want to keep the
-same project tidy.
+file are named `coe-nnectfrontend`, `coe-nnectbackend`, `coe-nnectsolver`, and
+`coe-nnectparser`; rename or remove older services with different names before
+applying if you want to keep the same project tidy.
 
 ## Variables to enter manually
 
@@ -125,8 +125,8 @@ generated Railway and Vercel domains.
 The IaC file uses Railway reference variables:
 
 ```text
-SOLVER_URL=http://${{solver.RAILWAY_PRIVATE_DOMAIN}}:${{solver.PORT}}
-PROSPECTUS_PARSER_URL=http://${{parser.RAILWAY_PRIVATE_DOMAIN}}:${{parser.PORT}}
+SOLVER_URL=http://${{coe-nnectsolver.RAILWAY_PRIVATE_DOMAIN}}:${{coe-nnectsolver.PORT}}
+PROSPECTUS_PARSER_URL=http://${{coe-nnectparser.RAILWAY_PRIVATE_DOMAIN}}:${{coe-nnectparser.PORT}}
 ```
 
 The frontend receives `BACKEND_HOST` and `BACKEND_PORT` as typed references to
