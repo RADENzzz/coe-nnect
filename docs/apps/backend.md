@@ -41,11 +41,41 @@ The API uses TypeORM to connect to PostgreSQL. Automatic schema synchronization 
 The package exposes these database scripts:
 
 ```powershell
-pnpm --filter @coe-nnect/backend seed:demo
 pnpm --filter @coe-nnect/backend db:reset
+pnpm --filter @coe-nnect/backend seed:demo
 ```
 
-Both commands affect the database configured in the local environment. Review the script and target before running; `db:reset` is destructive.
+`db:reset` is a **hard reset**. It truncates every table in the `public` schema
+with `RESTART IDENTITY CASCADE`, deletes every Supabase Auth user, and restores
+only the disabled `system_status` singleton. Public identity columns therefore
+start again at `1`; Auth user IDs remain UUIDs.
+
+For a remote/hosted database, the script refuses to run unless both guards are
+set:
+
+```powershell
+$env:ALLOW_REMOTE_RESET = "1"
+$env:SKIP_CONFIRM = "1"   # optional; otherwise type RESET at the prompt
+pnpm --filter @coe-nnect/backend db:reset
+pnpm --filter @coe-nnect/backend seed:demo
+```
+
+`seed:demo` now creates only the four departments and six demo accounts:
+
+| Department             | Code   | Account                 |
+| ---------------------- | ------ | ----------------------- |
+| Computer Engineering   | `CPE`  | `head.cpe@wmsu.edu.ph`  |
+| Electrical Engineering | `EE`   | `head.ee@wmsu.edu.ph`   |
+| Geodetic Engineering   | `GE`   | `head.ge@wmsu.edu.ph`   |
+| Environmental Eng.     | `ENVE` | `head.enve@wmsu.edu.ph` |
+
+The dean is `dean@wmsu.edu.ph` and the hidden developer account is
+`dev-admin@wmsu.edu.ph`. Every account uses the password `Demo!2345`. Running
+`seed:demo` again updates the departments, resets those passwords, and
+re-synchronises the matching `public.users` profiles.
+
+Both commands affect the database configured in the environment. Review the
+script and target before running; `db:reset` is destructive.
 
 ## Build and checks
 
