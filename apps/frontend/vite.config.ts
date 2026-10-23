@@ -24,7 +24,38 @@ const allowedHosts = [
 
 // Where the API and Socket.IO live. The tunnel exposes only the Vite port and
 // the proxy forwards these paths, which keeps the browser on a single origin.
-const apiTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:3000';
+//
+// Railway normally runs the production server in `apps/frontend/server.mjs`,
+// which proxies to `BACKEND_HOST:BACKEND_PORT`. Keep the Vite dev/preview
+// proxy working too, so a misconfigured start command cannot break the API.
+const isRailway = Boolean(
+  process.env.RAILWAY_ENVIRONMENT ||
+    process.env.RAILWAY_SERVICE_NAME ||
+    process.env.RAILWAY_PROJECT_ID ||
+    process.env.RAILWAY_PRIVATE_DOMAIN,
+);
+
+function railwayBackendTarget() {
+  const configuredHost = process.env.BACKEND_HOST?.trim();
+  const configuredPort = Number.parseInt(process.env.BACKEND_PORT ?? '', 10);
+  if (
+    configuredHost &&
+    !configuredHost.includes('${{') &&
+    Number.isInteger(configuredPort) &&
+    configuredPort > 0
+  ) {
+    return `http://${configuredHost}:${configuredPort}`;
+  }
+
+  // If the Railway service environment has not been applied yet, fall back to
+  // the public backend domain. The proxy is server-side, so the browser still
+  // stays on the frontend origin.
+  return isRailway
+    ? 'https://coe-nnectbackend-production.up.railway.app'
+    : 'http://localhost:3000';
+}
+
+const apiTarget = process.env.VITE_API_PROXY_TARGET ?? railwayBackendTarget();
 
 const proxy = {
   '/api': { target: apiTarget, changeOrigin: true },
