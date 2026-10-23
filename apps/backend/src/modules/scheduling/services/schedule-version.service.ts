@@ -1,3 +1,4 @@
+// apps/backend/src/modules/scheduling/services/schedule-version.service.ts
 import {
   BadRequestException,
   Injectable,
@@ -5,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { SupabaseService } from '../../../database/supabase.service';
 import { Schedule } from '../entities/schedule.entity';
@@ -16,6 +17,11 @@ import { ScheduleVersion } from '../entities/schedule-version.entity';
  *
  * Versions are term-wide and denormalized so a snapshot stays readable after
  * subjects, faculty, or rooms are renamed or removed.
+ *
+ * IMPORTANT: A snapshot captures ONLY finalized/published rows. Drafts and
+ * review rows are still in flux and must never leak into a version. This
+ * matches the published-payload exclusion rule in the IDP contract §4.4 and
+ * keeps "Version History" a true historical record of committed state.
  */
 @Injectable()
 export class ScheduleVersionService {
@@ -29,10 +35,13 @@ export class ScheduleVersionService {
     private readonly supabase: SupabaseService,
   ) {}
 
-  /** Build and persist a full-term snapshot of the current schedule. */
+  /** Build and persist a full-term snapshot of the current *finalized* schedule. */
   async writeVersion(termId: string, user: any): Promise<ScheduleVersion> {
     const entries = await this.scheduleRepo.find({
-      where: { termId },
+      where: {
+        termId,
+        status: In(['finalized', 'published']),
+      },
       relations: ['subject', 'faculty', 'room', 'timeSlot'],
       order: { scheduleId: 'ASC' },
     });
@@ -85,7 +94,7 @@ export class ScheduleVersionService {
     const saved = await this.versionRepo.save(version);
     this.logger.log(
       `Schedule version v${saved.versionNumber} written for term=${termId} ` +
-        `(${entries.length} entries) by=${capturedBy}`,
+        `(${entries.length} finalized entries) by=${capturedBy}`,
     );
     return saved;
   }
