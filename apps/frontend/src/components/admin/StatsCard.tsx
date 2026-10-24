@@ -1,3 +1,5 @@
+import Icon from '../ui/Icon';
+
 interface StatsCardProps {
   label: string;
   value: number | string;
@@ -9,7 +11,7 @@ export default function StatsCard({ label, value, icon, loading }: StatsCardProp
   return (
     <div className="bg-white border border-slate-200 p-5 flex items-center gap-4 shadow-sm">
       <div className="w-9 h-9 bg-red-50 border border-red-200 flex items-center justify-center">
-        <span className="material-symbols-outlined text-[#5c1219] text-lg">{icon}</span>
+        <Icon name={icon} size={18} className="text-[#5c1219]" />
       </div>
       <div>
         <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
