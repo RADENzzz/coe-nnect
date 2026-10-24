@@ -9,31 +9,8 @@ import {
 } from '../../../api/system-status.api';
 
 const DISMISSED_KEY = 'coe-nnect:dismissed-status';
-const FALLBACK_GRACE_MS = 1500;
 /** How long the popup stays un-closable before the close button appears. */
 const CLOSE_DELAY_SECONDS = 5;
-
-const FALLBACK: {
-  enabled: boolean;
-  severity: SystemStatusSeverity;
-  title: string;
-  message: string;
-} = {
-  enabled: true,
-  severity: 'warning',
-  title:
-    'Backend, Solver (Automatic Generation), and PDF Parser migrated to Render',
-  message:
-    'Railway is experiencing a global platform outage, so the backend, ' +
-    'solver, and PDF parser have been moved to Render in the meantime.\n\n' +
-    'Render is a downgrade, so you may experience:\n' +
-    '• Long loading wait times\n' +
-    '• Auto Generation failures\n' +
-    '• PDF parser failures\n\n' +
-    'This is because these services need to stay awake to function.\n\n' +
-    'Once Railway is fixed, we will move back.\n\n' +
-    'Thank you for your understanding.\n— RadenZ',
-};
 
 interface SeverityTheme {
   /** Card border colour. */
@@ -99,7 +76,7 @@ const THEMES: Record<SystemStatusSeverity, SeverityTheme> = {
 };
 
 export default function SystemStatusBanner() {
-  const { data, isError, isLoading, refetch } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatus,
     retry: false,
@@ -122,34 +99,13 @@ export default function SystemStatusBanner() {
     };
   }, [refetch]);
 
-  const [graceElapsed, setGraceElapsed] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setGraceElapsed(true), FALLBACK_GRACE_MS);
-    return () => clearTimeout(t);
-  }, []);
-
-  const showLive = !!data?.enabled && !!data.title;
-  const showFallback =
-    FALLBACK.enabled &&
-    (isError ||
-      (!data && !isLoading && graceElapsed) ||
-      (!data && isLoading && graceElapsed));
-
-  const active = showLive
-    ? {
-        severity: data!.severity,
-        title: data!.title!,
-        message: data!.message,
-        updatedAt: data!.updatedAt,
-        isFallback: false,
-      }
-    : showFallback
+  const active =
+    data?.enabled && data.title
       ? {
-          severity: FALLBACK.severity,
-          title: FALLBACK.title,
-          message: FALLBACK.message,
-          updatedAt: 'fallback',
-          isFallback: true,
+          severity: data.severity,
+          title: data.title,
+          message: data.message,
+          updatedAt: data.updatedAt,
         }
       : null;
 
@@ -158,7 +114,6 @@ export default function SystemStatusBanner() {
   const severity = active?.severity ?? 'info';
   const title = active?.title ?? '';
   const message = active?.message ?? '';
-  const isFallback = active?.isFallback ?? false;
 
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(
     () => {
@@ -340,15 +295,6 @@ export default function SystemStatusBanner() {
             >
               <Bbcode text={message} linkClassName={theme.link} />
             </div>
-          )}
-
-          {isFallback && (
-            <p
-              className={`mt-3 text-[11px] opacity-70 animate-reveal ${theme.body}`}
-              style={{ animationDelay: '160ms' }}
-            >
-              (Live status unavailable — showing cached notice)
-            </p>
           )}
         </div>
 

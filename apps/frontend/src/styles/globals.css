@@ -247,6 +247,26 @@
       'opsz' 24;
   }
 
+  /*
+   * Animated icons from lucide-animated.com.
+   * The SVG is sized in `em` so it follows font-size exactly like the
+   * Material Symbols font did (default 20px, overridable by `size` or
+   * a Tailwind text-* utility).
+   */
+  .icon-animated {
+    font-size: 20px;
+    stroke-width: 2;
+  }
+
+  .icon-animated > span {
+    display: inline-flex;
+  }
+
+  .icon-animated > span > svg {
+    display: block;
+    stroke-width: inherit;
+  }
+
   h1 {
     font-size: 24px;
     line-height: 32px;
