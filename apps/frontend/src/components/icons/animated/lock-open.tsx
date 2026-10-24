@@ -1,0 +1,110 @@
+﻿import { motion, useAnimation } from "motion/react";
+import type { HTMLAttributes } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
+
+import clsx from "clsx";
+
+export interface LockOpenIconHandle {
+  startAnimation: () => void;
+  stopAnimation: () => void;
+}
+
+type LockOpenIconProps = HTMLAttributes<HTMLSpanElement>;
+
+const LockOpenIcon = forwardRef<LockOpenIconHandle, LockOpenIconProps>(
+  ({ onMouseEnter, onMouseLeave, className, ...props }, ref) => {
+    const controls = useAnimation();
+    const isControlledRef = useRef(false);
+
+    useImperativeHandle(ref, () => {
+      isControlledRef.current = true;
+
+      return {
+        startAnimation: () => controls.start("animate"),
+        stopAnimation: () => controls.start("normal"),
+      };
+    });
+
+    const handleMouseEnter = useCallback(
+      (e: React.MouseEvent<HTMLSpanElement>) => {
+        if (isControlledRef.current) {
+          onMouseEnter?.(e);
+        } else {
+          controls.start("animate");
+        }
+      },
+      [controls, onMouseEnter]
+    );
+
+    const handleMouseLeave = useCallback(
+      (e: React.MouseEvent<HTMLSpanElement>) => {
+        if (isControlledRef.current) {
+          onMouseLeave?.(e);
+        } else {
+          controls.start("normal");
+        }
+      },
+      [controls, onMouseLeave]
+    );
+
+    return (
+      <span
+        className={clsx(className)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        {...props}
+      >
+        <motion.svg
+          animate={controls}
+          fill="none"
+          height="1em"
+          initial="normal"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          transition={{
+            duration: 1,
+            ease: [0.4, 0, 0.2, 1],
+          }}
+          variants={{
+            normal: {
+              rotate: 0,
+              scale: 1,
+            },
+            animate: {
+              rotate: [2, 4, -2, 0],
+              scale: [1.05, 0.95, 1.02, 1],
+            },
+          }}
+          viewBox="0 0 24 24"
+          width="1em"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect height="11" rx="2" ry="2" width="18" x="3" y="11" />
+          <motion.path
+            animate={controls}
+            d="M7 11V7a5 5 0 0 1 10 0v4"
+            initial="normal"
+            transition={{
+              duration: 0.3,
+              ease: [0.4, 0, 0.2, 1],
+            }}
+            variants={{
+              normal: {
+                pathLength: 0.8,
+              },
+              animate: {
+                pathLength: 1,
+              },
+            }}
+          />
+        </motion.svg>
+      </span>
+    );
+  }
+);
+
+LockOpenIcon.displayName = "LockOpenIcon";
+
+export { LockOpenIcon };
