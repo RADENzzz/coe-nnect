@@ -135,7 +135,7 @@ const DAY_FULL_NAMES = [
 ];
 
 // ─────────────────────────────────────────────
-// Quick Action Button
+// Quick Action Button (enhanced)
 // ─────────────────────────────────────────────
 
 function QuickAction({
@@ -151,29 +151,60 @@ function QuickAction({
   badge?: string | number;
   accent?: 'brand' | 'blue' | 'amber' | 'rose' | 'emerald';
 }) {
-  const accentClasses: Record<typeof accent, string> = {
-    brand: 'text-[#5c1219]',
-    blue: 'text-blue-700',
-    amber: 'text-amber-700',
-    rose: 'text-rose-700',
-    emerald: 'text-emerald-700',
+  const accentMap: Record<
+    typeof accent,
+    { bg: string; text: string; hover: string; ring: string }
+  > = {
+    brand: {
+      bg: 'bg-[#5c1219]/5',
+      text: 'text-[#5c1219]',
+      hover: 'hover:bg-[#5c1219]/10',
+      ring: 'focus-visible:ring-[#5c1219]/30',
+    },
+    blue: {
+      bg: 'bg-blue-50',
+      text: 'text-blue-700',
+      hover: 'hover:bg-blue-100',
+      ring: 'focus-visible:ring-blue-300',
+    },
+    amber: {
+      bg: 'bg-amber-50',
+      text: 'text-amber-700',
+      hover: 'hover:bg-amber-100',
+      ring: 'focus-visible:ring-amber-300',
+    },
+    rose: {
+      bg: 'bg-rose-50',
+      text: 'text-rose-700',
+      hover: 'hover:bg-rose-100',
+      ring: 'focus-visible:ring-rose-300',
+    },
+    emerald: {
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-700',
+      hover: 'hover:bg-emerald-100',
+      ring: 'focus-visible:ring-emerald-300',
+    },
   };
+
+  const a = accentMap[accent];
 
   return (
     <button
       onClick={onClick}
       aria-label={label}
-      className="relative bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 p-3 flex flex-col items-center justify-center gap-2 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 rounded-lg"
+      className={`relative ${a.bg} ${a.hover} border border-slate-200/80 p-4 flex flex-col items-center justify-center gap-2.5 transition-all duration-200 group focus:outline-none focus-visible:ring-2 ${a.ring} rounded-xl`}
     >
-      <Icon
-        name={icon}
-        className={`${accentClasses[accent]} group-hover:scale-105 transition-transform`}
-      />
+      <span
+        className={`w-10 h-10 rounded-lg ${a.bg} ${a.text} flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}
+      >
+        <Icon name={icon} size={20} />
+      </span>
       <span className="text-[11px] font-semibold text-slate-700 text-center leading-tight">
         {label}
       </span>
       {badge !== undefined && badge !== 0 && (
-        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#5c1219] text-white text-[10px] font-bold flex items-center justify-center">
+        <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-[#5c1219] text-white text-[10px] font-bold flex items-center justify-center shadow-sm animate-pulse">
           {badge}
         </span>
       )}
@@ -182,7 +213,7 @@ function QuickAction({
 }
 
 // ─────────────────────────────────────────────
-// Summary Card
+// Summary Card (enhanced)
 // ─────────────────────────────────────────────
 
 function SummaryCard({
@@ -211,7 +242,7 @@ function SummaryCard({
   hint?: string;
 }) {
   const badgeClasses: Record<string, string> = {
-    neutral: 'bg-slate-50 text-slate-600 border-slate-200',
+    neutral: 'bg-slate-100 text-slate-600 border-slate-200',
     success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     warning: 'bg-amber-50 text-amber-700 border-amber-200',
     danger: 'bg-red-50 text-red-700 border-red-200',
@@ -219,14 +250,38 @@ function SummaryCard({
     rose: 'bg-rose-50 text-rose-700 border-rose-200',
   };
 
-  const iconAccentClasses: Record<typeof accent, string> = {
-    brand: 'bg-red-50 border-red-200 text-[#5c1219]',
-    blue: 'bg-blue-50 border-blue-200 text-blue-700',
-    amber: 'bg-amber-50 border-amber-200 text-amber-700',
-    rose: 'bg-rose-50 border-rose-200 text-rose-700',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  const iconAccentMap: Record<
+    typeof accent,
+    { bg: string; border: string; text: string }
+  > = {
+    brand: {
+      bg: 'bg-[#5c1219]/5',
+      border: 'border-[#5c1219]/20',
+      text: 'text-[#5c1219]',
+    },
+    blue: {
+      bg: 'bg-blue-50',
+      border: 'border-blue-200',
+      text: 'text-blue-700',
+    },
+    amber: {
+      bg: 'bg-amber-50',
+      border: 'border-amber-200',
+      text: 'text-amber-700',
+    },
+    rose: {
+      bg: 'bg-rose-50',
+      border: 'border-rose-200',
+      text: 'text-rose-700',
+    },
+    emerald: {
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-200',
+      text: 'text-emerald-700',
+    },
   };
 
+  const ia = iconAccentMap[accent];
   const Wrapper = clickable ? 'button' : 'div';
 
   return (
@@ -236,26 +291,26 @@ function SummaryCard({
       title={hint}
       aria-label={hint ?? label}
       className={
-        'group bg-white border border-slate-200 p-5 shadow-sm transition-all text-left w-full rounded-lg focus:outline-none ' +
+        'group bg-white border border-slate-200 p-5 shadow-sm transition-all duration-200 text-left w-full rounded-xl focus:outline-none ' +
         (clickable
-          ? 'hover:border-[#5c1219]/40 hover:shadow cursor-pointer focus-visible:ring-2 focus-visible:ring-[#5c1219]/30'
+          ? 'hover:border-[#5c1219]/30 hover:shadow-md hover:-translate-y-0.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#5c1219]/30'
           : 'hover:border-slate-300')
       }
     >
       <div className="flex justify-between items-start mb-4">
         <div
-          className={`w-9 h-9 border flex items-center justify-center ${iconAccentClasses[accent]}`}
+          className={`w-10 h-10 rounded-lg border ${ia.border} ${ia.bg} flex items-center justify-center ${ia.text} transition-transform duration-200 group-hover:scale-105`}
         >
           {isLoading ? (
-            <Icon name="progress_activity" size={16} className="animate-spin" />
+            <Icon name="progress_activity" size={18} className="animate-spin" />
           ) : (
-            <Icon name={icon} filled />
+            <Icon name={icon} size={20} filled />
           )}
         </div>
         <div className="flex items-center gap-1.5">
           {badge && (
             <span
-              className={`text-[11px] font-bold uppercase tracking-wide border px-2 py-0.5 ${
+              className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-1 rounded-md ${
                 badgeClasses[badgeVariant] ?? badgeClasses.neutral
               }`}
             >
@@ -266,12 +321,12 @@ function SummaryCard({
             <Icon
               name="chevron_right"
               size={16}
-              className="text-slate-300 group-hover:text-slate-500 transition"
+              className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all duration-200"
             />
           )}
         </div>
       </div>
-      <p className="text-sm text-slate-500 mb-1">{label}</p>
+      <p className="text-xs font-medium text-slate-500 mb-1.5">{label}</p>
       <div className="text-3xl font-extrabold text-slate-900 tracking-tight tabular-nums">
         {isLoading ? '—' : value}
       </div>
@@ -281,7 +336,7 @@ function SummaryCard({
 }
 
 // ─────────────────────────────────────────────
-// Activity Item
+// Activity Item (enhanced)
 // ─────────────────────────────────────────────
 
 function ActivityItem({
@@ -302,19 +357,22 @@ function ActivityItem({
   onAction: () => void;
 }) {
   return (
-    <div className="p-4 px-5 flex items-center gap-4 hover:bg-slate-50 transition-colors">
+    <div className="px-5 py-3.5 flex items-center gap-3.5 hover:bg-slate-50/80 transition-colors group">
       <div
-        className={`w-8 h-8 flex items-center justify-center shrink-0 ${iconBg} ${iconColor} rounded`}
+        className={`w-9 h-9 flex items-center justify-center shrink-0 ${iconBg} ${iconColor} rounded-lg`}
       >
-        <Icon name={icon} />
+        <Icon name={icon} size={18} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-slate-900 truncate">{text}</p>
-        <p className="text-xs text-slate-500 mt-0.5">{time}</p>
+        <p className="text-sm text-slate-800 truncate leading-snug">{text}</p>
+        <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+          <Icon name="schedule" size={10} />
+          {time}
+        </p>
       </div>
       <button
         onClick={onAction}
-        className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 rounded px-1"
+        className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 rounded-md px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
       >
         {actionLabel}
       </button>
@@ -338,13 +396,15 @@ function BreakdownEmpty({
   onAction?: () => void;
 }) {
   return (
-    <div className="py-12 text-center">
-      <Icon name={icon} size={36} className="text-slate-300 mx-auto mb-2" />
-      <p className="text-sm text-slate-500">{message}</p>
+    <div className="py-14 text-center">
+      <div className="w-14 h-14 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-3">
+        <Icon name={icon} size={28} className="text-slate-300" />
+      </div>
+      <p className="text-sm text-slate-500 font-medium">{message}</p>
       {actionLabel && onAction && (
         <button
           onClick={onAction}
-          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#5c1219] hover:underline"
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#5c1219] hover:underline bg-[#5c1219]/5 px-3 py-1.5 rounded-md hover:bg-[#5c1219]/10 transition-colors"
         >
           {actionLabel}
           <Icon name="arrow_forward" size={12} />
@@ -359,9 +419,11 @@ function ScheduleRow({ s }: { s: RawSchedule }) {
   const start = scheduleStart(s);
   const end = scheduleEnd(s);
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-slate-100 last:border-b-0">
-      <div className="w-14 shrink-0 text-xs font-mono font-bold text-[#5c1219] pt-0.5">
-        {DAY_ABBR_TO_LABEL[day] ?? day}
+    <div className="flex items-start gap-3.5 py-3.5 border-b border-slate-100 last:border-b-0 group hover:bg-slate-50/50 px-2 rounded-lg transition-colors">
+      <div className="w-16 shrink-0 text-center">
+        <div className="text-[11px] font-mono font-bold text-[#5c1219] bg-[#5c1219]/5 rounded-md py-1 px-1.5">
+          {DAY_ABBR_TO_LABEL[day] ?? day}
+        </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap">
@@ -369,14 +431,27 @@ function ScheduleRow({ s }: { s: RawSchedule }) {
             {s.subject?.subjectCode ?? '—'}
           </span>
           {s.section && (
-            <span className="text-xs text-slate-500">· {s.section}</span>
+            <span className="text-xs text-slate-400 font-medium">· {s.section}</span>
           )}
           <StatusPill status={s.status} />
         </div>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {start && end ? `${fmtTime(start)} – ${fmtTime(end)}` : 'No time set'}
-          {s.faculty ? ` · ${s.faculty.firstName} ${s.faculty.lastName}` : ''}
-          {s.room ? ` · Rm ${s.room.roomNumber}` : ''}
+        <p className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1">
+            <Icon name="schedule" size={11} className="text-slate-400" />
+            {start && end ? `${fmtTime(start)} – ${fmtTime(end)}` : 'No time set'}
+          </span>
+          {s.faculty && (
+            <span className="inline-flex items-center gap-1">
+              <Icon name="person" size={11} className="text-slate-400" />
+              {s.faculty.firstName} {s.faculty.lastName}
+            </span>
+          )}
+          {s.room && (
+            <span className="inline-flex items-center gap-1">
+              <Icon name="meeting_room" size={11} className="text-slate-400" />
+              Rm {s.room.roomNumber}
+            </span>
+          )}
         </p>
       </div>
     </div>
@@ -395,7 +470,7 @@ function StatusPill({ status }: { status: string }) {
   };
   return (
     <span
-      className={`text-[10px] uppercase tracking-wider font-bold border px-1.5 py-0.5 ${
+      className={`text-[9px] uppercase tracking-wider font-bold border px-1.5 py-0.5 rounded ${
         map[status] ?? map.draft
       }`}
     >
@@ -414,30 +489,31 @@ function RequestRow({
   onClick?: () => void;
 }) {
   return (
-    <div className="py-3 border-b border-slate-100 last:border-b-0">
+    <div className="py-3.5 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 px-2 rounded-lg transition-colors group">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs font-bold text-[#5c1219]">
+            <span className="font-mono text-xs font-bold text-[#5c1219] bg-[#5c1219]/5 px-1.5 py-0.5 rounded">
               {deptCode(r.requestingDeptId)}
             </span>
-            <Icon name="arrow_forward" size={12} className="text-slate-400" />
-            <span className="font-mono text-xs font-bold">
+            <Icon name="arrow_forward" size={12} className="text-slate-300" />
+            <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
               {deptCode(r.targetDeptId)}
             </span>
             <StatusPill status={r.status} />
           </div>
-          <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+          <p className="text-xs text-slate-600 mt-1.5 line-clamp-2 leading-relaxed">
             {r.reason}
           </p>
-          <p className="text-[10px] text-slate-400 mt-1">
+          <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+            <Icon name="tag" size={10} />
             Request #{r.requestId} · {relativeTime(r.createdAt)}
           </p>
         </div>
         {onClick && (
           <button
             onClick={onClick}
-            className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0"
+            className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0 bg-[#5c1219]/5 px-2.5 py-1 rounded-md hover:bg-[#5c1219]/10 transition-colors"
           >
             Review
           </button>
@@ -460,10 +536,10 @@ function FlaggedRow({
   return (
     <button
       onClick={onOpen}
-      className="w-full text-left py-3 border-b border-slate-100 last:border-b-0 px-2 hover:bg-rose-50/60 transition-colors flex items-start gap-3 focus:outline-none focus-visible:bg-rose-50/60 rounded"
+      className="w-full text-left py-3.5 border-b border-slate-100 last:border-b-0 px-2 hover:bg-rose-50/60 transition-colors flex items-start gap-3 focus:outline-none focus-visible:bg-rose-50/60 rounded-lg"
     >
       <span
-        className="w-1 self-stretch rounded-full shrink-0 bg-rose-600"
+        className="w-1 self-stretch rounded-full shrink-0 bg-rose-500"
         aria-hidden
       />
       <div className="flex-1 min-w-0">
@@ -478,28 +554,41 @@ function FlaggedRow({
             {s.subject?.subjectCode ?? '—'}
           </span>
           {s.section && (
-            <span className="text-xs text-slate-500">· {s.section}</span>
+            <span className="text-xs text-slate-400 font-medium">· {s.section}</span>
           )}
-          <span className="text-[10px] uppercase tracking-wider px-1.5 py-px rounded bg-slate-100 text-slate-600 border border-slate-200 font-bold">
+          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-bold">
             {s.loadType ?? 'lecture'}
           </span>
         </div>
         <p className="text-xs text-slate-600 mt-0.5 truncate">
           {s.subject?.title ?? '—'}
         </p>
-        <p className="text-[11px] text-slate-500 mt-0.5">
-          {DAY_ABBR_TO_LABEL[day] ?? day}
-          {start && end ? ` · ${fmtTime(start)} – ${fmtTime(end)}` : ''}
-          {s.faculty ? ` · ${s.faculty.firstName} ${s.faculty.lastName}` : ''}
-          {s.room ? ` · Rm ${s.room.roomNumber}` : ''}
+        <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1">
+            <Icon name="schedule" size={10} className="text-slate-400" />
+            {DAY_ABBR_TO_LABEL[day] ?? day}
+            {start && end ? ` · ${fmtTime(start)} – ${fmtTime(end)}` : ''}
+          </span>
+          {s.faculty && (
+            <span className="inline-flex items-center gap-1">
+              <Icon name="person" size={10} className="text-slate-400" />
+              {s.faculty.firstName} {s.faculty.lastName}
+            </span>
+          )}
+          {s.room && (
+            <span className="inline-flex items-center gap-1">
+              <Icon name="meeting_room" size={10} className="text-slate-400" />
+              Rm {s.room.roomNumber}
+            </span>
+          )}
         </p>
         {s.flagReason && (
-          <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5 rounded bg-white border border-rose-200">
+          <div className="mt-2 flex items-start gap-1.5 px-2.5 py-2 rounded-md bg-white border border-rose-200/80">
             <Icon
               name="flag"
               filled
               size={12}
-              className="text-rose-600 shrink-0 mt-0.5"
+              className="text-rose-500 shrink-0 mt-0.5"
             />
             <p className="text-[11px] text-rose-900 leading-snug break-words">
               {s.flagReason}
@@ -507,7 +596,8 @@ function FlaggedRow({
           </div>
         )}
         {s.flaggedAt && (
-          <p className="text-[10px] text-rose-700 mt-1">
+          <p className="text-[10px] text-rose-600 mt-1.5 flex items-center gap-1">
+            <Icon name="schedule" size={10} />
             Flagged {relativeTime(s.flaggedAt)}
           </p>
         )}
@@ -515,14 +605,14 @@ function FlaggedRow({
       <Icon
         name="chevron_right"
         size={18}
-        className="text-slate-400 shrink-0 mt-1"
+        className="text-slate-300 shrink-0 mt-1 group-hover:text-slate-500 transition-colors"
       />
     </button>
   );
 }
 
 // ─────────────────────────────────────────────
-// Today Widget
+// Today Widget (enhanced)
 // ─────────────────────────────────────────────
 
 function TodayScheduleStrip({
@@ -551,53 +641,54 @@ function TodayScheduleStrip({
     [schedules, todayName, todayShort],
   );
 
-  // Find "up next" (earliest not-yet-ended)
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const upNext = todaySchedules.find(
     (s) => timeToMinutes(scheduleEnd(s) || '23:59') >= nowMin,
   );
 
   return (
-    <div className="bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Icon name="today" size={16} className="text-[#5c1219]" />
-          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-            Today · {todayName}
-          </h3>
+    <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden flex flex-col">
+      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white">
+        <div className="flex items-center gap-2.5">
+          <span className="w-8 h-8 rounded-lg bg-[#5c1219]/10 flex items-center justify-center">
+            <Icon name="today" size={16} className="text-[#5c1219]" />
+          </span>
+          <div>
+            <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+              Today
+            </h3>
+            <p className="text-xs font-semibold text-slate-700">{todayName}</p>
+          </div>
         </div>
-        <span className="text-xs text-slate-400">
-          {todaySchedules.length} class
-          {todaySchedules.length === 1 ? '' : 'es'}
+        <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+          {todaySchedules.length} class{todaySchedules.length === 1 ? '' : 'es'}
         </span>
       </div>
 
       {todaySchedules.length === 0 ? (
-        <div className="py-8 text-center">
-          <Icon
-            name="event_available"
-            size={32}
-            className="text-emerald-400 mx-auto mb-2"
-          />
-          <p className="text-sm text-slate-500">
-            No classes scheduled for today.
+        <div className="py-10 text-center flex-1 flex flex-col items-center justify-center">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-2">
+            <Icon name="event_available" size={24} className="text-emerald-500" />
+          </div>
+          <p className="text-sm text-slate-500 font-medium">
+            No classes scheduled
           </p>
+          <p className="text-xs text-slate-400 mt-0.5">Enjoy your free day!</p>
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100 flex-1">
           {todaySchedules.slice(0, 4).map((s) => {
             const start = scheduleStart(s);
             const end = scheduleEnd(s);
             const isUpNext = upNext?.scheduleId === s.scheduleId;
-            const isPast =
-              timeToMinutes(end || '23:59') < nowMin;
+            const isPast = timeToMinutes(end || '23:59') < nowMin;
             return (
               <button
                 key={s.scheduleId}
                 onClick={onOpenTimetable}
                 className={`w-full text-left px-5 py-3 flex items-center gap-3 transition-colors focus:outline-none focus-visible:bg-slate-50 ${
                   isPast
-                    ? 'opacity-60'
+                    ? 'opacity-50'
                     : isUpNext
                     ? 'bg-[#5c1219]/5 hover:bg-[#5c1219]/10'
                     : 'hover:bg-slate-50'
@@ -617,13 +708,20 @@ function TodayScheduleStrip({
                       {s.subject?.subjectCode ?? '—'}
                     </span>
                     {isUpNext && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#5c1219] text-white shrink-0">
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#5c1219] text-white shrink-0">
                         Up next
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 truncate mt-0.5">
-                    {s.section ? `${s.section} · ` : ''}
+                  <p className="text-xs text-slate-500 truncate mt-0.5 flex items-center gap-1">
+                    {s.section && (
+                      <>
+                        <Icon name="group" size={10} className="text-slate-400" />
+                        {s.section}
+                        <span className="text-slate-300">·</span>
+                      </>
+                    )}
+                    <Icon name="meeting_room" size={10} className="text-slate-400" />
                     {s.room ? `Rm ${s.room.roomNumber}` : 'No room'}
                   </p>
                 </div>
@@ -646,7 +744,7 @@ function TodayScheduleStrip({
 }
 
 // ─────────────────────────────────────────────
-// Term Status Card
+// Term Status Card (enhanced)
 // ─────────────────────────────────────────────
 
 function TermStatusCard({
@@ -660,8 +758,10 @@ function TermStatusCard({
 }) {
   if (!term) {
     return (
-      <div className="bg-white border border-dashed border-amber-300 bg-amber-50/50 p-4 rounded-lg flex items-start gap-3">
-        <Icon name="warning" size={20} className="text-amber-600 shrink-0 mt-0.5" />
+      <div className="bg-white border border-dashed border-amber-300 bg-amber-50/40 p-4 rounded-xl flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+          <Icon name="warning" size={18} className="text-amber-600" />
+        </div>
         <div className="flex-1">
           <p className="text-sm font-bold text-amber-900">No active term</p>
           <p className="text-xs text-amber-700 mt-0.5">
@@ -699,13 +799,13 @@ function TermStatusCard({
   const tone = toneMap[dominant];
 
   return (
-    <div className="bg-white border border-slate-200 p-4 rounded-lg flex flex-wrap items-center gap-4">
+    <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-wrap items-center gap-4 shadow-sm">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-[#5c1219]/10 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#5c1219]/10 to-[#5c1219]/5 flex items-center justify-center">
           <Icon name="calendar_month" size={20} className="text-[#5c1219]" />
         </div>
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Active term
           </p>
           <p className="text-sm font-bold text-slate-900">
@@ -714,11 +814,11 @@ function TermStatusCard({
         </div>
       </div>
       <div className="ml-auto flex items-center gap-3">
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md">
           {total} entr{total === 1 ? 'y' : 'ies'}
         </span>
         <span
-          className={`text-[11px] font-bold uppercase tracking-wide border px-2 py-0.5 rounded ${tone.color}`}
+          className={`text-[10px] font-bold uppercase tracking-wider border px-2.5 py-1 rounded-md ${tone.color}`}
         >
           {tone.label}
         </span>
@@ -872,7 +972,6 @@ export default function DashboardPage() {
     [myRequests],
   );
 
-  // Group by relative day
   const groupedActivity = useMemo(() => {
     const groups: Record<string, typeof recentActivity> = {};
     for (const item of recentActivity) {
@@ -896,38 +995,48 @@ export default function DashboardPage() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-6 mt-1 md:mt-0 border-b border-slate-200 pb-5">
+      <div className="mb-6 mt-1 md:mt-0">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-              {greeting()}, {firstName}
-            </h1>
-            <p className="text-sm text-slate-500">
-              Here is the current status of the <strong>{deptName}</strong>{' '}
-              department schedule
-              {activeTerm
-                ? ` ${activeTerm.termName} ${activeTerm.schoolYear}.`
-                : '.'}
-            </p>
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5c1219] to-[#3d0b10] flex items-center justify-center shadow-sm shrink-0">
+              <Icon name="dashboard" size={24} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
+                {greeting()}, {firstName}
+              </h1>
+              <p className="text-sm text-slate-500">
+                Here is the current status of the <strong className="text-slate-700">{deptName}</strong>{' '}
+                department schedule
+                {activeTerm
+                  ? ` ${activeTerm.termName} ${activeTerm.schoolYear}.`
+                  : '.'}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
             <span
-              className="text-[11px] text-slate-400 font-mono flex items-center gap-1"
+              className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5"
               aria-live="polite"
             >
+              <span
+                className={`inline-block w-1.5 h-1.5 rounded-full ${
+                  isLoadingAny ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                }`}
+              />
               <Icon name="schedule" size={12} />
               {refreshedLabel}
             </span>
             <button
               onClick={refreshAll}
               disabled={isLoadingAny}
-              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
             >
               <Icon
                 name="refresh"
-                size={16}
+                size={14}
                 className={isLoadingAny ? 'animate-spin' : ''}
               />
             </button>
@@ -945,11 +1054,12 @@ export default function DashboardPage() {
       {/* ── Bento grid ── */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6 mt-4">
         {/* Quick Actions */}
-        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm rounded-lg flex flex-col">
-          <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500 mb-3 border-b border-slate-100 pb-3">
+        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm rounded-xl flex flex-col">
+          <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-3 border-b border-slate-100 pb-3 flex items-center gap-2">
+            <Icon name="bolt" size={14} className="text-amber-500" filled />
             Quick Actions
           </h3>
-          <div className="grid grid-cols-2 gap-2 flex-1">
+          <div className="grid grid-cols-2 gap-2.5 flex-1">
             <QuickAction
               icon="add_circle"
               label="New Schedule"
@@ -997,16 +1107,21 @@ export default function DashboardPage() {
                 : undefined
             }
             footer={
-              <div className="flex items-center gap-1 text-xs text-slate-500">
-                <span className="font-semibold text-slate-700">
-                  {byStatus.draft}
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="inline-flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                  <span className="font-semibold text-slate-700">
+                    {byStatus.draft}
+                  </span>
+                  <span>draft</span>
                 </span>
-                <span>draft</span>
-                <span>·</span>
-                <span className="font-semibold text-slate-700">
-                  {byStatus.review}
+                <span className="inline-flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <span className="font-semibold text-amber-700">
+                    {byStatus.review}
+                  </span>
+                  <span>review</span>
                 </span>
-                <span>review</span>
               </div>
             }
           />
@@ -1031,13 +1146,13 @@ export default function DashboardPage() {
                 <span
                   className={`inline-block w-2 h-2 rounded-full ${
                     pendingIncoming.length > 0
-                      ? 'bg-amber-500'
+                      ? 'bg-amber-500 animate-pulse'
                       : 'bg-emerald-500'
                   }`}
                 />
                 <span className="text-xs text-slate-500">
                   {pendingIncoming.length > 0
-                    ? `${pendingIncoming.length} cross-dept request${
+                    ? `${pendingIncoming.length} request${
                         pendingIncoming.length === 1 ? '' : 's'
                       } pending`
                     : 'No pending requests'}
@@ -1060,11 +1175,16 @@ export default function DashboardPage() {
                 : undefined
             }
             footer={
-              <div className="w-full bg-slate-100 h-1.5 overflow-hidden rounded-full">
-                <div
-                  className="bg-[#5c1219] h-1.5 transition-all duration-500 rounded-full"
-                  style={{ width: `${completionRate}%` }}
-                />
+              <div className="w-full">
+                <div className="w-full bg-slate-100 h-2 overflow-hidden rounded-full">
+                  <div
+                    className="bg-gradient-to-r from-[#5c1219] to-[#8b1e2a] h-2 transition-all duration-500 rounded-full"
+                    style={{ width: `${completionRate}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5 text-right tabular-nums">
+                  {finalizedOrPublished}/{totalSchedules} complete
+                </p>
               </div>
             }
           />
@@ -1115,29 +1235,31 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent Activity */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white">
+            <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <Icon name="history" size={14} className="text-slate-400" />
               Recent Scheduling Activity
             </h3>
             {recentActivity.length > 0 && (
               <Link
                 to="/approvals"
-                className="text-xs font-semibold text-[#5c1219] hover:underline"
+                className="text-xs font-semibold text-[#5c1219] hover:underline flex items-center gap-1"
               >
                 View all
+                <Icon name="arrow_forward" size={12} />
               </Link>
             )}
           </div>
           <div>
             {isLoading ? (
-              <div className="py-12 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
+              <div className="py-14 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
                 <Icon
                   name="progress_activity"
-                  size={14}
+                  size={16}
                   className="animate-spin"
                 />
-                Loading…
+                Loading activity…
               </div>
             ) : recentActivity.length === 0 ? (
               <BreakdownEmpty
@@ -1149,8 +1271,8 @@ export default function DashboardPage() {
             ) : (
               Object.entries(groupedActivity).map(([group, items]) => (
                 <div key={group}>
-                  <div className="px-5 py-2 bg-slate-50 border-y border-slate-100">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <div className="px-5 py-2 bg-slate-50/80 border-y border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       {group}
                     </span>
                   </div>
@@ -1211,8 +1333,8 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Other Department Heads Online ── */}
-      <div className="mt-6 bg-white border border-slate-200 shadow-sm rounded-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="mt-6 bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white">
           <div className="flex items-center gap-3">
             <span
               className={`inline-block w-2 h-2 rounded-full ${
@@ -1220,17 +1342,17 @@ export default function DashboardPage() {
               }`}
               aria-hidden
             />
-            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+            <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
               Other Department Heads
             </h3>
           </div>
-          <span className="text-xs text-slate-400">
+          <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
             {onlineOtherDHs} of {otherDeptHeads.length} online
           </span>
         </div>
 
         {otherDeptHeads.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">
+          <div className="py-14 text-center text-sm text-slate-400">
             No other department heads configured.
           </div>
         ) : (
@@ -1243,14 +1365,14 @@ export default function DashboardPage() {
               return (
                 <div
                   key={head.user_id}
-                  className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
+                  className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50/60 transition-colors"
                 >
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-slate-700 text-xs font-bold flex items-center justify-center">
                       {initials(head.username)}
                     </div>
                     <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-white rounded-full ${
+                      className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-white rounded-full ${
                         isOnline ? 'bg-emerald-500' : 'bg-slate-300'
                       }`}
                       aria-hidden
@@ -1267,7 +1389,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <span
-                    className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-0.5 shrink-0 rounded ${
+                    className={`text-[9px] font-bold uppercase tracking-wider border px-2 py-1 shrink-0 rounded-md ${
                       isOnline
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-slate-50 text-slate-500 border-slate-200'
@@ -1382,14 +1504,14 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="w-full bg-slate-100 h-2 overflow-hidden rounded-full">
+            <div className="w-full bg-slate-100 h-2.5 overflow-hidden rounded-full">
               <div
-                className="bg-[#5c1219] h-2 transition-all duration-500 rounded-full"
+                className="bg-gradient-to-r from-[#5c1219] to-[#8b1e2a] h-2.5 transition-all duration-500 rounded-full"
                 style={{ width: `${completionRate}%` }}
               />
             </div>
 
-            <div className="pt-2 space-y-2">
+            <div className="pt-2 space-y-2.5">
               <StatusRow
                 label="Draft"
                 count={byStatus.draft}
@@ -1464,7 +1586,7 @@ function StatusRow({
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
     <div>
-      <div className="flex items-center justify-between text-xs mb-1">
+      <div className="flex items-center justify-between text-xs mb-1.5">
         <span className="font-semibold text-slate-700">{label}</span>
         <span className="text-slate-500">
           <span className="font-bold text-slate-900 tabular-nums">{count}</span>
@@ -1472,9 +1594,9 @@ function StatusRow({
           <span className="tabular-nums">{pct}%</span>
         </span>
       </div>
-      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
         <div
-          className={`${barColor} h-1.5 transition-all duration-300 rounded-full`}
+          className={`${barColor} h-2 transition-all duration-300 rounded-full`}
           style={{ width: `${pct}%` }}
         />
       </div>
