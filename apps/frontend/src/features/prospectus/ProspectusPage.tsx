@@ -612,11 +612,11 @@ export default function ProspectusPage() {
               : "Your department doesn't own any programs yet. Contact the administrator."}
           </p>
           <Link
-            to="/programs"
+            to="/import"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
           >
-            <Icon name="arrow_back" size={16} />
-            Go to Programs
+            <Icon name="upload_file" size={16} />
+            Go to Prospectus Import
           </Link>
         </div>
       ) : (
