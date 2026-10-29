@@ -34,6 +34,7 @@ const DH_NAV: RoleNav = {
     { label: 'Faculty Directory', path: ROUTES.FACULTY,        icon: 'groups',              primary: true },
     { label: 'Approvals',         path: ROUTES.APPROVALS,      icon: 'report_problem',      primary: true },
     { label: 'Rooms',             path: ROUTES.ROOMS,          icon: 'meeting_room' },
+    { label: 'Programs',          path: ROUTES.PROGRAMS,       icon: 'school' },
     { label: 'Subjects',          path: ROUTES.SUBJECTS,       icon: 'menu_book' },
     { label: 'Prospectus',        path: ROUTES.PROSPECTUS,     icon: 'library_books' },
     { label: 'Import Prospectus', path: ROUTES.IMPORT,         icon: 'upload_file' },
@@ -66,6 +67,7 @@ const DEAN_NAV: RoleNav = {
 
     // ── Organization ──
     { label: 'Departments',        path: '/dean/departments',     icon: 'corporate_fare',    primary: true },
+    { label: 'Programs',           path: '/dean/programs',        icon: 'school',            primary: true },
     { label: 'Users',              path: '/dean/users',           icon: 'manage_accounts',   primary: true },
     { label: 'Faculty',            path: '/dean/faculty',         icon: 'groups',            primary: true },
 
