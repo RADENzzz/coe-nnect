@@ -6,14 +6,13 @@ import { Subject } from '../subjects/entities/subject.entity';
 import { User } from '../users/entities/user.entity';
 import { ProspectusService } from './prospectus.service';
 import { ProspectusController } from './prospectus.controller';
-import { ProgramsController } from './programs.controller';
 import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Prospectus, Program, Subject, User]),
   ],
-  controllers: [ProspectusController, ProgramsController],
+  controllers: [ProspectusController],
   providers: [ProspectusService, RolesGuard],
   exports: [ProspectusService],
 })
