@@ -8,6 +8,7 @@ import {
   type RoleNav,
 } from '../../lib/constants/nav-config';
 import { useAuthStore } from '../../store/auth.store';
+import { useAppearanceStore } from '../../store/appearance.store';
 
 // Global body-lock counter so nested modals cooperate
 let bodyLockCount = 0;
@@ -47,6 +48,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
     nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
 
   const profile = useAuthStore((s) => s.profile);
+  const brandLogo = useAppearanceStore((s) => s.logo);
   const visibleMain = filterNavByRole(nav.main, profile?.role);
   const visibleFooter = filterNavByRole(nav.footer, profile?.role);
 
@@ -153,8 +155,16 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         {/* Brand */}
         <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-2 pt-safe">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 bg-[#5c1219] flex items-center justify-center shrink-0">
-              <Icon name="school" filled className="text-white" />
+            <div className="w-8 h-8 bg-[#5c1219] flex items-center justify-center shrink-0 overflow-hidden">
+              {brandLogo ? (
+                <img
+                  src={brandLogo}
+                  alt="CoE-NNECT logo"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <Icon name="school" filled className="text-white" />
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
