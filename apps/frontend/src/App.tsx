@@ -18,6 +18,7 @@ import SubjectsPage from './features/subjects/SubjectsPage';
 import FacultyPage from './features/faculty/FacultyPage';
 import RoomsPage from './features/rooms/RoomsPage';
 import ProspectusPage from './features/prospectus/ProspectusPage';
+import ProgramsPage from './features/programs/ProgramsPage';
 import SystemConfigPage from './features/system-config/SystemConfigPage';
 import AuditTrailPage from './features/audit-trail/AuditTrailPage';
 import FacultyWorkloadPage from './features/reports/FacultyWorkloadPage';
@@ -80,6 +81,7 @@ function App() {
             <Route index element={<Navigate to="/dean/dashboard" replace />} />
             <Route path="dashboard" element={<DeanDashboardPage />} />
             <Route path="departments" element={<DeanDepartmentsPage />} />
+            <Route path="programs" element={<ProgramsPage />} />
             <Route
               path="departments/manage"
               element={<DeanDepartmentsManagePage />}
@@ -134,6 +136,7 @@ function App() {
             <Route path="sections" element={<SectionsPage />} />
             <Route path="approvals" element={<ApprovalsPage />} />
             <Route path="subjects" element={<SubjectsPage />} />
+            <Route path="programs" element={<ProgramsPage />} />
             <Route path="prospectus" element={<ProspectusPage />} />
             <Route path="faculty" element={<FacultyPage />} />
             <Route path="rooms" element={<RoomsPage />} />
