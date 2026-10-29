@@ -94,7 +94,12 @@ export function useAutosave<T>({
 }
 
 interface UseCommitAutosaveOptions<T> {
-  maxIdleMs?: number;
+  /**
+   * Idle time before a queued change is written. Pass `null` to disable
+   * idle saving entirely — the change is then only written when `commit()`
+   * is called (e.g. when the user clicks outside the edited element).
+   */
+  maxIdleMs?: number | null;
   save: (payload: T) => Promise<void>;
   warnOnUnload?: boolean;
 }
@@ -147,11 +152,16 @@ export function useCommitAutosave<T>({
   const queue = useCallback(
     (payload: T) => {
       pendingRef.current = payload;
-      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = window.setTimeout(
-        () => void runSave(),
-        maxIdleMs,
-      );
+      if (idleTimerRef.current) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      if (typeof maxIdleMs === 'number' && maxIdleMs > 0) {
+        idleTimerRef.current = window.setTimeout(
+          () => void runSave(),
+          maxIdleMs,
+        );
+      }
     },
     [maxIdleMs, runSave],
   );
