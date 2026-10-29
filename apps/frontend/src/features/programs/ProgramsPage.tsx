@@ -573,7 +573,7 @@ export default function ProgramsPage() {
                 name="programCode"
                 value={form.programCode}
                 onChange={handleChange}
-                placeholder="e.g. BSIT"
+                placeholder="e.g. BS CPE"
                 autoComplete="off"
                 className={inputClass(!!fieldErrors.programCode)}
               />
@@ -635,7 +635,7 @@ export default function ProgramsPage() {
                 name="programName"
                 value={form.programName}
                 onChange={handleChange}
-                placeholder="e.g. BS Information Technology"
+                placeholder="e.g. BS Computer Engineering"
                 autoComplete="off"
                 className={inputClass(!!fieldErrors.programName)}
               />
