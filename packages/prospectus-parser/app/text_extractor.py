@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .config import settings
 from .models import ColumnSpec, ExtractedSubject, RegionSpec, RowSpec
+from .ocr import OcrWord, words_in_rect
 
 
 def _clip_rect(rect: tuple[float, float, float, float], padding: float):
@@ -24,7 +25,18 @@ def extract_cell(textpage, rect: tuple[float, float, float, float]) -> str:
     return raw
 
 
-def extract_region(textpage, region: RegionSpec) -> list[ExtractedSubject]:
+def extract_region(
+    textpage,
+    region: RegionSpec,
+    ocr_words: list[OcrWord] | None = None,
+) -> list[ExtractedSubject]:
+    """
+    Extract every cell of `region`.
+
+    When `ocr_words` is supplied, cells that are blank in the PDF's text
+    layer fall back to the OCR words that fall inside the same rectangle.
+    That covers image-only pages while never overriding real text.
+    """
     cols_sorted = sorted(region.columns, key=lambda c: c.x_start_pt)
 
     subjects: list[ExtractedSubject] = []
@@ -38,6 +50,11 @@ def extract_region(textpage, region: RegionSpec) -> list[ExtractedSubject]:
                 row.y_top_pt,
             )
             text = extract_cell(textpage, rect)
+            if not text.strip() and ocr_words:
+                text = words_in_rect(
+                    ocr_words,
+                    _clip_rect(rect, settings.min_cell_padding_pt),
+                )
             setattr(subject, col.role, text)
         subjects.append(subject)
     return subjects
