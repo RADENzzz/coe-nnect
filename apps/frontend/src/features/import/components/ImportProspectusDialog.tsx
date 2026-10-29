@@ -65,6 +65,7 @@ export default function ImportProspectusDialog({
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [extracting, setExtracting] = useState(false);
+  const [ocrRunning, setOcrRunning] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -95,11 +96,16 @@ export default function ImportProspectusDialog({
     });
   };
 
-  const handleExtract = async () => {
+  const handleExtract = async (useOcr = false) => {
     setError(null);
     setExtracting(true);
+    setOcrRunning(useOcr);
     try {
-      const res = await extractFromPdf(pdfId, [...selectedTableIds]);
+      const res = await extractFromPdf(
+        pdfId,
+        [...selectedTableIds],
+        useOcr,
+      );
       const rows: ReviewRow[] = [];
       for (const region of res.regions) {
         const table = tables.find(
@@ -152,6 +158,7 @@ export default function ImportProspectusDialog({
       setError(err?.response?.data?.message ?? 'Extraction failed');
     } finally {
       setExtracting(false);
+      setOcrRunning(false);
     }
   };
 
@@ -226,6 +233,16 @@ export default function ImportProspectusDialog({
     (r) => r.checked && r.codeOrigin === 'loose',
   ).length;
 
+  /** Nothing in any cell — almost always an image-only page. */
+  const nothingReadable = useMemo(
+    () =>
+      reviewRows.length === 0 ||
+      reviewRows.every(
+        (r) => !r.code.trim() && !r.title.trim(),
+      ),
+    [reviewRows],
+  );
+
   // ── Filtered + grouped rows for the review step ──
   const filteredReviewRows = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -298,20 +315,39 @@ export default function ImportProspectusDialog({
               Cancel
             </button>
             <button
-              onClick={handleExtract}
+              onClick={() => handleExtract(true)}
+              disabled={
+                extracting || selectedTableIds.size === 0 || !programId
+              }
+              title="For scanned pages or screenshots — reads the text from the page image. Takes longer."
+              className="px-4 py-2 text-sm font-semibold border border-primary text-primary hover:bg-primary/5 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
+            >
+              {extracting && ocrRunning ? (
+                <Icon
+                  name="progress_activity"
+                  size={14}
+                  className="animate-spin"
+                />
+              ) : (
+                <Icon name="document_scanner" size={16} />
+              )}
+              {extracting && ocrRunning ? 'Reading…' : 'Read with OCR'}
+            </button>
+            <button
+              onClick={() => handleExtract(false)}
               disabled={
                 extracting || selectedTableIds.size === 0 || !programId
               }
               className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
-              {extracting && (
+              {extracting && !ocrRunning && (
                 <Icon
                   name="progress_activity"
                   size={14}
                   className="animate-spin"
                 />
               )}
-              {extracting ? 'Extracting…' : 'Extract'}
+              {extracting && !ocrRunning ? 'Extracting…' : 'Extract'}
             </button>
           </>
         ) : step === 'review' ? (
@@ -449,6 +485,36 @@ export default function ImportProspectusDialog({
             Review extracted subjects. Uncheck any you don't want to import.
             Blank or loose codes will be imported with placeholders or as-is.
           </div>
+
+          {nothingReadable && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-3">
+              <Icon
+                name="document_scanner"
+                size={18}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1">
+                <strong>No readable text in these cells.</strong> If the pages
+                are scans or screenshots, OCR can read them — it takes a few
+                seconds per page.
+              </div>
+              <button
+                type="button"
+                onClick={() => handleExtract(true)}
+                disabled={extracting}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+              >
+                {extracting && (
+                  <Icon
+                    name="progress_activity"
+                    size={12}
+                    className="animate-spin"
+                  />
+                )}
+                {extracting ? 'Reading…' : 'Read with OCR'}
+              </button>
+            </div>
+          )}
 
           {/* Filter + bulk controls */}
           <div className="flex items-center gap-2">
