@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import clsx from 'clsx';
 import Icon from '../ui/Icon';
@@ -18,8 +18,11 @@ export default function Sidebar({ nav }: SidebarProps) {
   const { deptName } = useDepartmentLabel();
   const profile = useAuthStore((s) => s.profile);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
+  const hidden = useUiStore((s) => s.isSidebarHidden);
+  const pin = useUiStore((s) => s.sidebarPin);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+  const toggleSidebarPin = useUiStore((s) => s.toggleSidebarPin);
 
   const subtitle =
     nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
@@ -29,6 +32,7 @@ export default function Sidebar({ nav }: SidebarProps) {
   const visibleFooter = filterNavByRole(nav.footer, profile?.role);
 
   const collapseTimerRef = useRef<number | null>(null);
+  const hoveredRef = useRef(false);
 
   const expand = useCallback(() => {
     if (collapseTimerRef.current) {
@@ -40,20 +44,63 @@ export default function Sidebar({ nav }: SidebarProps) {
 
   const scheduleCollapse = useCallback(() => {
     if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+    // A rail pinned open never auto-collapses.
+    if (useUiStore.getState().sidebarPin === 'open') return;
     collapseTimerRef.current = window.setTimeout(() => {
       setSidebarCollapsed(true);
       collapseTimerRef.current = null;
     }, 150);
   }, [setSidebarCollapsed]);
 
+  const handleTogglePin = useCallback(() => {
+    const before = useUiStore.getState().sidebarPin;
+    toggleSidebarPin();
+    const after = useUiStore.getState().sidebarPin;
+    // Releasing a pinned-open rail with the pointer elsewhere (keyboard
+    // activation) should close it straight away.
+    if (before === 'open' && after === 'auto' && !hoveredRef.current) {
+      setSidebarCollapsed(true);
+    }
+  }, [toggleSidebarPin, setSidebarCollapsed]);
+
+  const pinLabel =
+    pin === 'auto'
+      ? collapsed
+        ? 'Pin sidebar collapsed'
+        : 'Pin sidebar open'
+      : 'Unpin sidebar';
+
+  // Removed from the layout entirely (not just collapsed) — used while a
+  // table/row is being edited so the rail can't be hover-expanded mid-drag.
+  useEffect(() => {
+    if (!hidden) return;
+    // No mouseleave fires when the element unmounts, so clear the hover
+    // bookkeeping by hand.
+    hoveredRef.current = false;
+    if (collapseTimerRef.current) {
+      window.clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+  }, [hidden]);
+
+  if (hidden) return null;
+
   return (
     <nav
-      onMouseEnter={expand}
-      onMouseLeave={scheduleCollapse}
+      onMouseEnter={() => {
+        hoveredRef.current = true;
+        // A rail pinned shut stays shut on hover; the chevron is the only
+        // way to open it explicitly.
+        if (useUiStore.getState().sidebarPin !== 'closed') expand();
+      }}
+      onMouseLeave={() => {
+        hoveredRef.current = false;
+        scheduleCollapse();
+      }}
       onFocus={expand}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setSidebarCollapsed(true);
+          scheduleCollapse();
         }
       }}
       aria-label="Main navigation"
@@ -92,28 +139,70 @@ export default function Sidebar({ nav }: SidebarProps) {
         </div>
 
         {!collapsed && (
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-          >
-            <Icon name="chevron_left" size={18} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={handleTogglePin}
+              aria-pressed={pin !== 'auto'}
+              aria-label={pinLabel}
+              title={
+                pin === 'auto'
+                  ? 'Pin sidebar open — keep it expanded'
+                  : 'Unpin sidebar — back to hover behaviour'
+              }
+              className={clsx(
+                'w-7 h-7 flex items-center justify-center transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+                pin !== 'auto'
+                  ? 'text-white bg-white/15 hover:bg-white/25'
+                  : 'text-white/60 hover:text-white hover:bg-white/10',
+              )}
+            >
+              <Icon name="push_pin" size={16} filled={pin !== 'auto'} />
+            </button>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <Icon name="chevron_left" size={18} />
+            </button>
+          </div>
         )}
       </div>
 
       {collapsed && (
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="mx-2 mt-2 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-          aria-label="Expand sidebar"
-          title="Expand sidebar"
-        >
-          <Icon name="chevron_right" size={18} />
-        </button>
+        <div className="mx-2 mt-2 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={expand}
+            className="flex-1 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <Icon name="chevron_right" size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={handleTogglePin}
+            aria-pressed={pin !== 'auto'}
+            aria-label={pinLabel}
+            title={
+              pin === 'auto'
+                ? 'Pin sidebar collapsed — stop it expanding on hover'
+                : 'Unpin sidebar — back to hover behaviour'
+            }
+            className={clsx(
+              'w-8 h-8 flex items-center justify-center transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+              pin !== 'auto'
+                ? 'text-white bg-white/15 hover:bg-white/25'
+                : 'text-white/60 hover:text-white hover:bg-white/10',
+            )}
+          >
+            <Icon name="push_pin" size={16} filled={pin !== 'auto'} />
+          </button>
+        </div>
       )}
 
       {/* Main Nav */}
