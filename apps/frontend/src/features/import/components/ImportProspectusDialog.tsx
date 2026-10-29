@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import { extractFromPdf, confirmImport } from '@/api/prospectus-pdfs.api';
@@ -56,6 +56,10 @@ export default function ImportProspectusDialog({
   departmentId,
 }: ImportProspectusDialogProps) {
   const qc = useQueryClient();
+  const location = useLocation();
+  const programsPath = location.pathname.startsWith('/dean')
+    ? '/dean/programs'
+    : '/programs';
 
   const [step, setStep] = useState<Step>('select');
   const [programId, setProgramId] = useState<string>('');
@@ -420,6 +424,22 @@ export default function ImportProspectusDialog({
                 </option>
               ))}
             </select>
+            {visiblePrograms.length === 0 && (
+              <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-start gap-2">
+                <Icon name="warning" size={13} className="shrink-0 mt-0.5" />
+                <span>
+                  No active programs for this department yet. Add one on the{' '}
+                  <Link
+                    to={programsPath}
+                    className="font-semibold underline hover:text-amber-950"
+                  >
+                    Programs page
+                  </Link>
+                  , then reopen this import. Importing needs a program because
+                  every subject is attached to one.
+                </span>
+              </div>
+            )}
           </div>
 
           <div>
