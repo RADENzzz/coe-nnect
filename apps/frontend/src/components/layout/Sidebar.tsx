@@ -5,6 +5,7 @@ import Icon from '../ui/Icon';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
+import { useAppearanceStore } from '../../store/appearance.store';
 import {
   filterNavByRole,
   type RoleNav,
@@ -17,6 +18,7 @@ interface SidebarProps {
 export default function Sidebar({ nav }: SidebarProps) {
   const { deptName } = useDepartmentLabel();
   const profile = useAuthStore((s) => s.profile);
+  const brandLogo = useAppearanceStore((s) => s.logo);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const hidden = useUiStore((s) => s.isSidebarHidden);
   const pin = useUiStore((s) => s.sidebarPin);
@@ -120,8 +122,16 @@ export default function Sidebar({ nav }: SidebarProps) {
         )}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 bg-white/10 flex items-center justify-center shrink-0">
-            <Icon name="school" filled className="text-white" size={20} />
+          <div className="w-9 h-9 bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+            {brandLogo ? (
+              <img
+                src={brandLogo}
+                alt="CoE-NNECT logo"
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <Icon name="school" filled className="text-white" size={20} />
+            )}
           </div>
           {!collapsed && (
             <div className="min-w-0">
@@ -217,7 +227,7 @@ export default function Sidebar({ nav }: SidebarProps) {
                 'flex items-center gap-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
                 collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
                 isActive
-                  ? 'bg-white text-[#5c1219]'
+                  ? 'sidebar-active'
                   : 'text-white/80 hover:bg-white/10 hover:text-white',
               )
             }
@@ -245,7 +255,7 @@ export default function Sidebar({ nav }: SidebarProps) {
                   'flex items-center gap-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
                   collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
                   isActive
-                    ? 'bg-white text-[#5c1219]'
+                    ? 'sidebar-active'
                     : 'text-white/80 hover:bg-white/10 hover:text-white',
                 )
               }
