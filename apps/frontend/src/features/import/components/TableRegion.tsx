@@ -163,7 +163,8 @@ export default function TableRegion({
           </button>
         )}
 
-        {/* Add row button — inside region, bottom-center */}
+        {/* Add row button — anchored just BELOW the region so it never
+            covers the table content. */}
         {selected && (
           <button
             type="button"
@@ -176,8 +177,8 @@ export default function TableRegion({
               e.preventDefault();
               onAddRow();
             }}
-            className="absolute left-1/2 -translate-x-1/2 bottom-2 px-3 py-1.5 rounded-full bg-primary text-on-primary text-xs font-semibold shadow-lg hover:opacity-90 transition flex items-center gap-1 whitespace-nowrap"
-            style={{ zIndex: 30 }}
+            className="absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-primary text-on-primary text-xs font-semibold shadow-lg hover:opacity-90 transition flex items-center gap-1 whitespace-nowrap"
+            style={{ top: 'calc(100% + 6px)', zIndex: 30 }}
             title="Add a row below"
           >
             <span
