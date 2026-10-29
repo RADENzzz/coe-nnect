@@ -171,7 +171,7 @@ export class ProspectusPdfsController {
     @Req() req: RequestWithProfile,
   ) {
     const tableIds = dto.table_ids?.map(String);
-    return this.service.extract(id, tableIds, req.profile);
+    return this.service.extract(id, tableIds, req.profile, dto.ocr === true);
   }
 
   @Post(':id/import')
