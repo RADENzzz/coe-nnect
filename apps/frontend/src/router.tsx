@@ -11,6 +11,7 @@ export const ROUTES = {
   FACULTY: '/faculty',
   ROOMS: '/rooms',
   SUBJECTS: '/subjects',
+  PROGRAMS: '/programs',
   PROSPECTUS: '/prospectus',
   SECTIONS: '/sections',
   APPROVALS: '/approvals',
