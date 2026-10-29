@@ -61,13 +61,6 @@ export class ProspectusService {
     return found;
   }
 
-  listActivePrograms(): Promise<Program[]> {
-    return this.programs.find({
-      where: { isActive: true },
-      order: { programCode: 'ASC' },
-    });
-  }
-
   // ────────────────────────────────────────────
   // Authorization helper
   // ────────────────────────────────────────────
