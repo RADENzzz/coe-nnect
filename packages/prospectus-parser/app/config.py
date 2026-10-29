@@ -25,5 +25,14 @@ class Settings(BaseSettings):
     min_cell_padding_pt: float = 2.5
     strip_whitespace: bool = True
 
+    # OCR (optional fallback for scanned / image-only pages)
+    ocr_dpi: int = 300
+    ocr_lang: str = "eng"
+    # --psm 6 = "assume a single uniform block of text", which suits
+    # table rows better than the default page-segmentation heuristics.
+    ocr_config: str = "--oem 3 --psm 6"
+    # Tesseract reports -1 for non-text boxes; drop anything below this.
+    ocr_min_confidence: float = 30.0
+
 
 settings = Settings()
