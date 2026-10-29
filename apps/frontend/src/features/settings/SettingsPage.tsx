@@ -1,9 +1,10 @@
 import { useSearchParams } from 'react-router-dom';
 import Icon from '../../components/ui/Icon';
+import AppearanceSettingsTab from './components/AppearanceSettingsTab';
 import NotificationSettingsTab from './components/NotificationSettingsTab';
 import SecuritySection from './components/SecuritySection';
 
-type TabKey = 'notifications' | 'security';
+type TabKey = 'appearance' | 'notifications' | 'security';
 
 interface TabDef {
   key: TabKey;
@@ -12,6 +13,11 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
+  {
+    key: 'appearance',
+    label: 'Appearance',
+    icon: 'tune',
+  },
   {
     key: 'notifications',
     label: 'Notifications',
@@ -53,7 +59,7 @@ export default function SettingsPage() {
 
       <div className="border-b border-surface-variant mb-6">
         <nav
-          className="-mb-px flex gap-4"
+          className="-mb-px flex gap-4 overflow-x-auto"
           aria-label="Settings tabs"
           role="tablist"
         >
@@ -68,7 +74,7 @@ export default function SettingsPage() {
                 aria-controls={`settings-panel-${t.key}`}
                 id={`settings-tab-${t.key}`}
                 onClick={() => setActive(t.key)}
-                className={`flex items-center gap-2 px-1 py-3 text-sm font-semibold border-b-2 transition ${
+                className={`flex items-center gap-2 whitespace-nowrap px-1 py-3 text-sm font-semibold border-b-2 transition ${
                   isActive
                     ? 'border-primary text-primary'
                     : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -87,6 +93,7 @@ export default function SettingsPage() {
         id={`settings-panel-${active}`}
         aria-labelledby={`settings-tab-${active}`}
       >
+        {active === 'appearance' && <AppearanceSettingsTab />}
         {active === 'notifications' && <NotificationSettingsTab />}
         {active === 'security' && <SecuritySection />}
       </div>
