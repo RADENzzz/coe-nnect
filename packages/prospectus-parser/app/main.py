@@ -22,6 +22,7 @@ from .models import (
     PageSize,
 )
 from .pdf_renderer import PdfDocument
+from .ocr import OcrUnavailable, ocr_available, ocr_page
 from .text_extractor import extract_region
 
 logging.basicConfig(
@@ -34,11 +35,12 @@ log = logging.getLogger(settings.service_name)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info(
-        "%s v%s ready — port=%s max_upload=%sMB",
+        "%s v%s ready — port=%s max_upload=%sMB ocr=%s",
         settings.service_name,
         __version__,
         settings.port,
         settings.max_upload_bytes // (1024 * 1024),
+        "on" if ocr_available() else "off (tesseract not found)",
     )
     yield
     log.info("%s shutting down", settings.service_name)
@@ -105,8 +107,23 @@ def extract(req: ExtractRequest) -> ExtractResponse:
 
     The caller sends the PDF as base64. We decode it to a temp file,
     run extraction, and clean up.
+
+    With `ocr=true`, cells that come back blank from the PDF's text layer
+    are re-read from a rendered image of the page (Tesseract). That is what
+    makes scans and screenshots-pasted-into-Word readable.
     """
     pdf_path = _decode_pdf_to_tempfile(req.pdf_base64)
+
+    if req.ocr and not ocr_available():
+        _safe_unlink(pdf_path)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "OCR is not available on the parser service. Tesseract must be "
+                "installed (apt: tesseract-ocr) and the pytesseract package "
+                "present in the image."
+            ),
+        )
 
     try:
         doc = PdfDocument(pdf_path)
@@ -117,6 +134,8 @@ def extract(req: ExtractRequest) -> ExtractResponse:
 
     try:
         textpage_cache: dict[int, object] = {}
+        page_cache: dict[int, object] = {}
+        ocr_cache: dict[int, list] = {}
         page_refs: list = []
         results: list[ExtractedRegion] = []
 
@@ -136,10 +155,23 @@ def extract(req: ExtractRequest) -> ExtractResponse:
             if region.page_index not in textpage_cache:
                 textpage, page = doc.textpage(region.page_index)
                 textpage_cache[region.page_index] = textpage
+                page_cache[region.page_index] = page
                 page_refs.append(page)
 
             textpage = textpage_cache[region.page_index]
-            subjects = extract_region(textpage, region)
+
+            ocr_words = None
+            if req.ocr:
+                if region.page_index not in ocr_cache:
+                    try:
+                        ocr_cache[region.page_index] = ocr_page(
+                            page_cache[region.page_index]
+                        )
+                    except OcrUnavailable as e:
+                        raise HTTPException(status_code=503, detail=str(e))
+                ocr_words = ocr_cache[region.page_index]
+
+            subjects = extract_region(textpage, region, ocr_words)
             results.append(
                 ExtractedRegion(table_id=region.table_id, subjects=subjects)
             )
