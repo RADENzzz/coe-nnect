@@ -20,6 +20,14 @@
   --primary-container: 74 14 20;
   --surface-tint: 92 18 25;
 
+  /* Accent tie-ins used by the legacy dark-mode overrides below.
+     The appearance layer rewrites these when the user picks a colour. */
+  --accent-mid: 221 106 117;
+  --accent-tint: 238 161 168;
+  --accent-pale: 246 201 205;
+  --accent-deep: 61 11 16;
+  --sidebar-active-fg: 92 18 25;
+
   /* Neutral scale */
   --slate-50: 248 250 252;
   --slate-100: 241 245 249;
@@ -112,6 +120,13 @@
   --primary: 139 30 45;
   --primary-container: 109 24 34;
   --surface-tint: 238 161 168;
+
+  /* Accent tie-ins — see the light block above. */
+  --accent-mid: 221 106 117;
+  --accent-tint: 238 161 168;
+  --accent-pale: 246 201 205;
+  --accent-deep: 61 11 16;
+  --sidebar-active-fg: 92 18 25;
 
   /* Neutral scale */
   --slate-50: 2 6 23;
@@ -1548,11 +1563,11 @@ html {
 }
 
 .dark *:focus-visible {
-  outline-color: #eea1a8;
+  outline-color: var(--accent-tint);
 }
 
 .dark ::selection {
-  background-color: rgba(238, 161, 168, 0.25);
+  background-color: rgb(var(--accent-tint) / 0.25);
   color: inherit;
 }
 
@@ -1580,7 +1595,7 @@ html {
 }
 
 .dark .btn-primary {
-  background-color: #8b1e2d;
+  background-color: rgb(var(--primary));
 }
 
 .dark .btn-secondary {
@@ -1617,7 +1632,7 @@ html {
   color: #64748b;
 }
 .dark .input:focus {
-  box-shadow: 0 0 0 1px #eea1a8;
+  box-shadow: 0 0 0 1px var(--accent-tint);
 }
 
 .dark .label {
@@ -1645,9 +1660,9 @@ html {
   color: #fca5a5;
 }
 .dark .badge-brand {
-  background-color: rgba(238, 161, 168, 0.14);
-  border-color: rgba(238, 161, 168, 0.35);
-  color: #f6c9cd;
+  background-color: rgb(var(--accent-tint) / 0.14);
+  border-color: rgb(var(--accent-tint) / 0.35);
+  color: var(--accent-pale);
 }
 
 .dark .skeleton {
@@ -1753,29 +1768,29 @@ html {
 /* ── Brand text / arbitrary brand color ── */
 .dark .text-primary,
 .dark .text-brand-700 {
-  color: #eea1a8;
+  color: var(--accent-tint);
 }
 .dark .hover\:text-primary:hover,
 .dark .group:hover .group-hover\:text-primary,
 .dark .hover\:text-brand-700:hover,
 .dark .group:hover .group-hover\:text-brand-700 {
-  color: #f6c9cd;
+  color: var(--accent-pale);
 }
 .dark .text-brand-600 {
-  color: #dd6a75;
+  color: var(--accent-mid);
 }
 .dark .text-brand-800,
 .dark .hover\:text-brand-800:hover,
 .dark .group:hover .group-hover\:text-brand-800 {
-  color: #f6c9cd;
+  color: var(--accent-pale);
 }
 .dark .text-brand-900 {
-  color: #fbe5e7;
+  color: var(--accent-pale);
 }
 .dark .text-\[\#5c1219\],
 .dark .hover\:text-\[\#5c1219\]:hover,
 .dark .focus\:text-\[\#5c1219\]:focus {
-  color: #eea1a8;
+  color: var(--accent-tint);
 }
 
 /* ── Status text ── */
@@ -1915,105 +1930,105 @@ html {
   border-color: #fb923c;
 }
 .dark .border-brand-700 {
-  border-color: #dd6a75;
+  border-color: var(--accent-mid);
 }
 .dark .border-brand-900 {
-  border-color: #eea1a8;
+  border-color: var(--accent-tint);
 }
 
 .dark .border-\[\#5c1219\] {
-  border-color: #dd6a75;
+  border-color: var(--accent-mid);
 }
 .dark .border-\[\#5c1219\]\/40 {
-  border-color: rgba(221, 106, 117, 0.4);
+  border-color: rgb(var(--accent-mid) / 0.4);
 }
 .dark .hover\:border-\[\#5c1219\]:hover {
-  border-color: #dd6a75;
+  border-color: var(--accent-mid);
 }
 .dark .hover\:border-\[\#5c1219\]\/40:hover {
-  border-color: rgba(221, 106, 117, 0.4);
+  border-color: rgb(var(--accent-mid) / 0.4);
 }
 .dark .focus\:border-\[\#5c1219\]:focus {
-  border-color: #eea1a8;
+  border-color: var(--accent-tint);
 }
 
 /* ── Solid brand surfaces ── */
 .dark .bg-\[\#5c1219\] {
-  background-color: #8b1e2d;
+  background-color: rgb(var(--primary));
 }
 .dark .bg-tertiary,
 .dark .hover\:bg-tertiary:hover {
-  background-color: #8b1e2d;
+  background-color: rgb(var(--primary));
 }
 
 /* ── Brand-alpha surfaces ── */
 .dark .bg-primary\/5,
 .dark .hover\:bg-primary\/5:hover,
 .dark .focus-visible\:bg-primary\/5:focus-visible {
-  background-color: rgba(238, 161, 168, 0.08);
+  background-color: rgb(var(--accent-tint) / 0.08);
 }
 .dark .bg-primary\/10,
 .dark .hover\:bg-primary\/10:hover {
-  background-color: rgba(238, 161, 168, 0.14);
+  background-color: rgb(var(--accent-tint) / 0.14);
 }
 .dark .bg-primary\/15 {
-  background-color: rgba(238, 161, 168, 0.18);
+  background-color: rgb(var(--accent-tint) / 0.18);
 }
 .dark .bg-primary\/20 {
-  background-color: rgba(238, 161, 168, 0.22);
+  background-color: rgb(var(--accent-tint) / 0.22);
 }
 .dark .bg-primary\/40,
 .dark .hover\:bg-primary\/40:hover {
-  background-color: rgba(238, 161, 168, 0.35);
+  background-color: rgb(var(--accent-tint) / 0.35);
 }
 .dark .bg-\[\#5c1219\]\/5,
 .dark .hover\:bg-\[\#5c1219\]\/5:hover {
-  background-color: rgba(238, 161, 168, 0.08);
+  background-color: rgb(var(--accent-tint) / 0.08);
 }
 .dark .bg-\[\#5c1219\]\/10,
 .dark .hover\:bg-\[\#5c1219\]\/10:hover {
-  background-color: rgba(238, 161, 168, 0.14);
+  background-color: rgb(var(--accent-tint) / 0.14);
 }
 
 /* ── Rings ── */
 .dark .ring-primary\/10 {
-  --tw-ring-color: rgba(238, 161, 168, 0.14);
+  --tw-ring-color: rgb(var(--accent-tint) / 0.14);
 }
 .dark .ring-primary\/20 {
-  --tw-ring-color: rgba(238, 161, 168, 0.2);
+  --tw-ring-color: rgb(var(--accent-tint) / 0.2);
 }
 .dark .ring-primary\/30,
 .dark .focus-visible\:ring-primary\/30:focus-visible {
-  --tw-ring-color: rgba(238, 161, 168, 0.3);
+  --tw-ring-color: rgb(var(--accent-tint) / 0.3);
 }
 .dark .ring-primary\/40,
 .dark .focus-visible\:ring-primary\/40:focus-visible {
-  --tw-ring-color: rgba(238, 161, 168, 0.4);
+  --tw-ring-color: rgb(var(--accent-tint) / 0.4);
 }
 .dark .focus\:ring-primary\/10:focus {
-  --tw-ring-color: rgba(238, 161, 168, 0.15);
+  --tw-ring-color: rgb(var(--accent-tint) / 0.15);
 }
 .dark .ring-\[\#5c1219\] {
-  --tw-ring-color: #dd6a75;
+  --tw-ring-color: var(--accent-mid);
 }
 .dark .focus-visible\:ring-\[\#5c1219\]\/30:focus-visible {
-  --tw-ring-color: rgba(221, 106, 117, 0.3);
+  --tw-ring-color: rgb(var(--accent-mid) / 0.3);
 }
 .dark .focus-visible\:ring-\[\#5c1219\]\/40:focus-visible {
-  --tw-ring-color: rgba(221, 106, 117, 0.4);
+  --tw-ring-color: rgb(var(--accent-mid) / 0.4);
 }
 .dark .focus-visible\:ring-\[\#5c1219\]:focus-visible,
 .dark .focus\:ring-\[\#5c1219\]:focus,
 .dark .focus\:ring-\[\#5c1219\]\/10:focus {
-  --tw-ring-color: rgba(221, 106, 117, 0.45);
+  --tw-ring-color: rgb(var(--accent-mid) / 0.45);
 }
 
 /* ── Accent fills ── */
 .dark .fill-brand-700 {
-  fill: #eea1a8;
+  fill: var(--accent-tint);
 }
 .dark .fill-brand-900 {
-  fill: #f6c9cd;
+  fill: var(--accent-pale);
 }
 .dark .fill-amber-700 {
   fill: #fcd34d;
@@ -2036,5 +2051,126 @@ html {
 }
 .dark .accent-\[\#5c1219\],
 .dark .accent-primary {
-  accent-color: #dd6a75;
+  accent-color: var(--accent-mid);
+}
+
+/* ============================================================
+   User accent — arbitrary-value utilities
+   Components still spell the original maroon inline (e.g.
+   `text-[#5c1219]`). These rules retarget those utilities at the
+   runtime accent without touching every call site. Dark-mode
+   overrides higher up win on specificity, so each rule below only
+   needs the light-mode value.
+   ============================================================ */
+
+.text-\[\#5c1219\],
+.hover\:text-\[\#5c1219\]:hover,
+.focus\:text-\[\#5c1219\]:focus {
+  color: rgb(var(--primary));
+}
+
+.bg-\[\#5c1219\],
+.disabled\:hover\:bg-\[\#5c1219\]:disabled:hover {
+  background-color: rgb(var(--primary));
+}
+.peer:checked ~ .peer-checked\:bg-\[\#5c1219\] {
+  background-color: rgb(var(--primary));
+}
+.bg-\[\#5c1219\]\/5,
+.hover\:bg-\[\#5c1219\]\/5:hover {
+  background-color: rgb(var(--primary) / 0.05);
+}
+.bg-\[\#5c1219\]\/10,
+.hover\:bg-\[\#5c1219\]\/10:hover {
+  background-color: rgb(var(--primary) / 0.1);
+}
+.bg-\[\#5c1219\]\/50 {
+  background-color: rgb(var(--primary) / 0.5);
+}
+.bg-\[\#5c1219\]\/85 {
+  background-color: rgb(var(--primary) / 0.85);
+}
+.bg-\[\#5c1219\]\/\[0\.03\] {
+  background-color: rgb(var(--primary) / 0.03);
+}
+
+.border-\[\#5c1219\] {
+  border-color: rgb(var(--primary));
+}
+.border-\[\#5c1219\]\/20 {
+  border-color: rgb(var(--primary) / 0.2);
+}
+.border-\[\#5c1219\]\/40 {
+  border-color: rgb(var(--primary) / 0.4);
+}
+.border-t-\[\#5c1219\] {
+  border-top-color: rgb(var(--primary));
+}
+.hover\:border-\[\#5c1219\]:hover {
+  border-color: rgb(var(--primary));
+}
+.hover\:border-\[\#5c1219\]\/30:hover {
+  border-color: rgb(var(--primary) / 0.3);
+}
+.hover\:border-\[\#5c1219\]\/40:hover {
+  border-color: rgb(var(--primary) / 0.4);
+}
+.focus\:border-\[\#5c1219\]:focus {
+  border-color: rgb(var(--primary));
+}
+.focus-within\:border-\[\#5c1219\]\/40:focus-within {
+  border-color: rgb(var(--primary) / 0.4);
+}
+
+.ring-\[\#5c1219\] {
+  --tw-ring-color: rgb(var(--primary));
+}
+.ring-\[\#5c1219\]\/10 {
+  --tw-ring-color: rgb(var(--primary) / 0.1);
+}
+.ring-\[\#5c1219\]\/30,
+.focus-visible\:ring-\[\#5c1219\]\/30:focus-visible {
+  --tw-ring-color: rgb(var(--primary) / 0.3);
+}
+.ring-\[\#5c1219\]\/40,
+.focus-visible\:ring-\[\#5c1219\]\/40:focus-visible {
+  --tw-ring-color: rgb(var(--primary) / 0.4);
+}
+.focus\:ring-\[\#5c1219\]:focus,
+.focus-visible\:ring-\[\#5c1219\]:focus-visible {
+  --tw-ring-color: rgb(var(--primary));
+}
+.focus\:ring-\[\#5c1219\]\/10:focus {
+  --tw-ring-color: rgb(var(--primary) / 0.1);
+}
+
+.accent-\[\#5c1219\] {
+  accent-color: rgb(var(--primary));
+}
+
+.from-\[\#5c1219\] {
+  --tw-gradient-from: rgb(var(--primary)) var(--tw-gradient-from-position, 0%);
+  --tw-gradient-to: rgb(var(--primary) / 0) var(--tw-gradient-to-position, 100%);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.from-\[\#5c1219\]\/10 {
+  --tw-gradient-from: rgb(var(--primary) / 0.1) var(--tw-gradient-from-position, 0%);
+  --tw-gradient-to: rgb(var(--primary) / 0) var(--tw-gradient-to-position, 100%);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+.to-\[\#5c1219\]\/5 {
+  --tw-gradient-to: rgb(var(--primary) / 0.05) var(--tw-gradient-to-position, 100%);
+}
+.to-\[\#3d0b10\],
+.to-\[\#8b1e2a\],
+.to-\[\#7a1f28\] {
+  --tw-gradient-to: rgb(var(--accent-deep)) var(--tw-gradient-to-position, 100%);
+}
+
+/* Active sidebar item: a white pill in both themes, with the accent
+   colour as its label. Previously this used text-[#5c1219], which the
+   dark-mode override turned into pale pink on white. */
+.sidebar-active {
+  background-color: #ffffff;
+  color: rgb(var(--sidebar-active-fg));
 }
