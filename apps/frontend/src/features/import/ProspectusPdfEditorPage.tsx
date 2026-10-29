@@ -22,6 +22,7 @@ import PdfCanvas from './components/PdfCanvas';
 import MappingOverlay from './components/MappingOverlay';
 import AddTableDialog from './components/AddTableDialog';
 import LiveExtractionPreview from './components/LiveExtractionPreview';
+import ExtractedTableModal from './components/ExtractedTableModal';
 import SaveStatusIndicator from './components/SaveStatusIndicator';
 import ImportProspectusDialog from './components/ImportProspectusDialog';
 import { fetchPrograms } from '@/api/programs.api';
@@ -37,6 +38,7 @@ export default function ProspectusPdfEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const setSidebarHidden = useUiStore((s) => s.setSidebarHidden);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
 
   const [pageIndex, setPageIndex] = useState(0);
@@ -54,6 +56,7 @@ export default function ProspectusPdfEditorPage() {
   const [hasAutoFitted, setHasAutoFitted] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
+  const [tableModalOpen, setTableModalOpen] = useState(false);
   const canvasScrollRef = useRef<HTMLDivElement>(null);
 
   const { data: pdfRecord, isLoading: metaLoading } = useQuery({
@@ -104,7 +107,10 @@ export default function ProspectusPdfEditorPage() {
     commit: commitSave,
     cancel: cancelSave,
   } = useCommitAutosave<{ tableId: string; patch: any }>({
-    maxIdleMs: 5000,
+    // No idle timer: the table patch is only written when the user leaves
+    // the edit target — by clicking outside the canvas, locking the region,
+    // or switching rows/tables.
+    maxIdleMs: null,
     warnOnUnload: true,
     save: async ({ tableId, patch }) => {
       await updateProspectusPdfTable(id!, tableId, patch);
@@ -117,7 +123,9 @@ export default function ProspectusPdfEditorPage() {
   }, [initialTables, setTables]);
 
   // Commit pending autosave when the user exits edit mode.
-  // Collapse the sidebar the first time editing starts.
+  // Give the canvas more room while editing by zooming in a little, and
+  // take the left rail out of the layout entirely — otherwise brushing its
+  // edge mid-drag pops it open over the canvas.
   const prevEditingRef = useRef<string>('none');
   useEffect(() => {
     const currentKey =
@@ -133,22 +141,59 @@ export default function ProspectusPdfEditorPage() {
 
       if (wasEditing) void commitSave();
 
-      if (isEditing) {
-        setSidebarCollapsed(true);
+      if (isEditing && !wasEditing) {
         setZoom((z) => (z < 1.5 ? 1.5 : z));
+        setSidebarHidden(true);
+      }
+
+      if (!isEditing) {
+        // Editing is over: bring the rail back, but as a collapsed rail.
+        setSidebarHidden(false);
+        setSidebarCollapsed(true);
       }
 
       prevEditingRef.current = currentKey;
     }
-  }, [editing, commitSave, setSidebarCollapsed]);
+  }, [editing, commitSave, setSidebarHidden, setSidebarCollapsed]);
 
-  // Restore sidebar on unmount
+  // ── "Click outside the box" save ──
+  // While a table/row is being edited nothing is persisted as the user
+  // drags; the queued patch is flushed as soon as they pointer-down
+  // outside the PDF canvas (sidebar, toolbar, nav, modal…). That click also
+  // counts as "done with the box", so the rail returns — collapsed.
+  useEffect(() => {
+    if (editing.kind === 'none') return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const canvas = canvasScrollRef.current;
+      const target = event.target as Node | null;
+      if (canvas && target && canvas.contains(target)) return;
+      // Defer a tick so a handler on the same click (e.g. confirming a
+      // delete) can queue its patch first and be included in this save.
+      window.setTimeout(() => {
+        void commitSave();
+        if (useUiStore.getState().isSidebarHidden) {
+          setSidebarHidden(false);
+          setSidebarCollapsed(true);
+        }
+      }, 0);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () =>
+      document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [editing.kind, commitSave, setSidebarHidden, setSidebarCollapsed]);
+
+  // Persist anything still queued when leaving the editor entirely, and make
+  // sure the rail is not left hidden behind.
+  const commitSaveRef = useRef(commitSave);
+  commitSaveRef.current = commitSave;
   useEffect(() => {
     return () => {
-      setSidebarCollapsed(false);
-      cancelSave();
+      void commitSaveRef.current();
+      useUiStore.getState().setSidebarHidden(false);
     };
-  }, [setSidebarCollapsed, cancelSave]);
+  }, []);
 
   const pageView = useMemo(() => {
     if (!textLayer) return null;
@@ -460,8 +505,10 @@ export default function ProspectusPdfEditorPage() {
       }
 
       queueSave({ tableId, patch });
+      // Structural change: persist immediately, not on the next outside click.
+      void commitSave();
     },
-    [tables, computeNewRowHeight, queueSave, setRows, setRegion],
+    [tables, computeNewRowHeight, queueSave, commitSave, setRows, setRegion],
   );
 
   const handleRowSelectAndFocus = useCallback(
@@ -546,7 +593,9 @@ export default function ProspectusPdfEditorPage() {
     setRows(tableId, nextRows);
     setDeleteRowTarget(null);
     queueSave({ tableId, patch: { rows: nextRows } });
-  }, [deleteRowTarget, queueSave, setRows, tables]);
+    // Deletion must not wait for a later click.
+    void commitSave();
+  }, [deleteRowTarget, queueSave, commitSave, setRows, tables]);
 
   const handleCanvasRendered = useCallback(
     (dims: { width: number; height: number }) => setRenderedDims(dims),
@@ -726,6 +775,21 @@ export default function ProspectusPdfEditorPage() {
         </div>
       )}
 
+      {/* Image-only page warning — a screenshot/scanned page has no text
+          layer, so every cell will come back blank. */}
+      {textLayer && !textLayer.hasText && (
+        <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-2">
+          <Icon name="warning" size={18} className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <strong>Page {pageIndex + 1} has no selectable text.</strong> It is
+            most likely a scanned page or an image pasted into a document (for
+            example a screenshot inside a Word file exported to PDF). The live
+            preview can't read it — use <strong>Import → Read with OCR</strong>{' '}
+            to extract it from the page image instead.
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center gap-3 p-3 rounded-lg border border-surface-variant bg-surface-container-lowest flex-wrap">
         <div className="flex items-center gap-1">
@@ -822,10 +886,10 @@ export default function ProspectusPdfEditorPage() {
       </div>
 
       {/* Canvas + preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 lg:items-start">
         <div
           ref={canvasScrollRef}
-          className={`rounded-lg border border-surface-variant bg-surface-container-low overflow-auto p-4 md:p-6 min-h-[600px] ${cursorClass}`}
+          className={`rounded-lg border border-surface-variant bg-surface-container-low overflow-auto p-4 md:p-6 min-h-[600px] lg:h-[calc(100dvh-15rem)] lg:min-h-[420px] ${cursorClass}`}
         >
           {!signed && (
             <div className="max-w-2xl mx-auto text-center py-16">
@@ -882,8 +946,9 @@ export default function ProspectusPdfEditorPage() {
           )}
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-3">
+        {/* Sidebar — sticky on desktop so the live extraction stays in view
+            while the canvas scrolls. Top offset clears the sticky TopBar. */}
+        <div className="space-y-3 lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
           {/* Table quick-nav */}
           {sortedTablesForNav.length > 0 && (
             <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-3">
@@ -940,9 +1005,20 @@ export default function ProspectusPdfEditorPage() {
           <LiveExtractionPreview
             table={selectedTable}
             textItems={textLayer?.items ?? null}
+            onExpand={
+              selectedTable ? () => setTableModalOpen(true) : undefined
+            }
           />
         </div>
       </div>
+
+      {/* Full-table view — opened by clicking the live preview */}
+      <ExtractedTableModal
+        open={tableModalOpen}
+        onClose={() => setTableModalOpen(false)}
+        table={selectedTable}
+        textItems={textLayer?.items ?? null}
+      />
 
       {/* How-to modal */}
       <Modal
