@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -18,6 +19,14 @@ export class ExtractRequestDto {
   @Type(() => Number)
   @IsInt({ each: true })
   table_ids?: number[];
+
+  /**
+   * Opt-in OCR fallback for scans / image-only PDFs. Slower, so it is
+   * never enabled implicitly.
+   */
+  @IsOptional()
+  @IsBoolean()
+  ocr?: boolean;
 }
 
 export class ImportSubjectDto {
