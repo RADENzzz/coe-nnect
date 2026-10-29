@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchSections,
@@ -1140,6 +1140,21 @@ export default function SectionsPage() {
                     </option>
                   ))}
                 </select>
+                {selectablePrograms.length === 0 && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-start gap-2">
+                    <Icon name="warning" size={13} className="shrink-0 mt-0.5" />
+                    <span>
+                      No active programs in your department. Add one on the{' '}
+                      <Link
+                        to="/programs"
+                        className="font-semibold underline hover:text-amber-950"
+                      >
+                        Programs page
+                      </Link>{' '}
+                      first — every section must belong to a program.
+                    </span>
+                  </div>
+                )}
               </FormField>
 
               <FormField
