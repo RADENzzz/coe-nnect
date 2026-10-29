@@ -14,6 +14,7 @@ import { FacultyModule } from './modules/faculty/faculty.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
 import { ProspectusModule } from './modules/prospectus/prospectus.module';
+import { ProgramsModule } from './modules/programs/programs.module';
 import { SystemConfigModule } from './modules/system-config/system-config.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { TermsModule } from './modules/terms/terms.module';
@@ -51,6 +52,7 @@ import { HealthModule } from './modules/health/health.module';
     SubjectsModule,
     RoomsModule,
     ProspectusModule,
+    ProgramsModule,
     SystemConfigModule,
     AuditModule,
     TermsModule,
