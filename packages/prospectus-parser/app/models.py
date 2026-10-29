@@ -65,6 +65,9 @@ class ExtractRequest(BaseModel):
     """
     pdf_base64: str = Field(..., min_length=1)
     regions: list[RegionSpec]
+    # When true, blank text-layer cells fall back to OCR (slower). Used for
+    # scans / screenshots pasted into a document and exported to PDF.
+    ocr: bool = False
 
     @field_validator("regions")
     @classmethod
