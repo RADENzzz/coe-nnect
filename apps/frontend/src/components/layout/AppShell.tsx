@@ -16,6 +16,7 @@ function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
   const setLastPath = useUiStore((s) => s.setLastPath);
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
+  const hidden = useUiStore((s) => s.isSidebarHidden);
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
 
@@ -56,7 +57,7 @@ function ShellInner() {
 
       <div
         className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-200 ease-out ${
-          collapsed ? 'md:ml-[68px]' : 'md:ml-64'
+          hidden ? 'md:ml-0' : collapsed ? 'md:ml-[68px]' : 'md:ml-64'
         }`}
       >
         <TopBar label={nav.topBarLabel} />
