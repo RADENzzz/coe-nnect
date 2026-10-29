@@ -11,6 +11,13 @@ export interface TextItem {
 
 export interface TextLayerData {
   items: TextItem[];
+  /**
+   * True when the page has at least one non-whitespace text item.
+   * False means the page is image-only (e.g. a screenshot pasted into a
+   * Word doc and exported as PDF) — nothing can be extracted from it,
+   * regardless of the text's color.
+   */
+  hasText: boolean;
   /** PDF viewBox [x0, y0, x1, y1]. Usually [0, 0, W, H]. */
   view: [number, number, number, number];
   /** PDF points (viewport width at scale 1). */
@@ -80,6 +87,7 @@ export function usePdfTextLayer(
 
         const result: TextLayerData = {
           items,
+          hasText: items.some((it) => it.str.trim().length > 0),
           view: [
             viewport.viewBox[0],
             viewport.viewBox[1],
