@@ -118,10 +118,13 @@ export async function deleteProspectusPdfTable(
 export async function extractFromPdf(
   pdfId: string,
   tableIds?: string[],
+  ocr = false,
 ): Promise<ExtractResponse> {
   const { data } = await api.post(
     `/v1/prospectus-pdfs/${pdfId}/extract`,
-    { table_ids: tableIds },
+    { table_ids: tableIds, ocr },
+    // OCR runs over every page in the request — allow it to finish.
+    ocr ? { timeout: 240_000 } : undefined,
   );
   return data;
 }
