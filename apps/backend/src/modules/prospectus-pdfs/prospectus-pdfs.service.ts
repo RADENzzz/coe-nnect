@@ -362,6 +362,7 @@ export class ProspectusPdfsService {
     pdfId: string,
     tableIds: string[] | undefined,
     user: UserProfile,
+    ocr = false,
   ): Promise<{
     regions: { table_id: string; subjects: ParserSubject[] }[];
     warnings: string[];
@@ -401,6 +402,7 @@ export class ProspectusPdfsService {
     const result = await this.parser.extract({
       pdfBase64,
       regions,
+      ocr,
     });
 
     const warnings: string[] = [];
@@ -423,6 +425,25 @@ export class ProspectusPdfsService {
       });
       return { table_id: String(r.table_id), subjects: r.subjects };
     });
+
+    // Every cell blank across every selected table means there was no text
+    // layer to read at all (scan / image-only PDF). Say so once, up front,
+    // instead of drowning the user in "row N: no code" warnings.
+    const extractedNothing =
+      regionsOut.length > 0 &&
+      regionsOut.every((r) =>
+        r.subjects.every(
+          (s) =>
+            !String(s.code ?? '').trim() && !String(s.title ?? '').trim(),
+        ),
+      );
+    if (extractedNothing) {
+      warnings.unshift(
+        ocr
+          ? 'OCR ran but still found no text in the selected tables. The scan may be too low-resolution, rotated, or the table edges may not line up with the text.'
+          : 'No text could be extracted from the selected tables. This PDF is most likely a scan or an image-only document (e.g. a screenshot pasted into Word and exported to PDF). Try "Read with OCR", or re-export with real text — importing now would create placeholder subjects.',
+      );
+    }
 
     return { regions: regionsOut, warnings };
   }
