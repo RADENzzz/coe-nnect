@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
@@ -79,6 +80,8 @@ export class ProspectusParserClient implements OnModuleInit {
   private static readonly HEALTH_TIMEOUT_MS = 30_000;
   private static readonly WARM_TTL_MS = 10 * 60 * 1000;
   private static readonly REQUEST_TIMEOUT_MS = 60_000;
+  /** OCR is CPU-bound and runs over every page in the request. */
+  private static readonly OCR_TIMEOUT_MS = 240_000;
   private static readonly MAX_ATTEMPTS = 3;
 
   constructor(private readonly config: ConfigService) {
@@ -151,7 +154,11 @@ export class ProspectusParserClient implements OnModuleInit {
     return this.wakePromise;
   }
 
-  private async postWithRetry<T>(url: string, body: unknown): Promise<T> {
+  private async postWithRetry<T>(
+    url: string,
+    body: unknown,
+    timeoutMs: number = ProspectusParserClient.REQUEST_TIMEOUT_MS,
+  ): Promise<T> {
     let lastErr: unknown;
 
     for (
@@ -160,7 +167,7 @@ export class ProspectusParserClient implements OnModuleInit {
       attempt++
     ) {
       const cfg: RetryConfig = {
-        timeout: ProspectusParserClient.REQUEST_TIMEOUT_MS,
+        timeout: timeoutMs,
         _retryCount: attempt,
       };
 
@@ -171,13 +178,19 @@ export class ProspectusParserClient implements OnModuleInit {
       } catch (err) {
         lastErr = err;
         const e = err as AxiosError;
+        // A 503 that carries a parser detail (e.g. "OCR is not available…")
+        // is a permanent condition — retrying just makes the user wait.
+        const permanent =
+          e.response?.status === 503 &&
+          typeof (e.response.data as { detail?: unknown })?.detail === 'string';
         const transient =
-          !e.response ||
-          e.response.status === 502 ||
-          e.response.status === 503 ||
-          e.response.status === 504 ||
-          e.code === 'ECONNRESET' ||
-          e.code === 'ETIMEDOUT';
+          !permanent &&
+          (!e.response ||
+            e.response.status === 502 ||
+            e.response.status === 503 ||
+            e.response.status === 504 ||
+            e.code === 'ECONNRESET' ||
+            e.code === 'ETIMEDOUT');
 
         if (!transient || attempt === ProspectusParserClient.MAX_ATTEMPTS) {
           throw err;
@@ -202,13 +215,28 @@ export class ProspectusParserClient implements OnModuleInit {
   async extract(params: {
     pdfBase64: string;
     regions: ParserRegionInput[];
+    ocr?: boolean;
   }): Promise<ParserExtractResponse> {
     try {
-      return await this.postWithRetry<ParserExtractResponse>('/extract', {
-        pdf_base64: params.pdfBase64,
-        regions: params.regions,
-      });
+      return await this.postWithRetry<ParserExtractResponse>(
+        '/extract',
+        {
+          pdf_base64: params.pdfBase64,
+          regions: params.regions,
+          ocr: params.ocr === true,
+        },
+        params.ocr
+          ? ProspectusParserClient.OCR_TIMEOUT_MS
+          : ProspectusParserClient.REQUEST_TIMEOUT_MS,
+      );
     } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 503) {
+        const detail = (err.response.data as { detail?: unknown })?.detail;
+        if (typeof detail === 'string' && detail.trim()) {
+          this.logger.warn(`Parser OCR unavailable: ${detail}`);
+          throw new ServiceUnavailableException(detail);
+        }
+      }
       const msg = axios.isAxiosError(err)
         ? `${err.response?.status ?? 'network'} ${err.message}`
         : String(err);
