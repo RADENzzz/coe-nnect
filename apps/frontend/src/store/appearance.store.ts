@@ -12,11 +12,14 @@ export interface Appearance {
   accent: string;
   /** Page background tone. Independent from the accent. */
   surfaceTint: SurfaceTint;
+  /** Experimental glassmorphism + animated liquid backdrop. */
+  glass: boolean;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
   accent: '#5c1219',
   surfaceTint: 'default',
+  glass: false,
 };
 
 export interface AccentPreset {
@@ -419,6 +422,10 @@ export function applyAppearance(a: Appearance): void {
   if (typeof document === 'undefined') return;
   const css = buildAppearanceCss(a);
 
+  // The glass theme is class-driven; its rules live in globals.css so they
+  // can be removed cleanly without regenerating the variable maps.
+  document.documentElement.classList.toggle('glass', a.glass);
+
   let el = document.getElementById(STYLE_ELEMENT_ID) as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement('style');
@@ -442,7 +449,10 @@ function syncBrowserChrome(a: Appearance): void {
   const theme = useThemeStore.getState().theme;
   const mode: Theme = theme === 'dark' ? 'dark' : 'light';
   const vars = buildVarMaps(a)[mode];
-  const primary = (vars['--primary'] ?? DEFAULT_ACCENT_LIGHT['--primary'])
+  // Under glass the page edge is the blurred background, so matching the
+  // browser chrome to the background blends better than the accent.
+  const token = a.glass ? '--background' : '--primary';
+  const primary = (vars[token] ?? DEFAULT_ACCENT_LIGHT['--primary'])
     .split(' ')
     .map((n) => Number(n));
   document
@@ -479,6 +489,7 @@ function readStoredAppearance(): Appearance {
       surfaceTint: isSurfaceTint(parsed?.surfaceTint)
         ? parsed.surfaceTint
         : 'default',
+      glass: parsed?.glass === true,
     };
   } catch {
     return DEFAULT_APPEARANCE;
@@ -501,6 +512,7 @@ interface AppearanceState {
   logo: string | null;
   setAccent: (hex: string) => void;
   setSurfaceTint: (tint: SurfaceTint) => void;
+  setGlass: (glass: boolean) => void;
   resetAppearance: () => void;
   setLogo: (dataUrl: string | null) => void;
 }
@@ -533,8 +545,16 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => ({
     set({ appearance });
   },
 
+  setGlass: (glass) => {
+    const appearance = { ...get().appearance, glass };
+    applyAppearance(appearance);
+    persistAppearance(appearance);
+    set({ appearance });
+  },
+
   resetAppearance: () => {
-    const appearance = { ...DEFAULT_APPEARANCE };
+    // "Reset colours" leaves the experimental theme switch untouched.
+    const appearance = { ...DEFAULT_APPEARANCE, glass: get().appearance.glass };
     applyAppearance(appearance);
     persistAppearance(appearance);
     set({ appearance });

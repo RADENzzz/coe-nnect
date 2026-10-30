@@ -76,14 +76,21 @@ async function toSquareDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/webp', 0.92);
 }
 
-export default function AppearanceSettingsTab() {
+export default function AppearanceSettingsTab({
+  showLogo = true,
+}: {
+  /** The sidebar-logo uploader only makes sense once signed in. */
+  showLogo?: boolean;
+}) {
   const appearance = useAppearanceStore((s) => s.appearance);
   const logo = useAppearanceStore((s) => s.logo);
   const setAccent = useAppearanceStore((s) => s.setAccent);
   const setSurfaceTint = useAppearanceStore((s) => s.setSurfaceTint);
+  const setGlass = useAppearanceStore((s) => s.setGlass);
   const resetAppearance = useAppearanceStore((s) => s.resetAppearance);
   const setLogo = useAppearanceStore((s) => s.setLogo);
   const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
 
   const [hexDraft, setHexDraft] = useState(appearance.accent);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -145,6 +152,53 @@ export default function AppearanceSettingsTab() {
           Reset colours
         </button>
       </div>
+
+      {/* ── Theme ── */}
+      <Section
+        title="Theme"
+        description="Switch between light and dark. Stored in this browser."
+        icon="contrast"
+      >
+        <div className="grid grid-cols-2 gap-2.5 sm:max-w-sm">
+          {(['light', 'dark'] as const).map((mode) => {
+            const selected = theme === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setTheme(mode)}
+                aria-pressed={selected}
+                className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition ${
+                  selected
+                    ? 'border-primary ring-1 ring-primary/30'
+                    : 'border-surface-variant hover:border-primary/40'
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    selected
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-container text-on-surface-variant'
+                  }`}
+                >
+                  <Icon
+                    name={mode === 'dark' ? 'dark_mode' : 'light_mode'}
+                    size={16}
+                  />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-on-surface">
+                    {mode === 'dark' ? 'Dark' : 'Light'}
+                  </span>
+                  <span className="block text-[10px] text-on-surface-variant">
+                    {mode === 'dark' ? 'Low-light' : 'Default'}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Section>
 
       {/* ── Accent colour ── */}
       <Section
@@ -256,6 +310,40 @@ export default function AppearanceSettingsTab() {
         </div>
       </Section>
 
+      {/* ── Experimental ── */}
+      <Section
+        title="Experimental"
+        description="Optional looks that are still being tuned. Off by default."
+        icon="science"
+      >
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-surface-variant bg-surface-container-low/50 p-3">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-on-surface">
+              Glass theme
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                Experimental
+              </span>
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-on-surface-variant">
+              Frosted panels over a slow-moving liquid background, using your
+              accent colour. Works in light and dark mode; the motion stops for
+              reduced-motion users.
+            </p>
+          </div>
+          <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={appearance.glass}
+              onChange={(e) => setGlass(e.target.checked)}
+              aria-label="Enable the experimental glass theme"
+            />
+            <span className="h-5 w-9 rounded-full bg-slate-300 transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40 peer-focus-visible:ring-offset-2" />
+            <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+          </label>
+        </div>
+      </Section>
+
       {/* ── Preview ── */}
       <Section
         title="Live preview"
@@ -263,89 +351,99 @@ export default function AppearanceSettingsTab() {
         icon="visibility"
       >
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <PreviewPane mode="light" current={theme === 'light'} />
-          <PreviewPane mode="dark" current={theme === 'dark'} />
+          <PreviewPane
+            mode="light"
+            current={theme === 'light'}
+            glass={appearance.glass}
+          />
+          <PreviewPane
+            mode="dark"
+            current={theme === 'dark'}
+            glass={appearance.glass}
+          />
         </div>
       </Section>
 
       {/* ── Sidebar logo ── */}
-      <Section
-        title="Sidebar logo"
-        description="Replaces the graduation-cap icon next to “CoE-NNECT”."
-        icon="upload"
-      >
-        <div className="flex flex-wrap items-center gap-4">
-          <div
-            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl ring-1 ring-black/10"
-            style={{ backgroundColor: 'rgb(var(--primary))' }}
-          >
-            {logo ? (
-              <img
-                src={logo}
-                alt="Current sidebar logo"
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <Icon name="school" filled className="text-white" size={30} />
-            )}
-          </div>
-
-          <div className="flex flex-1 flex-col gap-2 min-w-[200px]">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={logoBusy}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-50"
-              >
-                <Icon
-                  name={logoBusy ? 'progress_activity' : 'upload'}
-                  size={15}
-                  className={logoBusy ? 'animate-spin' : undefined}
+      {showLogo && (
+        <Section
+          title="Sidebar logo"
+          description="Replaces the graduation-cap icon next to “CoE-NNECT”."
+          icon="upload"
+        >
+          <div className="flex flex-wrap items-center gap-4">
+            <div
+              className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl ring-1 ring-black/10"
+              style={{ backgroundColor: 'rgb(var(--primary))' }}
+            >
+              {logo ? (
+                <img
+                  src={logo}
+                  alt="Current sidebar logo"
+                  className="h-full w-full object-contain"
                 />
-                {logo ? 'Replace logo' : 'Upload logo'}
-              </button>
-              {logo && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLogo(null);
-                    setLogoError(null);
-                  }}
-                  className="flex items-center gap-1.5 rounded-lg border border-surface-variant px-3.5 py-2 text-xs font-semibold text-on-surface-variant transition hover:text-on-surface hover:bg-surface-container-low"
-                >
-                  <Icon name="delete" size={15} />
-                  Remove
-                </button>
+              ) : (
+                <Icon name="school" filled className="text-white" size={30} />
               )}
             </div>
-            <p className="text-[11px] text-on-surface-variant">
-              Any image size works. It is fitted into a square (1:1) at{' '}
-              {LOGO_OUTPUT_SIZE}&times;{LOGO_OUTPUT_SIZE}px — nothing is
-              stretched, and transparent PNGs keep their transparency.
-            </p>
-            {logoError && (
-              <p className="flex items-center gap-1 text-[11px] font-medium text-red-600">
-                <Icon name="error" size={13} />
-                {logoError}
-              </p>
-            )}
-          </div>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              // Reset so picking the same file twice still fires onChange.
-              e.target.value = '';
-              void handleLogoPick(file);
-            }}
-          />
-        </div>
-      </Section>
+            <div className="flex flex-1 flex-col gap-2 min-w-[200px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={logoBusy}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-50"
+                >
+                  <Icon
+                    name={logoBusy ? 'progress_activity' : 'upload'}
+                    size={15}
+                    className={logoBusy ? 'animate-spin' : undefined}
+                  />
+                  {logo ? 'Replace logo' : 'Upload logo'}
+                </button>
+                {logo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogo(null);
+                      setLogoError(null);
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg border border-surface-variant px-3.5 py-2 text-xs font-semibold text-on-surface-variant transition hover:text-on-surface hover:bg-surface-container-low"
+                  >
+                    <Icon name="delete" size={15} />
+                    Remove
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-on-surface-variant">
+                Any image size works. It is fitted into a square (1:1) at{' '}
+                {LOGO_OUTPUT_SIZE}&times;{LOGO_OUTPUT_SIZE}px — nothing is
+                stretched, and transparent PNGs keep their transparency.
+              </p>
+              {logoError && (
+                <p className="flex items-center gap-1 text-[11px] font-medium text-red-600">
+                  <Icon name="error" size={13} />
+                  {logoError}
+                </p>
+              )}
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                // Reset so picking the same file twice still fires onChange.
+                e.target.value = '';
+                void handleLogoPick(file);
+              }}
+            />
+          </div>
+        </Section>
+      )}
 
       <p className="text-[11px] text-on-surface-variant">
         Appearance preferences are stored in this browser. They do not change
@@ -395,12 +493,14 @@ function Section({
 function PreviewPane({
   mode,
   current,
+  glass,
 }: {
   mode: 'light' | 'dark';
   current: boolean;
+  glass: boolean;
 }) {
   return (
-    <div className={mode === 'dark' ? 'dark' : 'light'}>
+    <div className={`${mode === 'dark' ? 'dark' : 'light'}${glass ? ' glass' : ''}`}>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
           {mode === 'dark' ? 'Dark' : 'Light'}
@@ -412,7 +512,11 @@ function PreviewPane({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-outline-variant bg-background text-on-background shadow-sm">
+      <div
+        className={`overflow-hidden rounded-xl border border-outline-variant text-on-background shadow-sm ${
+          glass ? 'glass-preview' : 'bg-background'
+        }`}
+      >
         <div className="flex h-[186px]">
           {/* Rail */}
           <div

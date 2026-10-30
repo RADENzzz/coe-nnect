@@ -11,6 +11,7 @@ import { getNavForRole } from '../../lib/constants/nav-config';
 import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
+import LiquidBackground from './LiquidBackground';
 
 function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
@@ -44,7 +45,8 @@ function ShellInner() {
   }, [location.pathname]);
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen flex">
+    <div className="app-shell bg-slate-50 text-slate-900 min-h-screen flex">
+      <LiquidBackground />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[200] focus:px-3 focus:py-2 focus:bg-white focus:text-[#5c1219] focus:font-semibold focus:rounded focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#5c1219]"
