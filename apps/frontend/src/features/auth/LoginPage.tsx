@@ -3,6 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
+import Modal from '../../components/ui/Modal';
+import LiquidBackground from '../../components/layout/LiquidBackground';
+import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
 
 /* ────────────────────────────────────────────
@@ -364,6 +367,7 @@ export default function LoginPage() {
   const [shakeKey, setShakeKey] = useState(0);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [slowNetwork, setSlowNetwork] = useState(false);
   const [attemptCount, setAttemptCount] = useState(0);
 
@@ -526,14 +530,27 @@ export default function LoginPage() {
   }, []);
 
   return (
-    <div className="min-h-screen flex bg-slate-50 overflow-hidden">
-      {/* Theme toggle — available before signing in */}
-      <div className="fixed top-4 right-4 z-50 rounded-full border border-slate-200 bg-white shadow-sm">
-        <ThemeToggle />
+    <div className="login-shell min-h-screen flex bg-background overflow-hidden">
+      <LiquidBackground />
+
+      {/* Appearance + theme — available before signing in */}
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAppearanceOpen(true)}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:text-[#5c1219]"
+          aria-label="Appearance settings"
+          title="Appearance settings"
+        >
+          <Icon name="palette" size={18} />
+        </button>
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* ───────── LEFT: Brand Panel ───────── */}
-      <div className="hidden lg:flex lg:w-[45%] relative bg-[#5c1219] overflow-hidden">
+      <div className="login-brand hidden lg:flex lg:w-[45%] relative bg-[#5c1219] overflow-hidden">
         <svg
           className="absolute inset-0 w-full h-full opacity-[0.07]"
           xmlns="http://www.w3.org/2000/svg"
@@ -595,7 +612,7 @@ export default function LoginPage() {
       </div>
 
       {/* ───────── RIGHT: Login Form ───────── */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-slate-50">
+      <div className="login-content flex-1 flex items-center justify-center p-6 lg:p-12 bg-background">
         <div
           key={shakeKey}
           className="w-full max-w-sm animate-slide-in"
@@ -752,6 +769,26 @@ export default function LoginPage() {
       {import.meta.env.DEV && DEV_ACCOUNTS.length > 0 && (
         <DevLoginPopup accounts={DEV_ACCOUNTS} onFill={handleFillDev} />
       )}
+
+      {/* ───────── APPEARANCE SETTINGS (pre-sign-in) ───────── */}
+      <Modal
+        open={appearanceOpen}
+        onClose={() => setAppearanceOpen(false)}
+        title="Appearance"
+        description="Personalise how CoE-NNECT looks on this device."
+        size="lg"
+        footer={
+          <button
+            type="button"
+            onClick={() => setAppearanceOpen(false)}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary transition hover:opacity-90"
+          >
+            Done
+          </button>
+        }
+      >
+        <AppearanceSettingsTab showLogo={false} />
+      </Modal>
 
       {/* ───────── FORGOT PASSWORD MODAL ───────── */}
       <ForgotPasswordModal
