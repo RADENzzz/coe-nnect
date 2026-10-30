@@ -107,7 +107,7 @@ export default function Sidebar({ nav }: SidebarProps) {
       }}
       aria-label="Main navigation"
       className={clsx(
-        'hidden md:flex flex-col h-screen bg-[#5c1219] border-r border-black/10 fixed left-0 top-0 z-50',
+        'hidden md:flex flex-col h-screen bg-[#5c1219] border-r border-black/10 fixed left-0 top-0 z-50 app-sidebar',
         'transition-[width] duration-200 ease-out',
         collapsed ? 'w-[68px]' : 'w-64',
       )}
