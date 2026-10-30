@@ -50,6 +50,25 @@
         }
       })();
     </script>
+    <!--
+      Enable the experimental glass theme before first paint. The flag is
+      stored alongside the accent in coe-nnect:appearance; the rules live
+      in src/styles/globals.css under html.glass.
+    -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('coe-nnect:appearance');
+          if (!raw) return;
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.glass === true) {
+            document.documentElement.classList.add('glass');
+          }
+        } catch (e) {
+          /* Ignore unavailable storage or malformed JSON. */
+        }
+      })();
+    </script>
     <meta
       name="description"
       content="CoE-NNECT: College of Engineering Scheduling System — Western Mindanao State University"
