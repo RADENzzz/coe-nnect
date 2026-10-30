@@ -28,6 +28,9 @@
   --accent-deep: 61 11 16;
   --sidebar-active-fg: 92 18 25;
 
+  /* Glass theme (experimental) — see the block at the end of this file. */
+  --glass-surface-alpha: 0.72;
+
   /* Neutral scale */
   --slate-50: 248 250 252;
   --slate-100: 241 245 249;
@@ -128,6 +131,9 @@
   --accent-deep: 61 11 16;
   --sidebar-active-fg: 92 18 25;
 
+  /* Glass theme (experimental) — see the block at the end of this file. */
+  --glass-surface-alpha: 0.55;
+
   /* Neutral scale */
   --slate-50: 2 6 23;
   --slate-100: 15 23 42;
@@ -207,6 +213,12 @@
   --orange-100: 56 32 15;
   --orange-200: 74 42 19;
   --orange-300: 98 56 24;
+}
+
+/* Glass opacity for a light subtree nested inside a dark page — the
+   Settings preview renders both themes side by side. */
+.light {
+  --glass-surface-alpha: 0.72;
 }
 
 /* ============================================
@@ -2173,4 +2185,186 @@ html {
 .sidebar-active {
   background-color: #ffffff;
   color: rgb(var(--sidebar-active-fg));
+}
+
+/* ============================================================
+   Experimental glass theme
+   Enabled by `html.glass` (set by appearance.store.ts and by the
+   pre-paint script in index.html). Large surfaces turn frosted and
+   blur the animated liquid backdrop rendered behind the app by
+   components/layout/LiquidBackground.tsx. Everything here is opt-in,
+   so the default look is untouched.
+   ============================================================ */
+
+/* The base wash must live on <html>: the liquid layer sits at
+   z-index -1, between it and the content. Body and the shell go
+   transparent so they cannot paint over the blobs. */
+html.glass {
+  background-color: rgb(var(--background));
+}
+
+html.glass body,
+html.glass .app-shell {
+  background-color: transparent;
+}
+
+/* ── Liquid backdrop ── */
+.liquid-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 90% at 12% 8%,
+      rgb(var(--accent-tint) / 0.18),
+      transparent 62%
+    ),
+    radial-gradient(
+      110% 90% at 88% 92%,
+      rgb(var(--primary) / 0.16),
+      transparent 66%
+    );
+}
+
+.liquid-blob {
+  position: absolute;
+  display: block;
+  width: 44vmax;
+  height: 44vmax;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.5;
+  will-change: transform;
+  animation: liquid-drift 28s ease-in-out infinite alternate;
+}
+
+.liquid-blob-a {
+  top: -14vmax;
+  left: -10vmax;
+  background: rgb(var(--accent-mid) / 0.55);
+}
+
+.liquid-blob-b {
+  top: -8vmax;
+  right: -16vmax;
+  width: 38vmax;
+  height: 38vmax;
+  background: rgb(var(--primary) / 0.45);
+  animation-duration: 34s;
+  animation-delay: -9s;
+}
+
+.liquid-blob-c {
+  bottom: -18vmax;
+  left: 18%;
+  width: 40vmax;
+  height: 40vmax;
+  background: rgb(var(--accent-tint) / 0.5);
+  animation-duration: 40s;
+  animation-delay: -18s;
+}
+
+.liquid-blob-d {
+  right: 4%;
+  bottom: -10vmax;
+  width: 30vmax;
+  height: 30vmax;
+  background: rgb(var(--accent-deep) / 0.5);
+  animation-duration: 30s;
+  animation-delay: -24s;
+}
+
+@keyframes liquid-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate3d(8vw, 6vh, 0) scale(1.12) rotate(18deg);
+  }
+  66% {
+    transform: translate3d(-6vw, 10vh, 0) scale(0.94) rotate(-14deg);
+  }
+  100% {
+    transform: translate3d(4vw, -4vh, 0) scale(1.06) rotate(8deg);
+  }
+}
+
+/* ── Frosted surfaces ──
+   The extra `.glass` selectors cover the Settings preview, which nests
+   a light/dark miniature inside the real page. `bg-white` is matched
+   with an attribute selector so Tailwind's `@apply bg-white` does not
+   re-inline these rules into every component that uses a white fill. */
+html.glass :is(.card, .bg-surface),
+html.glass [class~='bg-white'],
+.glass :is(.card, .bg-surface),
+.glass [class~='bg-white'] {
+  background-color: rgb(var(--surface) / var(--glass-surface-alpha));
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+html.glass .app-sidebar {
+  background-color: rgb(var(--primary) / 0.78);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+
+/* Login page (before sign-in): let the liquid backdrop show through the
+   shell and the form pane, and frost the brand panel like the sidebar. */
+html.glass .login-shell,
+html.glass .login-content {
+  background-color: transparent;
+}
+
+html.glass .login-brand {
+  background-color: rgb(var(--primary) / 0.78);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+
+/* Inputs read better with a denser fill. */
+html.glass :is(.input) {
+  background-color: rgb(var(--surface) / 0.74);
+}
+
+/* Static stand-in for the liquid layer inside the Settings preview. */
+.glass-preview {
+  background-color: rgb(var(--background));
+  background-image:
+    radial-gradient(
+      70% 60% at 18% 15%,
+      rgb(var(--accent-mid) / 0.35),
+      transparent 70%
+    ),
+    radial-gradient(
+      60% 55% at 85% 80%,
+      rgb(var(--primary) / 0.4),
+      transparent 72%
+    );
+}
+
+/* Browsers without backdrop-filter: fall back to near-opaque panels. */
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  html.glass :is(.card, .bg-surface),
+  html.glass [class~='bg-white'],
+  .glass :is(.card, .bg-surface),
+  .glass [class~='bg-white'] {
+    background-color: rgb(var(--surface) / 0.94);
+  }
+  html.glass .app-sidebar {
+    background-color: rgb(var(--primary));
+  }
+  html.glass .login-brand {
+    background-color: rgb(var(--primary));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-blob {
+    animation: none !important;
+  }
 }
