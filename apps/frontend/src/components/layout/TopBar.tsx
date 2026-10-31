@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useLogout } from '../../hooks/use-logout';
 import { getNavForRole } from '../../lib/constants/nav-config';
 import NotificationBell from '../notifications/NotificationBell';
+import TutorialLauncher from '../../features/tutorial/TutorialLauncher';
 import { searchApi, type SearchResult } from '../../api/search.api';
 import { useChatControl } from '../../features/chat/ChatWidget';
 
@@ -565,14 +566,14 @@ export default function TopBar({ label }: TopBarProps) {
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
           {/* ── Mobile: bell + theme + avatar (dev account hides global actions) ── */}
           {!isDevAccount && (
-            <div className="md:hidden flex items-center gap-1">
+            <div className="md:hidden flex items-center gap-1" data-tour="notifications">
               <NotificationBell />
             </div>
           )}
 
           {/* ── Desktop: search + chat + bell + settings + avatar ── */}
           {!isDevAccount && (
-            <div ref={searchRef} className="relative hidden md:block">
+            <div ref={searchRef} data-tour="search" className="relative hidden md:block">
               <Icon
                 name="search"
                 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
@@ -667,10 +668,12 @@ export default function TopBar({ label }: TopBarProps) {
           )}
 
           {!isDevAccount && (
-            <div className="hidden md:block">
+            <div className="hidden md:block" data-tour="notifications">
               <NotificationBell />
             </div>
           )}
+
+          <TutorialLauncher />
 
           <ThemeToggle />
 
@@ -686,7 +689,7 @@ export default function TopBar({ label }: TopBarProps) {
           )}
 
           {/* Profile */}
-          <div className="relative" ref={profileRef}>
+          <div className="relative" ref={profileRef} data-tour="profile-menu">
             <button
               type="button"
               className="w-9 h-9 rounded-full bg-[#5c1219] text-white overflow-hidden border border-outline-variant cursor-pointer flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
