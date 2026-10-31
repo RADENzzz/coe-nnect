@@ -41,15 +41,27 @@ export class DevToolsController {
     return { data };
   }
 
+  /**
+   * NEW: Full demo-data seed (Level A).
+   * Idempotent and additive — safe against a partially-seeded DB.
+   * Assumes the base seed has already created departments + users.
+   */
+  @Post('seed-demo-full')
+  @HttpCode(202)
+  @Auditable({ action: 'dev.seed_full', source: 'DevTools' })
+  async startSeedDemoFull() {
+    const data = await this.service.startSeedDemoFull();
+    return { data };
+  }
+
   @Post('reset')
   @HttpCode(202)
-  // Intentionally not @Auditable: the reset truncates audit_trail, so a
-  // fire-and-forget audit row written after this handler would leave the
-  // freshly reset database with a stray entry.
+  // Intentionally not @Auditable — see the original comment.
   async startReset(@Req() req: any, @Body() dto: ResetDemoDto) {
     const data = await this.service.startReset(
       req.profile.userId,
       dto?.reseed === true,
+      dto?.full === true,
     );
     return { data };
   }
@@ -91,11 +103,7 @@ export class DevToolsController {
   @Patch('users/:userId/toggle-active')
   @HttpCode(200)
   @Auditable({ action: 'dev.user.toggle_active', source: 'DevTools' })
-  async toggleActive(
-    @Param('userId') userId: string,
-    @Req() req: any, // <-- req.profile is attached by JwtAuthGuard/RolesGuard
-  ) {
-    // req.profile.userId is the logged-in dev account's ID
+  async toggleActive(@Param('userId') userId: string, @Req() req: any) {
     const data = await this.service.toggleUserActive(userId, req.profile.userId);
     return { data };
   }
