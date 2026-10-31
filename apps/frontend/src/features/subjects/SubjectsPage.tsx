@@ -928,7 +928,7 @@ export default function SubjectsPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="subjects-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Subjects</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -1068,7 +1068,8 @@ export default function SubjectsPage() {
       )}
 
       {/* ── Filter panel ── */}
-      <SubjectFiltersPanel
+      <div data-tour="subjects-filters">
+        <SubjectFiltersPanel
         activeFilterCount={activeFilterCount}
         filtersExpanded={filtersExpanded}
         setFiltersExpanded={setFiltersExpanded}
@@ -1093,6 +1094,7 @@ export default function SubjectsPage() {
         deptCounts={deptCounts}
         ROOM_TYPES={ROOM_TYPES}
       />
+      </div>
 
       {/* ── Table ── */}
       {filtered.length === 0 && hasAnyFilter && !isLoading ? (
@@ -1117,19 +1119,20 @@ export default function SubjectsPage() {
           </button>
         </div>
       ) : (
-        <ResponsiveTable
-          columns={columns}
-          rows={filtered}
-          rowKey={(s) => s.subjectId}
-          rowTitle={(s) => s.subjectCode}
-          rowSubtitle={(s) => s.title}
-          isLoading={isLoading}
-          hasSourceRows={subjects.length > 0}
-          emptyMessage="No subjects yet."
-          noMatchMessage="No subjects match your filters."
-          getActions={getActions}
-          onRowClick={(s) => !isForeign(s) && openEdit(s)}
-          emptyIcon="menu_book"
+        <div data-tour="subjects-table">
+          <ResponsiveTable
+            columns={columns}
+            rows={filtered}
+            rowKey={(s) => s.subjectId}
+            rowTitle={(s) => s.subjectCode}
+            rowSubtitle={(s) => s.title}
+            isLoading={isLoading}
+            hasSourceRows={subjects.length > 0}
+            emptyMessage="No subjects yet."
+            noMatchMessage="No subjects match your filters."
+            getActions={getActions}
+            onRowClick={(s) => !isForeign(s) && openEdit(s)}
+            emptyIcon="menu_book"
           emptyAction={
             canManage ? (
               <button
@@ -1141,7 +1144,8 @@ export default function SubjectsPage() {
               </button>
             ) : undefined
           }
-        />
+          />
+        </div>
       )}
 
       {/* ── Create / Edit modal ── */}
