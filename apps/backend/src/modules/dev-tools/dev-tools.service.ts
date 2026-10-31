@@ -12,7 +12,7 @@ import * as path from 'path';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 
-type DevJobKind = 'seed' | 'reset' | 'reset-and-seed';
+type DevJobKind = 'seed' | 'reset' | 'reset-and-seed' | 'seed-demo-full';
 
 type DevJob = {
   jobId: string;
@@ -25,7 +25,7 @@ type DevJob = {
 };
 
 type DevJobStep = {
-  script: 'seed' | 'reset';
+  script: 'seed' | 'reset' | 'demo-full';
   label: string;
   env?: NodeJS.ProcessEnv;
 };
@@ -100,7 +100,7 @@ export class DevToolsService {
   }
 
   // ════════════════════════════════════════════
-  // Seed / Reset
+  // Seed / Reset / Full Seed
   // ════════════════════════════════════════════
 
   async startSeed(): Promise<{ jobId: string }> {
@@ -109,32 +109,43 @@ export class DevToolsService {
     return { jobId };
   }
 
+  async startSeedDemoFull(): Promise<{ jobId: string }> {
+    const jobId = this.createJob('seed-demo-full');
+    void this.runJob(jobId, [{ script: 'demo-full', label: 'demo-full' }]);
+    return { jobId };
+  }
+
   async startReset(
     actingUserId: string,
     reseed = false,
+    fullSeed = false,
   ): Promise<{ jobId: string }> {
-    const kind: DevJobKind = reseed ? 'reset-and-seed' : 'reset';
+    const kind: DevJobKind =
+      reseed || fullSeed ? 'reset-and-seed' : 'reset';
     const jobId = this.createJob(kind);
     const steps: DevJobStep[] = [
       {
         script: 'reset',
         label: 'reset',
         env: {
-          // This is an administrator-only, explicitly confirmed action.
           ALLOW_REMOTE_RESET: '1',
-          // Keep the signed-in administrator's auth session and public
-          // profile alive so the job can be polled to completion.
           PRESERVE_AUTH_USER_ID: actingUserId,
         },
       },
     ];
-    if (reseed) steps.push({ script: 'seed', label: 'seed' });
+    if (reseed || fullSeed) steps.push({ script: 'seed', label: 'seed' });
+    if (fullSeed) steps.push({ script: 'demo-full', label: 'demo-full' });
     void this.runJob(jobId, steps);
     return { jobId };
   }
 
   private createJob(kind: DevJobKind): string {
-    const prefix = kind === 'seed' ? 'seed' : 'reset';
+    const prefix =
+      kind === 'seed'
+        ? 'seed'
+        : kind === 'seed-demo-full'
+          ? 'seed-full'
+          : 'reset';
     const jobId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.jobs.set(jobId, {
       jobId,
@@ -168,9 +179,7 @@ export class DevToolsService {
       job.status = 'failed';
       job.finishedAt = Date.now();
       job.error = (err as Error).message;
-      this.logger.error(
-        `DEV: ${job.kind} job ${jobId} failed: ${job.error}`,
-      );
+      this.logger.error(`DEV: ${job.kind} job ${jobId} failed: ${job.error}`);
     }
   }
 
@@ -181,15 +190,20 @@ export class DevToolsService {
     backendRoot: string,
     isWindows: boolean,
   ): Promise<void> {
+    const compiledFile =
+      step.script === 'seed'
+        ? 'demo-seed.js'
+        : step.script === 'reset'
+          ? 'reset.js'
+          : 'demo-data-seed.js';
+
     const compiled = path.join(
       backendRoot,
       'dist',
       'database',
       'seeds',
-      step.script === 'seed' ? 'demo-seed.js' : 'reset.js',
+      compiledFile,
     );
-    // The Railway runtime may not contain ts-node or src/. Prefer the compiled
-    // seed scripts in production; keep pnpm/ts-node as a local-dev fallback.
     const useCompiled =
       process.env.NODE_ENV === 'production' && existsSync(compiled);
 
@@ -204,11 +218,13 @@ export class DevToolsService {
       cwd = backendRoot;
     } else {
       command = isWindows ? 'pnpm.cmd' : 'pnpm';
-      args = [
-        '--filter',
-        '@coe-nnect/backend',
-        step.script === 'seed' ? 'seed:demo' : 'reset:demo',
-      ];
+      const scriptName =
+        step.script === 'seed'
+          ? 'seed:demo'
+          : step.script === 'reset'
+            ? 'reset:demo'
+            : 'seed:demo:full';
+      args = ['--filter', '@coe-nnect/backend', scriptName];
       cwd = repoRoot;
       shell = isWindows;
     }
@@ -260,7 +276,7 @@ export class DevToolsService {
   }
 
   // ════════════════════════════════════════════
-  // Per-user operations
+  // Per-user operations (unchanged)
   // ════════════════════════════════════════════
 
   async listUsers(): Promise<
@@ -343,13 +359,9 @@ export class DevToolsService {
     return { success: true, username: newUsername };
   }
 
-  // ════════════════════════════════════════════
-  // NEW: Toggle user active state (Dev-only)
-  // ════════════════════════════════════════════
-
   async toggleUserActive(
     userId: string,
-    actingUserId: string, // <-- NEW parameter
+    actingUserId: string,
   ): Promise<{ userId: string; isActive: boolean }> {
     if (userId === actingUserId) {
       throw new BadRequestException(
