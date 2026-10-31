@@ -99,7 +99,7 @@ export default function HelpPage() {
       <ScrollProgress />
 
       {/* Hero */}
-      <header className="relative mb-8 overflow-hidden border border-slate-200 bg-white p-6 md:p-8">
+      <header data-tour="help-header" className="relative mb-8 overflow-hidden border border-slate-200 bg-white p-6 md:p-8">
         {!reduce && (
           <motion.div
             aria-hidden
@@ -130,7 +130,7 @@ export default function HelpPage() {
           </p>
 
           {/* Search */}
-          <div className="relative mt-5 max-w-md">
+          <div className="relative mt-5 max-w-md" data-tour="help-search">
             <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400">
               search
             </span>
@@ -151,11 +151,12 @@ export default function HelpPage() {
       </header>
 
       <div className="flex flex-col gap-8 lg:flex-row">
-        <HelpTOC
-          sections={filteredSections}
-          activeId={activeId}
-          className="lg:sticky lg:top-6 lg:h-fit lg:w-56 lg:shrink-0"
-        />
+        <div className="lg:sticky lg:top-6 lg:h-fit lg:w-56 lg:shrink-0" data-tour="help-toc">
+          <HelpTOC
+            sections={filteredSections}
+            activeId={activeId}
+          />
+        </div>
 
         <div className="flex-1 space-y-12">
           {visibleIds.has('getting-started') && (

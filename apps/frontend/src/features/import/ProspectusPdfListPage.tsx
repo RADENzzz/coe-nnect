@@ -203,7 +203,7 @@ export default function ProspectusPdfListPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3 flex-wrap" data-tour="import-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">
             Import Prospectus
@@ -282,7 +282,8 @@ export default function ProspectusPdfListPage() {
       )}
 
       {/* Table / empty states */}
-      {pdfs.length === 0 && !isLoading && canUpload ? (
+      <div data-tour="import-list">
+        {pdfs.length === 0 && !isLoading && canUpload ? (
         <div className="rounded-xl border border-dashed border-surface-variant bg-surface-container-lowest py-16 text-center">
           <div className="w-16 h-16 bg-primary/5 border border-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
             <Icon
@@ -320,7 +321,8 @@ export default function ProspectusPdfListPage() {
           getActions={getActions}
           onRowClick={(p) => navigate(`/import/${p.pdfId}`)}
         />
-      )}
+        )}
+      </div>
 
       {/* Upload modal */}
       <Modal
