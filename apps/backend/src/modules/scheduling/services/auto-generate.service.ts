@@ -17,7 +17,17 @@ import { DepartmentsService } from '../../departments/departments.service';
 @Injectable()
 export class AutoGenerateService {
   private readonly logger = new Logger(AutoGenerateService.name);
+
+  /**
+   * Fast-path in-memory guard. Keyed by `term:dept` so two departments
+   * generating in parallel for the same term never collide here.
+   * Cleared on success/failure in the finally-adjacent paths.
+   */
   private readonly autoGenerateInFlight = new Set<string>();
+
+  private flightKey(termId: string, deptId: string): string {
+    return `${termId}:${deptId}`;
+  }
 
   constructor(
     private readonly supabase: SupabaseService,
@@ -40,30 +50,36 @@ export class AutoGenerateService {
       `Auto-generate requested: term=${termId} dept=${deptId} by=${userId}`,
     );
 
-    // ── NEW: refuse auto-generate for a deactivated department ──
+    // ── Refuse auto-generate for a deactivated department ──
     await this.departments.assertDepartmentActive(deptId);
 
-    if (this.autoGenerateInFlight.has(termId)) {
+    const key = this.flightKey(termId, deptId);
+
+    if (this.autoGenerateInFlight.has(key)) {
       this.logger.warn(
-        `Auto-generate rejected (in-memory): already running for term=${termId}`,
+        `Auto-generate rejected (in-memory): already running for term=${termId} dept=${deptId}`,
       );
       return {
         success: false,
         message:
-          'An auto-generate is already running for this term. ' +
+          'An auto-generate is already running for this department in this term. ' +
           'Please wait for it to finish, then try again.',
       };
     }
 
-    const locked = await this.tryAcquireAutoGenerateLock(termId, userId);
+    const locked = await this.tryAcquireAutoGenerateLock(
+      termId,
+      deptId,
+      userId,
+    );
     if (!locked) {
       this.logger.warn(
-        `Auto-generate rejected (db lock): another run in progress for term=${termId}`,
+        `Auto-generate rejected (db lock): another run in progress for term=${termId} dept=${deptId}`,
       );
       return {
         success: false,
         message:
-          'An auto-generate is already running for this term. ' +
+          'An auto-generate is already running for this department in this term. ' +
           'Please wait for it to finish, then try again.',
       };
     }
@@ -79,7 +95,7 @@ export class AutoGenerateService {
             `Auto-generate blocked: ${unplottedMinors.length} unplotted minor(s) for term=${termId} dept=${deptId}`,
           );
 
-          await this.releaseAutoGenerateLock(termId, userId);
+          await this.releaseAutoGenerateLock(termId, deptId, userId);
 
           return {
             success: false,
@@ -106,7 +122,7 @@ export class AutoGenerateService {
       }
     }
 
-    this.autoGenerateInFlight.add(termId);
+    this.autoGenerateInFlight.add(key);
 
     const starterDHs = await this.recipients.departmentHeadsOf(deptId);
     await this.dispatcher.dispatch('auto_generate.started', {
@@ -149,8 +165,8 @@ export class AutoGenerateService {
           },
         });
 
-        this.autoGenerateInFlight.delete(termId);
-        await this.releaseAutoGenerateLock(termId, userId);
+        this.autoGenerateInFlight.delete(key);
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
         return {
           success: false,
           message: sufficiency.hint,
@@ -163,8 +179,8 @@ export class AutoGenerateService {
         result = await this.solverClient.solve(problem);
       } catch (err) {
         this.logger.error('Solver service call failed', err as Error);
-        this.autoGenerateInFlight.delete(termId);
-        await this.releaseAutoGenerateLock(termId, userId);
+        this.autoGenerateInFlight.delete(key);
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
 
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
@@ -183,8 +199,8 @@ export class AutoGenerateService {
       }
 
       if (result.status !== 'success') {
-        this.autoGenerateInFlight.delete(termId);
-        await this.releaseAutoGenerateLock(termId, userId);
+        this.autoGenerateInFlight.delete(key);
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
 
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
@@ -211,8 +227,8 @@ export class AutoGenerateService {
           `Solver produced ${validation.hardFailures.length} hard failures`,
           validation.hardFailures,
         );
-        this.autoGenerateInFlight.delete(termId);
-        await this.releaseAutoGenerateLock(termId, userId);
+        this.autoGenerateInFlight.delete(key);
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
 
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
@@ -240,10 +256,10 @@ export class AutoGenerateService {
         result.schedule,
         userId,
       );
-      await this.persistUnscheduled(termId, result.unscheduled ?? []);
+      await this.persistUnscheduled(termId, deptId, result.unscheduled ?? []);
 
-      await this.markAutoGeneratePending(termId, userId);
-      this.autoGenerateInFlight.delete(termId);
+      await this.markAutoGeneratePending(termId, deptId, userId);
+      this.autoGenerateInFlight.delete(key);
 
       await this.dispatcher.dispatch('auto_generate.finished', {
         recipientUserIds: starterDHs,
@@ -262,8 +278,8 @@ export class AutoGenerateService {
         unscheduled: result.unscheduled ?? [],
       };
     } catch (err) {
-      this.autoGenerateInFlight.delete(termId);
-      await this.releaseAutoGenerateLock(termId, userId);
+      this.autoGenerateInFlight.delete(key);
+      await this.releaseAutoGenerateLock(termId, deptId, userId);
       throw err;
     }
   }
@@ -390,9 +406,7 @@ export class AutoGenerateService {
       .in('faculty_id', facultyIds)
       .in('subject_id', cpeSubjectIdList);
 
-        // ── H-14: unavailability for the dept's faculty ──
-    // Loaded once; term-scoped rows AND term-agnostic rows.
-    // The solver forbids any candidate that overlaps a blocked window.
+    // ── H-14: unavailability for the dept's faculty ──
     const { data: unavailabilityRows, error: unavailErr } = await db
       .from('faculty_unavailability')
       .select('faculty_id, day_of_week, start_time, end_time, reason, term_id')
@@ -423,19 +437,23 @@ export class AutoGenerateService {
       throw new BadRequestException('No active rooms available');
     }
 
-        // ── F3: room preferences ──
+    // ── F3: room preferences ──
     const { data: roomPreferences, error: prefErr } = await db
       .from('room_preference')
       .select('room_id, dept_id, priority')
       .eq('dept_id', deptId);
 
     if (prefErr) {
-      // Non-fatal: log and continue without preferences
       this.logger.warn(
         `Failed to load room preferences for dept ${deptId}: ${prefErr.message}`,
       );
     }
 
+    // ── Existing schedule (ALL departments in the term) ──
+    // This is intentionally NOT dept-scoped. The solver must see other
+    // departments' plotted rows so it avoids their rooms, faculty, and
+    // sections. As of Phase 2 the lock is dept-scoped, so those rows
+    // persist across concurrent generations.
     const { data: existingScheduleRows, error: existErr } = await db
       .from('schedule')
       .select(
@@ -531,7 +549,7 @@ export class AutoGenerateService {
         capacity: r.capacity ?? null,
         deptId: r.dept_id ? String(r.dept_id) : null,
       })),
-      roomPreferences: (roomPreferences ?? []).map((p) => ({    // ← NEW
+      roomPreferences: (roomPreferences ?? []).map((p) => ({
         deptId: String(p.dept_id),
         roomId: String(p.room_id),
         priority: Number(p.priority ?? 1),
@@ -722,6 +740,10 @@ export class AutoGenerateService {
   ): Promise<Schedule[]> {
     const db = this.supabase.getAdminClient();
 
+    // ⚠️ PHASE 3 will add `.eq('dept_id', deptId)` here.
+    // For now the delete is still term-scoped; Phase 3 fixes it.
+    // (Kept identical to pre-Phase-2 behavior so this phase stays
+    // focused on the lock plumbing and produces no surprising diffs.)
     const { error: clearErr } = await db
       .from('schedule')
       .delete()
@@ -735,7 +757,7 @@ export class AutoGenerateService {
       );
     } else {
       this.logger.log(
-        `Cleared prior auto-generated drafts for term=${termId}`,
+        `Cleared prior auto-generated drafts for term=${termId} dept=${deptId}`,
       );
     }
 
@@ -831,6 +853,7 @@ export class AutoGenerateService {
 
   private async persistUnscheduled(
     termId: string,
+    deptId: string,
     unscheduled: Array<{
       sectionId: string;
       subjectId: string;
@@ -840,6 +863,8 @@ export class AutoGenerateService {
   ): Promise<void> {
     const db = this.supabase.getAdminClient();
 
+    // ⚠️ PHASE 3 will scope this delete to the department as well.
+    // Kept term-only for now so Phase 2 stays focused on lock plumbing.
     const { error: clearErr } = await db
       .from('schedule_unscheduled')
       .delete()
@@ -872,7 +897,7 @@ export class AutoGenerateService {
     }
 
     this.logger.log(
-      `Persisted ${rows.length} unscheduled block(s) for term=${termId}`,
+      `Persisted ${rows.length} unscheduled block(s) for term=${termId} dept=${deptId}`,
     );
   }
 
@@ -924,12 +949,25 @@ export class AutoGenerateService {
     }));
   }
 
-  async clearAutoDrafts(termId: string): Promise<{ deleted: number }> {
+  /**
+   * Phase 2: department-scoped. Deletes only drafts generated by solver
+   * that belong to the given department. Cross-dept rows (CPE running
+   * while EE discards, etc.) are left alone.
+   *
+   * The delete predicate combines term_id + status + remarks marker +
+   * dept_id. `dept_id` is what makes this safe; the others keep us
+   * within the "auto-generated draft" namespace.
+   */
+  async clearAutoDrafts(
+    termId: string,
+    deptId: string,
+  ): Promise<{ deleted: number }> {
     const { data, error } = await this.supabase
       .getAdminClient()
       .from('schedule')
       .delete()
       .eq('term_id', termId)
+      .eq('dept_id', deptId)
       .eq('status', 'draft')
       .like('remarks', 'Auto-generated by solver%')
       .select('schedule_id');
@@ -943,7 +981,7 @@ export class AutoGenerateService {
 
     const deleted = data?.length ?? 0;
     this.logger.log(
-      `Cleared ${deleted} auto-generated draft(s) for term=${termId}`,
+      `Cleared ${deleted} auto-generated draft(s) for term=${termId} dept=${deptId}`,
     );
     return { deleted };
   }
@@ -959,16 +997,6 @@ export class AutoGenerateService {
     }>;
     hint: string;
   } {
-    // ═══════════════════════════════════════════════════════════════
-    // Sufficiency analysis — per (roomType, kind) demand vs supply.
-    //
-    // 'any' subjects contribute demand to two pools:
-    //   - their lecture blocks  → 'lecture_room' pool
-    //   - their lab blocks      → 'laboratory' pool
-    //
-    // Pure subjects contribute to their exact room type.
-    // ═══════════════════════════════════════════════════════════════
-
     const demandByType = new Map<string, number>();
 
     const addDemand = (roomType: string, hours: number) => {
@@ -994,7 +1022,6 @@ export class AutoGenerateService {
       for (const block of blocks) {
         const hours = (block.durationMinutes / 60) * sectionsTaking;
 
-        // Mixed / unset → kind decides
         if (required === '' || required === 'any') {
           if (block.kind === 'lab') {
             addDemand('laboratory', hours);
@@ -1004,7 +1031,6 @@ export class AutoGenerateService {
           continue;
         }
 
-        // Pure subject → exact room type
         addDemand(subj.requiredRoomType as string, hours);
       }
     }
@@ -1014,15 +1040,6 @@ export class AutoGenerateService {
     const hoursPerDay = (endMin - startMin) / 60;
     const operatingDays = 6;
     const hoursPerWeekPerRoom = hoursPerDay * operatingDays;
-
-    // ═══════════════════════════════════════════════════════════════
-    // Supply — count rooms that can serve each pool.
-    //
-    // Lecture pool: lecture_room + drafting_room + computer_lab + laboratory
-    // Lab pool:     laboratory + computer_lab
-    //
-    // (This mirrors the solver's room_accepts_block permissive behavior.)
-    // ═══════════════════════════════════════════════════════════════
 
     const lectureCapable = new Set([
       'lecture_room',
@@ -1037,13 +1054,11 @@ export class AutoGenerateService {
         capable.has(String(r.roomType)),
       ).length;
 
-    // Supply in weekly room-hours per pool
     const supplyByType = new Map<string, number>();
 
     const pools: Array<{ key: string; capable: Set<string> }> = [
       { key: 'lecture_room', capable: lectureCapable },
       { key: 'laboratory', capable: labCapable },
-      // Pure-subject exact types still get their own pool
       { key: 'computer_lab', capable: new Set(['computer_lab']) },
       { key: 'drafting_room', capable: new Set(['drafting_room']) },
       { key: 'other', capable: new Set(['other']) },
@@ -1054,10 +1069,6 @@ export class AutoGenerateService {
       supplyByType.set(key, rooms * hoursPerWeekPerRoom);
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // Compare demand against supply, but only for pools that have demand.
-    // ═══════════════════════════════════════════════════════════════
-
     const deficits: Array<{
       roomType: string;
       neededHours: number;
@@ -1067,8 +1078,6 @@ export class AutoGenerateService {
     }> = [];
 
     for (const [roomType, demandHours] of demandByType.entries()) {
-      // If we don't have an explicit pool for this type (custom / 'other'),
-      // treat the raw room type as its own supply pool.
       let availableHours = supplyByType.get(roomType);
       if (availableHours === undefined) {
         const rooms = problem.rooms.filter(
@@ -1302,23 +1311,26 @@ export class AutoGenerateService {
 
   // ════════════════════════════════════════════
   // AUTO-GENERATE LOCK (row-based, PostgREST-safe)
+  // Phase 2: dept-scoped. Each (term, dept) is independent.
   // ════════════════════════════════════════════
 
   private async tryAcquireAutoGenerateLock(
     termId: string,
+    deptId: string,
     userId: string,
   ): Promise<boolean> {
     const { data, error } = await this.supabase
       .getAdminClient()
       .rpc('try_acquire_auto_generate_lock', {
         p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
         p_user_id: userId,
         p_ttl_seconds: 120,
       });
 
     if (error) {
       this.logger.error(
-        `Failed to acquire auto-generate lock for term=${termId}: ${error.message}`,
+        `Failed to acquire auto-generate lock for term=${termId} dept=${deptId}: ${error.message}`,
       );
       return false;
     }
@@ -1328,69 +1340,82 @@ export class AutoGenerateService {
 
   private async releaseAutoGenerateLock(
     termId: string,
+    deptId: string,
     userId: string,
   ): Promise<void> {
     const { error } = await this.supabase
       .getAdminClient()
       .rpc('release_auto_generate_lock', {
         p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
         p_user_id: userId,
       });
 
     if (error) {
       this.logger.warn(
-        `Failed to release auto-generate lock for term=${termId}: ${error.message}`,
+        `Failed to release auto-generate lock for term=${termId} dept=${deptId}: ${error.message}`,
       );
     }
   }
 
   private async markAutoGeneratePending(
     termId: string,
+    deptId: string,
     userId: string,
   ): Promise<void> {
     const { error } = await this.supabase
       .getAdminClient()
       .rpc('mark_auto_generate_pending', {
         p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
         p_user_id: userId,
         p_ttl_seconds: 600,
       });
     if (error) {
       this.logger.warn(
-        `Failed to mark pending lock for term=${termId}: ${error.message}`,
+        `Failed to mark pending lock for term=${termId} dept=${deptId}: ${error.message}`,
       );
     }
   }
 
-  async confirmAutoGenerate(termId: string, userId: string): Promise<void> {
-    await this.releaseAutoGenerateLock(termId, userId);
-    this.logger.log(`Auto-generate confirmed for term=${termId}`);
+  async confirmAutoGenerate(
+    termId: string,
+    deptId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.releaseAutoGenerateLock(termId, deptId, userId);
+    this.logger.log(
+      `Auto-generate confirmed for term=${termId} dept=${deptId}`,
+    );
   }
 
   async discardAutoGenerate(
     termId: string,
+    deptId: string,
     userId: string,
   ): Promise<{ deleted: number }> {
-    const result = await this.clearAutoDrafts(termId);
-    await this.releaseAutoGenerateLock(termId, userId);
+    const result = await this.clearAutoDrafts(termId, deptId);
+    await this.releaseAutoGenerateLock(termId, deptId, userId);
     this.logger.log(
-      `Auto-generate discarded for term=${termId} (${result.deleted} rows deleted)`,
+      `Auto-generate discarded for term=${termId} dept=${deptId} (${result.deleted} rows deleted)`,
     );
     return result;
   }
 
   async abandonAutoGenerate(
     termId: string,
+    deptId: string,
     userId: string,
   ): Promise<void> {
-    await this.releaseAutoGenerateLock(termId, userId);
+    await this.releaseAutoGenerateLock(termId, deptId, userId);
     this.logger.log(
-      `Auto-generate abandoned for term=${termId} by=${userId}`,
+      `Auto-generate abandoned for term=${termId} dept=${deptId} by=${userId}`,
     );
   }
 
   async getAutoGenerateLock(
     termId: string,
+    deptId: string,
     userId: string,
   ): Promise<{
     heldByUser: boolean;
@@ -1399,11 +1424,14 @@ export class AutoGenerateService {
   } | null> {
     const { data, error } = await this.supabase
       .getAdminClient()
-      .rpc('get_auto_generate_lock', { p_term_id: Number(termId) });
+      .rpc('get_auto_generate_lock', {
+        p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
+      });
 
     if (error) {
       this.logger.warn(
-        `Failed to get auto-generate lock for term=${termId}: ${error.message}`,
+        `Failed to get auto-generate lock for term=${termId} dept=${deptId}: ${error.message}`,
       );
       return null;
     }

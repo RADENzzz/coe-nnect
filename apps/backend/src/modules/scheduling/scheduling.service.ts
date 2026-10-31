@@ -892,27 +892,27 @@ export class SchedulingService {
     return this.autoGenerateService.getUnscheduled(termId);
   }
 
-  clearAutoDrafts(termId: string) {
-    return this.autoGenerateService.clearAutoDrafts(termId);
+  clearAutoDrafts(termId: string, deptId: string) {
+    return this.autoGenerateService.clearAutoDrafts(termId, deptId);
   }
 
   getRoomSufficiency(deptId?: string, termId?: string) {
     return this.autoGenerateService.getRoomSufficiency(deptId, termId);
   }
 
-  confirmAutoGenerate(termId: string, userId: string) {
-    return this.autoGenerateService.confirmAutoGenerate(termId, userId);
+  confirmAutoGenerate(termId: string, deptId: string, userId: string) {
+    return this.autoGenerateService.confirmAutoGenerate(termId, deptId, userId);
   }
 
-  discardAutoGenerate(termId: string, userId: string) {
-    return this.autoGenerateService.discardAutoGenerate(termId, userId);
+  discardAutoGenerate(termId: string, deptId: string, userId: string) {
+    return this.autoGenerateService.discardAutoGenerate(termId, deptId, userId);
   }
 
-  abandonAutoGenerate(termId: string, userId: string) {
-    return this.autoGenerateService.abandonAutoGenerate(termId, userId);
+  abandonAutoGenerate(termId: string, deptId: string, userId: string) {
+    return this.autoGenerateService.abandonAutoGenerate(termId, deptId, userId);
   }
 
-  getAutoGenerateLock(termId: string, userId: string) {
-    return this.autoGenerateService.getAutoGenerateLock(termId, userId);
+  getAutoGenerateLock(termId: string, deptId: string, userId: string) {
+    return this.autoGenerateService.getAutoGenerateLock(termId, deptId, userId);
   }
 }
