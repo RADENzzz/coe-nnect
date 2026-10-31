@@ -132,7 +132,7 @@ export default function DeanDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-5 flex flex-wrap items-start justify-between gap-3">
+      <div className="border-b border-slate-200 pb-5 flex flex-wrap items-start justify-between gap-3" data-tour="dean-dash-header">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Dean's Overview
@@ -192,7 +192,7 @@ export default function DeanDashboardPage() {
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dean-dash-stats">
         <StatCard
           icon="corporate_fare"
           label="Active Departments"
@@ -233,7 +233,7 @@ export default function DeanDashboardPage() {
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Departments list */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm">
+        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm" data-tour="dean-dash-departments">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">
               Active Departments
