@@ -385,9 +385,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =
     useQuery({
-      queryKey: ['pending-auto-generate', activeTerm?.termId],
-      queryFn: () => getPendingAutoGenerate(activeTerm!.termId),
-      enabled: !!activeTerm?.termId && !!user && !activeVersion,
+      queryKey: ['pending-auto-generate', activeTerm?.termId, myDeptId],
+      queryFn: () => getPendingAutoGenerate(activeTerm!.termId, myDeptId),
+      enabled: !!activeTerm?.termId && !!myDeptId && !!user && !activeVersion,
       refetchOnMount: true,
       staleTime: 30 * 1000,
     });
@@ -603,10 +603,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, [activeTerm]);
 
   const handleDiscardPendingPreview = useCallback(async () => {
-    if (!activeTerm) return;
-    queryClient.setQueryData(['pending-auto-generate', activeTerm.termId], null);
+    if (!activeTerm || !myDeptId) return;
+    queryClient.setQueryData(
+      ['pending-auto-generate', activeTerm.termId, myDeptId],
+      null,
+    );
     try {
-      await discardAutoGenerate(activeTerm.termId);
+      await discardAutoGenerate(activeTerm.termId, myDeptId);
     } catch (err) {
       const { title, message, details } = extractApiError(err);
       setAlertState({
@@ -623,7 +626,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       });
     }
     refetchPendingAutoGenerate();
-  }, [activeTerm, queryClient, refetchPendingAutoGenerate]);
+  }, [activeTerm, myDeptId, queryClient, refetchPendingAutoGenerate]);
 
   const invalidateAfterAutoGenerate = useCallback(
     (termId: string) => {
@@ -640,10 +643,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
   );
 
   const handleAcceptPreview = useCallback(async () => {
-    if (!activeTerm) return;
-    queryClient.setQueryData(['pending-auto-generate', activeTerm.termId], null);
+    if (!activeTerm || !myDeptId) return;
+    queryClient.setQueryData(
+      ['pending-auto-generate', activeTerm.termId, myDeptId],
+      null,
+    );
     try {
-      await confirmAutoGenerate(activeTerm.termId);
+      await confirmAutoGenerate(activeTerm.termId, myDeptId);
     } catch (err) {
       const { title, message, details } = extractApiError(err);
       setAlertState({
@@ -666,16 +672,20 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [
     activeTerm,
+    myDeptId,
     queryClient,
     refetchPendingAutoGenerate,
     invalidateAfterAutoGenerate,
   ]);
 
   const handleDiscardPreview = useCallback(async () => {
-    if (!activeTerm) return;
-    queryClient.setQueryData(['pending-auto-generate', activeTerm.termId], null);
+    if (!activeTerm || !myDeptId) return;
+    queryClient.setQueryData(
+      ['pending-auto-generate', activeTerm.termId, myDeptId],
+      null,
+    );
     try {
-      await discardAutoGenerate(activeTerm.termId);
+      await discardAutoGenerate(activeTerm.termId, myDeptId);
     } catch (err) {
       const { title, message, details } = extractApiError(err);
       setAlertState({
@@ -698,6 +708,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate();
   }, [
     activeTerm,
+    myDeptId,
     queryClient,
     refetchPendingAutoGenerate,
     invalidateAfterAutoGenerate,
@@ -766,7 +777,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       }
 
       try {
-        await abandonAutoGenerate(activeTerm.termId);
+        await abandonAutoGenerate(activeTerm.termId, myDeptId);
       } catch {
         /* ignore — abandon is best-effort */
       }
@@ -1099,7 +1110,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               <h2 className="text-xl font-bold text-slate-900">Generating Schedule</h2>
               <p className="text-sm text-slate-500 mt-2">
                 {serverSideGenerating && !autoGenerating
-                  ? 'Another user is currently generating a schedule. Please wait for them to finish.'
+                  ? 'Someone else in your department is currently generating a schedule. Please wait for them to finish.'
                   : 'The solver is currently placing subjects. This may take up to a minute. Do not refresh or close this page.'}
               </p>
             </div>
@@ -1311,8 +1322,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
             <div className="mb-4 p-3 rounded-xl border border-blue-200 bg-blue-50 flex items-center gap-3">
               <span className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
               <p className="text-sm text-blue-900">
-                Someone else is currently generating a schedule for this term.
-                Please wait for it to finish.
+                Someone else in your department is currently generating a
+                schedule. Please wait for it to finish.
               </p>
             </div>
           )}
