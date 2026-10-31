@@ -249,7 +249,7 @@ export default function SystemConfigPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3 flex-wrap" data-tour="sysconfig-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">
             System Settings
@@ -306,7 +306,9 @@ export default function SystemConfigPage() {
       )}
 
       {/* Academic Terms — FR 7.1.4 */}
-      <TermsPanel isAdmin={isAdmin} />
+      <div data-tour="sysconfig-terms">
+        <TermsPanel isAdmin={isAdmin} />
+      </div>
 
       {isLoading ? (
         <div className="flex items-center gap-2 text-on-surface-variant">
@@ -314,7 +316,7 @@ export default function SystemConfigPage() {
           Loading settings…
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-5" data-tour="sysconfig-groups">
           {GROUPS.map((group) => (
             <section
               key={group.title}
