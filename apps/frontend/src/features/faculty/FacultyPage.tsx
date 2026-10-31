@@ -869,7 +869,7 @@ export default function FacultyPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="faculty-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Faculty</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -951,7 +951,7 @@ export default function FacultyPage() {
       )}
 
       {/* ── Filter panel ── */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden" data-tour="faculty-filters">
         {/* Panel header — always visible */}
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <button
@@ -1238,6 +1238,7 @@ export default function FacultyPage() {
           </button>
         </div>
       ) : (
+        <div data-tour="faculty-table">
 <ResponsiveTable
   columns={columns}
   rows={filteredFaculty}
@@ -1251,6 +1252,7 @@ export default function FacultyPage() {
   getActions={getActions}
   onRowClick={(f) => setInfoFaculty(f)}
 />
+        </div>
       )}
 
       {/* ── Create / Edit modal ── */}
