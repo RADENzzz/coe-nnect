@@ -371,8 +371,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, [schedules]);
 
   const { data: unscheduledRecords = [] } = useQuery({
-    queryKey: ['unscheduled', activeTerm?.termId],
-    queryFn: () => fetchUnscheduled(activeTerm!.termId),
+    queryKey: ['unscheduled', activeTerm?.termId, myDeptId],
+    queryFn: () => fetchUnscheduled(activeTerm!.termId, myDeptId || undefined),
     enabled: !!user && !!activeTerm && !activeVersion,
   });
 
@@ -574,7 +574,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     try {
       const fresh = await fetchSchedules(activeTerm.termId);
       setAutoPreview(fresh.map(toEntry));
-      const unscheduled = await fetchUnscheduled(activeTerm.termId);
+      const unscheduled = await fetchUnscheduled(activeTerm.termId, myDeptId);
       setAutoUnscheduled(
         unscheduled.map((u) => ({
           sectionId: u.sectionId ?? '',
@@ -600,7 +600,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         ],
       });
     }
-  }, [activeTerm]);
+  }, [activeTerm, myDeptId]);
 
   const handleDiscardPendingPreview = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;

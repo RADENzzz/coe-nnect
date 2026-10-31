@@ -39,8 +39,23 @@ export class SchedulingController {
   // ═══════════════════════════════════════════════════════════
 
   @Get('unscheduled')
-  async getUnscheduled(@Query('termId') termId: string) {
-    const data = await this.service.getUnscheduled(termId);
+  async getUnscheduled(
+    @Query('termId') termId: string,
+    @Query('deptId') deptId?: string,
+    @Req() req?: any,
+  ) {
+    // DH always sees only their own; Dean may pass a specific dept,
+    // or omit to see all.
+    const effectiveDeptId =
+      req?.profile?.role === 'department_head'
+        ? req.profile.deptId
+          ? String(req.profile.deptId)
+          : undefined
+        : deptId;
+    const data = await this.service.getUnscheduled(
+      termId,
+      effectiveDeptId,
+    );
     return { data };
   }
 
