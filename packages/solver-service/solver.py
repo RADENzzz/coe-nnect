@@ -402,12 +402,10 @@ def solve_schedule(req: SolveRequest) -> dict:
         sec_id, subj_id, kind, sess_idx, day, start_min, room_id, fac_id = k
         session_by_day[(sec_id, subj_id, kind, day)].append(v)
 
-    # Group by (section, subject, kind) → list of (day, [vars for that day])
     grouped: Dict[tuple, Dict[str, List]] = defaultdict(lambda: defaultdict(list))
     for (sec_id, subj_id, kind, day), vars_list in session_by_day.items():
         grouped[(sec_id, subj_id, kind)][day] = vars_list
 
-    # For each subject-in-section-in-kind, at most one session per day
     for key, day_vars in grouped.items():
         for day, vars_list in day_vars.items():
             if len(vars_list) > 0:
@@ -436,8 +434,6 @@ def solve_schedule(req: SolveRequest) -> dict:
                 model.Add(v == 0)
 
     # ── HARD: faculty unavailability (H-14) ──
-    # For each faculty member with declared blocks, forbid any variable
-    # that would schedule them during a blocked window.
     unavail_by_fac: Dict[str, List[UnavailabilityBlock]] = defaultdict(list)
     for u in req.unavailability:
         unavail_by_fac[u.facultyId].append(u)
@@ -455,7 +451,6 @@ def solve_schedule(req: SolveRequest) -> dict:
                 continue
             u_start = time_to_min(u.startTime)
             u_end = time_to_min(u.endTime)
-            # Half-open interval overlap: [start, end)
             if start_min < u_end and u_start < end_min:
                 model.Add(v == 0)
                 unavail_forbidden += 1
@@ -483,15 +478,40 @@ def solve_schedule(req: SolveRequest) -> dict:
         cap_minutes = min(cap_minutes, visiting_cap)
         model.Add(sum(v * dur for v, dur in entries) <= cap_minutes)
 
-    # ── SOFT: lunch break penalty ──
+    # ── OBJECTIVE: collect terms, then minimize sum ──
+    objective_terms = []
+
+    # ── SOFT: unscheduled (dominant) ──
+    if unscheduled_vars:
+        objective_terms.append(1000 * sum(u for u, _ in unscheduled_vars))
+
+    # ── SOFT: lunch break penalty (PROPORTIONAL) ──
+    # Fix 2: A block that barely touches lunch (e.g. 30 min overlap)
+    # should cost less than one that fully overlaps the lunch hour.
+    # The max penalty stays at 10 per block (same as before), but it's
+    # now graded by actual overlap minutes instead of a binary hit.
     lunch_start = time_to_min(req.config.lunchStart)
     lunch_end = time_to_min(req.config.lunchEnd)
-    lunch_penalties = []
+    lunch_penalties = []  # list of (var, weight) where weight ∈ 0..10
     for k, v in X.items():
         start_min = k[5]
         dur = block_meta[k]["durationMinutes"]
-        if start_min < lunch_end and start_min + dur > lunch_start:
-            lunch_penalties.append(v)
+        overlap_start = max(start_min, lunch_start)
+        overlap_end = min(start_min + dur, lunch_end)
+        if overlap_end > overlap_start:
+            overlap_min = overlap_end - overlap_start
+            # 30 min overlap → weight 5; 60 min → weight 10; cap at 10.
+            weight = min(int(overlap_min / 6), 10)  # 30/6=5, 60/6=10
+            if weight > 0:
+                lunch_penalties.append((v, weight))
+
+    if lunch_penalties:
+        lunch_term = sum(v * w for v, w in lunch_penalties)
+        objective_terms.append(lunch_term)
+        print(
+            f"[solver] lunch: {len(lunch_penalties)} candidate(s) "
+            f"overlap the lunch window (graded penalty)"
+        )
 
     # ── SOFT: faculty time preference ──
     pref_map: Dict[str, List[Preference]] = defaultdict(list)
@@ -506,19 +526,10 @@ def solve_schedule(req: SolveRequest) -> dict:
         if prefs and not any(p.preferredDay == day for p in prefs):
             pref_penalties.append(v)
 
-    # ── OBJECTIVE ──
-    objective_terms = []
-    if unscheduled_vars:
-        objective_terms.append(1000 * sum(u for u, _ in unscheduled_vars))
-    if lunch_penalties:
-        objective_terms.append(10 * sum(lunch_penalties))
     if pref_penalties:
         objective_terms.append(5 * sum(pref_penalties))
 
-    # ── F3: room preferences ──
-    # Reward placements in a dept-preferred room.
-    # Priority 1 = small nudge; priority 3 = strong push.
-    # CP-SAT minimizes, so we subtract to reward.
+    # ── SOFT: F3 room preferences (reward via negative cost) ──
     if req.roomPreferences:
         pref_lookup: Dict[tuple, int] = {}
         for p in req.roomPreferences:
@@ -533,9 +544,6 @@ def solve_schedule(req: SolveRequest) -> dict:
                 room_pref_reward += v * weight
                 reward_count += 1
 
-        # ⚠️ Test the Python int (reward_count), not the CP-SAT
-        # linear expression (room_pref_reward). Testing the expression
-        # as a bool triggers a RecursionError inside OR-Tools.
         if reward_count > 0:
             objective_terms.append(-2 * room_pref_reward)
             print(
@@ -548,20 +556,25 @@ def solve_schedule(req: SolveRequest) -> dict:
                 f"0 candidate placements matched any scheduled block"
             )
 
-    # ── SOFT: H-4 consecutive-block penalty ──
-    # Penalize placements that produce 3+ consecutive 30-min buckets
-    # for the same faculty on the same day.
+    # ── SOFT: H-4 consecutive-block penalty (FIX 1 — CORRECT VERSION) ──
     #
-    # Approach: for each (faculty, day), build a bucketed slot index
-    # (like add_bucketed_exclusion). If 3+ candidates could co-occupy
-    # an adjacent run, add a soft penalty on the "extra" variables.
+    # The previous implementation counted candidate density, not actual
+    # placements. Because most 90-min windows contain 3+ candidate vars,
+    # every variable got penalized → effectively a flat per-block cost
+    # that did NOT discourage long streaks.
     #
-    # We use CP-SAT linear sums only — no variable multiplication.
-    consecutive_penalty_weight = 3  # soft nudge, well below unscheduled=1000
-    max_consec_min = req.config.maxConsecutiveHours * 60
+    # This version:
+    #   1. Builds a per-30-min-slot index of variables that *cover* that
+    #      slot (already enforced at most 1 per slot by fac_day bucketing).
+    #   2. For each 90-min window, sums coverage (0..3) — the number of
+    #      30-min slots actually occupied.
+    #   3. Penalizes any excess over 2 (i.e. 3+ consecutive slots =
+    #      more than 60 min in a row for that faculty).
+    #
+    # Real signal, real penalty. Clustering is now costly.
+    consecutive_penalty_weight = 3
     consecutive_penalty_terms = []
 
-    # Rebuild a slot index for faculty (same as add_bucketed_exclusion)
     fac_slot_index: Dict[tuple, List] = defaultdict(list)
     for (fac_id, day), entries in fac_day.items():
         for (v, start, dur) in entries:
@@ -570,47 +583,79 @@ def solve_schedule(req: SolveRequest) -> dict:
                 fac_slot_index[(fac_id, day, slot)].append(v)
                 slot += 30
 
-    # For each (faculty, day), find 30-min windows where 3+ consecutive
-    # slots are occupied. Count via "consecutive triple" detection.
-    # Simple approach: penalize the SUM of variables in every
-    # 3-consecutive-slot window that exceeds the max consecutive limit.
     seen_windows = set()
-    for (fac_id, day, slot), vars_list in fac_slot_index.items():
-        # A "3-slot window" starting at this slot covers [slot, slot+90)
+    for (fac_id, day, slot), _ in list(fac_slot_index.items()):
         window_key = (fac_id, day, slot)
         if window_key in seen_windows:
             continue
         seen_windows.add(window_key)
 
-        # Gather all candidates that touch any slot in this 90-min window
-        window_vars = set()
+        coverage_vars = []
         for offset in (0, 30, 60):
-            window_vars.update(
-                fac_slot_index.get((fac_id, day, slot + offset), [])
-            )
+            vs = fac_slot_index.get((fac_id, day, slot + offset), [])
+            coverage_vars.extend(vs)
 
-        # If 3+ candidates could fit consecutively here, add a small
-        # penalty per candidate. This won't forbid the placement — just
-        # disincentivizes it.
-        if len(window_vars) >= 3:
-            for v in window_vars:
-                consecutive_penalty_terms.append(v)
+        if len(coverage_vars) < 3:
+            # Can't ever produce a 3-slot run — skip.
+            continue
+
+        coverage_sum = sum(coverage_vars)
+        excess = model.NewIntVar(
+            0, 3, f"h4_excess_{fac_id}_{day[:3]}_{slot}"
+        )
+        model.Add(excess >= coverage_sum - 2)
+        consecutive_penalty_terms.append(excess)
 
     if consecutive_penalty_terms:
-        # Deduplicate — a candidate can appear in many overlapping
-        # windows; without this, the penalty weight scales non-linearly
-        # with chain length.
-        unique_terms = list(set(consecutive_penalty_terms))
         objective_terms.append(
-            consecutive_penalty_weight * sum(unique_terms)
+            consecutive_penalty_weight * sum(consecutive_penalty_terms)
         )
         print(
-            f"[solver] H-4: {len(unique_terms)} candidate(s) "
-            f"penalized for consecutive-block risk"
+            f"[solver] H-4: {len(consecutive_penalty_terms)} window(s) "
+            f"with consecutive-block risk"
         )
-    
+
+    # ── SOFT: SPREAD across (day, hour) buckets (FIX 3) ──
+    #
+    # Caps how many blocks start in the same (day, hour) at 2 for free,
+    # and charges 5 per block beyond that. This counteracts the natural
+    # clustering that emerges from the lunch penalty and small faculty
+    # pools (e.g. GE has 2 faculty → 11 blocks clustered at hour 11).
+    #
+    # Weight 5 matches prefs=5: meaningful but not dominant. A bucket
+    # with 5 blocks costs 15, with 11 blocks costs 45. Unscheduled is
+    # still 1000/block, so spreading never causes a block to be dropped.
+    spread_penalties = []
+    hour_buckets: Dict[tuple, List] = defaultdict(list)
+    for k, v in X.items():
+        day = k[4]
+        start_min = k[5]
+        hour = start_min // 60
+        hour_buckets[(day, hour)].append(v)
+
+    for (day, hour), vars_list in hour_buckets.items():
+        if len(vars_list) < 3:
+            # Can't exceed 2 in any assignment.
+            continue
+        count = model.NewIntVar(
+            0, len(vars_list), f"spread_count_{day[:3]}_{hour}"
+        )
+        model.Add(count == sum(vars_list))
+        excess = model.NewIntVar(
+            0, len(vars_list), f"spread_excess_{day[:3]}_{hour}"
+        )
+        model.Add(excess >= count - 2)
+        spread_penalties.append(excess)
+
+    if spread_penalties:
+        objective_terms.append(5 * sum(spread_penalties))
+        print(
+            f"[solver] spread: {len(spread_penalties)} (day, hour) "
+            f"bucket(s) capped at 2 blocks for free"
+        )
+
+    # ── Apply objective ──
     if objective_terms:
-        
         model.Minimize(sum(objective_terms))
 
     # ── SOLVE ──
