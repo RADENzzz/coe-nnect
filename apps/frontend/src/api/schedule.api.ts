@@ -227,10 +227,11 @@ export async function getPendingAutoGenerate(
 
 export async function fetchUnscheduled(
   termId: string,
+  deptId?: string,
 ): Promise<UnscheduledRecord[]> {
-  const { data } = await api.get('/v1/schedules/unscheduled', {
-    params: { termId },
-  });
+  const params: Record<string, string> = { termId };
+  if (deptId) params.deptId = deptId;
+  const { data } = await api.get('/v1/schedules/unscheduled', { params });
   return data.data;
 }
 
