@@ -16,6 +16,7 @@ export default function BottomNav({ items, badges }: BottomNavProps) {
       className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-white border-t border-slate-200 flex justify-around items-stretch z-40"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       aria-label="Primary"
+      data-tour="bottom-nav"
     >
       {items.slice(0, 4).map((item) => {
         const badge = badges?.[item.path];
