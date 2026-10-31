@@ -465,7 +465,7 @@ export default function DeanApprovalsPage() {
   return (
     <div className="space-y-6 pb-24">
       {/* Header */}
-      <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap">
+      <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap" data-tour="dean-approvals-header">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Schedule Approvals
@@ -503,7 +503,7 @@ export default function DeanApprovalsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-slate-200">
+      <div className="flex gap-0 border-b border-slate-200" data-tour="dean-approvals-tabs">
         {(
           [
             { id: 'review', label: `Pending Review (${reviewCount})` },
@@ -527,7 +527,7 @@ export default function DeanApprovalsPage() {
 
       {/* Filter panel */}
       {activeTerm && (
-        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
+        <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3" data-tour="dean-approvals-filters">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]">
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -657,34 +657,36 @@ export default function DeanApprovalsPage() {
           </p>
         </div>
       ) : (
-        <ResponsiveTable
-          columns={columns}
-          rows={filtered}
-          rowKey={(s) => s.scheduleId}
-          rowTitle={(s) => s.subject?.subjectCode ?? 'Schedule'}
-          rowSubtitle={(s) => {
-            const dept = getDeptOfSchedule(s);
-            const fac = s.faculty
-              ? `${s.faculty.firstName} ${s.faculty.lastName}`
-              : 'Unassigned';
-            return dept ? `[${dept.code}] ${fac}` : fac;
-          }}
-          isLoading={isLoading}
-          hasSourceRows={schedules.length > 0}
-          emptyMessage={
-            tab === 'review'
-              ? 'No pending approvals — all schedules are up to date.'
-              : 'No schedules yet.'
-          }
-          noMatchMessage="No schedules match your filters."
-          getActions={getActions}
-          selectable
-          selectedKeys={effectiveSelectedIds}
-          onSelectionChange={setSelectedIds}
-          onRowClick={(s) =>
-            navigate(`/dean/timetable?focus=${s.scheduleId}`)
-          }
-        />
+        <div data-tour="dean-approvals-table">
+          <ResponsiveTable
+            columns={columns}
+            rows={filtered}
+            rowKey={(s) => s.scheduleId}
+            rowTitle={(s) => s.subject?.subjectCode ?? 'Schedule'}
+            rowSubtitle={(s) => {
+              const dept = getDeptOfSchedule(s);
+              const fac = s.faculty
+                ? `${s.faculty.firstName} ${s.faculty.lastName}`
+                : 'Unassigned';
+              return dept ? `[${dept.code}] ${fac}` : fac;
+            }}
+            isLoading={isLoading}
+            hasSourceRows={schedules.length > 0}
+            emptyMessage={
+              tab === 'review'
+                ? 'No pending approvals — all schedules are up to date.'
+                : 'No schedules yet.'
+            }
+            noMatchMessage="No schedules match your filters."
+            getActions={getActions}
+            selectable
+            selectedKeys={effectiveSelectedIds}
+            onSelectionChange={setSelectedIds}
+            onRowClick={(s) =>
+              navigate(`/dean/timetable?focus=${s.scheduleId}`)
+            }
+          />
+        </div>
       )}
 
       {/* ── Floating BulkActionBar ── */}
