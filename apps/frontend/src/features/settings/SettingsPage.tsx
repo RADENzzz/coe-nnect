@@ -47,7 +47,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-6" data-tour="settings-header">
         <h1 className="text-2xl md:text-3xl font-bold text-primary flex items-center gap-2">
           <Icon name="settings" size={28} />
           Settings
@@ -57,7 +57,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <div className="border-b border-surface-variant mb-6">
+      <div className="border-b border-surface-variant mb-6" data-tour="settings-tabs">
         <nav
           className="-mb-px flex gap-4 overflow-x-auto"
           aria-label="Settings tabs"
@@ -92,6 +92,7 @@ export default function SettingsPage() {
         role="tabpanel"
         id={`settings-panel-${active}`}
         aria-labelledby={`settings-tab-${active}`}
+        data-tour="settings-panel"
       >
         {active === 'appearance' && <AppearanceSettingsTab />}
         {active === 'notifications' && <NotificationSettingsTab />}
