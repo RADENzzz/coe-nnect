@@ -35,6 +35,28 @@ export async function gotoApp(page: Page, path: string): Promise<void> {
 }
 
 /**
+ * Mark the tutorial onboarding as already acknowledged. Each Playwright test
+ * runs in a fresh browser context, so without this the TutorialProvider
+ * auto-opens its first-run welcome modal right after login — and that
+ * modal's full-screen backdrop intercepts every subsequent click.
+ */
+export async function seedTutorialState(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem(
+        'coe-nnect:tutorial:v1',
+        JSON.stringify({
+          onboardedAt: new Date().toISOString(),
+          completed: {},
+        }),
+      );
+    } catch {
+      /* Storage unavailable — ignore. */
+    }
+  });
+}
+
+/**
  * Sign in through the real login form. Each test starts with a fresh browser
  * context, so this also verifies that the test users can authenticate against
  * the dedicated Supabase project.
@@ -45,6 +67,7 @@ export async function loginAs(page: Page, role: E2eRole): Promise<void> {
   const password =
     role === 'head' ? state.headPassword : state.deanPassword;
 
+  await seedTutorialState(page);
   await gotoApp(page, '/login');
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
