@@ -888,8 +888,8 @@ export class SchedulingService {
     return this.autoGenerateService.autoGenerate(termId, deptId, userId, options);
   }
 
-  getUnscheduled(termId: string) {
-    return this.autoGenerateService.getUnscheduled(termId);
+  getUnscheduled(termId: string, deptId?: string) {
+    return this.autoGenerateService.getUnscheduled(termId, deptId);
   }
 
   clearAutoDrafts(termId: string, deptId: string) {
