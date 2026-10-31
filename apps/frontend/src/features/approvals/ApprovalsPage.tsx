@@ -478,7 +478,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 flex-wrap" data-tour="approvals-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">
             Faculty Requests
@@ -511,7 +511,7 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-tour="approvals-scope">
         <button
           onClick={() => setScopeFilter('all')}
           className={`p-4 rounded-xl border text-left transition ${
@@ -570,7 +570,7 @@ export default function ApprovalsPage() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4">
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4" data-tour="approvals-filters">
         <div className="flex flex-wrap items-end gap-3 mb-3">
           <div className="flex-1 min-w-[240px]">
             <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -635,24 +635,26 @@ export default function ApprovalsPage() {
         </div>
       </div>
 
-      <ResponsiveTable
-        columns={columns}
-        rows={filtered}
-        rowKey={(r) => r.requestId}
-        rowTitle={(r) =>
-          `${deptName(r.requestingDeptId)} → ${deptName(r.targetDeptId)}`
-        }
-        rowSubtitle={(r) => r.reason}
-        isLoading={isLoading}
-        hasSourceRows={requests.length > 0}
-        emptyMessage={
-          filter === 'all' && !searchQuery && scopeFilter === 'all'
-            ? 'No requests yet.'
-            : 'No requests match your filters.'
-        }
-        noMatchMessage="No requests match your filters."
-        getActions={getActions}
-      />
+      <div data-tour="approvals-table">
+        <ResponsiveTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(r) => r.requestId}
+          rowTitle={(r) =>
+            `${deptName(r.requestingDeptId)} → ${deptName(r.targetDeptId)}`
+          }
+          rowSubtitle={(r) => r.reason}
+          isLoading={isLoading}
+          hasSourceRows={requests.length > 0}
+          emptyMessage={
+            filter === 'all' && !searchQuery && scopeFilter === 'all'
+              ? 'No requests yet.'
+              : 'No requests match your filters.'
+          }
+          noMatchMessage="No requests match your filters."
+          getActions={getActions}
+        />
+      </div>
 
       <Modal
         open={showForm}
