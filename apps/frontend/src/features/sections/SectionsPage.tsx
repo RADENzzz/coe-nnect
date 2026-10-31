@@ -733,7 +733,7 @@ export default function SectionsPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="sections-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Sections</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -861,7 +861,7 @@ export default function SectionsPage() {
       )}
 
       {/* ── Filter panel ── */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden" data-tour="sections-filters">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <button
             type="button"
@@ -1036,7 +1036,8 @@ export default function SectionsPage() {
           </button>
         </div>
       ) : (
-        <ResponsiveTable
+        <div data-tour="sections-table">
+          <ResponsiveTable
           columns={columns}
           rows={filteredSections}
           rowKey={(s) => s.sectionId}
@@ -1059,7 +1060,8 @@ export default function SectionsPage() {
               </button>
             ) : undefined
           }
-        />
+          />
+        </div>
       )}
 
       {/* ── Create / Edit modal ── */}
