@@ -463,7 +463,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3" data-tour="users-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Users</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -491,7 +491,7 @@ export default function AdminUsersPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
+      <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest" data-tour="users-filters">
         <div className="flex-1 min-w-[220px]">
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
             Search
@@ -570,19 +570,21 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      <ResponsiveTable
-        columns={columns}
-        rows={filteredUsers}
-        rowKey={(u) => u.userId}
-        rowTitle={(u) => u.username}
-        rowSubtitle={(u) => u.email}
-        isLoading={isLoading}
-        hasSourceRows={visibleUsers.length > 0}
-        emptyMessage="No users yet."
-        noMatchMessage="No users match your filters."
-        getActions={getActions}
-        onRowClick={(u) => openEdit(u)}
-      />
+      <div data-tour="users-table">
+        <ResponsiveTable
+          columns={columns}
+          rows={filteredUsers}
+          rowKey={(u) => u.userId}
+          rowTitle={(u) => u.username}
+          rowSubtitle={(u) => u.email}
+          isLoading={isLoading}
+          hasSourceRows={visibleUsers.length > 0}
+          emptyMessage="No users yet."
+          noMatchMessage="No users match your filters."
+          getActions={getActions}
+          onRowClick={(u) => openEdit(u)}
+        />
+      </div>
 
       {/* Create/Edit Modal */}
       <Modal
