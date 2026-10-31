@@ -7,6 +7,7 @@ import { Bbcode } from '../../lib/bbcode';
 import {
   fetchSystemState,
   startSeed,
+  startSeedDemoFull,
   startReset,
   fetchJob,
   listDevUsers,
@@ -31,6 +32,7 @@ const JOB_LABEL: Record<DevJobKind, string> = {
   seed: 'seed',
   reset: 'reset',
   'reset-and-seed': 'reset + reseed',
+  'seed-demo-full': 'demo data seed',
 };
 const USERNAME_RE = /^[a-zA-Z0-9._-]+$/;
 /** Raw BBCode counts toward the limit, so leave headroom for markup. */
@@ -218,6 +220,17 @@ export default function DevToolsPage() {
     onError: (err: any) => setActionError(err?.message ?? 'Seed failed'),
   });
 
+  const seedFullMutation = useMutation({
+    mutationFn: startSeedDemoFull,
+    onSuccess: ({ jobId }) => {
+      setActionError(null);
+      setActionSuccess(null);
+      startPolling(jobId, 'seed-demo-full');
+    },
+    onError: (err: any) =>
+      setActionError(err?.message ?? 'Demo data seed failed'),
+  });
+
   const resetMutation = useMutation({
     mutationFn: (reseed: boolean) => startReset(reseed),
     onSuccess: ({ jobId }, reseed) => {
@@ -283,6 +296,7 @@ export default function DevToolsPage() {
   const isBusy =
     activeJob?.status === 'running' ||
     seedMutation.isPending ||
+    seedFullMutation.isPending ||
     resetMutation.isPending;
 
   const handleCopyPassword = async () => {
@@ -483,7 +497,7 @@ export default function DevToolsPage() {
             <Icon name="arrow_forward" size={20} className="shrink-0" />
           </button>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => setSeedModalOpen(true)}
@@ -499,6 +513,26 @@ export default function DevToolsPage() {
                 <p className="text-xs font-bold text-emerald-900">Seed only</p>
                 <p className="text-[10px] text-emerald-700 mt-0.5 truncate">
                   Departments + accounts
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => seedFullMutation.mutate()}
+              disabled={isBusy}
+              className="flex items-center gap-2.5 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-left hover:bg-indigo-100 transition disabled:opacity-50 min-h-[56px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            >
+              <Icon
+                name="dataset"
+                size={20}
+                className="text-indigo-700 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-indigo-900">
+                  Seed demo data
+                </p>
+                <p className="text-[10px] text-indigo-700 mt-0.5 truncate">
+                  Subjects, faculty, sections
                 </p>
               </div>
             </button>
