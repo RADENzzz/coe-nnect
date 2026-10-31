@@ -358,7 +358,7 @@ export default function ProgramsPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="programs-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Programs</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -377,7 +377,7 @@ export default function ProgramsPage() {
       </div>
 
       {/* ── Workflow hint ── */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm" data-tour="programs-workflow">
         <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
         <div className="flex-1">
           <p className="text-blue-900 font-medium">
@@ -512,35 +512,37 @@ export default function ProgramsPage() {
       </div>
 
       {/* ── Table ── */}
-      <ResponsiveTable
-        columns={columns}
-        rows={filtered}
-        rowKey={(p) => p.programId}
-        rowTitle={(p) => p.programCode}
-        rowSubtitle={(p) => p.programName}
-        isLoading={isLoading}
-        hasSourceRows={scopedPrograms.length > 0}
-        emptyMessage={
-          isDH
-            ? 'No programs in your department yet.'
-            : 'No programs yet.'
-        }
-        noMatchMessage="No programs match your filters."
-        getActions={getActions}
-        onRowClick={canManage ? openEdit : undefined}
-        emptyIcon="school"
-        emptyAction={
-          canManage && (!isDH || myDeptId !== null) ? (
-            <button
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-            >
-              <Icon name="add" size={16} />
-              Add first program
-            </button>
-          ) : undefined
-        }
-      />
+      <div data-tour="programs-table">
+        <ResponsiveTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(p) => p.programId}
+          rowTitle={(p) => p.programCode}
+          rowSubtitle={(p) => p.programName}
+          isLoading={isLoading}
+          hasSourceRows={scopedPrograms.length > 0}
+          emptyMessage={
+            isDH
+              ? 'No programs in your department yet.'
+              : 'No programs yet.'
+          }
+          noMatchMessage="No programs match your filters."
+          getActions={getActions}
+          onRowClick={canManage ? openEdit : undefined}
+          emptyIcon="school"
+          emptyAction={
+            canManage && (!isDH || myDeptId !== null) ? (
+              <button
+                onClick={openCreate}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+              >
+                <Icon name="add" size={16} />
+                Add first program
+              </button>
+            ) : undefined
+          }
+        />
+      </div>
 
       {/* ── Create / Edit modal ── */}
       <Modal
