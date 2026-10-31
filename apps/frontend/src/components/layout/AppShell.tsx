@@ -12,6 +12,7 @@ import { NotificationSocketProvider } from '../../hooks/use-notification-socket'
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
 import LiquidBackground from './LiquidBackground';
+import TutorialProvider from '../../features/tutorial/TutorialProvider';
 
 function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
@@ -76,6 +77,7 @@ function ShellInner() {
       </div>
 
       <BottomNav items={nav.bottom} />
+      <TutorialProvider />
     </div>
   );
 }
