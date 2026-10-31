@@ -758,7 +758,7 @@ function TermStatusCard({
 }) {
   if (!term) {
     return (
-      <div className="bg-white border border-dashed border-amber-300 bg-amber-50/40 p-4 rounded-xl flex items-start gap-3">
+      <div className="bg-white border border-dashed border-amber-300 bg-amber-50/40 p-4 rounded-xl flex items-start gap-3" data-tour="dash-term">
         <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
           <Icon name="warning" size={18} className="text-amber-600" />
         </div>
@@ -799,7 +799,7 @@ function TermStatusCard({
   const tone = toneMap[dominant];
 
   return (
-    <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-wrap items-center gap-4 shadow-sm">
+    <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-wrap items-center gap-4 shadow-sm" data-tour="dash-term">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#5c1219]/10 to-[#5c1219]/5 flex items-center justify-center">
           <Icon name="calendar_month" size={20} className="text-[#5c1219]" />
@@ -995,7 +995,7 @@ export default function DashboardPage() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-6 mt-1 md:mt-0">
+      <div className="mb-6 mt-1 md:mt-0" data-tour="dash-header">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5c1219] to-[#3d0b10] flex items-center justify-center shadow-sm shrink-0">
@@ -1054,7 +1054,7 @@ export default function DashboardPage() {
       {/* ── Bento grid ── */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6 mt-4">
         {/* Quick Actions */}
-        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm rounded-xl flex flex-col">
+        <div className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm rounded-xl flex flex-col" data-tour="dash-actions">
           <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-3 border-b border-slate-100 pb-3 flex items-center gap-2">
             <Icon name="bolt" size={14} className="text-amber-500" filled />
             Quick Actions
@@ -1090,7 +1090,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dash-stats">
           <SummaryCard
             icon="view_timeline"
             accent="blue"
@@ -1225,7 +1225,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Today + Recent Activity ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-tour="dash-today">
         {/* Today */}
         <div className="lg:col-span-1">
           <TodayScheduleStrip
