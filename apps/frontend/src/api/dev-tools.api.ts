@@ -20,7 +20,7 @@ export interface DevUserRecord {
   deptId: string | null;
 }
 
-export type DevJobKind = 'seed' | 'reset' | 'reset-and-seed';
+export type DevJobKind = 'seed' | 'reset' | 'reset-and-seed' | 'seed-demo-full';
 
 export interface DevJob {
   jobId: string;
@@ -44,12 +44,13 @@ export async function startSeed(): Promise<{ jobId: string }> {
 
 // The backend owns the reset/seed process. The frontend only starts the job
 // and polls its status, so the signed-in administrator survives a reset.
-export async function startReset(
-  reseed = false,
-): Promise<{ jobId: string }> {
-  const { data } = await api.post('/v1/dev-tools/reset', { reseed });
-  return data.data;
-}
+ export async function startReset(
+   reseed = false,
+   full = false,
+ ): Promise<{ jobId: string }> {
+  const { data } = await api.post('/v1/dev-tools/reset', { reseed, full });
+   return data.data;
+ }
 
 export async function fetchJob(jobId: string): Promise<DevJob | null> {
   const { data } = await api.get(`/v1/dev-tools/jobs/${jobId}`);
@@ -95,5 +96,12 @@ export async function toggleDevUserActive(
 export async function fetchSystemStatusForDev(): Promise<SystemStatus> {
   // Same public endpoint — no need for a separate dev-only route.
   const { data } = await api.get('/v1/system-status');
+  return data.data;
+}
+
+export async function startSeedDemoFull(): Promise<{ jobId: string }> {
+  const { data } = await api.post<{ data: { jobId: string } }>(
+    '/v1/dev-tools/seed-demo-full',
+  );
   return data.data;
 }
