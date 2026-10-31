@@ -189,7 +189,7 @@ export default function DeanDepartmentsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap">
+      <div className="border-b border-slate-200 pb-5 flex items-start justify-between gap-3 flex-wrap" data-tour="dept-header">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Departments
@@ -250,17 +250,19 @@ export default function DeanDepartmentsPage() {
         </div>
       </div>
 
-      <ResponsiveTable
-        columns={columns}
-        rows={departments}
-        rowKey={(d) => d.deptId}
-        rowTitle={(d) => d.deptName}
-        isLoading={isLoading}
-        hasSourceRows={departments.length > 0}
-        emptyMessage={emptyMessage}
-        noMatchMessage="No departments match your filters."
-        onRowClick={() => navigate('/dean/departments/manage')}
-      />
+      <div data-tour="dept-table">
+        <ResponsiveTable
+          columns={columns}
+          rows={departments}
+          rowKey={(d) => d.deptId}
+          rowTitle={(d) => d.deptName}
+          isLoading={isLoading}
+          hasSourceRows={departments.length > 0}
+          emptyMessage={emptyMessage}
+          noMatchMessage="No departments match your filters."
+          onRowClick={() => navigate('/dean/departments/manage')}
+        />
+      </div>
     </div>
   );
 }
