@@ -156,36 +156,43 @@ export async function autoGenerateSchedule(
 
 export async function confirmAutoGenerate(
   termId: string,
+  deptId: string,
 ): Promise<{ success: boolean }> {
   const { data } = await api.post('/v1/schedules/auto-generate/confirm', {
     termId,
+    deptId,
   });
   return data.data;
 }
 
 export async function discardAutoGenerate(
   termId: string,
+  deptId: string,
 ): Promise<{ deleted: number }> {
   const { data } = await api.post('/v1/schedules/auto-generate/discard', {
     termId,
+    deptId,
   });
   return data.data;
 }
 
 export async function abandonAutoGenerate(
   termId: string,
+  deptId: string,
 ): Promise<{ success: boolean }> {
   const { data } = await api.post('/v1/schedules/auto-generate/abandon', {
     termId,
+    deptId,
   });
   return data.data;
 }
 
 export async function clearAutoDrafts(
   termId: string,
+  deptId: string,
 ): Promise<{ deleted: number }> {
   const { data } = await api.delete('/v1/schedules/auto-drafts', {
-    params: { termId },
+    params: { termId, deptId },
   });
   return data.data;
 }
@@ -210,9 +217,10 @@ export interface PendingAutoGenerateInfo {
 
 export async function getPendingAutoGenerate(
   termId: string,
+  deptId: string,
 ): Promise<PendingAutoGenerateInfo | null> {
   const { data } = await api.get('/v1/schedules/auto-generate/pending', {
-    params: { termId },
+    params: { termId, deptId },
   });
   return data.data;
 }
