@@ -503,7 +503,7 @@ export default function ProspectusPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="prospectus-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Prospectus</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -646,7 +646,7 @@ export default function ProspectusPage() {
           </div>
 
           {/* ── Program + Semester selector ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-surface-variant bg-surface-container-lowest" data-tour="prospectus-selector">
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Program
@@ -794,7 +794,7 @@ export default function ProspectusPage() {
 
           {/* ── Table ── */}
           {filteredEntries.length === 0 && !isLoading ? (
-            <div className="rounded-xl border border-dashed border-surface-variant bg-surface-container-lowest py-16 text-center">
+              <div className="rounded-xl border border-dashed border-surface-variant bg-surface-container-lowest py-16 text-center" data-tour="prospectus-table">
               <Icon
                 name="menu_book"
                 size={48}
@@ -819,19 +819,21 @@ export default function ProspectusPage() {
               )}
             </div>
           ) : (
-            <ResponsiveTable
-              columns={columns}
-              rows={filteredEntries}
-              rowKey={(e) => e.prospectusId}
-              rowTitle={(e) => e.subject?.subjectCode ?? '—'}
-              rowSubtitle={(e) => e.subject?.title ?? ''}
-              isLoading={isLoading}
-              hasSourceRows={allEntries.length > 0}
-              emptyMessage="No subjects for this combination yet."
-              noMatchMessage="No subjects match your filters."
-              getActions={getActions}
-              onRowClick={canWrite ? handleEdit : undefined}
-            />
+            <div data-tour="prospectus-table">
+              <ResponsiveTable
+                columns={columns}
+                rows={filteredEntries}
+                rowKey={(e) => e.prospectusId}
+                rowTitle={(e) => e.subject?.subjectCode ?? '—'}
+                rowSubtitle={(e) => e.subject?.title ?? ''}
+                isLoading={isLoading}
+                hasSourceRows={allEntries.length > 0}
+                emptyMessage="No subjects for this combination yet."
+                noMatchMessage="No subjects match your filters."
+                getActions={getActions}
+                onRowClick={canWrite ? handleEdit : undefined}
+              />
+            </div>
           )}
         </>
       )}
