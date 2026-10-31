@@ -15,6 +15,7 @@
     "test": "jest",
     "test:ci": "jest --runInBand",
     "db:reset": "ts-node -r tsconfig-paths/register -r dotenv/config src/database/seeds/reset.ts",
+    "seed:demo:full": "ts-node -r tsconfig-paths/register src/database/seeds/demo-data-seed.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
