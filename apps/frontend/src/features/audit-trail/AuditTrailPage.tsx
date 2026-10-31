@@ -311,7 +311,7 @@ export default function AuditTrailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3 flex-wrap" data-tour="audit-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Audit Trail</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -354,7 +354,7 @@ export default function AuditTrailPage() {
       </div>
 
       {/* Filter panel */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3">
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest p-4 space-y-3" data-tour="audit-filters">
         {/* Row 1: search + date range + clear */}
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[220px]">
@@ -511,18 +511,20 @@ export default function AuditTrailPage() {
         </div>
       )}
 
-      <ResponsiveTable
-        columns={columns}
-        rows={filteredRows}
-        rowKey={(r) => r.auditId}
-        rowTitle={(r) => formatActionLabel(r.action)}
-        rowSubtitle={(r) => r.user?.username ?? '—'}
-        isLoading={isLoading}
-        hasSourceRows={total > 0}
-        emptyMessage="No audit entries yet."
-        noMatchMessage="No audit entries match your filters."
-        getActions={getActions}
-      />
+      <div data-tour="audit-table">
+        <ResponsiveTable
+          columns={columns}
+          rows={filteredRows}
+          rowKey={(r) => r.auditId}
+          rowTitle={(r) => formatActionLabel(r.action)}
+          rowSubtitle={(r) => r.user?.username ?? '—'}
+          isLoading={isLoading}
+          hasSourceRows={total > 0}
+          emptyMessage="No audit entries yet."
+          noMatchMessage="No audit entries match your filters."
+          getActions={getActions}
+        />
+      </div>
 
       {total > PAGE_SIZE && (
         <div className="flex items-center justify-between">
