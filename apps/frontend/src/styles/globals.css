@@ -2368,3 +2368,135 @@ html.glass :is(.input) {
     animation: none !important;
   }
 }
+
+/* ============================================================
+   Guided tours
+   A dimmed backdrop plus a cut-out spotlight around the real
+   control, with a floating card. Portalled to <body> by
+   features/tutorial/TutorialProvider.tsx so it sits above the
+   TopBar (z-40), Sidebar (z-50), modals (z-110) and the mobile
+   search overlay (z-150).
+   ============================================================ */
+
+.tour-root {
+  position: relative;
+  z-index: 220;
+}
+
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  background-color: rgb(2 6 23 / 0.62);
+  animation: tour-fade-in 160ms ease-out;
+}
+
+/* With a target, the spotlight's huge box-shadow does the dimming. */
+.tour-backdrop--clear {
+  background-color: transparent;
+  animation: none;
+}
+
+.tour-spotlight {
+  position: fixed;
+  z-index: 221;
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 9999px rgb(2 6 23 / 0.62),
+    0 0 0 3px rgb(var(--accent-tint) / 0.95),
+    0 0 30px 7px rgb(var(--accent-tint) / 0.38);
+  transition:
+    top 180ms ease-out,
+    left 180ms ease-out,
+    width 180ms ease-out,
+    height 180ms ease-out;
+}
+
+.dark .tour-backdrop {
+  background-color: rgb(0 0 0 / 0.72);
+}
+
+.dark .tour-spotlight {
+  box-shadow:
+    0 0 0 9999px rgb(0 0 0 / 0.72),
+    0 0 0 3px rgb(var(--accent-tint) / 0.95),
+    0 0 30px 7px rgb(var(--accent-tint) / 0.32);
+}
+
+.tour-popover {
+  position: fixed;
+  z-index: 222;
+  border-radius: 16px;
+  border: 1px solid rgb(var(--outline-variant));
+  background-color: rgb(var(--surface));
+  color: rgb(var(--on-surface));
+  box-shadow:
+    0 24px 48px -12px rgb(2 6 23 / 0.45),
+    0 2px 8px rgb(2 6 23 / 0.12);
+  max-height: calc(100dvh - 7rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: none;
+  animation: tour-pop-in 180ms ease-out;
+}
+
+html.glass .tour-popover {
+  background-color: rgb(var(--surface) / 0.92);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+.tour-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: rgb(var(--on-surface-variant) / 0.35);
+  transition:
+    width 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.tour-dot:hover {
+  background-color: rgb(var(--on-surface-variant) / 0.6);
+}
+
+.tour-dot--active {
+  width: 18px;
+  background-color: rgb(var(--primary));
+}
+
+.tour-dot--active:hover {
+  background-color: rgb(var(--primary));
+}
+
+@keyframes tour-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tour-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-backdrop,
+  .tour-popover {
+    animation: none;
+  }
+  .tour-spotlight {
+    transition: none;
+  }
+}
