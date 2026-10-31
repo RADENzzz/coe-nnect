@@ -280,7 +280,7 @@ export default function ReportsHubPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="reports-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Reports</h1>
           <p className="text-on-surface-variant text-sm mt-1">{subtitle}</p>
@@ -384,7 +384,7 @@ export default function ReportsHubPage() {
         </div>
       ) : (
         /* ── Grouped cards ── */
-        <div className="space-y-6">
+        <div className="space-y-6" data-tour="reports-cards">
           {categoryOrder.map((category) => {
             const cards = grouped.get(category);
             if (!cards || cards.length === 0) return null;

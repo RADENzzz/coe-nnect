@@ -656,7 +656,7 @@ export default function RoomsPage() {
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="rooms-header">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Rooms</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -811,7 +811,7 @@ export default function RoomsPage() {
       )}
 
       {/* ── Filter panel (collapsible) ── */}
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
+      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden" data-tour="rooms-filters">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <button
             type="button"
@@ -956,31 +956,33 @@ export default function RoomsPage() {
           </button>
         </div>
       ) : (
-        <ResponsiveTable
-          columns={columns}
-          rows={filteredRooms}
-          rowKey={(r) => r.roomId}
-          rowTitle={(r) => `Room ${r.roomNumber}`}
-          rowSubtitle={(r) => r.building}
-          isLoading={isLoading}
-          hasSourceRows={rooms.length > 0}
-          emptyMessage={emptyMessage}
-          noMatchMessage="No rooms match your filters."
-          getActions={getActions}
-          onRowClick={(r) => !isForeign(r) && openEdit(r)}
-          emptyIcon="meeting_room"
-          emptyAction={
-            canCreate ? (
-              <button
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-              >
-                <Icon name="add" size={16} />
-                Add first room
-              </button>
-            ) : undefined
-          }
-        />
+        <div data-tour="rooms-table">
+          <ResponsiveTable
+            columns={columns}
+            rows={filteredRooms}
+            rowKey={(r) => r.roomId}
+            rowTitle={(r) => `Room ${r.roomNumber}`}
+            rowSubtitle={(r) => r.building}
+            isLoading={isLoading}
+            hasSourceRows={rooms.length > 0}
+            emptyMessage={emptyMessage}
+            noMatchMessage="No rooms match your filters."
+            getActions={getActions}
+            onRowClick={(r) => !isForeign(r) && openEdit(r)}
+            emptyIcon="meeting_room"
+            emptyAction={
+              canCreate ? (
+                <button
+                  onClick={openCreate}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+                >
+                  <Icon name="add" size={16} />
+                  Add first room
+                </button>
+              ) : undefined
+            }
+          />
+        </div>
       )}
 
       {/* ── Create / Edit Modal ── */}
