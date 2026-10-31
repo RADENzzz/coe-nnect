@@ -57,6 +57,7 @@ import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
 import CoveragePanel from './components/CoveragePanel';
 import TimetableFilterBar from './components/TimetableFilterBar';
+import TimetableLegend from './components/TimetableLegend';
 import AutoGenerateButton, {
   extractApiError,
   hintsForMessage,
@@ -1476,18 +1477,21 @@ export default function TimetablePage({ readOnly = false }: Props) {
               {layoutMode === 'agenda' ? (
                 <AgendaView entries={entries} onEntryClick={handleClick} />
               ) : (
-                <TimetableGrid
-                  entries={entries}
-                  density={gridDensity}
-                  fitToContainer
-                  onEntryMove={writable ? handleMove : undefined}
-                  onEntryClick={handleClick}
-                  readOnlyEntryIds={
-                    activeVersion
-                      ? new Set(entries.map((e) => e.id))
-                      : foreignEntryIds
-                  }
-                />
+                <>
+                  <TimetableLegend entries={entries} />
+                  <TimetableGrid
+                    entries={entries}
+                    density={gridDensity}
+                    fitToContainer
+                    onEntryMove={writable ? handleMove : undefined}
+                    onEntryClick={handleClick}
+                    readOnlyEntryIds={
+                      activeVersion
+                        ? new Set(entries.map((e) => e.id))
+                        : foreignEntryIds
+                    }
+                  />
+                </>
               )}
             </div>
           </>
