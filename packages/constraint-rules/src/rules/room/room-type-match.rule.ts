@@ -7,7 +7,9 @@ export const roomTypeMatchRule: ConstraintRule = {
   name: 'Room Type Match',
   description:
     'Room type must match the subject\u2019s required room type, ' +
-    'or be compatible with the block kind for mixed subjects.',
+    'or be compatible with the block kind for mixed subjects. A strictly-typed ' +
+    'subject\u2019s lecture block may additionally use a lecture room ' +
+    '(mirrors solver.py room_accepts_block; labs stay strict).',
   type: 'hard',
   category: 'room',
 
@@ -47,7 +49,27 @@ export const roomTypeMatchRule: ConstraintRule = {
       };
     }
 
-    if (room.roomType === subject.requiredRoomType) {
+    // ── Strict match, with the same lecture-block relaxation the solver
+    // applies (room_accepts_block in solver.py, 2026-11-01). The LAB
+    // block of a strictly-typed subject stays strict; its LECTURE block
+    // may also use a lecture room. Forcing a 'laboratory'-typed
+    // subject's lecture into its lab starved the schedule (2026-11-01:
+    // GE 111/311/411 lectures+labs put 60h/week on a single GE-LAB1;
+    // CPE 213/313 lectures had no usable room at all). Both halves of
+    // the rule must change together or the solver's output will be
+    // rejected by this validator.
+    if (loadType === 'laboratory' && room.roomType !== subject.requiredRoomType) {
+      return {
+        status: 'fail',
+        reason: `Subject ${subject.subjectCode} requires a "${subject.requiredRoomType}" but room ${room.roomNumber} is a "${room.roomType}".`,
+        metadata: { required: subject.requiredRoomType, actual: room.roomType, roomId: room.roomId, loadType },
+      };
+    }
+
+    if (
+      room.roomType === subject.requiredRoomType ||
+      room.roomType === 'lecture_room'
+    ) {
       return { status: 'pass' };
     }
 

@@ -113,6 +113,86 @@ describe('R-1: Room Type Match', () => {
   });
 
   // ─────────────────────────────────────────────
+  // Strictly-typed subject's LECTURE block may
+  // also use a lecture room (solver parity — see
+  // room_accepts_block in solver.py, 2026-11-01).
+  // Without this, 'laboratory'-typed subjects'
+  // lectures were rejected right after the solver
+  // seat them (GE 111/311/411, CPE 213/313).
+  // ─────────────────────────────────────────────
+  describe('strictly-typed subject lecture-block fallback', () => {
+    const labTypedSubject = {
+      subjectCode: 'GE 111',
+      lectureUnits: 1,
+      labUnits: 2,
+      requiredRoomType: 'laboratory',
+    };
+
+    it('passes a lecture block in a lecture room, not a laboratory', () => {
+      const result = roomTypeMatchRule.validate(
+        makeContext({
+          subject: labTypedSubject as any,
+          room: {
+            roomId: '1',
+            roomNumber: 'AVR-1',
+            roomType: 'lecture_room',
+          } as any,
+          loadType: 'lecture',
+        }),
+      );
+      expect(result.status).toBe('pass');
+    });
+
+    it('still passes a lecture block in its required laboratory', () => {
+      const result = roomTypeMatchRule.validate(
+        makeContext({
+          subject: labTypedSubject as any,
+          room: {
+            roomId: '2',
+            roomNumber: 'GE-LAB1',
+            roomType: 'laboratory',
+          } as any,
+          loadType: 'lecture',
+        }),
+      );
+      expect(result.status).toBe('pass');
+    });
+
+    it('still fails a lecture block in an unrelated room type', () => {
+      const result = roomTypeMatchRule.validate(
+        makeContext({
+          subject: {
+            ...labTypedSubject,
+            requiredRoomType: 'computer_lab',
+          } as any,
+          room: {
+            roomId: '4',
+            roomNumber: 'DR-1',
+            roomType: 'drafting_room',
+          } as any,
+          loadType: 'lecture',
+        }),
+      );
+      expect(result.status).toBe('fail');
+    });
+
+    it('keeps the lab block strict (other room rejected)', () => {
+      const result = roomTypeMatchRule.validate(
+        makeContext({
+          subject: labTypedSubject as any,
+          room: {
+            roomId: '3',
+            roomNumber: 'CLAB-A',
+            roomType: 'computer_lab',
+          } as any,
+          loadType: 'laboratory',
+        }),
+      );
+      expect(result.status).toBe('fail');
+    });
+  });
+
+  // ─────────────────────────────────────────────
   // Mixed subjects ('any') — kind decides
   // ─────────────────────────────────────────────
   describe('mixed subject (required_room_type = "any")', () => {
