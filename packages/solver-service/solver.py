@@ -109,6 +109,13 @@ class Config(BaseModel):
     labMinutesPerUnit: int = 180
     labMaxConsecutiveMinutes: int = 180
     consecutiveBlockPenalty: int = 0
+    # Soft nudge: penalize blocks whose END time is not on the hour
+    # (e.g. 11:30-12:30 → wanted as 10:30-12:00). Starts may still sit on
+    # an odd half-hour. 0 disables the penalty entirely (off by default);
+    # the department head or dean can turn it on through a
+    # scheduling_setting row 'end_hour_alignment_weight' (typical 3-5,
+    # same scale as the lunch/spread weights).
+    endHourAlignmentWeight: int = 0
 
 class RoomPreference(BaseModel):
     """F3: a department's soft preference for a shared room."""
@@ -521,6 +528,26 @@ def solve_schedule(req: SolveRequest) -> dict:
             f"[solver] lunch: {len(lunch_penalties)} candidate(s) "
             f"overlap the lunch window (graded penalty)"
         )
+
+    # ── SOFT: hour-aligned block ends (optional, weight from settings) ──
+    # A block should prefer ENDING on the hour (12:30 → 12:00, 8:30 → 9:00).
+    # Starts are free to sit on an odd half-hour. Weight 0 (default, and
+    # also the DB default) disables the whole term, keeping solve-time
+    # parity with the pre-feature model.
+    end_weight = int(req.config.endHourAlignmentWeight)
+    if end_weight > 0:
+        end_penalties: List = []
+        for k, v in X.items():
+            dur = block_meta[k]["durationMinutes"]
+            end_min = k[5] + dur
+            if end_min % 60 != 0:
+                end_penalties.append((v, end_weight))
+        if end_penalties:
+            objective_terms.append(sum(v * w for v, w in end_penalties))
+            print(
+                f"[solver] end-alignment: {len(end_penalties)} candidate(s) "
+                f"end mid-hour (soft weight {end_weight})"
+            )
 
     # ── SOFT: faculty time preference ──
     pref_map: Dict[str, List[Preference]] = defaultdict(list)

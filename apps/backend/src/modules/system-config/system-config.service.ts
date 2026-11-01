@@ -34,6 +34,8 @@ const NUMBER_KEYS = new Set([
   'release_hours_granularity',
   'lab_split_hours',
   'lecture_block_minutes',
+  // Soft end-hour alignment weight (0 = off; int, non-negative).
+  'end_hour_alignment_weight',
 ]);
 
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;

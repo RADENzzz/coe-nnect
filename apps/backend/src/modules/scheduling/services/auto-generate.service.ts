@@ -710,6 +710,10 @@ export class AutoGenerateService {
           'special_category_prefixes',
           'PATHFit,NSTP,ROTC,CWTS,EPIC',
         ),
+        // Soft: blocks prefer ending on the hour (12:30→12:00-style nudge).
+        // 0 = off. Head/dean can set it in scheduling_setting
+        // ('end_hour_alignment_weight', suggested 3-5).
+        endHourAlignmentWeight: num('end_hour_alignment_weight', 0),
       },
       existingSchedule: (existingScheduleRows ?? []).map((row) => ({
         scheduleId: String(row.schedule_id),
