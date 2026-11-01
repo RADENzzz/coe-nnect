@@ -1,9 +1,12 @@
+// apps/backend/src/modules/prospectus-pdfs/dto/extract.dto.ts
+
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -20,14 +23,14 @@ export class ExtractRequestDto {
   @IsInt({ each: true })
   table_ids?: number[];
 
-  /**
-   * Opt-in OCR fallback for scans / image-only PDFs. Slower, so it is
-   * never enabled implicitly.
-   */
   @IsOptional()
   @IsBoolean()
   ocr?: boolean;
 }
+
+/** What the user decided to do with this row on import. */
+export const IMPORT_ROW_ACTIONS = ['subject', 'slot', 'skip'] as const;
+export type ImportRowAction = (typeof IMPORT_ROW_ACTIONS)[number];
 
 export class ImportSubjectDto {
   @IsString()
@@ -57,6 +60,17 @@ export class ImportSubjectDto {
   @IsString()
   @MaxLength(16)
   total?: string;
+
+  /**
+   * Per-row decision. Defaults to 'subject' so older clients keep working.
+   *   'subject' → treat `code` as a real subject code (the classic path).
+   *   'slot'    → the row is an elective placeholder ("GEC Elective 1").
+   *               `code` is ignored; the PDF title becomes the slot label.
+   *   'skip'    → don't import this row; report it back as skipped.
+   */
+  @IsOptional()
+  @IsIn(IMPORT_ROW_ACTIONS)
+  action?: ImportRowAction;
 }
 
 export class ImportRegionDto {
