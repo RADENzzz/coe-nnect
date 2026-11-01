@@ -26,6 +26,9 @@ interface TableRegionProps {
   onRowToggleEdit: (rowId: string) => void;
   columnsInteractive: boolean;
   onAddRow: () => void;
+  onSaveTable: () => void;
+  onCancelTable: () => void;
+  isSaving: boolean;
 }
 
 export default function TableRegion({
@@ -46,6 +49,9 @@ export default function TableRegion({
   onRowToggleEdit,
   columnsInteractive,
   onAddRow,
+  onSaveTable,
+  onCancelTable,
+  isSaving,
 }: TableRegionProps) {
   const regionScreen = pdfRectToScreen(
     {
@@ -135,60 +141,95 @@ export default function TableRegion({
           {sortedRows.length === 1 ? '' : 's'}
         </button>
 
-        {/* Delete table — bigger hit area, always visible when selected.
-            For tiny regions the button anchors INSIDE the region
-            instead of floating above it, so it's always clickable. */}
+        {/* Floating action bar — Cancel / Add row / Save / Delete */}
         {selected && (
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            className="absolute w-8 h-8 rounded bg-red-600 text-white flex items-center justify-center hover:bg-red-700 transition shadow-lg"
-            style={{
-              top: regionScreen.height < 40 ? 2 : -32,
-              right: regionScreen.height < 40 ? 2 : 0,
-              zIndex: 40,
-            }}
-            title="Delete table"
-          >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontSize: 16 }}
-            >
-              delete
-            </span>
-          </button>
-        )}
-
-        {/* Add row button — anchored just BELOW the region so it never
-            covers the table content. */}
-        {selected && (
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onAddRow();
-            }}
-            className="absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-primary text-on-primary text-xs font-semibold shadow-lg hover:opacity-90 transition flex items-center gap-1 whitespace-nowrap"
+          <div
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 whitespace-nowrap"
             style={{ top: 'calc(100% + 6px)', zIndex: 30 }}
-            title="Add a row below"
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontSize: 14 }}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onCancelTable();
+              }}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded-full bg-white border border-surface-variant text-on-surface text-xs font-semibold shadow-lg hover:bg-surface-container-low transition disabled:opacity-50"
+              title="Discard changes to this table"
             >
-              add
-            </span>
-            Add row
-          </button>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onAddRow();
+              }}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded-full bg-primary text-on-primary text-xs font-semibold shadow-lg hover:opacity-90 transition flex items-center gap-1 disabled:opacity-50"
+              title="Add a row below"
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 14 }}
+              >
+                add
+              </span>
+              Add row
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onSaveTable();
+              }}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-semibold shadow-lg hover:bg-emerald-700 transition flex items-center gap-1 disabled:opacity-50"
+              title="Save this table"
+            >
+              {isSaving ? (
+                <span
+                  className="material-symbols-outlined animate-spin"
+                  style={{ fontSize: 14 }}
+                >
+                  progress_activity
+                </span>
+              ) : (
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 14 }}
+                >
+                  save
+                </span>
+              )}
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+            
+            <div className="w-px h-5 bg-surface-variant mx-1" />
+            
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onDelete();
+              }}
+              disabled={isSaving}
+              className="px-2.5 py-1.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold shadow-lg hover:bg-red-200 transition flex items-center gap-1 disabled:opacity-50"
+              title="Delete this table"
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 14 }}
+              >
+                delete
+              </span>
+            </button>
+          </div>
         )}
       </div>
 
