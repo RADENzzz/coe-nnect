@@ -13,7 +13,6 @@ import {
 import type { ColumnSlice, ProspectusPdfTable, RowBox } from './types';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import { usePdfTextLayer } from './hooks/usePdfTextLayer';
-import { useCommitAutosave } from './hooks/useAutosave';
 import {
   makeDefaultColumns,
   useRegionState,
@@ -23,7 +22,6 @@ import MappingOverlay from './components/MappingOverlay';
 import AddTableDialog from './components/AddTableDialog';
 import LiveExtractionPreview from './components/LiveExtractionPreview';
 import ExtractedTableModal from './components/ExtractedTableModal';
-import SaveStatusIndicator from './components/SaveStatusIndicator';
 import ImportProspectusDialog from './components/ImportProspectusDialog';
 import { fetchPrograms } from '@/api/programs.api';
 import { useUiStore } from '@/store/ui.store';
@@ -31,7 +29,6 @@ import { useUiStore } from '@/store/ui.store';
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.0;
 const PAGE_PADDING_PX = 24;
-const MIN_ROW_HEIGHT_PT = 6;
 const MAX_TABLES = 12;
 
 export default function ProspectusPdfEditorPage() {
@@ -58,6 +55,10 @@ export default function ProspectusPdfEditorPage() {
   const [howToOpen, setHowToOpen] = useState(false);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const canvasScrollRef = useRef<HTMLDivElement>(null);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
   const { data: pdfRecord, isLoading: metaLoading } = useQuery({
     queryKey: ['prospectus-pdf', id],
@@ -100,32 +101,11 @@ export default function ProspectusPdfEditorPage() {
     setRegion,
   } = useRegionState(initialTables);
 
-  const {
-    state: saveState,
-    error: saveError,
-    queue: queueSave,
-    commit: commitSave,
-    cancel: cancelSave,
-  } = useCommitAutosave<{ tableId: string; patch: any }>({
-    // No idle timer: the table patch is only written when the user leaves
-    // the edit target — by clicking outside the canvas, locking the region,
-    // or switching rows/tables.
-    maxIdleMs: null,
-    warnOnUnload: true,
-    save: async ({ tableId, patch }) => {
-      await updateProspectusPdfTable(id!, tableId, patch);
-      await qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
-    },
-  });
-
   useEffect(() => {
     setTables(initialTables);
   }, [initialTables, setTables]);
 
-  // Commit pending autosave when the user exits edit mode.
-  // Give the canvas more room while editing by zooming in a little, and
-  // take the left rail out of the layout entirely — otherwise brushing its
-  // edge mid-drag pops it open over the canvas.
+  // Hide sidebar when editing
   const prevEditingRef = useRef<string>('none');
   useEffect(() => {
     const currentKey =
@@ -136,64 +116,86 @@ export default function ProspectusPdfEditorPage() {
         : `row:${editing.tableId}:${editing.rowId}`;
 
     if (prevEditingRef.current !== currentKey) {
-      const wasEditing = prevEditingRef.current !== 'none';
       const isEditing = currentKey !== 'none';
-
-      if (wasEditing) void commitSave();
-
-      if (isEditing && !wasEditing) {
-        setZoom((z) => (z < 1.5 ? 1.5 : z));
+      if (isEditing) {
         setSidebarHidden(true);
-      }
-
-      if (!isEditing) {
-        // Editing is over: bring the rail back, but as a collapsed rail.
+      } else {
         setSidebarHidden(false);
         setSidebarCollapsed(true);
       }
-
       prevEditingRef.current = currentKey;
     }
-  }, [editing, commitSave, setSidebarHidden, setSidebarCollapsed]);
+  }, [editing, setSidebarHidden, setSidebarCollapsed]);
 
-  // ── "Click outside the box" save ──
-  // While a table/row is being edited nothing is persisted as the user
-  // drags; the queued patch is flushed as soon as they pointer-down
-  // outside the PDF canvas (sidebar, toolbar, nav, modal…). That click also
-  // counts as "done with the box", so the rail returns — collapsed.
-  useEffect(() => {
-    if (editing.kind === 'none') return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      const canvas = canvasScrollRef.current;
-      const target = event.target as Node | null;
-      if (canvas && target && canvas.contains(target)) return;
-      // Defer a tick so a handler on the same click (e.g. confirming a
-      // delete) can queue its patch first and be included in this save.
-      window.setTimeout(() => {
-        void commitSave();
-        if (useUiStore.getState().isSidebarHidden) {
-          setSidebarHidden(false);
-          setSidebarCollapsed(true);
-        }
-      }, 0);
-    };
-
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () =>
-      document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [editing.kind, commitSave, setSidebarHidden, setSidebarCollapsed]);
-
-  // Persist anything still queued when leaving the editor entirely, and make
-  // sure the rail is not left hidden behind.
-  const commitSaveRef = useRef(commitSave);
-  commitSaveRef.current = commitSave;
+  // Cleanup on exit
   useEffect(() => {
     return () => {
-      void commitSaveRef.current();
       useUiStore.getState().setSidebarHidden(false);
     };
   }, []);
+
+  // ── Navigation Blocking & Unsaved Changes Prompt ──
+  const isDirty = dirtyTableIds.size > 0;
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  const handleSaveAndLeave = async () => {
+    try {
+      setIsSaving(true);
+      await Promise.all(
+        Array.from(dirtyTableIds).map((tableId) => {
+          const table = tables.find((t) => t.tableId === tableId);
+          if (!table) return null;
+          return updateProspectusPdfTable(id!, tableId, {
+            rows: table.rows,
+            columns: table.columns,
+            region_page_index: table.regionPageIndex,
+            region_x_start_pt: Number(table.regionXStartPt),
+            region_x_end_pt: Number(table.regionXEndPt),
+            region_y_start_pt: Number(table.regionYStartPt),
+            region_y_end_pt: Number(table.regionYEndPt),
+          });
+        })
+      );
+      setDirtyTableIds(new Set());
+      if (pendingNavigation) navigate(pendingNavigation);
+    } catch (err) {
+      console.error('Failed to save before leaving', err);
+      alert('Failed to save changes. Please check your connection.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDiscardAndLeave = () => {
+    setDirtyTableIds(new Set());
+    if (pendingNavigation) navigate(pendingNavigation);
+  };
+
+  const attemptNavigate = (to: string) => {
+    if (isDirty) {
+      setPendingNavigation(to);
+    } else {
+      navigate(to);
+    }
+  };
+
+  const markDirty = (tableId: string) => {
+    setDirtyTableIds((prev) => {
+      const next = new Set(prev);
+      next.add(tableId);
+      return next;
+    });
+  };
 
   const pageView = useMemo(() => {
     if (!textLayer) return null;
@@ -293,7 +295,6 @@ export default function ProspectusPdfEditorPage() {
     if (textLayer && hasAutoFitted) {
       requestAnimationFrame(() => fitPageToContainer());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex]);
 
   // ── Keyboard shortcuts ──
@@ -492,7 +493,6 @@ export default function ProspectusPdfEditorPage() {
       const nextRows = [...table.rows, row];
       setRows(tableId, nextRows);
 
-      const patch: any = { rows: nextRows };
       if (newRegionYStart !== regionYStart) {
         setRegion(tableId, {
           pageIndex: table.regionPageIndex,
@@ -501,14 +501,10 @@ export default function ProspectusPdfEditorPage() {
           yStart: newRegionYStart,
           yEnd: regionYEnd,
         });
-        patch.region_y_start_pt = newRegionYStart;
       }
-
-      queueSave({ tableId, patch });
-      // Structural change: persist immediately, not on the next outside click.
-      void commitSave();
+      markDirty(tableId);
     },
-    [tables, computeNewRowHeight, queueSave, commitSave, setRows, setRegion],
+    [tables, computeNewRowHeight, setRows, setRegion],
   );
 
   const handleRowSelectAndFocus = useCallback(
@@ -530,9 +526,9 @@ export default function ProspectusPdfEditorPage() {
   const handleColumnsChange = useCallback(
     (tableId: string, columns: ColumnSlice[]) => {
       setColumns(tableId, columns);
-      queueSave({ tableId, patch: { columns } });
+      markDirty(tableId);
     },
-    [queueSave, setColumns],
+    [setColumns],
   );
 
   const handleRegionChange = useCallback(
@@ -547,18 +543,9 @@ export default function ProspectusPdfEditorPage() {
         yStart: region.yStart,
         yEnd: region.yEnd,
       });
-      queueSave({
-        tableId,
-        patch: {
-          region_page_index: pageIndex,
-          region_x_start_pt: region.xStart,
-          region_x_end_pt: region.xEnd,
-          region_y_start_pt: region.yStart,
-          region_y_end_pt: region.yEnd,
-        },
-      });
+      markDirty(tableId);
     },
-    [pageIndex, queueSave, setRegion],
+    [pageIndex, setRegion],
   );
 
   const handleRowChange = useCallback(
@@ -567,10 +554,54 @@ export default function ProspectusPdfEditorPage() {
       if (!table) return;
       const nextRows = table.rows.map((r) => (r.row_id === rowId ? next : r));
       setRows(tableId, nextRows);
-      queueSave({ tableId, patch: { rows: nextRows } });
+      markDirty(tableId);
     },
-    [tables, queueSave, setRows],
+    [tables, setRows],
   );
+
+  const handleSaveTable = async (tableId: string) => {
+    const table = tables.find((t) => t.tableId === tableId);
+    if (!table) return;
+    setIsSaving(true);
+    try {
+      await updateProspectusPdfTable(id!, tableId, {
+        rows: table.rows,
+        columns: table.columns,
+        region_page_index: table.regionPageIndex,
+        region_x_start_pt: Number(table.regionXStartPt),
+        region_x_end_pt: Number(table.regionXEndPt),
+        region_y_start_pt: Number(table.regionYStartPt),
+        region_y_end_pt: Number(table.regionYEndPt),
+      });
+      await qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
+      setEditing({ kind: 'none' });
+      setSelection({ kind: 'none' });
+      setDirtyTableIds(prev => {
+        const next = new Set(prev);
+        next.delete(tableId);
+        return next;
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save table');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelTable = (tableId: string) => {
+    const original = initialTables.find((t) => t.tableId === tableId);
+    if (original) {
+      upsertTable(original);
+    }
+    setEditing({ kind: 'none' });
+    setSelection({ kind: 'none' });
+    setDirtyTableIds(prev => {
+      const next = new Set(prev);
+      next.delete(tableId);
+      return next;
+    });
+  };
 
   const confirmDeleteTable = useCallback(async () => {
     if (!deleteTableId || !id) return;
@@ -592,10 +623,8 @@ export default function ProspectusPdfEditorPage() {
     const nextRows = table.rows.filter((r) => r.row_id !== rowId);
     setRows(tableId, nextRows);
     setDeleteRowTarget(null);
-    queueSave({ tableId, patch: { rows: nextRows } });
-    // Deletion must not wait for a later click.
-    void commitSave();
-  }, [deleteRowTarget, queueSave, commitSave, setRows, tables]);
+    markDirty(tableId);
+  }, [deleteRowTarget, setRows, tables]);
 
   const handleCanvasRendered = useCallback(
     (dims: { width: number; height: number }) => setRenderedDims(dims),
@@ -648,20 +677,13 @@ export default function ProspectusPdfEditorPage() {
       ? 'cursor-crosshair'
       : '';
 
-  const editingLabel =
-    editing.kind === 'none'
-      ? null
-      : editing.kind === 'table'
-      ? 'Editing region'
-      : 'Editing row';
-
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <button
-            onClick={() => navigate('/import')}
+            onClick={() => attemptNavigate('/import')}
             className="text-xs text-on-surface-variant hover:text-primary flex items-center gap-1 mb-1"
           >
             <Icon name="arrow_back" size={14} />
@@ -671,18 +693,6 @@ export default function ProspectusPdfEditorPage() {
             <h1 className="text-xl font-bold text-on-surface truncate">
               {pdfRecord.originalFilename}
             </h1>
-            {editingLabel && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                {editingLabel}
-              </span>
-            )}
-            <SaveStatusIndicator
-              state={saveState}
-              error={saveError}
-              onRetry={() => void commitSave()}
-              onDismiss={() => void cancelSave()}
-            />
           </div>
           <p className="text-on-surface-variant text-xs mt-0.5">
             {pdfRecord.pageCount} page
@@ -775,8 +785,7 @@ export default function ProspectusPdfEditorPage() {
         </div>
       )}
 
-      {/* Image-only page warning — a screenshot/scanned page has no text
-          layer, so every cell will come back blank. */}
+      {/* Image-only page warning */}
       {textLayer && !textLayer.hasText && (
         <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-2">
           <Icon name="warning" size={18} className="shrink-0 mt-0.5" />
@@ -939,6 +948,9 @@ export default function ProspectusPdfEditorPage() {
                     }
                     onRowSelect={handleRowSelectAndFocus}
                     onAddRow={handleAddRow}
+                    onSaveTable={handleSaveTable}
+                    onCancelTable={handleCancelTable}
+                    isSaving={isSaving}
                   />
                 )}
               </div>
@@ -1070,16 +1082,8 @@ export default function ProspectusPdfEditorPage() {
             at any time to cancel a draw in progress.
           </li>
           <li>
-            Press{' '}
-            <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">
-              Ctrl
-            </kbd>
-            {' + '}
-            <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">
-              wheel
-            </kbd>{' '}
-            to zoom. <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">F</kbd> to fit,{' '}
-            <kbd className="px-1 py-0.5 text-xs font-mono border border-surface-variant rounded bg-surface-container-low">0</kbd> to reset.
+            When you're done editing a table's region/rows/columns, click{' '}
+            <strong className="text-on-surface">Save</strong> below the table.
           </li>
         </ol>
       </Modal>
@@ -1155,7 +1159,56 @@ export default function ProspectusPdfEditorPage() {
         tables={tables}
         programs={programs}
         departmentId={String(pdfRecord.departmentId)}
+        textItems={textLayer?.items ?? null}
       />
+
+      {/* Unsaved Changes Blocker Modal */}
+      <Modal
+        open={!!pendingNavigation}
+        onClose={() => setPendingNavigation(null)}
+        title="Unsaved changes"
+        size="md"
+        footer={
+          <>
+            <button
+              onClick={() => setPendingNavigation(null)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDiscardAndLeave}
+              className="px-4 py-2 text-sm font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition rounded-lg"
+            >
+              Discard Changes
+            </button>
+            <button
+              onClick={handleSaveAndLeave}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSaving && (
+                <Icon name="progress_activity" size={14} className="animate-spin" />
+              )}
+              {isSaving ? 'Saving…' : 'Save and Leave'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <Icon name="warning" size={24} className="text-amber-600 shrink-0" />
+            <p className="text-sm text-slate-700">
+              You have unsaved changes in {dirtyTableIds.size} table
+              {dirtyTableIds.size === 1 ? '' : 's'}.
+            </p>
+          </div>
+          <p className="text-sm text-slate-600 pl-9">
+            Do you want to save them before leaving? If you discard, your recent
+            adjustments to rows, columns, and region bounds will be lost.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 import { ProspectusPdf } from './entities/prospectus-pdf.entity';
 import {
@@ -47,20 +47,6 @@ interface UserProfile {
 
 /**
  * Permissive subject code pattern.
- *
- * Accepts:
- *   - Classic: "CPE 121", "MATH 100", "PATHFit 1"
- *   - Pure-word: "PHILCON", "EPIC", "CWTS"
- *   - Compound: "CPE NETWORK 1", "GE ELECTIVE 3"
- *   - Ampersand: "R&D 101"
- *   - Trailing qualifiers: "CPE 121-A"
- *
- * Rules:
- *   - First chunk: 2–12 chars, letters + digits + . - & (must start with a letter)
- *   - Up to 4 additional space-separated chunks, 1–16 chars each
- *
- * Anything that matches this but isn't a "real" code gets flagged as a
- * warning in the import result rather than being rejected.
  */
 const SUBJECT_CODE_RE =
   /^[A-Za-z][A-Za-z0-9&.\-]{1,11}(?:\s+[A-Za-z0-9&.\-]{1,16}){0,4}$/;
@@ -426,9 +412,6 @@ export class ProspectusPdfsService {
       return { table_id: String(r.table_id), subjects: r.subjects };
     });
 
-    // Every cell blank across every selected table means there was no text
-    // layer to read at all (scan / image-only PDF). Say so once, up front,
-    // instead of drowning the user in "row N: no code" warnings.
     const extractedNothing =
       regionsOut.length > 0 &&
       regionsOut.every((r) =>
@@ -459,62 +442,53 @@ export class ProspectusPdfsService {
   ): Promise<{
     subjectsCreated: number;
     subjectsExisting: number;
+    slotsCreated: number;
     prospectusCreated: number;
     prospectusSkipped: number;
-    skippedRows: number;
+    rowsSkipped: number;
     byTable: {
       table_id: string;
       subject_count: number;
       created: number;
+      slots: number;
       skipped: number;
       existing: number;
     }[];
     warnings: string[];
-    synthesizedCodes: Array<{
+    skippedRows: {
+      tableId: string;
+      rowIndex: number;
+      code: string;
+      title: string;
+      reason: 'no_code' | 'no_title' | 'unit_mismatch' | 'user_skip' | 'pattern_mismatch';
+    }[];
+    slots: {
+      subjectId: string;
       subjectCode: string;
+      slotLabel: string;
       title: string;
       yearLevel: number;
       semester: string;
-      origin: 'explicit' | 'synthesized' | 'loose';
-    }>;
+    }[];
   }> {
     const pdf = await this.findOne(pdfId, user);
     this.assertCanWriteDepartment(user, pdf.departmentId);
 
-    // Validate program
     const programId = String(dto.program_id);
-    const program = await this.programRepo.findOne({
-      where: { programId },
-    });
-    if (!program) {
-      throw new BadRequestException('Program not found');
-    }
+    const program = await this.programRepo.findOne({ where: { programId } });
+    if (!program) throw new BadRequestException('Program not found');
 
-    // Ownership: DH must own the program's department
     if (user.role === 'department_head') {
       if (String(program.deptId) !== String(user.deptId)) {
         throw new ForbiddenException(
           'You can only import into programs from your own department.',
         );
       }
-    } else if (
-      user.role !== 'administrator' &&
-      user.role !== 'college_dean'
-    ) {
+    } else if (user.role !== 'administrator' && user.role !== 'college_dean') {
       throw new ForbiddenException('Insufficient role for import.');
     }
 
-    // Resolve target tables directly from the DB.
-    const allTables = await this.tableRepo.find({
-      where: { pdfId },
-    });
-    this.logger.log(
-      `[import] pdf ${pdfId} has ${allTables.length} tables: ` +
-        allTables
-          .map((t) => `${t.tableId}(y${t.yearLevel}${t.semester})`)
-          .join(', '),
-    );
-
+    const allTables = await this.tableRepo.find({ where: { pdfId } });
     const targetIds = new Set(dto.regions.map((r) => String(r.table_id)));
     const tables = allTables.filter((t) => targetIds.has(t.tableId));
     if (tables.length === 0) {
@@ -527,21 +501,36 @@ export class ProspectusPdfsService {
 
     let subjectsCreated = 0;
     let subjectsExisting = 0;
+    let slotsCreated = 0;
     let prospectusCreated = 0;
     let prospectusSkipped = 0;
-    let skippedRows = 0;
+    let rowsSkipped = 0;
     const warnings: string[] = [];
-    const synthesizedCodes: Array<{
+    const skippedRows: {
+      tableId: string;
+      rowIndex: number;
+      code: string;
+      title: string;
+      reason:
+        | 'no_code'
+        | 'no_title'
+        | 'unit_mismatch'
+        | 'user_skip'
+        | 'pattern_mismatch';
+    }[] = [];
+    const slots: {
+      subjectId: string;
       subjectCode: string;
+      slotLabel: string;
       title: string;
       yearLevel: number;
       semester: string;
-      origin: 'explicit' | 'synthesized' | 'loose';
-    }> = [];
+    }[] = [];
     const byTable: {
       table_id: string;
       subject_count: number;
       created: number;
+      slots: number;
       skipped: number;
       existing: number;
     }[] = [];
@@ -553,6 +542,7 @@ export class ProspectusPdfsService {
       if (!table) continue;
 
       let created = 0;
+      let slotsInTable = 0;
       let skipped = 0;
       let existing = 0;
 
@@ -560,56 +550,128 @@ export class ProspectusPdfsService {
 
       for (const sub of region.subjects) {
         const rawCode = (sub.code ?? '').trim();
-        const title = (sub.title ?? '').trim();
 
-        // Title is mandatory — without it we can't create a meaningful subject
-        if (!title) {
+        // PDF text layers frequently squash words together ("GECElective1"
+        // instead of "GEC Elective 1"). Insert spaces between lower→UPPER
+        // transitions and between letters and digits, so the title is legible
+        // and the slot hash stays stable across re-imports.
+        const title = (sub.title ?? '')
+          .trim()
+          .replace(/([a-z])([A-Z])/g, '$1 $2')
+          .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+          .replace(/\s+/g, ' ');
+        const action = sub.action ?? 'subject';
+
+        // ── User explicitly skipped this row ──
+        if (action === 'skip') {
           skipped++;
+          rowsSkipped++;
+          skippedRows.push({
+            tableId: String(table.tableId),
+            rowIndex: rowIndexInTable,
+            code: rawCode,
+            title,
+            reason: 'user_skip',
+          });
           rowIndexInTable++;
           continue;
         }
 
-        // ── Code resolution ──
-        let code: string;
-        let codeOrigin: 'explicit' | 'synthesized' | 'loose' = 'explicit';
-
-        if (!rawCode) {
-          // Blank cell → synthesize a placeholder
-          code = this.synthesizeSubjectCode(table, title, rowIndexInTable);
-          codeOrigin = 'synthesized';
-          warnings.push(
-            `Year ${table.yearLevel} ${table.semester}: no code for "${title}" — assigned placeholder "${code}". Edit the subject to give it a real code.`,
-          );
-        } else if (!SUBJECT_CODE_RE.test(rawCode)) {
-          // Present but doesn't match — accept anyway, uppercase, and flag
-          code = rawCode.toUpperCase();
-          codeOrigin = 'loose';
-          warnings.push(
-            `Year ${table.yearLevel} ${table.semester}: "${rawCode}" doesn't match the code pattern but was imported as "${code}". Verify the code.`,
-          );
-        } else {
-          code = rawCode;
+        // Title is mandatory in every action — a slot with no label is meaningless.
+        if (!title) {
+          skipped++;
+          rowsSkipped++;
+          skippedRows.push({
+            tableId: String(table.tableId),
+            rowIndex: rowIndexInTable,
+            code: rawCode,
+            title,
+            reason: 'no_title',
+          });
+          rowIndexInTable++;
+          continue;
         }
-
-        rowIndexInTable++;
 
         const lec = this.parseIntSafe(sub.lec);
         const lab = this.parseIntSafe(sub.lab);
         const total = this.parseIntSafe(sub.total);
 
-        if (lec + lab !== total) {
+        if (action === 'subject' && lec + lab !== total) {
           skipped++;
+          rowsSkipped++;
+          skippedRows.push({
+            tableId: String(table.tableId),
+            rowIndex: rowIndexInTable,
+            code: rawCode || '(none)',
+            title,
+            reason: 'unit_mismatch',
+          });
           warnings.push(
-            `Year ${table.yearLevel} ${table.semester}: "${code}" lec+lab≠total (${lec}+${lab}≠${total})`,
+            `Year ${table.yearLevel} ${table.semester}: "${rawCode || title}" lec+lab≠total (${lec}+${lab}≠${total})`,
           );
+          rowIndexInTable++;
           continue;
         }
 
-        // ── Room type inference (mixed → 'any') ──
+        // ── Slot path (elective placeholder) ──
+        if (action === 'slot') {
+          const subject = await this.createSlotSubject({
+            table,
+            title,
+            lec,
+            lab,
+            total,
+            deptId: pdf.departmentId,
+          });
+          slotsCreated++;
+          slotsInTable++;
+          slots.push({
+            subjectId: subject.subjectId,
+            subjectCode: subject.subjectCode,
+            slotLabel: title,
+            title,
+            yearLevel: table.yearLevel,
+            semester: table.semester,
+          });
+
+          await this.upsertProspectusRow({
+            programId,
+            subjectId: subject.subjectId,
+            table,
+            slotLabel: title,
+          });
+          prospectusCreated++;
+          created++;
+          rowIndexInTable++;
+          continue;
+        }
+
+        // ── Normal 'subject' path ──
+        if (!rawCode) {
+          skipped++;
+          rowsSkipped++;
+          skippedRows.push({
+            tableId: String(table.tableId),
+            rowIndex: rowIndexInTable,
+            code: '(none)',
+            title,
+            reason: 'no_code',
+          });
+          rowIndexInTable++;
+          continue;
+        }
+
+        let code = rawCode;
+        if (!SUBJECT_CODE_RE.test(rawCode)) {
+          code = rawCode.toUpperCase();
+          warnings.push(
+            `Year ${table.yearLevel} ${table.semester}: "${rawCode}" doesn't match the code pattern but was imported as "${code}". Verify the code.`,
+          );
+        }
+
         const isMixed = lec > 0 && lab > 0;
         const inferredRoomType: string | null = isMixed ? 'any' : null;
 
-        // ── Upsert subject ──
         let subject = await this.subjectRepo.findOne({
           where: { subjectCode: code },
         });
@@ -624,14 +686,12 @@ export class ProspectusPdfsService {
             deptId: pdf.departmentId,
             isActive: true,
             isMinor: false,
+            isPlaceholder: false,
             requiredRoomType: inferredRoomType,
           });
           subject = await this.subjectRepo.save(subject);
           subjectsCreated++;
         } else {
-          // Existing subject — update the room type if this PDF reveals it's
-          // mixed and the current value is a strict room (not 'any').
-          // Never overwrite a DH's explicit 'any' or leave a stale strict value.
           const current = subject.requiredRoomType ?? null;
           if (isMixed && current !== 'any') {
             subject.requiredRoomType = 'any';
@@ -640,64 +700,30 @@ export class ProspectusPdfsService {
           subjectsExisting++;
         }
 
-        // Track synthesized/loose codes for the response payload
-        if (codeOrigin !== 'explicit') {
-          synthesizedCodes.push({
-            subjectCode: code,
-            title,
-            yearLevel: table.yearLevel,
-            semester: table.semester,
-            origin: codeOrigin,
-          });
-        }
-
-        // ── Upsert prospectus entry ──
-        const existingEntry = await this.prospectusRepo.findOne({
-          where: {
-            programId,
-            subjectId: subject.subjectId,
-            yearLevel: table.yearLevel,
-            semester: table.semester,
-          },
+        const outcome = await this.upsertProspectusRow({
+          programId,
+          subjectId: subject.subjectId,
+          table,
         });
-
-        if (existingEntry) {
-          if (!existingEntry.isActive) {
-            existingEntry.isActive = true;
-            await this.prospectusRepo.save(existingEntry);
-            prospectusCreated++;
-            created++;
-          } else {
-            prospectusSkipped++;
-            existing++;
-          }
-        } else {
-          const entry = this.prospectusRepo.create({
-            programId,
-            subjectId: subject.subjectId,
-            yearLevel: table.yearLevel,
-            semester: table.semester,
-            isActive: true,
-            lectureSessionsPerWeek: 1,
-            lectureMinutesPerSession: 90,
-            labSessionsPerWeek: 1,
-            labMinutesPerSession: 180,
-          });
-          await this.prospectusRepo.save(entry);
+        if (outcome.created) {
           prospectusCreated++;
           created++;
+        } else {
+          prospectusSkipped++;
+          existing++;
         }
+
+        rowIndexInTable++;
       }
 
-      // Update cached totals on the table row
-      table.subjectCount = created + skipped + existing;
+      table.subjectCount = region.subjects.length;
       await this.tableRepo.save(table);
 
-      skippedRows += skipped;
       byTable.push({
         table_id: String(table.tableId),
         subject_count: region.subjects.length,
         created,
+        slots: slotsInTable,
         skipped,
         existing,
       });
@@ -705,32 +731,36 @@ export class ProspectusPdfsService {
 
     this.logger.log(
       `Import complete for PDF ${pdfId}: ` +
-        `${subjectsCreated} new subjects, ${prospectusCreated} prospectus rows, ` +
-        `${prospectusSkipped} skipped, ${skippedRows} invalid`,
+        `${subjectsCreated} new subjects, ${slotsCreated} slots, ` +
+        `${prospectusCreated} prospectus rows, ` +
+        `${prospectusSkipped} skipped, ${rowsSkipped} invalid`,
     );
 
-    // ═══ Notification: prospectus imported (to the importer) ═══
     const totalProcessed = prospectusCreated + prospectusSkipped;
     await this.dispatcher.dispatch('prospectus.imported', {
       recipientUserIds: [user.userId],
       title: 'Prospectus imported',
       body:
-        `Imported ${prospectusCreated} new prospectus entr${
-          prospectusCreated === 1 ? 'y' : 'ies'
-        }` +
+        `Imported ${prospectusCreated} prospectus entr${prospectusCreated === 1 ? 'y' : 'ies'}` +
         (subjectsCreated > 0
-          ? ` and created ${subjectsCreated} new subject${subjectsCreated === 1 ? '' : 's'}`
+          ? `, created ${subjectsCreated} new subject${subjectsCreated === 1 ? '' : 's'}`
           : '') +
-        (skippedRows > 0 ? `. ${skippedRows} row${skippedRows === 1 ? '' : 's'} skipped.` : '.'),
+        (slotsCreated > 0
+          ? `, ${slotsCreated} elective slot${slotsCreated === 1 ? '' : 's'}`
+          : '') +
+        (rowsSkipped > 0
+          ? `. ${rowsSkipped} row${rowsSkipped === 1 ? '' : 's'} skipped.`
+          : '.'),
       entityType: 'prospectus_pdf',
       entityId: String(pdfId),
       payload: {
         programId,
         subjectsCreated,
         subjectsExisting,
+        slotsCreated,
         prospectusCreated,
         prospectusSkipped,
-        skippedRows,
+        rowsSkipped,
         totalProcessed,
         byTable,
       },
@@ -739,12 +769,14 @@ export class ProspectusPdfsService {
     return {
       subjectsCreated,
       subjectsExisting,
+      slotsCreated,
       prospectusCreated,
       prospectusSkipped,
-      skippedRows,
+      rowsSkipped,
       byTable,
       warnings,
-      synthesizedCodes,
+      skippedRows,
+      slots,
     };
   }
 
@@ -802,6 +834,90 @@ export class ProspectusPdfsService {
     }
   }
 
+  private async createSlotSubject(params: {
+    table: ProspectusPdfTable;
+    title: string;
+    lec: number;
+    lab: number;
+    total: number;
+    deptId: string;
+  }): Promise<Subject> {
+    // Slot subjects get a deterministic per-PDF code so re-imports are
+    // idempotent. Pattern: SLOT-<Y#S#>-<sha1(title)[0..6]>
+    const sem =
+      params.table.semester === '1st'
+        ? '1'
+        : params.table.semester === '2nd'
+        ? '2'
+        : 'S';
+    const hash = createHash('sha1')
+      .update(params.title.toLowerCase().trim())
+      .digest('hex')
+      .slice(0, 6)
+      .toUpperCase();
+    const slotCode = `SLOT-Y${params.table.yearLevel}S${sem}-${hash}`;
+
+    const existing = await this.subjectRepo.findOne({
+      where: { subjectCode: slotCode },
+    });
+    if (existing) return existing;
+
+    const isMixed = params.lec > 0 && params.lab > 0;
+    const subject = this.subjectRepo.create({
+      subjectCode: slotCode,
+      title: params.title,
+      totalUnits: params.total,
+      lectureUnits: params.lec,
+      labUnits: params.lab,
+      deptId: params.deptId,
+      isActive: true,
+      isMinor: false,
+      isPlaceholder: true,
+      requiredRoomType: isMixed ? 'any' : null,
+    });
+    return this.subjectRepo.save(subject);
+  }
+
+  private async upsertProspectusRow(params: {
+    programId: string;
+    subjectId: string;
+    table: ProspectusPdfTable;
+    slotLabel?: string;
+  }): Promise<{ created: boolean }> {
+    const existing = await this.prospectusRepo.findOne({
+      where: {
+        programId: params.programId,
+        subjectId: params.subjectId,
+        yearLevel: params.table.yearLevel,
+        semester: params.table.semester,
+      },
+    });
+
+    if (existing) {
+      if (!existing.isActive) {
+        existing.isActive = true;
+        await this.prospectusRepo.save(existing);
+        return { created: true };
+      }
+      return { created: false };
+    }
+
+    const entry = this.prospectusRepo.create({
+      programId: params.programId,
+      subjectId: params.subjectId,
+      yearLevel: params.table.yearLevel,
+      semester: params.table.semester,
+      slotLabel: params.slotLabel ?? null,
+      isActive: true,
+      lectureSessionsPerWeek: 1,
+      lectureMinutesPerSession: 90,
+      labSessionsPerWeek: 1,
+      labMinutesPerSession: 180,
+    });
+    await this.prospectusRepo.save(entry);
+    return { created: true };
+  }
+
   private assertValidRows(
     rows: { y_top_pt: number; y_bottom_pt: number }[],
   ): void {
@@ -820,37 +936,6 @@ export class ProspectusPdfsService {
     if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
     const n = parseFloat(cleaned);
     return Number.isFinite(n) ? Math.round(n) : 0;
-  }
-
-  /**
-   * Generate a placeholder subject code when the PDF row has no code.
-   *
-   * Example: "GEC Elective 3" in Year 2, 2nd Semester, row 8 becomes
-   *          "TBD-GECE-Y2S2-08"
-   *
-   * The DH can edit the subject later to fix the code — the TBD prefix
-   * makes it easy to find.
-   */
-  private synthesizeSubjectCode(
-    table: ProspectusPdfTable,
-    title: string,
-    indexWithinTable: number,
-  ): string {
-    const initials =
-      title
-        .replace(/[^A-Za-z\s]/g, '')
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((w) => w[0].toUpperCase())
-        .join('')
-        .slice(0, 4) || 'ELEC';
-
-    const year = table.yearLevel;
-    const sem =
-      table.semester === '1st' ? '1' : table.semester === '2nd' ? '2' : 'S';
-    const counter = String(indexWithinTable + 1).padStart(2, '0');
-
-    return `TBD-${initials}-Y${year}S${sem}-${counter}`;
   }
 
   private assertCanReadDepartment(

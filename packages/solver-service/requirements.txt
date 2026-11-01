@@ -3,3 +3,4 @@ uvicorn[standard]==0.32.0
 ortools==9.11.4210
 pydantic==2.9.0
 starlette==0.38.6
+protobuf>=5.26,<6

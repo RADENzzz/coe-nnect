@@ -18,20 +18,22 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 20 * 1024 * 1024  # 20 MB
 
     # Extraction
-    # Right edge is clipped by this amount to prevent bleed into the next
-    # column. Left edge is NOT clipped (see text_extractor._clip_rect) so
-    # short codes like "BEM 111" starting exactly at the column boundary
+    # Left/right edge is clipped by this amount to prevent bleed into the
+    # next column. Left edge is NOT clipped (see text_extractor._clip_rect)
+    # so short codes like "BEM 111" starting exactly at the column boundary
     # are still captured.
     min_cell_padding_pt: float = 2.5
+    
+    # Row-boundary padding for top/bottom. Kept separate from the left/right
+    # padding because tight rows would otherwise clip descenders.
+    row_padding_pt: float = 1.0
+
     strip_whitespace: bool = True
 
     # OCR (optional fallback for scanned / image-only pages)
     ocr_dpi: int = 300
     ocr_lang: str = "eng"
-    # --psm 6 = "assume a single uniform block of text", which suits
-    # table rows better than the default page-segmentation heuristics.
     ocr_config: str = "--oem 3 --psm 6"
-    # Tesseract reports -1 for non-text boxes; drop anything below this.
     ocr_min_confidence: float = 30.0
 
 

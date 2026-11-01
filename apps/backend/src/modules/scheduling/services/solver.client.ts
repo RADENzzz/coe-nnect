@@ -17,7 +17,7 @@ export class SolverClient implements OnModuleInit {
 
   private static readonly HEALTH_TIMEOUT_MS = 30_000;
   private static readonly WARM_TTL_MS = 10 * 60 * 1000;
-  private static readonly SOLVE_TIMEOUT_MS = 120_000;
+  private static readonly SOLVE_TIMEOUT_MS = 240_000;
   private static readonly MAX_ATTEMPTS = 3;
 
   constructor() {
