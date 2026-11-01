@@ -26,6 +26,9 @@ export class Subject {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Column({ name: 'is_placeholder', type: 'boolean', default: false })
+  isPlaceholder!: boolean;
+
   /**
    * True if the subject is taught by another department or college
    * (Math, GenEd, PE, EPIC, NSTP, etc.). Minor subjects are plotted
