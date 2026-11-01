@@ -57,6 +57,9 @@ export class Prospectus {
   @ManyToOne(() => Program) @JoinColumn({ name: 'program_id' })
   program: Program;
 
+  @Column({ name: 'slot_label', type: 'text', nullable: true })
+  slotLabel!: string | null;
+
   @ManyToOne(() => Subject) @JoinColumn({ name: 'subject_id' })
   subject: Subject;
 }
