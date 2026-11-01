@@ -141,8 +141,26 @@ export interface ImportConfirmInput {
       lec?: string;
       lab?: string;
       total?: string;
+      action?: 'subject' | 'slot' | 'skip';
     }[];
   }[];
+}
+
+export interface SkippedRow {
+  tableId: string;
+  rowIndex: number;
+  code: string;
+  title: string;
+  reason: 'no_code' | 'no_title' | 'unit_mismatch' | 'user_skip' | 'pattern_mismatch';
+}
+
+export interface SlotCreated {
+  subjectId: string;
+  subjectCode: string;
+  slotLabel: string;
+  title: string;
+  yearLevel: number;
+  semester: string;
 }
 
 export interface SynthesizedCode {
@@ -156,19 +174,23 @@ export interface SynthesizedCode {
 export interface ImportConfirmResult {
   subjectsCreated: number;
   subjectsExisting: number;
+  slotsCreated: number;
   prospectusCreated: number;
   prospectusSkipped: number;
-  skippedRows: number;
+  rowsSkipped: number;
   byTable: {
     table_id: string;
     subject_count: number;
     created: number;
+    slots: number;
     skipped: number;
     existing: number;
   }[];
   warnings: string[];
-  synthesizedCodes: SynthesizedCode[];
+  skippedRows: SkippedRow[];
+  slots: SlotCreated[];
 }
+
 
 export async function confirmImport(
   pdfId: string,
