@@ -214,8 +214,17 @@ def room_accepts_block(room: Room, kind: str, subject: Subject) -> bool:
             return room.roomType in ("laboratory", "computer_lab")
         return room.roomType in ("lecture_room", "computer_lab", "laboratory")
 
-    # Pure subject → strict match
-    return room.roomType == subject.requiredRoomType
+    # Pure subject → strict match, with one deliberate relaxation for
+    # lecture blocks: a 'laboratory'-typed subject's lecture still needs
+    # a classroom, and forcing it into a lab room starves the lab blocks
+    # (seen 2026-11-01: GE 111/311/411 lectures+labs put 60h/week on one
+    # GE-LAB1; CPE 213/313 lectures had zero usable rooms at all).
+    if kind == "lab":
+        return room.roomType == subject.requiredRoomType
+    return (
+        room.roomType == subject.requiredRoomType
+        or room.roomType == "lecture_room"
+    )
 
 
 def blocks_overlap(start_a: int, dur_a: int, start_b: int, dur_b: int) -> bool:
@@ -660,7 +669,7 @@ def solve_schedule(req: SolveRequest) -> dict:
 
     # ── SOLVE ──
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 20
+    solver.parameters.max_time_in_seconds = 90
     solver.parameters.num_workers = 8
 
     status = solver.Solve(model)
@@ -676,6 +685,24 @@ def solve_schedule(req: SolveRequest) -> dict:
     print(f"[solver] status={status_name} wall_time={solver.WallTime():.2f}s")
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        # UNKNOWN is CP-SAT's "search budget exhausted" status — the model
+        # is not proven impossible, the time limit just ran out. Reporting
+        # it as "infeasible" misleads the user (a longer limit or a retry
+        # can succeed). Reported today (2026-11-01): a 16-section CPE
+        # payload (~70k variables) needed >20s to find its first feasible
+        # solution and solved correctly once the limit was raised to 90s.
+        if status == cp_model.UNKNOWN:
+            return {
+                "status": "timeout",
+                "message":
+                    "The solver hit its time limit before finishing the "
+                    "search. This is not an impossible schedule — try "
+                    "generating again, or reduce the term load if it keeps "
+                    "happening.",
+                "solveTimeSeconds": solver.WallTime(),
+                "solveStatus": status_name,
+                "unscheduled": [],
+            }
         return {
             "status": "infeasible",
             "message": "No valid schedule exists with the current constraints.",
