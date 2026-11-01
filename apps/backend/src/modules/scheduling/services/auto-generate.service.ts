@@ -1493,7 +1493,7 @@ export class AutoGenerateService {
         p_term_id: Number(termId),
         p_dept_id: Number(deptId),
         p_user_id: userId,
-        p_ttl_seconds: 120,
+        p_ttl_seconds: 300,
       });
 
     if (error) {
