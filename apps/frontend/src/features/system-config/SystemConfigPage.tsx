@@ -149,6 +149,15 @@ const GROUPS: FieldGroup[] = [
         type: 'number',
         hint: 'Ideal lecture duration, in minutes (typically 90).',
       },
+      {
+        key: 'end_hour_alignment_weight',
+        label: 'Prefer hour-aligned block ends',
+        type: 'number',
+        hint:
+          '0 = off. Higher values nudge blocks to END on the hour ' +
+          '(e.g. a block ending 12:30 → prefers 12:00). Starts may still ' +
+          'sit on a half-hour. Suggested 3–5 when enabled.',
+      },
     ],
   },
 ];
