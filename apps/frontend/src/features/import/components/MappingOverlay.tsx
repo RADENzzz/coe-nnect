@@ -55,10 +55,11 @@ interface MappingOverlayProps {
   onRowDelete: (tableId: string, rowId: string) => void;
   onRowSelect: (tableId: string, rowId: string) => void;
   onAddRow: (tableId: string) => void;
-  /** Called when the user cancels an in-progress draw (Escape). */
+  onSaveTable: (tableId: string) => void;
+  onCancelTable: (tableId: string) => void;
+  isSaving: boolean;
   onCancelDrawing?: () => void;
 }
-
 export default function MappingOverlay({
   canvasWidth,
   canvasHeight,
@@ -79,6 +80,9 @@ export default function MappingOverlay({
   onRowDelete,
   onRowSelect,
   onAddRow,
+  onSaveTable,      // <── ADD
+  onCancelTable,    // <── ADD
+  isSaving,         // <── ADD
   onCancelDrawing,
 }: MappingOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -280,6 +284,9 @@ export default function MappingOverlay({
             }
           }}
           onAddRow={() => onAddRow(table.tableId)}
+          onSaveTable={() => onSaveTable(table.tableId)}      
+          onCancelTable={() => onCancelTable(table.tableId)}
+          isSaving={isSaving}                             
           columnsInteractive={
             selection.kind === 'table' &&
             selection.tableId === table.tableId &&
