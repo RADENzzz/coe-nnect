@@ -61,10 +61,6 @@ app.add_middleware(
 
 
 def _decode_pdf_to_tempfile(pdf_base64: str) -> str:
-    """
-    Decode a base64 PDF payload to a temp file on the parser's own
-    filesystem. Caller is responsible for deleting the file.
-    """
     try:
         pdf_bytes = base64.b64decode(pdf_base64, validate=True)
     except Exception as e:
@@ -102,27 +98,13 @@ def health() -> HealthResponse:
 
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest) -> ExtractResponse:
-    """
-    Extract text for every (region, row, column) cell.
-
-    The caller sends the PDF as base64. We decode it to a temp file,
-    run extraction, and clean up.
-
-    With `ocr=true`, cells that come back blank from the PDF's text layer
-    are re-read from a rendered image of the page (Tesseract). That is what
-    makes scans and screenshots-pasted-into-Word readable.
-    """
     pdf_path = _decode_pdf_to_tempfile(req.pdf_base64)
 
     if req.ocr and not ocr_available():
         _safe_unlink(pdf_path)
         raise HTTPException(
             status_code=503,
-            detail=(
-                "OCR is not available on the parser service. Tesseract must be "
-                "installed (apt: tesseract-ocr) and the pytesseract package "
-                "present in the image."
-            ),
+            detail="OCR is not available on the parser service.",
         )
 
     try:
@@ -139,17 +121,37 @@ def extract(req: ExtractRequest) -> ExtractResponse:
         page_refs: list = []
         results: list[ExtractedRegion] = []
 
+        # ── Smart OCR Pre-scan ──
+        # Only OCR pages where the selected regions have literally no text.
+        pages_needing_ocr: set[int] = set()
+        if req.ocr:
+            for region in req.regions:
+                p_idx = region.page_index
+                if p_idx in pages_needing_ocr or p_idx >= doc.page_count:
+                    continue
+                
+                if p_idx not in textpage_cache:
+                    textpage, page = doc.textpage(p_idx)
+                    textpage_cache[p_idx] = textpage
+                    page_cache[p_idx] = page
+                    page_refs.append(page)
+                
+                textpage = textpage_cache[p_idx]
+                
+                # Check if the union rect of this region has any text
+                raw = textpage.get_text_bounded(
+                    region.x_start_pt,
+                    region.y_start_pt,
+                    region.x_end_pt,
+                    region.y_end_pt
+                )
+                if not raw.strip():
+                    pages_needing_ocr.add(p_idx)
+
+        # ── Extraction Loop ──
         for region in req.regions:
             if region.page_index >= doc.page_count:
-                log.warning(
-                    "region table_id=%s page_index=%s out of range (%s pages)",
-                    region.table_id,
-                    region.page_index,
-                    doc.page_count,
-                )
-                results.append(
-                    ExtractedRegion(table_id=region.table_id, subjects=[])
-                )
+                results.append(ExtractedRegion(table_id=region.table_id, subjects=[]))
                 continue
 
             if region.page_index not in textpage_cache:
@@ -161,48 +163,41 @@ def extract(req: ExtractRequest) -> ExtractResponse:
             textpage = textpage_cache[region.page_index]
 
             ocr_words = None
-            if req.ocr:
+            if req.ocr and region.page_index in pages_needing_ocr:
                 if region.page_index not in ocr_cache:
                     try:
-                        ocr_cache[region.page_index] = ocr_page(
-                            page_cache[region.page_index]
-                        )
+                        ocr_cache[region.page_index] = ocr_page(page_cache[region.page_index])
                     except OcrUnavailable as e:
                         raise HTTPException(status_code=503, detail=str(e))
                 ocr_words = ocr_cache[region.page_index]
 
-            subjects = extract_region(textpage, region, ocr_words)
-            results.append(
-                ExtractedRegion(table_id=region.table_id, subjects=subjects)
+            subjects = extract_region(
+                textpage, 
+                region, 
+                ocr_words
             )
+            results.append(ExtractedRegion(table_id=region.table_id, subjects=subjects))
 
         return ExtractResponse(regions=results)
 
     finally:
         for textpage in textpage_cache.values():
-            try:
-                textpage.close()
-            except Exception:
-                pass
+            try: textpage.close()
+            except Exception: pass
         for page in page_refs:
-            try:
-                page.close()
-            except Exception:
-                pass
+            try: page.close()
+            except Exception: pass
         doc.close()
         _safe_unlink(pdf_path)
 
 
 @app.post("/info", response_model=InfoResponse)
 def info(req: InfoRequest) -> InfoResponse:
-    """Return page count + per-page dimensions for a PDF."""
     pdf_path = _decode_pdf_to_tempfile(req.pdf_base64)
-
     try:
         doc = PdfDocument(pdf_path)
     except Exception as e:
         _safe_unlink(pdf_path)
-        log.exception("Failed to open PDF for /info")
         raise HTTPException(status_code=400, detail=f"Cannot open PDF: {e}")
 
     try:
@@ -218,13 +213,6 @@ def info(req: InfoRequest) -> InfoResponse:
         doc.close()
         _safe_unlink(pdf_path)
 
-
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=settings.port,
-        reload=True,
-    )
+    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.port, reload=True)
