@@ -24,3 +24,17 @@ export function setMaintenancePreviewEnabled(enabled: boolean): void {
     /* ignore */
   }
 }
+
+/**
+ * Local-only maintenance bypass.
+ *
+ * When enabled, the dev machine ignores the database maintenance flag so
+ * department heads and deans can keep testing locally while the hosted app
+ * stays in maintenance. Production builds ignore this (Vite `DEV` is false),
+ * and the backend has its own `MAINTENANCE_BYPASS` guard.
+ */
+export function isLocalMaintenanceBypassEnabled(): boolean {
+  return (
+    import.meta.env.DEV && import.meta.env.VITE_MAINTENANCE_BYPASS === 'true'
+  );
+}

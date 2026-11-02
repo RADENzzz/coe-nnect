@@ -26,6 +26,7 @@ import {
 } from '../../api/system-status.api';
 import { useOnlineUsers } from '../../hooks/use-online-users';
 import {
+  isLocalMaintenanceBypassEnabled,
   isMaintenancePreviewEnabled,
   setMaintenancePreviewEnabled,
 } from '../../lib/maintenance-preview';
@@ -1309,6 +1310,7 @@ function SystemStatusCard() {
   const [previewAsUser, setPreviewAsUser] = useState(() =>
     isMaintenancePreviewEnabled(),
   );
+  const localBypass = isLocalMaintenanceBypassEnabled();
 
   // Hydrate from server on first load / refetch
   useEffect(() => {
@@ -1439,6 +1441,12 @@ function SystemStatusCard() {
 
         {import.meta.env.DEV && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-2">
+            {localBypass && (
+              <p className="w-full text-[11px] font-semibold text-emerald-700">
+                Local bypass active — maintenance is not enforced on this
+                machine.
+              </p>
+            )}
             <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer select-none">
               <input
                 type="checkbox"
