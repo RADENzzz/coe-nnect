@@ -40,6 +40,21 @@ export default function MaintenancePage() {
     (data?.maintenanceMode === true && !isLocalMaintenanceBypassEnabled()) ||
     isMaintenancePreviewEnabled();
 
+  // Game exists only after the user pressed Play AND we are still in maintenance.
+  // If maintenance ends while the game is running, this flips to false and the
+  // CactusRunner unmounts (its RAF loop + listeners are torn down), effectively
+  // stopping and hiding the game — "not playable and hide the game".
+  const gameStarted = started && showWall;
+
+  // Reset game state if maintenance ends mid-run.
+  useEffect(() => {
+    if (!showWall) {
+      setStarted(false);
+      setCollapsed(false);
+    }
+  }, [showWall]);
+
+  // Redirect out once the wall is no longer shown.
   useEffect(() => {
     if (!data || showWall) return;
     if (isDev || profile?.role === 'college_dean') {
@@ -81,12 +96,16 @@ export default function MaintenancePage() {
     setCollapsed(true);
   };
 
+  const handleResumeGame = () => setCollapsed(true);
+  const handleExpandCard = () => setCollapsed(false);
+
   const title = data?.title?.trim() || 'CoE-NNECT is under maintenance';
   const busy = refreshing || isFetching;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-50">
-      <CactusRunner active={started} />
+      {/* Game is only mounted after Play, and never when maintenance has ended. */}
+      {gameStarted && <CactusRunner active={collapsed} />}
 
       {/* Wall wrapper — fades out when the game starts. Once collapsed, all
           interactive children drop pointer-events so taps reach the game. */}
@@ -120,16 +139,19 @@ export default function MaintenancePage() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-violet-600 truncate">
                 Scheduled maintenance
               </p>
-              <button
-                type="button"
-                onClick={() => setCollapsed(true)}
-                className="inline-flex items-center gap-1 min-h-[36px] px-2.5 py-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200 transition text-[11px] font-semibold touch-manipulation"
-                title="Minimize"
-                aria-label="Minimize maintenance card"
-              >
-                <Icon name="minimize" size={14} />
-                <span className="hidden xs:inline sm:inline">Minimize</span>
-              </button>
+              {/* Only render "Resume game" after the game has been started. */}
+              {started && (
+                <button
+                  type="button"
+                  onClick={handleResumeGame}
+                  className="inline-flex items-center gap-1 min-h-[36px] px-2.5 py-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200 transition text-[11px] font-semibold touch-manipulation"
+                  title="Back to game"
+                  aria-label="Minimize card and resume game"
+                >
+                  <Icon name="minimize" size={14} />
+                  <span className="hidden xs:inline sm:inline">Resume game</span>
+                </button>
+              )}
             </div>
 
             <div className="p-5 sm:p-8 pt-4 space-y-5 sm:space-y-6">
@@ -240,39 +262,37 @@ export default function MaintenancePage() {
             </div>
           </div>
 
-          {/* Play button — sibling of the card */}
-          <div
-            className={[
-              'shrink-0 w-full sm:w-auto flex justify-center sm:justify-start',
-              collapsed ? 'pointer-events-none' : 'pointer-events-auto',
-            ].join(' ')}
-          >
-            <button
-              type="button"
-              onClick={handlePlay}
-              className={[
-                'group relative inline-flex items-center justify-center gap-2',
-                'bg-gradient-to-br from-violet-600 to-violet-700 text-white',
-                'font-bold rounded-full shadow-lg shadow-violet-500/30',
-                'hover:from-violet-700 hover:to-violet-800',
-                'active:scale-95 active:shadow-md',
-                'transition-all duration-150 touch-manipulation',
-                'ring-2 ring-white/80',
-                'w-full min-h-[48px] px-6 py-3 text-sm',
-                'sm:w-16 sm:h-16 sm:min-h-0 sm:p-0',
-              ].join(' ')}
-              title="Play Cactus Run"
-              aria-label="Play Cactus Run"
-            >
-              <span className="absolute inset-0 rounded-full bg-violet-500/40 animate-ping opacity-60 pointer-events-none" />
-              <Icon name="play_arrow" filled size={26} />
-              <span className="sm:hidden">Play</span>
-            </button>
-          </div>
+          {/* Play button — only shown before the game has started. */}
+          {!started && (
+            <div className="shrink-0 w-full sm:w-auto flex justify-center sm:justify-start pointer-events-auto">
+              <button
+                type="button"
+                onClick={handlePlay}
+                className={[
+                  'group relative inline-flex items-center justify-center gap-2',
+                  'bg-gradient-to-br from-violet-600 to-violet-700 text-white',
+                  'font-bold rounded-full shadow-lg shadow-violet-500/30',
+                  'hover:from-violet-700 hover:to-violet-800',
+                  'active:scale-95 active:shadow-md',
+                  'transition-all duration-150 touch-manipulation',
+                  'ring-2 ring-white/80',
+                  'w-full min-h-[48px] px-6 py-3 text-sm',
+                  'sm:w-16 sm:h-16 sm:min-h-0 sm:p-0',
+                ].join(' ')}
+                title="Play Cactus Run"
+                aria-label="Play Cactus Run"
+              >
+                <span className="absolute inset-0 rounded-full bg-violet-500/40 animate-ping opacity-60 pointer-events-none" />
+                <Icon name="play_arrow" filled size={26} />
+                <span className="sm:hidden">Play</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {collapsed && (
+      {/* Floating status pill — only when the game is actually running. */}
+      {gameStarted && collapsed && (
         <div
           className="fixed z-20 pointer-events-auto select-none"
           style={{
@@ -304,7 +324,7 @@ export default function MaintenancePage() {
             </button>
             <button
               type="button"
-              onClick={() => setCollapsed(false)}
+              onClick={handleExpandCard}
               className="inline-flex items-center gap-1 min-h-[36px] px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-violet-700 hover:bg-violet-50 active:bg-violet-100 transition touch-manipulation"
               title="Show details"
               aria-label="Expand maintenance card"
@@ -316,7 +336,7 @@ export default function MaintenancePage() {
         </div>
       )}
 
-      {collapsed && (
+      {gameStarted && collapsed && (
         <div
           className="sm:hidden fixed bottom-0 inset-x-0 z-20 pointer-events-none flex justify-center"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}

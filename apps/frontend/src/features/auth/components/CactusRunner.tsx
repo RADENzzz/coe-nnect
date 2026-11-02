@@ -43,8 +43,127 @@ interface Particle {
 }
 
 interface CactusRunnerProps {
+  /** When false, the game is paused (no stepping, no input). */
   active?: boolean;
 }
+
+// ============================================================
+//  Sound engine (Web Audio, no external files)
+// ============================================================
+const SOUND_MUTED_KEY = 'cactus-runner-muted';
+
+let audioCtx: AudioContext | null = null;
+let mutedCache: boolean | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  if (audioCtx && audioCtx.state === 'closed') audioCtx = null;
+  if (!audioCtx) {
+    try {
+      const AC =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    } catch {
+      return null;
+    }
+  }
+  if (audioCtx.state === 'suspended') {
+    void audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+function isMuted(): boolean {
+  if (mutedCache !== null) return mutedCache;
+  if (typeof window === 'undefined') return (mutedCache = false);
+  try {
+    mutedCache = window.localStorage.getItem(SOUND_MUTED_KEY) === '1';
+  } catch {
+    mutedCache = false;
+  }
+  return mutedCache;
+}
+
+function setMutedPref(m: boolean) {
+  mutedCache = m;
+  try {
+    window.localStorage.setItem(SOUND_MUTED_KEY, m ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
+interface Note {
+  freq: number;
+  dur: number;
+  type?: OscillatorType;
+  vol?: number;
+  glideTo?: number;
+}
+
+function playNotes(notes: Note[]) {
+  if (isMuted()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  let t = ctx.currentTime + 0.005;
+  for (const n of notes) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = n.type ?? 'sine';
+    osc.frequency.setValueAtTime(n.freq, t);
+    if (n.glideTo !== undefined) {
+      osc.frequency.exponentialRampToValueAtTime(
+        Math.max(1, n.glideTo),
+        t + n.dur,
+      );
+    }
+    const vol = n.vol ?? 0.08;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + n.dur);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + n.dur + 0.02);
+    t += n.dur * 0.85;
+  }
+}
+
+const SFX = {
+  start() {
+    playNotes([
+      { freq: 523, dur: 0.08, type: 'sine', vol: 0.06 },
+      { freq: 784, dur: 0.12, type: 'sine', vol: 0.06 },
+    ]);
+  },
+  jump() {
+    playNotes([
+      { freq: 260, dur: 0.14, type: 'triangle', vol: 0.07, glideTo: 620 },
+    ]);
+  },
+  point() {
+    playNotes([{ freq: 1318, dur: 0.05, type: 'sine', vol: 0.03 }]);
+  },
+  milestone() {
+    playNotes([
+      { freq: 659, dur: 0.09, type: 'triangle', vol: 0.07 },
+      { freq: 880, dur: 0.09, type: 'triangle', vol: 0.07 },
+      { freq: 1175, dur: 0.18, type: 'triangle', vol: 0.08 },
+    ]);
+  },
+  gameOver() {
+    playNotes([
+      { freq: 392, dur: 0.14, type: 'triangle', vol: 0.08 },
+      { freq: 311, dur: 0.14, type: 'triangle', vol: 0.08 },
+      { freq: 262, dur: 0.32, type: 'triangle', vol: 0.09, glideTo: 130 },
+    ]);
+  },
+};
+
+// ============================================================
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -137,6 +256,35 @@ function dayNight(t: number) {
   };
 }
 
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 5 6 9H2v6h4l5 4V5z" />
+      {muted ? (
+        <>
+          <line x1="23" y1="9" x2="17" y2="15" />
+          <line x1="17" y1="9" x2="23" y2="15" />
+        </>
+      ) : (
+        <>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export default function CactusRunner({ active = false }: CactusRunnerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [status, setStatus] = useState<Status>('ready');
@@ -146,6 +294,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
     return Number(window.localStorage.getItem(BEST_KEY) || 0);
   });
   const [shake, setShake] = useState(0);
+  const [muted, setMuted] = useState<boolean>(() => isMuted());
 
   const activeRef = useRef(active);
   useEffect(() => {
@@ -155,6 +304,12 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
   useEffect(() => {
     if (!active) setStatus('ready');
   }, [active]);
+
+  const toggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    setMutedPref(next);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -212,6 +367,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       blinkTimer: 3,
       deathT: 0,
       milestone: 0,
+      grace: 0,
     };
 
     let raf = 0;
@@ -220,6 +376,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
     let lastStatus: Status | null = null;
     let bestLocal = Number(window.localStorage.getItem(BEST_KEY) || 0);
     let lastShake = 0;
+    let wasActive = activeRef.current;
 
     // ---------- helpers ----------
     function findTarget(): CactusObs | null {
@@ -314,6 +471,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
     function triggerJump(c: CactusObs) {
       c.jumped = true;
       c.vy = CACTUS_JUMP_V;
+      SFX.jump();
       dustBurst(
         c.x + c.w / 2,
         GROUND - 2,
@@ -326,6 +484,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       if (s.status === 'ready') {
         s.status = 'running';
         s.spawnTimer = 80;
+        SFX.start();
         return;
       }
       if (s.status === 'over') {
@@ -340,6 +499,8 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         s.streak = 0;
         s.deathT = 0;
         s.milestone = 0;
+        s.grace = 0;
+        SFX.start();
         return;
       }
       const t = findTarget();
@@ -348,10 +509,11 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
 
     function gameOver() {
       s.status = 'over';
-      s.shake = 16;        // softer than before
-      s.flash = 0.35;      // softer than before
-      s.streak = 0;        // ← BUG FIX: was 1, causing streaks on death
+      s.shake = 16;
+      s.flash = 0.35;
+      s.streak = 0;
       s.deathT = 0;
+      SFX.gameOver();
       const cx = DINO_X + DINO_W / 2;
       const cy = GROUND - DINO_H / 2;
       const colors = [
@@ -389,15 +551,15 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       s.dayNight += dt * (1 / (40 * 60));
       if (s.dayNight > 1) s.dayNight -= 1;
 
+      if (s.grace > 0) s.grace = Math.max(0, s.grace - dt);
+
       const running = s.status === 'running';
 
       s.scroll += s.speed * dt * (running ? 1 : 0.3);
 
-      // Dino animation: run when running, idle when ready, freeze on death
       if (running) s.dinoPhase += dt * s.speed * 0.3;
       else if (s.status === 'ready') s.dinoPhase += dt * 3;
 
-      // Dino blink
       s.blinkTimer -= dt / 60;
       if (s.blinkTimer <= 0) {
         s.blink = 1;
@@ -440,11 +602,13 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
           }
         }
 
-        for (const c of s.cacti) {
-          if (c.passed) continue;
-          if (overlapsDino(c)) {
-            gameOver();
-            break;
+        if (s.grace <= 0) {
+          for (const c of s.cacti) {
+            if (c.passed) continue;
+            if (overlapsDino(c)) {
+              gameOver();
+              break;
+            }
           }
         }
 
@@ -452,6 +616,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
           if (!c.passed && c.x + c.w < DINO_X - 20) {
             c.passed = true;
             s.score += 1;
+            SFX.point();
             s.shake = Math.max(s.shake, 2);
             sparkBurst(
               DINO_X + DINO_W * 0.55,
@@ -459,10 +624,10 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
               14,
               ['#fbbf24', '#22d3ee', '#a78bfa', '#86efac'],
             );
-            // milestone celebration every 10
             const sc = Math.floor(s.score);
             if (sc > 0 && sc % 10 === 0 && sc !== s.milestone) {
-              s.milestone = sc;
+                            s.milestone = sc;
+              SFX.milestone();
               for (let i = 0; i < 30; i++) {
                 const a = Math.random() * Math.PI * 2;
                 const sp = 2 + Math.random() * 5;
@@ -595,7 +760,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.fill();
 
       if (isTarget) {
-        // Colour shifts gray → amber → rose as urgency increases
         const pulse = 0.55 + Math.sin(s.scroll * 0.15) * 0.35;
         let stroke: string;
         if (urgency > 0.7) stroke = `rgba(244, 63, 94, ${0.6 + pulse * 0.4})`;
@@ -637,7 +801,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       const legH = 6;
       const bodyH = h - legH;
 
-      // arms
       ctx!.fillStyle = dark;
       const armY = y + h * 0.44;
       const armW = w * 0.28;
@@ -657,19 +820,16 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       );
       ctx!.fill();
 
-      // body
       ctx!.fillStyle = green;
       roundRect(ctx!, bodyX, y, bodyW, bodyH, bodyW / 2);
       ctx!.fill();
 
-      // highlight
       ctx!.fillStyle = light;
       ctx!.globalAlpha = 0.5;
       roundRect(ctx!, bodyX + bodyW * 0.22, y + 6, 3, bodyH - 14, 1.5);
       ctx!.fill();
       ctx!.globalAlpha = 1;
 
-      // flower
       if (c.flower) {
         const fx = x + w / 2;
         const fy = y - 3;
@@ -686,7 +846,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         ctx!.fill();
       }
 
-      // eyes
       ctx!.fillStyle = '#fff';
       ctx!.beginPath();
       ctx!.arc(bodyX + bodyW * 0.32, y + h * 0.2, 3.5, 0, Math.PI * 2);
@@ -700,7 +859,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.arc(bodyX + bodyW * 0.68 + shift, y + h * 0.2, 1.8, 0, Math.PI * 2);
       ctx!.fill();
 
-      // mouth
       if (airborne) {
         ctx!.fillStyle = '#0f172a';
         ctx!.beginPath();
@@ -720,7 +878,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         ctx!.stroke();
       }
 
-      // legs
       const swing = airborne ? 0 : Math.sin(s.dinoPhase) * 3;
       ctx!.fillStyle = darker;
       roundRect(ctx!, bodyX + bodyW * 0.15 + swing, y + bodyH, 6, legH, 2);
@@ -746,7 +903,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.ellipse(x + w / 2, GROUND + 1, w * 0.55, 5, 0, 0, Math.PI * 2);
       ctx!.fill();
 
-      // tail
       ctx!.fillStyle = c2;
       ctx!.beginPath();
       ctx!.moveTo(x + w * 0.15, y + h * 0.42);
@@ -755,7 +911,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.closePath();
       ctx!.fill();
 
-      // legs (only animate when running)
       const running = s.status === 'running' || s.status === 'ready';
       const swing = running ? Math.sin(s.dinoPhase) * 4 : 0;
       ctx!.fillStyle = c3;
@@ -764,22 +919,18 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       roundRect(ctx!, x + w * 0.55 - swing, y + h * 0.68, 6, h * 0.32, 2);
       ctx!.fill();
 
-      // body
       ctx!.fillStyle = c1;
       roundRect(ctx!, x + w * 0.16, y + h * 0.28, w * 0.62, h * 0.48, 6);
       ctx!.fill();
 
-      // head
       ctx!.fillStyle = c1;
       roundRect(ctx!, x + w * 0.5, y + h * 0.05, w * 0.5, h * 0.38, 5);
       ctx!.fill();
 
-      // jaw shade
       ctx!.fillStyle = c2;
       roundRect(ctx!, x + w * 0.53, y + h * 0.3, w * 0.42, h * 0.1, 3);
       ctx!.fill();
 
-      // eye with blink
       const nearest = findTarget();
       const near = nearest ? 1 - Math.min(1, nearest.x / W) : 0;
       const blinking = s.blink > 0.5;
@@ -802,7 +953,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         ctx!.fill();
       }
 
-      // arm
       ctx!.fillStyle = c3;
       roundRect(ctx!, x + w * 0.65, y + h * 0.5, 4, h * 0.14, 2);
       ctx!.fill();
@@ -898,7 +1048,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       const dn = dayNight(s.dayNight);
       const { dpr, scale, offsetX, offsetY, cssW, cssH } = viewport;
 
-      // 1) Screen-space background — fills the letterbox with a matching sky
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       const screenGrad = ctx!.createLinearGradient(
         0,
@@ -911,7 +1060,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.fillStyle = screenGrad;
       ctx!.fillRect(0, 0, cssW, cssH);
 
-      // 2) Game-space
       ctx!.setTransform(
         dpr * scale,
         0,
@@ -932,7 +1080,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       drawStars(dn);
       drawSunMoon(dn);
 
-      // clouds
       const cloudAlpha = 0.35 + dn.starAlpha * -0.15 + (dn.moonAlpha ? 0.1 : 0);
       const cloudColor =
         dn.starAlpha > 0.4
@@ -951,7 +1098,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         drawCloud(cx, c.y, c.r, Math.max(0.15, cloudAlpha), cloudColor);
       }
 
-      // hills
       ctx!.fillStyle = dn.hill;
       ctx!.globalAlpha = 0.75;
       ctx!.beginPath();
@@ -970,7 +1116,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.fill();
       ctx!.globalAlpha = 1;
 
-      // ground line
       ctx!.strokeStyle = 'rgba(148, 163, 184, 0.5)';
       ctx!.lineWidth = 2;
       ctx!.beginPath();
@@ -978,7 +1123,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       ctx!.lineTo(W, GROUND);
       ctx!.stroke();
 
-      // ground dashes
       ctx!.strokeStyle = 'rgba(148, 163, 184, 0.3)';
       ctx!.lineWidth = 2;
       ctx!.beginPath();
@@ -989,7 +1133,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       }
       ctx!.stroke();
 
-      // ground pebbles
       ctx!.fillStyle = 'rgba(148, 163, 184, 0.35)';
       for (let i = 0; i < 14; i++) {
         const x = ((i * 97 - s.scroll * 1.2) % (W + 100)) - 50;
@@ -997,7 +1140,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         ctx!.fillRect(x, y, 3 + (i % 2) * 2, 1.2);
       }
 
-      // actors
       const target = s.status === 'running' ? findTarget() : null;
       let urgency = 0;
       if (target) {
@@ -1014,7 +1156,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       drawDino();
       drawUrgencyCue();
 
-      // particles
       for (const p of s.particles) {
         const a = Math.max(0, p.life / p.maxLife);
         ctx!.globalAlpha = a;
@@ -1025,7 +1166,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       }
       ctx!.globalAlpha = 1;
 
-      // speed streaks — only while running at high speed
       if (s.status === 'running' && s.streak > 0.05) {
         ctx!.strokeStyle = `rgba(255, 255, 255, ${0.15 + s.streak * 0.25})`;
         ctx!.lineWidth = 1;
@@ -1044,7 +1184,6 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
 
       ctx!.restore();
 
-      // 3) Flash (screen space, covers letterbox too)
       if (s.flash > 0.01) {
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx!.fillStyle = `rgba(255,255,255,${s.flash})`;
@@ -1057,7 +1196,19 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       const dt = Math.min(3, (now - last) / (1000 / 60));
       last = now;
 
-      step(dt);
+      // Detect pause → resume transitions. While paused, `step` is skipped
+      // so the game freezes visually and logically.
+      const wasActive = activeRef.current === true && lastActive === true;
+      lastActive = activeRef.current;
+      if (wasActive && !lastActive) {
+        // Entering pause — nothing to do, but avoid the grace below firing.
+      } else if (!wasActive && lastActive) {
+        // Resuming — grant a short grace so a cactus that happened to be
+        // sitting on the dino when we paused doesn't insta-kill the run.
+        if (s.status === 'running') s.grace = 45;
+      }
+
+      if (lastActive) step(dt);
       draw();
 
       const sc = Math.floor(s.score);
@@ -1076,9 +1227,17 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
 
       raf = requestAnimationFrame(loop);
     }
+    let lastActive = activeRef.current;
     raf = requestAnimationFrame(loop);
 
     // ---------- input ----------
+    function isInteractiveTarget(el: EventTarget | null): boolean {
+      if (!el || !(el as HTMLElement).closest) return false;
+      return !!(el as HTMLElement).closest(
+        'button, a, input, textarea, select, [data-no-tap]',
+      );
+    }
+
     function onKeyDown(e: KeyboardEvent) {
       if (!activeRef.current) return;
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
@@ -1089,8 +1248,10 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
         tap();
       }
     }
-    function onPointerDown() {
+    function onPointerDown(e: PointerEvent) {
       if (!activeRef.current) return;
+      // Don't treat taps on overlay controls (score HUD, mute, etc.) as jumps.
+      if (isInteractiveTarget(e.target)) return;
       tap();
     }
 
@@ -1113,7 +1274,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
   }, []);
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+    <div className="fixed inset-0 z-0 overflow-hidden">
       <canvas
         ref={canvasRef}
         aria-hidden="true"
@@ -1122,7 +1283,7 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
       />
 
       {/* Floating score / status HUD */}
-      <div className="absolute top-4 right-4 pointer-events-none select-none">
+      <div className="absolute top-4 right-4 select-none flex flex-col items-end gap-2">
         <div className="bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-xl px-4 py-2.5 shadow-lg">
           <div className="flex items-center gap-3">
             <div>
@@ -1142,11 +1303,22 @@ export default function CactusRunner({ active = false }: CactusRunnerProps) {
                 {best}
               </p>
             </div>
+            <div className="w-px h-8 bg-slate-300/70" />
+            <button
+              type="button"
+              onClick={toggleMute}
+              data-no-tap
+              className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 active:bg-slate-200 transition touch-manipulation"
+              aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+              title={muted ? 'Unmute sounds' : 'Mute sounds'}
+            >
+              <SpeakerIcon muted={muted} />
+            </button>
           </div>
         </div>
 
         {active && status === 'running' && (
-          <div className="mt-2 bg-white/80 backdrop-blur-md border border-violet-200 rounded-lg px-3 py-2 shadow-md">
+          <div className="bg-white/80 backdrop-blur-md border border-violet-200 rounded-lg px-3 py-2 shadow-md">
             <p className="text-[11px] font-semibold text-violet-700">
               🌵 Tap when a ringed cactus is close to the dino
             </p>
