@@ -4,7 +4,9 @@ import { AuthController } from '../src/modules/auth/auth.controller';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
 import { SupabaseService } from '../src/database/supabase.service';
+import { SystemStatusService } from '../src/modules/system-status/system-status.service';
 import { createFakeSupabase } from './fakes/supabase.fake';
+import { createFakeSystemStatus } from './fakes/system-status.fake';
 import { createTestApp } from './helpers/create-test-app';
 
 describe('AuthController (e2e)', () => {
@@ -21,6 +23,7 @@ describe('AuthController (e2e)', () => {
       providers: [
         { provide: AuthService, useValue: authService },
         { provide: SupabaseService, useValue: fakeSupabase },
+        { provide: SystemStatusService, useValue: createFakeSystemStatus() },
         JwtAuthGuard,
       ],
     });
