@@ -65,18 +65,6 @@ export class ProspectusService {
   // Authorization helper
   // ────────────────────────────────────────────
 
-  /**
-   * Ensures the caller is allowed to write prospectus entries for the
-   * given program.
-   *
-   *   college_dean     → allowed for any program
-   *   department_head  → only own department's programs
-   *   everyone else    → rejected
-   *
-   * NOTE: the `administrator` role is still accepted so the hidden
-   * dev account retains full access. It is NOT used for user-facing
-   * authorization — the Dean is the top role.
-   */
   private async assertProgramWriteAccess(
     programId: string,
     caller: ProspectusCaller,
@@ -164,7 +152,6 @@ export class ProspectusService {
       yearLevel: dto.yearLevel,
       semester: dto.semester,
       isActive: true,
-      // ── Multi-session scheduling (Phase 2) ──
       lectureSessionsPerWeek: dto.lectureSessionsPerWeek ?? 1,
       lectureMinutesPerSession: dto.lectureMinutesPerSession ?? 90,
       labSessionsPerWeek: dto.labSessionsPerWeek ?? 1,
@@ -217,7 +204,6 @@ export class ProspectusService {
     if (dto.semester !== undefined) found.semester = dto.semester;
     if (dto.isActive !== undefined) found.isActive = dto.isActive;
 
-    // ── Multi-session scheduling (Phase 2) ──
     if (dto.lectureSessionsPerWeek !== undefined)
       found.lectureSessionsPerWeek = dto.lectureSessionsPerWeek;
     if (dto.lectureMinutesPerSession !== undefined)
@@ -260,6 +246,71 @@ export class ProspectusService {
 
     await this.repo.remove(found);
     return { success: true };
+  }
+
+  /**
+   * Replaces a placeholder slot subject with a real subject.
+   * Preserves the original slot label for history, then deactivates
+   * the placeholder subject so it drops out of dropdowns.
+   */
+  async fillSlot(
+    prospectusId: string,
+    newSubjectId: string,
+    caller: ProspectusCaller,
+  ): Promise<Prospectus> {
+    const found = await this.repo.findOne({
+      where: { prospectusId },
+      relations: ['subject', 'program'],
+    });
+    if (!found) throw new NotFoundException('Prospectus entry not found');
+
+    await this.assertProgramWriteAccess(found.programId, caller);
+
+    if (!found.subject?.isPlaceholder) {
+      throw new BadRequestException(
+        'This prospectus entry is not a placeholder slot.',
+      );
+    }
+
+    const newSubject = await this.subjects.findOne({
+      where: { subjectId: newSubjectId },
+    });
+    if (!newSubject) {
+      throw new BadRequestException('Target subject not found.');
+    }
+    if (!newSubject.isActive) {
+      throw new BadRequestException(
+        `Subject "${newSubject.subjectCode}" is inactive.`,
+      );
+    }
+    if (newSubject.isPlaceholder) {
+      throw new BadRequestException(
+        'Cannot fill a slot with another placeholder subject.',
+      );
+    }
+
+    // Snapshot the placeholder label onto the prospectus row before
+    // changing the FK. Falls back to the subject title if slot_label
+    // was never set (e.g. rows created before this column existed).
+    if (!found.slotLabel) {
+      found.slotLabel = found.subject.title;
+    }
+
+    const oldSubject = found.subject;
+    found.subjectId = newSubject.subjectId;
+    const saved = await this.repo.save(found);
+
+    // Deactivate the old placeholder — but only if no other prospectus
+    // row still points at it. (Shouldn't happen, but defensive.)
+    const stillUsed = await this.repo.count({
+      where: { subjectId: oldSubject.subjectId },
+    });
+    if (stillUsed === 0) {
+      oldSubject.isActive = false;
+      await this.subjects.save(oldSubject);
+    }
+
+    return this.findOne(saved.prospectusId);
   }
 
   // ── Helper ──

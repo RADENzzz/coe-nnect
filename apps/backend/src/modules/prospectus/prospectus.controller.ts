@@ -17,18 +17,12 @@ import {
 } from './prospectus.service';
 import { CreateProspectusDto } from './dto/create-prospectus.dto';
 import { UpdateProspectusDto } from './dto/update-prospectus.dto';
+import { FillSlotDto } from './dto/fill-slot.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
 
-/**
- * Build a ProspectusCaller from `req.profile`, which is attached by
- * RolesGuard after it loads the user from the DB.
- *
- * NOTE: RolesGuard only loads the profile when the route has a
- * `@Roles(...)` decorator. Every write route below has one, so by the
- * time these handlers run, `req.profile` is guaranteed to exist.
- */
 function callerFromRequest(req: any): ProspectusCaller {
   const profile = req.profile;
   if (!profile) {
@@ -40,18 +34,6 @@ function callerFromRequest(req: any): ProspectusCaller {
   };
 }
 
-/**
- * Prospectus management.
- *
- * After the Admin→Dean consolidation:
- *   - College Dean can manage prospectus entries for any program.
- *   - Department Head can only manage entries for programs in their
- *     own department (enforced in ProspectusService).
- *
- * `administrator` is intentionally absent from every @Roles() list.
- * The hidden dev account still bypasses program-ownership checks at
- * the service layer.
- */
 @ApiTags('Prospectus')
 @ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -60,8 +42,7 @@ export class ProspectusController {
   constructor(private readonly prospectus: ProspectusService) {}
 
   // ─────────────────────────────────────────────
-  // Reads — no Roles decorator needed, so RolesGuard short-circuits
-  // and profile isn't loaded (that's fine, reads are open to all auth users)
+  // Reads
   // ─────────────────────────────────────────────
 
   @Get()
@@ -74,13 +55,31 @@ export class ProspectusController {
     return { data: await this.prospectus.findByProgram(programId) };
   }
 
+  // NOTE: fill-slot must come BEFORE :id
+  @Roles('college_dean', 'department_head')
+  @Patch(':id/fill-slot')
+  @Auditable({ action: 'prospectus.fill_slot', source: 'Prospectus' })
+  async fillSlot(
+    @Param('id') id: string,
+    @Body() dto: FillSlotDto,
+    @Req() req: any,
+  ) {
+    return {
+      data: await this.prospectus.fillSlot(
+        id,
+        dto.subjectId,
+        callerFromRequest(req),
+      ),
+    };
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return { data: await this.prospectus.findOne(id) };
   }
 
   // ─────────────────────────────────────────────
-  // Writes — must have a @Roles decorator so RolesGuard loads the profile
+  // Writes
   // ─────────────────────────────────────────────
 
   @Roles('college_dean', 'department_head')

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   createProspectus,
   updateProspectus,
@@ -38,8 +39,8 @@ interface Props {
   defaultProgramId?: string;
   defaultYearLevel?: number;
   defaultSemester?: SemesterType;
-  /** All existing entries — used for duplicate detection */
   existingEntries?: ProspectusRecord[];
+  onEditSubject?: (subjectId: string) => void;   // ← new
 }
 
 interface FormState {
@@ -95,8 +96,10 @@ export default function ProspectusFormModal({
   defaultYearLevel,
   defaultSemester,
   existingEntries = [],
+  onEditSubject,                                 // ← new
 }: Props) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
@@ -133,12 +136,10 @@ export default function ProspectusFormModal({
 
     setForm((p) => {
       const next = { ...p };
-      // Standard heuristic: 3 lec units → 2×90; else 1×90
       if (lec > 0 && !p.lectureMinutesPerSession) {
         next.lectureSessionsPerWeek = lec >= 3 ? 2 : 1;
         next.lectureMinutesPerSession = 90;
       }
-      // Lab: 1 unit → 3hr session; 2 units → 2×90
       if (lab > 0 && !p.labMinutesPerSession) {
         next.labSessionsPerWeek = lab >= 2 ? 2 : 1;
         next.labMinutesPerSession = lab >= 2 ? 90 : 180;
@@ -229,11 +230,9 @@ export default function ProspectusFormModal({
     return subjects
       .filter((s) => s.isActive)
       .filter((s) => {
-        // When editing, always include the current subject
         if (editing && String(s.subjectId) === String(editing.subjectId)) {
           return true;
         }
-        // Exclude subjects already in this program + year + semester
         if (subjectsInCurrentProgram.has(String(s.subjectId))) return false;
         return true;
       })
@@ -247,8 +246,6 @@ export default function ProspectusFormModal({
   }, [subjects, subjectSearch, subjectsInCurrentProgram, editing]);
 
   // ── Shared invalidation helper ──
-  // 'prospectus-all' is read by TimetablePage for the plot modal.
-  // 'coverage' and 'unplotted-minors' depend on the prospectus shape.
   const invalidateAfterProspectusChange = () => {
     qc.invalidateQueries({ queryKey: ['prospectus'] });
     qc.invalidateQueries({ queryKey: ['prospectus-all'] });
@@ -319,7 +316,6 @@ export default function ProspectusFormModal({
       }
     }
 
-    // Duplicate detection
     if (!editing && form.programId && form.subjectId) {
       const dup = existingEntries.find(
         (e) =>
@@ -438,6 +434,34 @@ export default function ProspectusFormModal({
         busy={isSaving}
         footer={
           <>
+            {editing && editing.subjectId && onEditSubject && (
+              <button
+                type="button"
+                onClick={() => {
+                  const dirty =
+                    form.subjectId !== editing.subjectId ||
+                    form.programId !== editing.programId ||
+                    form.yearLevel !== editing.yearLevel ||
+                    form.semester !== editing.semester ||
+                    form.lectureSessionsPerWeek !== (editing.lectureSessionsPerWeek ?? 1) ||
+                    form.lectureMinutesPerSession !==
+                      (editing.lectureMinutesPerSession ?? 90) ||
+                    form.labSessionsPerWeek !== (editing.labSessionsPerWeek ?? 1) ||
+                    form.labMinutesPerSession !== (editing.labMinutesPerSession ?? 180);
+
+                  if (dirty) {
+                    setConfirmClose(true);
+                    return;
+                  }
+                  onEditSubject(editing.subjectId);
+                }}
+                className="mr-auto px-4 py-2 text-sm font-semibold text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition flex items-center gap-2"
+                title="Go to Subjects page to edit code, title, units, etc."
+              >
+                <Icon name="open_in_new" size={16} />
+                Edit Subject Info
+              </button>
+            )}
             <button
               type="button"
               onClick={handleRequestClose}
@@ -488,7 +512,6 @@ export default function ProspectusFormModal({
             </div>
           )}
 
-          {/* Live preview */}
           {preview && (
             <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs">
               <Icon name="preview" size={14} className="text-primary" />
@@ -496,9 +519,6 @@ export default function ProspectusFormModal({
             </div>
           )}
 
-          {/* ══════════════════════════════════════════ */}
-          {/* Placement                                  */}
-          {/* ══════════════════════════════════════════ */}
           <FormSection title="Placement" icon="place">
             <div className="space-y-4">
               <FormField
@@ -524,7 +544,6 @@ export default function ProspectusFormModal({
                 </select>
               </FormField>
 
-              {/* Searchable subject picker */}
               <FormField
                 label="Subject"
                 required
@@ -698,9 +717,6 @@ export default function ProspectusFormModal({
             </div>
           </FormSection>
 
-          {/* ══════════════════════════════════════════ */}
-          {/* Meeting Pattern                            */}
-          {/* ══════════════════════════════════════════ */}
           {selectedSubject && (hasLecture || hasLab) && (
             <FormSection title="Meeting Pattern" icon="schedule">
               <p className="text-xs text-slate-500 -mt-1 mb-3">
@@ -708,7 +724,6 @@ export default function ProspectusFormModal({
                 long?
               </p>
 
-              {/* Lecture */}
               {hasLecture && (
                 <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">
                   <div className="flex items-center justify-between gap-2 mb-3">
@@ -807,7 +822,6 @@ export default function ProspectusFormModal({
                 </div>
               )}
 
-              {/* Lab */}
               {hasLab && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 mt-3">
                   <div className="flex items-center justify-between gap-2 mb-3">
@@ -901,7 +915,6 @@ export default function ProspectusFormModal({
                 </div>
               )}
 
-              {/* Total footprint */}
               {hasLecture && hasLab && (
                 <div className="flex items-center gap-2 mt-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
                   <Icon name="summarize" size={14} className="text-primary" />
@@ -922,7 +935,6 @@ export default function ProspectusFormModal({
             </FormSection>
           )}
 
-          {/* No units warning */}
           {selectedSubject && !hasLecture && !hasLab && (
             <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200">
               <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
@@ -938,7 +950,6 @@ export default function ProspectusFormModal({
         </form>
       </Modal>
 
-      {/* Unsaved changes */}
       <Modal
         open={confirmClose}
         onClose={() => setConfirmClose(false)}
@@ -973,10 +984,6 @@ export default function ProspectusFormModal({
     </>
   );
 }
-
-// ────────────────────────────────────────────
-// Presentational helpers
-// ────────────────────────────────────────────
 
 function FormSection({
   title,

@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchProspectus,
   toggleProspectusActive,
   deleteProspectus,
   createProspectus,
+  fillProspectusSlot,
   type ProspectusRecord,
   type SemesterType,
 } from '../../api/prospectus.api';
@@ -18,6 +19,7 @@ import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTabl
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
 import ProspectusFormModal from './components/ProspectusFormModal';
+import FillSlotModal from './components/FillSlotModal';
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
 const SEMESTERS: { value: SemesterType; label: string; short: string }[] = [
@@ -38,11 +40,13 @@ function ordinalSuffix(n: number): string {
 
 export default function ProspectusPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ProspectusRecord | null>(null);
+  const [fillTarget, setFillTarget] = useState<ProspectusRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProspectusRecord | null>(
@@ -143,8 +147,6 @@ export default function ProspectusPage() {
   }, [profile, currentProgram]);
 
   // ── Client-side subject lookup ──
-  // The prospectus API returns a *narrow* SubjectRef (no room type / minor
-  // flag). We join against the full subject list already loaded on the page.
   const subjectById = useMemo(() => {
     const m = new Map<string, (typeof subjects)[number]>();
     for (const s of subjects) m.set(String(s.subjectId), s);
@@ -218,15 +220,13 @@ export default function ProspectusPage() {
   );
 
   // ── Shared invalidation helper ──
-  // Prospectus is the *source of truth* for coverage expected count.
-  // Any change here can add/remove expected (subject × section) pairs.
-  // 'prospectus-all' is the key TimetablePage reads for its plot modal.
   const invalidateAfterProspectusChange = () => {
     qc.invalidateQueries({ queryKey: ['prospectus'] });
     qc.invalidateQueries({ queryKey: ['prospectus-all'] });
     qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
     qc.invalidateQueries({ queryKey: ['coverage'] });
     qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+    qc.invalidateQueries({ queryKey: ['subjects'] }); // slot might have been deactivated
   };
 
   // ── Mutations ──
@@ -246,6 +246,18 @@ export default function ProspectusPage() {
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Delete failed'),
+  });
+
+  const fillSlotMutation = useMutation({
+    mutationFn: ({ id, subjectId }: { id: string; subjectId: string }) =>
+      fillProspectusSlot(id, subjectId),
+    onSuccess: () => {
+      setSuccess('Elective slot filled successfully.');
+      setFillTarget(null);
+      invalidateAfterProspectusChange();
+    },
+    onError: (err: any) =>
+      setError(err?.response?.data?.message ?? 'Failed to fill slot'),
   });
 
   // ── Bulk action: activate/deactivate all visible ──
@@ -352,7 +364,6 @@ export default function ProspectusPage() {
   };
 
   const renderRoomType = (e: ProspectusRecord) => {
-    // Join client-side: pull the full SubjectRecord from the loaded list
     const full = e.subjectId ? subjectById.get(String(e.subjectId)) : undefined;
     const roomType = full?.requiredRoomType;
     if (!roomType) {
@@ -388,19 +399,31 @@ export default function ProspectusPage() {
           ? subjectById.get(String(e.subjectId))
           : undefined;
         const isMinor = full?.isMinor ?? false;
+        const isPlaceholder = full?.isPlaceholder ?? false;
         return (
-          <span className="inline-flex items-center gap-1.5">
-            {isMinor && (
+          <div className="flex flex-col gap-1">
+            <span className="inline-flex items-center gap-1.5">
+              {isMinor && (
+                <span
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800"
+                  title="Minor subject"
+                >
+                  <Icon name="school" size={9} />
+                  Minor
+                </span>
+              )}
+              {e.subject?.subjectCode ?? '—'}
+            </span>
+            {isPlaceholder && (
               <span
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800"
-                title="Minor subject"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 w-fit"
+                title="This is an elective placeholder — fill it with a real course"
               >
-                <Icon name="school" size={9} />
-                Minor
+                <Icon name="warning" size={10} />
+                Needs Course
               </span>
             )}
-            {e.subject?.subjectCode ?? '—'}
-          </span>
+          </div>
         );
       },
     },
@@ -457,28 +480,54 @@ export default function ProspectusPage() {
         },
       ];
     }
-    return [
-      { label: 'Edit', icon: 'edit', onClick: () => handleEdit(e) },
-      { divider: true },
-      {
-        label: e.isActive ? 'Deactivate' : 'Activate',
-        icon: e.isActive ? 'toggle_off' : 'toggle_on',
-        loading:
-          toggleMutation.isPending &&
-          toggleMutation.variables === e.prospectusId,
-        onClick: () => toggleMutation.mutate(e.prospectusId),
-      },
-      { divider: true },
-      {
-        label: 'Remove',
-        icon: 'delete',
-        danger: true,
-        loading:
-          deleteMutation.isPending &&
-          deleteMutation.variables === e.prospectusId,
-        onClick: () => setDeleteTarget(e),
-      },
-    ];
+
+    const full = e.subjectId ? subjectById.get(String(e.subjectId)) : undefined;
+    const isPlaceholder = full?.isPlaceholder ?? false;
+
+    const actions: RowAction[] = [];
+
+    // Edit Subject Details — deep link to /subjects?edit=<id>
+    if (!isPlaceholder && e.subjectId) {
+      actions.push({
+        label: 'Edit subject info',
+        icon: 'open_in_new',
+        onClick: () => navigate(`/subjects?edit=${e.subjectId}`),
+      });
+      actions.push({ divider: true });
+    }
+
+    // Fill Slot action — only for placeholders
+    if (isPlaceholder) {
+      actions.push({
+        label: 'Fill Slot',
+        icon: 'add_circle',
+        onClick: () => setFillTarget(e),
+      });
+      actions.push({ divider: true });
+    }
+
+    actions.push({ label: 'Edit placement', icon: 'edit', onClick: () => handleEdit(e) });
+    actions.push({ divider: true });
+    actions.push({
+      label: e.isActive ? 'Deactivate' : 'Activate',
+      icon: e.isActive ? 'toggle_off' : 'toggle_on',
+      loading:
+        toggleMutation.isPending &&
+        toggleMutation.variables === e.prospectusId,
+      onClick: () => toggleMutation.mutate(e.prospectusId),
+    });
+    actions.push({ divider: true });
+    actions.push({
+      label: 'Remove',
+      icon: 'delete',
+      danger: true,
+      loading:
+        deleteMutation.isPending &&
+        deleteMutation.variables === e.prospectusId,
+      onClick: () => setDeleteTarget(e),
+    });
+
+    return actions;
   };
 
   // ── Keyboard: arrow keys on year tabs ──
@@ -852,6 +901,36 @@ export default function ProspectusPage() {
           defaultProgramId={effectiveProgramId}
           defaultYearLevel={selectedYearLevel}
           defaultSemester={selectedSemester}
+          existingEntries={allEntries}
+          onEditSubject={(subjectId) => {
+            // Build the current prospectus URL so SubjectsPage can return here.
+            const params = new URLSearchParams(searchParams);
+            const returnTo = `/prospectus?${params.toString()}`;
+            navigate(
+              `/subjects?edit=${subjectId}&returnTo=${encodeURIComponent(returnTo)}`,
+            );
+            setModalOpen(false);
+            setEditing(null);
+          }}
+        />
+      )}
+
+      {/* ── Fill slot modal ── */}
+      {canWrite && (
+        <FillSlotModal
+          open={!!fillTarget}
+          onClose={() => setFillTarget(null)}
+          onConfirm={(subjectId) => {
+            if (fillTarget) {
+              fillSlotMutation.mutate({
+                id: fillTarget.prospectusId,
+                subjectId,
+              });
+            }
+          }}
+          slotLabel={fillTarget?.subject?.title ?? 'Elective Slot'}
+          programId={fillTarget?.programId ?? ''}
+          isPending={fillSlotMutation.isPending}
         />
       )}
 
@@ -956,8 +1035,6 @@ function CopyFromModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Filter source entries by current program (so we only copy within the
-  // same program). This is important — cross-program copy would be wrong.
   const sourceEntries = useMemo(
     () =>
       allEntries.filter(

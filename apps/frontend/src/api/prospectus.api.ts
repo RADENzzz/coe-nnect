@@ -38,6 +38,7 @@ export interface SubjectRef {
   labUnits: number;
   deptId: string;
   isActive: boolean;
+  isPlaceholder?: boolean;
 }
 
 export interface ProspectusRecord {
@@ -48,7 +49,8 @@ export interface ProspectusRecord {
   semester: SemesterType;
   isActive: boolean;
 
-  // ── Multi-session scheduling (Phase 2) ──
+  slotLabel?: string | null;
+
   lectureSessionsPerWeek: number;
   lectureMinutesPerSession: number;
   labSessionsPerWeek: number;
@@ -64,7 +66,6 @@ export interface CreateProspectusInput {
   yearLevel: number;
   semester: SemesterType;
 
-  // ── Multi-session scheduling (Phase 2) ──
   lectureSessionsPerWeek?: number;
   lectureMinutesPerSession?: number;
   labSessionsPerWeek?: number;
@@ -126,4 +127,15 @@ export async function toggleProspectusActive(
 
 export async function deleteProspectus(id: string): Promise<void> {
   await api.delete(`/v1/prospectus/${id}`);
-}   
+}
+
+export async function fillProspectusSlot(
+  prospectusId: string,
+  subjectId: string,
+): Promise<ProspectusRecord> {
+  const { data } = await api.patch(
+    `/v1/prospectus/${prospectusId}/fill-slot`,
+    { subjectId },
+  );
+  return data.data;
+}
