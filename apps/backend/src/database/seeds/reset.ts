@@ -35,12 +35,9 @@ if (!isLocalDatabase && process.env.ALLOW_REMOTE_RESET !== '1') {
 }
 
 function targetLabel() {
-  try {
-    const parsed = new URL(databaseUrl);
-    return `${parsed.hostname}${parsed.pathname}`;
-  } catch {
-    return '(unparseable DATABASE_URL)';
-  }
+  // Do not log any substring of DATABASE_URL (CodeQL: clear-text logging of
+  // sensitive information). The local/remote distinction is enough context.
+  return isLocalDatabase ? '(local database)' : '(remote database)';
 }
 
 async function confirmOrAbort() {
@@ -235,10 +232,11 @@ async function deleteAllAuthUsers(preserveId: string | null) {
 
   console.log(`  Deleted ${toDelete.length} auth user(s).`);
   if (preserveId) {
+    // Do not interpolate preserveId (derived from process.env) into the log.
     console.log(
       preserved
         ? `  Preserved signed-in auth user ${preserved.email ?? preserved.id}.`
-        : `  Signed-in auth user ${preserveId} was not found; nothing preserved.`,
+        : '  Signed-in auth user was not found; nothing preserved.',
     );
   }
   return toDelete.length;
