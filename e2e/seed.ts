@@ -206,6 +206,7 @@ async function ensureSubject(db: Db, deptId: string): Promise<string> {
     required_room_type: null,
     dept_id: deptId,
     is_active: true,
+    is_placeholder: false,
     is_minor: false,
   };
 

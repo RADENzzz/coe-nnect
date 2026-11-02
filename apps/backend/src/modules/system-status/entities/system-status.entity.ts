@@ -28,6 +28,13 @@ export class SystemStatus {
   @Column({ type: 'text', nullable: true })
   message: string | null;
 
+  /**
+   * App-wide access gate. When true, only the hidden developer
+   * (`administrator`) account may sign in or call the API.
+   */
+  @Column({ name: 'maintenance_mode', type: 'boolean', default: false })
+  maintenanceMode: boolean;
+
   @Column({ name: 'suppress_until', type: 'timestamptz', nullable: true })
   suppressUntil: Date | null;
 

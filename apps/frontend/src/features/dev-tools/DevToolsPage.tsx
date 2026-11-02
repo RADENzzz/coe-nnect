@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
@@ -24,6 +25,10 @@ import {
   type SystemStatusSeverity,
 } from '../../api/system-status.api';
 import { useOnlineUsers } from '../../hooks/use-online-users';
+import {
+  isMaintenancePreviewEnabled,
+  setMaintenancePreviewEnabled,
+} from '../../lib/maintenance-preview';
 import { useAuthStore } from '../../store/auth.store';
 
 const DEMO_PASSWORD = 'Demo!2345';
@@ -1289,6 +1294,7 @@ export default function DevToolsPage() {
 // ─────────────────────────────────────────────────────────────
 function SystemStatusCard() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatusForDev,
@@ -1296,15 +1302,20 @@ function SystemStatusCard() {
 
   const [enabled, setEnabled] = useState(false);
   const [severity, setSeverity] = useState<SystemStatusSeverity>('warning');
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
+  const [previewAsUser, setPreviewAsUser] = useState(() =>
+    isMaintenancePreviewEnabled(),
+  );
 
   // Hydrate from server on first load / refetch
   useEffect(() => {
     if (!data) return;
     setEnabled(data.enabled);
     setSeverity(data.severity);
+    setMaintenanceMode(data.maintenanceMode);
     setTitle(data.title ?? '');
     setMessage(data.message ?? '');
   }, [data?.updatedAt]);
@@ -1320,6 +1331,7 @@ function SystemStatusCard() {
       updateSystemStatus({
         enabled,
         severity,
+        maintenanceMode,
         title: title.trim(),
         message: message.trim() || null,
       }),
@@ -1327,7 +1339,11 @@ function SystemStatusCard() {
       queryClient.setQueryData(['system-status'], next);
       queryClient.invalidateQueries({ queryKey: ['dev-tools'] });
       setSaved(
-        enabled ? 'Banner updated — visible on login page.' : 'Banner hidden.',
+        maintenanceMode
+          ? 'Maintenance mode is ON — only this dev account can sign in.'
+          : enabled
+            ? 'Banner updated — visible on login page.'
+            : 'Banner hidden.',
       );
     },
     onError: (err: any) => {
@@ -1350,7 +1366,8 @@ function SystemStatusCard() {
     { value: 'maintenance', label: 'Maintenance', dot: 'bg-violet-500' },
   ];
 
-  const titleMissing = enabled && title.trim().length === 0;
+  const titleMissing =
+    (enabled || maintenanceMode) && title.trim().length === 0;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 space-y-4">
@@ -1375,6 +1392,76 @@ function SystemStatusCard() {
           />
           {enabled ? 'Visible' : 'Hidden'}
         </label>
+      </div>
+
+      {/* Access gate — separate from the popup banner above. */}
+      <div
+        className={`rounded-xl border p-4 transition-colors ${
+          maintenanceMode
+            ? 'border-violet-300 bg-violet-50'
+            : 'border-slate-200 bg-slate-50'
+        }`}
+      >
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={maintenanceMode}
+            onChange={(e) => setMaintenanceMode(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-violet-700"
+            disabled={isLoading}
+            aria-describedby="maintenance-mode-help"
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+              <Icon name="build" size={16} className="text-violet-700" />
+              Maintenance mode (block access)
+            </span>
+            <span
+              id="maintenance-mode-help"
+              className="mt-0.5 block text-xs text-slate-600 leading-relaxed"
+            >
+              When enabled, everyone except this hidden dev account is blocked
+              from signing in and from using the app or API. Users see the
+              maintenance page with the title and message below.
+            </span>
+          </span>
+        </label>
+
+        {maintenanceMode && (
+          <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-violet-200 bg-white/70 px-3 py-2 text-[11px] text-violet-800">
+            <Icon name="warning" size={13} className="mt-0.5 shrink-0" />
+            <span>
+              Save to apply immediately. Keep a title and message so users know
+              why the system is unavailable and when to check back.
+            </span>
+          </p>
+        )}
+
+        {import.meta.env.DEV && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-2">
+            <label className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={previewAsUser}
+                onChange={(e) => {
+                  setPreviewAsUser(e.target.checked);
+                  setMaintenancePreviewEnabled(e.target.checked);
+                }}
+                className="w-3.5 h-3.5 accent-slate-700"
+              />
+              Preview as a normal user (local only)
+            </label>
+            {previewAsUser && (
+              <button
+                type="button"
+                onClick={() => navigate('/maintenance')}
+                className="text-[11px] font-semibold text-[#5c1219] underline underline-offset-2 hover:opacity-80"
+              >
+                Open maintenance page
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

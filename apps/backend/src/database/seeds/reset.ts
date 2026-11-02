@@ -114,6 +114,7 @@ async function restoreSystemStatus(client: Client) {
         ON CONFLICT (status_id) DO UPDATE
         SET enabled = false,
             severity = 'info',
+            maintenance_mode = false,
             title = NULL,
             message = NULL,
             suppress_until = NULL,
