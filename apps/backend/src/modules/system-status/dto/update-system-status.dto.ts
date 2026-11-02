@@ -23,6 +23,11 @@ export class UpdateSystemStatusDto {
   @IsIn(SYSTEM_STATUS_SEVERITIES)
   severity?: (typeof SYSTEM_STATUS_SEVERITIES)[number];
 
+  /** Block sign-in and API access for everyone except the dev account. */
+  @IsOptional()
+  @IsBoolean()
+  maintenanceMode?: boolean;
+
   @ValidateIf((o) => o.enabled === true)
   @IsString()
   @MaxLength(120)

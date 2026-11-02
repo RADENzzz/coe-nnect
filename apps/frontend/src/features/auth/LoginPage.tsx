@@ -7,6 +7,7 @@ import Modal from '../../components/ui/Modal';
 import LiquidBackground from '../../components/layout/LiquidBackground';
 import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
+import { fetchSystemStatus } from '../../api/system-status.api';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -485,6 +486,17 @@ export default function LoginPage() {
         if (dept) deptActive = dept.is_active === true;
       } else if (role === 'college_dean' || role === 'administrator') {
         deptActive = true;
+      }
+
+      // Maintenance mode: only the hidden dev account may stay signed in.
+      // Checked after authentication because the role is only known then.
+      const systemStatus = await fetchSystemStatus().catch(() => null);
+      if (systemStatus?.maintenanceMode && role !== 'administrator') {
+        await supabase.auth.signOut();
+        throw new Error(
+          systemStatus.title?.trim() ||
+            'CoE-NNECT is under maintenance. Please try again later.',
+        );
       }
 
       // Redirect based on role + dept state.

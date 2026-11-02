@@ -10,6 +10,8 @@ export type SystemStatusSeverity =
 export interface SystemStatus {
   enabled: boolean;
   severity: SystemStatusSeverity;
+  /** When true, only the hidden dev account may sign in or use the app. */
+  maintenanceMode: boolean;
   title: string | null;
   message: string | null;
   updatedAt: string;
@@ -28,7 +30,7 @@ export interface SystemStatus {
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const { data, error } = await supabase
     .from('system_status')
-    .select('enabled, severity, title, message, updated_at')
+    .select('enabled, severity, maintenance_mode, title, message, updated_at')
     .eq('status_id', 1)
     .maybeSingle();
 
@@ -38,6 +40,7 @@ export async function fetchSystemStatus(): Promise<SystemStatus> {
     return {
       enabled: false,
       severity: 'info',
+      maintenanceMode: false,
       title: null,
       message: null,
       updatedAt: new Date().toISOString(),
@@ -47,6 +50,7 @@ export async function fetchSystemStatus(): Promise<SystemStatus> {
   return {
     enabled: data.enabled,
     severity: data.severity as SystemStatusSeverity,
+    maintenanceMode: data.maintenance_mode === true,
     title: data.title,
     message: data.message,
     updatedAt: data.updated_at,
@@ -63,6 +67,7 @@ export async function fetchSystemStatus(): Promise<SystemStatus> {
 export async function updateSystemStatus(input: {
   enabled?: boolean;
   severity?: SystemStatusSeverity;
+  maintenanceMode?: boolean;
   title?: string;
   message?: string | null;
 }): Promise<SystemStatus> {

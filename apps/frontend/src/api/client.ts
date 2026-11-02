@@ -73,6 +73,16 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // Maintenance mode is an intentional 503, not a cold start. Retrying
+    // would keep the UI waiting instead of showing the maintenance page.
+    if (
+      status === 503 &&
+      (error.response?.data as { code?: string } | undefined)?.code ===
+        'MAINTENANCE_MODE'
+    ) {
+      return Promise.reject(error);
+    }
+
     if (cfg) {
       const hasResponse = !!error.response;
       const is5xx = status === 502 || status === 503 || status === 504;

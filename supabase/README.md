@@ -9,6 +9,8 @@ directory; `seed.sql` is reserved for deterministic local/test fixtures.
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `20261021000000_initial_schema.sql`                        | Baseline snapshot of the public schema as of 20 October 2026.                                                                               |
 | `20261022000000_system_status_and_schedule_dept_guard.sql` | `system_status` banner table, the `trg_schedule_active_dept` deactivated-department guard, and `REVOKE USAGE ON SCHEMA public FROM PUBLIC`. |
+| `20261102000000_add_schema_drift_columns.sql`              | `subject.is_placeholder`, `prospectus.slot_label`, and `schedule_unscheduled.dept_id` — entity columns missing from the baseline.          |
+| `20261102001000_add_maintenance_mode.sql`                  | `system_status.maintenance_mode`, the dev-controlled access gate that blocks sign-in and API use for non-administrators.                     |
 
 Every change applied to the hosted database also needs a migration file here so
 `supabase db reset` reproduces it. The matching DDL snapshot lives in

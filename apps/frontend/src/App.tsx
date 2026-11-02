@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import LoginPage from './features/auth/LoginPage';
+import MaintenancePage from './features/auth/MaintenancePage';
 import DepartmentDeactivatedPage from './features/auth/DepartmentDeactivatedPage';
 import DashboardPage from './features/dashboard/DashboardPage';
 import TimetablePage from './features/timetable/TimetablePage';
@@ -7,6 +8,7 @@ import AppShell from './components/layout/AppShell';
 import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import DepartmentActiveGate from './components/auth/DepartmentActiveGate';
+import MaintenanceGate from './components/auth/MaintenanceGate';
 import DeanDashboardPage from './features/dean/DeanDashboardPage';
 import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
 import DeanDepartmentsManagePage from './features/dean/DeanDepartmentsManagePage';
@@ -50,8 +52,10 @@ function DeanRouteGuard() {
 
 function App() {
   return (
-    <Routes>
+    <MaintenanceGate>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/maintenance" element={<MaintenancePage />} />
 
       {/* Wall page — reachable only when a DH is walled. Login, AuthProvider,
           and the wall page's "Refresh status" all key off profile.dept_active. */}
@@ -167,7 +171,8 @@ function App() {
       />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+      </Routes>
+    </MaintenanceGate>
   );
 }
 

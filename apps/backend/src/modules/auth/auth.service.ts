@@ -1,13 +1,19 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SupabaseService } from '../../database/supabase.service';
+import { SystemStatusService } from '../system-status/system-status.service';
 import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
   constructor(
     private supabase: SupabaseService,
+    private systemStatus: SystemStatusService,
     @InjectRepository(User) private userRepo: Repository<User>,
   ) {}
 
@@ -28,6 +34,19 @@ export class AuthService {
     if (!profile) throw new UnauthorizedException('User profile not found');
     if (!profile.isActive)
       throw new UnauthorizedException('Account is deactivated');
+
+    // Maintenance mode: only the hidden developer account may sign in.
+    const maintenance = await this.systemStatus.getMaintenanceNotice();
+    if (maintenance.active && profile.role !== 'administrator') {
+      throw new ServiceUnavailableException({
+        code: 'MAINTENANCE_MODE',
+        message:
+          maintenance.message?.trim() ||
+          maintenance.title?.trim() ||
+          'CoE-NNECT is under maintenance. Please try again later.',
+        title: maintenance.title ?? 'Under maintenance',
+      });
+    }
 
     return {
       accessToken: data.session.access_token,
