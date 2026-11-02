@@ -26,8 +26,8 @@ const DAY_SHORT: Record<string, string> = {
   Saturday: 'SAT',
 };
 
-const RANGE_START = 7 * 60;   // 07:00
-const RANGE_END = 19 * 60;    // 19:00
+const RANGE_START = 7 * 60; // 07:00
+const RANGE_END = 19 * 60; // 19:00
 const CELL_MINUTES = 30;
 const ROWS = (RANGE_END - RANGE_START) / CELL_MINUTES; // 24 rows
 
@@ -137,13 +137,12 @@ export default function UnavailabilityGrid({
     startDay: string;
     startRow: number;
     adding: boolean;
+    hasMoved: boolean;
   } | null>(null);
 
   const [hover, setHover] = useState<{ day: string; row: number } | null>(null);
   const [history, setHistory] = useState<GridBlock[][]>([]);
   const [future, setFuture] = useState<GridBlock[][]>([]);
-
-  // Keyboard focus
   const [focusCell, setFocusCell] = useState<{ day: string; row: number } | null>(null);
 
   const covered = useMemo(() => {
@@ -188,6 +187,7 @@ export default function UnavailabilityGrid({
         startDay: day,
         startRow: row,
         adding: !alreadyOn,
+        hasMoved: false,
       };
       setHover({ day, row });
       setFocusCell({ day, row });
@@ -197,12 +197,65 @@ export default function UnavailabilityGrid({
 
   const onCellEnter = useCallback((day: string, row: number) => {
     if (!dragRef.current?.active) return;
+    // Mark that the user has dragged (so we don't treat it as a click).
+    if (
+      day !== dragRef.current.startDay ||
+      row !== dragRef.current.startRow
+    ) {
+      dragRef.current.hasMoved = true;
+    }
     setHover({ day, row });
   }, []);
 
   const commitDrag = useCallback(() => {
     const drag = dragRef.current;
-    if (!drag?.active || !hover) {
+    if (!drag?.active) {
+      setHover(null);
+      return;
+    }
+
+    // Single-click on one cell (no drag) → toggle only that cell.
+    if (!drag.hasMoved) {
+      const { startDay, startRow } = drag;
+      const cellStart = cellStartMin(startRow);
+      const cellEnd = cellStart + CELL_MINUTES;
+
+      if (drag.adding) {
+        commit(
+          mergeBlocks([
+            ...blocks,
+            { day: startDay, startMin: cellStart, endMin: cellEnd },
+          ]),
+        );
+      } else {
+        const next: GridBlock[] = [];
+        for (const b of blocks) {
+          if (b.day !== startDay) {
+            next.push(b);
+            continue;
+          }
+          const overlapStart = Math.max(b.startMin, cellStart);
+          const overlapEnd = Math.min(b.endMin, cellEnd);
+          if (overlapStart >= overlapEnd) {
+            next.push(b);
+            continue;
+          }
+          if (b.startMin < overlapStart) {
+            next.push({ day: b.day, startMin: b.startMin, endMin: overlapStart });
+          }
+          if (b.endMin > overlapEnd) {
+            next.push({ day: b.day, startMin: overlapEnd, endMin: b.endMin });
+          }
+        }
+        commit(next);
+      }
+      dragRef.current = null;
+      setHover(null);
+      return;
+    }
+
+    // Drag across multiple cells → apply rectangle.
+    if (!hover) {
       dragRef.current = null;
       setHover(null);
       return;
@@ -338,7 +391,7 @@ export default function UnavailabilityGrid({
     [disabled, focusCell, covered, blocks, commit],
   );
 
-  // Touch support via pointer events
+  // Touch / pointer release
   useEffect(() => {
     const handlePointerUp = () => {
       if (dragRef.current?.active) commitDrag();
@@ -348,6 +401,7 @@ export default function UnavailabilityGrid({
   }, [commitDrag]);
 
   const totalBlocks = blocks.length;
+  const willAdd = dragRef.current?.adding === true;
 
   return (
     <div className="select-none" role="grid" aria-label="Weekly unavailability grid">
@@ -360,20 +414,21 @@ export default function UnavailabilityGrid({
               type="button"
               onClick={() => applyPreset(p.startMin, p.endMin)}
               disabled={disabled}
-              className="px-2.5 py-1 text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 rounded hover:border-[#5c1219] hover:text-[#5c1219] transition disabled:opacity-50"
+              className="px-2.5 py-1 text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 rounded hover:border-primary hover:text-primary transition disabled:opacity-50"
               title={`Add ${p.label} unavailability to all days`}
             >
               + {p.label}
             </button>
           ))}
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={undo}
             disabled={disabled || history.length === 0}
             className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition disabled:opacity-30"
             title="Undo"
+            aria-label="Undo"
           >
             <Icon name="undo" size={14} />
           </button>
@@ -383,6 +438,7 @@ export default function UnavailabilityGrid({
             disabled={disabled || future.length === 0}
             className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition disabled:opacity-30"
             title="Redo"
+            aria-label="Redo"
           >
             <Icon name="redo" size={14} />
           </button>
@@ -445,9 +501,19 @@ export default function UnavailabilityGrid({
                 const isCovered = covered.get(`${day}:${r}`) === true;
                 const isHover =
                   cellsInRect !== null && cellsInRect.has(`${day}:${r}`);
-                const willAdd = dragRef.current?.adding === true;
                 const isFocused =
                   focusCell?.day === day && focusCell?.row === r;
+
+                // Visual state: covered / add-preview / erase-preview / idle
+                let cellClass = 'bg-white hover:bg-slate-50';
+                if (isCovered) {
+                  cellClass = 'bg-rose-500/75 hover:bg-rose-500/85';
+                }
+                if (isHover) {
+                  cellClass = willAdd
+                    ? 'bg-emerald-400/60 ring-1 ring-inset ring-emerald-600'
+                    : 'bg-rose-300/70 ring-1 ring-inset ring-rose-500';
+                }
 
                 return (
                   <div
@@ -455,6 +521,10 @@ export default function UnavailabilityGrid({
                     role="gridcell"
                     tabIndex={isFocused ? 0 : -1}
                     aria-selected={isCovered}
+                    aria-label={`${day} ${fmtRange(
+                      cellStartMin(r),
+                      cellStartMin(r) + CELL_MINUTES,
+                    )}${isCovered ? ' — unavailable' : ' — available'}`}
                     onMouseDown={(e) => onCellDown(day, r, e)}
                     onMouseEnter={() => onCellEnter(day, r)}
                     onKeyDown={onKeyDown}
@@ -462,23 +532,14 @@ export default function UnavailabilityGrid({
                     title={
                       isCovered
                         ? `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — click to erase`
-                        : `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — drag to mark unavailable`
+                        : `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — click or drag to mark unavailable`
                     }
                     className={[
                       'h-6 border-t border-slate-100 transition-colors',
-                      isCovered
-                        ? 'bg-[#5c1219]/85'
-                        : 'bg-white hover:bg-[#5c1219]/5',
-                      isHover
-                        ? willAdd
-                          ? 'bg-[#5c1219]/50'
-                          : 'bg-rose-200'
-                        : '',
+                      cellClass,
                       isFocused ? 'ring-2 ring-inset ring-primary' : '',
                       disabled
                         ? 'cursor-not-allowed opacity-60'
-                        : willAdd
-                        ? 'cursor-crosshair'
                         : 'cursor-pointer',
                     ].join(' ')}
                   />
@@ -489,14 +550,20 @@ export default function UnavailabilityGrid({
         </div>
       </div>
 
+      {/* Legend + help */}
       <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-[10px] text-slate-500">
         <span>
-          Drag to select. Click filled cells to erase. Arrow keys + Space for keyboard.
+          <strong>Click</strong> a cell to toggle • <strong>Drag</strong> to mark a
+          range • <strong>Arrow keys + Space</strong> for keyboard.
         </span>
         <span className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block w-3 h-3 bg-[#5c1219]/85 rounded-sm" />
+            <span className="inline-block w-3 h-3 bg-rose-500/75 rounded-sm" />
             Unavailable
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-3 bg-emerald-400/60 ring-1 ring-inset ring-emerald-600 rounded-sm" />
+            Adding
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 border border-slate-200 bg-white rounded-sm" />
@@ -509,7 +576,15 @@ export default function UnavailabilityGrid({
 }
 
 // Minimal Icon shim — replace with your real Icon import
-function Icon({ name, size = 16, className = '' }: { name: string; size?: number; className?: string }) {
+function Icon({
+  name,
+  size = 16,
+  className = '',
+}: {
+  name: string;
+  size?: number;
+  className?: string;
+}) {
   return (
     <span
       className={`material-symbols-outlined ${className}`}

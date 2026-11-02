@@ -23,7 +23,7 @@ import QualificationsModal from './components/QualificationsModal';
 import { fetchDesignations } from '@/api/system-config.api';
 import PreferencesModal from './components/PreferencesModal';
 import UnavailabilityModal from './components/UnavailabilityModal';
-import FacultyInfoModal from './components/FacultyInfoModal';
+import FacultyDetailPanel from './components/FacultyDetailPanel';
 
 const CLASSIFICATIONS: { value: FacultyClass; label: string }[] = [
   { value: 'regular', label: 'Regular' },
@@ -41,52 +41,7 @@ const CLASS_TONE: Record<FacultyClass, 'info' | 'warning' | 'purple' | 'neutral'
   other: 'neutral',
 };
 
-type ChipKey =
-  | 'hasQualifications'
-  | 'hasPreferences'
-  | 'hasUnavailability'
-  | 'inactive';
-
-interface ChipState {
-  key: ChipKey;
-  active: boolean;
-  inverse: boolean;
-}
-
-const INITIAL_CHIPS: ChipState[] = [
-  { key: 'hasQualifications', active: false, inverse: false },
-  { key: 'hasPreferences', active: false, inverse: false },
-  { key: 'hasUnavailability', active: false, inverse: false },
-  { key: 'inactive', active: false, inverse: false },
-];
-
-const CHIP_LABEL: Record<ChipKey, string> = {
-  hasQualifications: 'Has Qualifications',
-  hasPreferences: 'Has Preferences',
-  hasUnavailability: 'Has Unavailability',
-  inactive: 'Inactive',
-};
-
-const CHIP_INVERSE_LABEL: Record<ChipKey, string> = {
-  hasQualifications: 'Missing Qualifications',
-  hasPreferences: 'Missing Preferences',
-  hasUnavailability: 'No Blocks',
-  inactive: 'Active Only',
-};
-
-const CHIP_ICON: Record<ChipKey, string> = {
-  hasQualifications: 'school',
-  hasPreferences: 'event_available',
-  hasUnavailability: 'block',
-  inactive: 'toggle_off',
-};
-
-const CHIP_ACTIVE_COLOR: Record<ChipKey, string> = {
-  hasQualifications: 'bg-emerald-100 text-emerald-900 border-emerald-400',
-  hasPreferences: 'bg-blue-100 text-blue-900 border-blue-400',
-  hasUnavailability: 'bg-rose-100 text-rose-900 border-rose-400',
-  inactive: 'bg-slate-200 text-slate-800 border-slate-400',
-};
+type QuickFilter = 'all' | 'active' | 'missingRecords' | 'inactive';
 
 interface FormState {
   firstName: string;
@@ -126,7 +81,12 @@ export default function FacultyPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
-  const [infoFaculty, setInfoFaculty] = useState<FacultyRecord | null>(null);
+  const [uniqueErrors, setUniqueErrors] = useState<{
+    wmsuId?: string;
+    employeeId?: string;
+    email?: string;
+  }>({});
+  const [detailFaculty, setDetailFaculty] = useState<FacultyRecord | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [prefsFaculty, setPrefsFaculty] = useState<FacultyRecord | null>(null);
   const [unavailOpen, setUnavailOpen] = useState(false);
@@ -135,17 +95,12 @@ export default function FacultyPage() {
   const [qualFaculty, setQualFaculty] = useState<FacultyRecord | null>(null);
 
   // ── Filters ──
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
-  const [searchQuery, setSearchQuery] = useState(
-    () => searchParams.get('q') ?? '',
-  );
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [designationFilter, setDesignationFilter] = useState<string>('all');
   const [classificationFilter, setClassificationFilter] = useState<string>('all');
-  const [chips, setChips] = useState<ChipState[]>(INITIAL_CHIPS);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
 
-  // Global search links here with ?q=... so the matching faculty row is
-  // visible immediately, including when the page is already mounted.
   useEffect(() => {
     const q = searchParams.get('q');
     if (q) setSearchQuery(q);
@@ -227,8 +182,8 @@ export default function FacultyPage() {
         searchRef.current?.focus();
       } else if (e.key === 'Escape' && !inInput && !mode) {
         if (searchQuery) setSearchQuery('');
+        if (detailFaculty) setDetailFaculty(null);
       } else if (e.key === 'n' && !inInput && !mode && e.ctrlKey === false) {
-        // Only plain 'n', not Ctrl+N
         if (!e.metaKey && !e.altKey) {
           e.preventDefault();
           openCreate();
@@ -238,7 +193,7 @@ export default function FacultyPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, searchQuery]);
+  }, [mode, searchQuery, detailFaculty]);
 
   // ── Filtered list ──
   const filteredFaculty = useMemo(() => {
@@ -264,25 +219,16 @@ export default function FacultyPage() {
       }
 
       const status = statusByFacultyId.get(f.facultyId);
-      for (const chip of chips) {
-        if (!chip.active) continue;
-        let matches = true;
-        switch (chip.key) {
-          case 'hasQualifications':
-            matches = !!status?.hasQualifications;
-            break;
-          case 'hasPreferences':
-            matches = !!status?.hasPreferences;
-            break;
-          case 'hasUnavailability':
-            matches = !!status?.hasUnavailability;
-            break;
-          case 'inactive':
-            matches = f.isActive === false;
-            break;
-        }
-        if (chip.inverse) matches = !matches;
-        if (!matches) return false;
+      const hasAllRecords =
+        !!status?.hasQualifications &&
+        !!status?.hasPreferences &&
+        !!status?.hasUnavailability;
+
+      if (quickFilter === 'active' && f.isActive === false) return false;
+      if (quickFilter === 'inactive' && f.isActive !== false) return false;
+      if (quickFilter === 'missingRecords') {
+        if (f.isActive === false) return false;
+        if (hasAllRecords) return false;
       }
 
       if (!q) return true;
@@ -300,7 +246,7 @@ export default function FacultyPage() {
     deptFilter,
     designationFilter,
     classificationFilter,
-    chips,
+    quickFilter,
     statusByFacultyId,
   ]);
 
@@ -321,80 +267,20 @@ export default function FacultyPage() {
       (f) =>
         f.isActive && !statusByFacultyId.get(f.facultyId)?.hasQualifications,
     ).length;
-    return { total: scopedFaculty.length, active, withQuals, missingQuals };
+    const missingRecords = scopedFaculty.filter((f) => {
+      if (!f.isActive) return false;
+      const s = statusByFacultyId.get(f.facultyId);
+      return !s?.hasQualifications || !s?.hasPreferences || !s?.hasUnavailability;
+    }).length;
+    return { total: scopedFaculty.length, active, withQuals, missingQuals, missingRecords };
   }, [scopedFaculty, statusByFacultyId]);
-
-  // Chip counts (computed on scoped faculty, ignoring the chip filters)
-  const chipCounts = useMemo(() => {
-    const base = scopedFaculty.filter((f) => {
-      if (deptFilter !== 'all' && String(f.deptId ?? '') !== deptFilter) return false;
-      if (designationFilter !== 'all') {
-        if (designationFilter === 'none') {
-          if (f.designationId) return false;
-        } else if (String(f.designationId ?? '') !== designationFilter) {
-          return false;
-        }
-      }
-      if (classificationFilter !== 'all' && f.classification !== classificationFilter) {
-        return false;
-      }
-      return true;
-    });
-    return {
-      hasQualifications: base.filter(
-        (f) => statusByFacultyId.get(f.facultyId)?.hasQualifications,
-      ).length,
-      hasPreferences: base.filter(
-        (f) => statusByFacultyId.get(f.facultyId)?.hasPreferences,
-      ).length,
-      hasUnavailability: base.filter(
-        (f) => statusByFacultyId.get(f.facultyId)?.hasUnavailability,
-      ).length,
-      inactive: base.filter((f) => f.isActive === false).length,
-    };
-  }, [
-    scopedFaculty,
-    statusByFacultyId,
-    deptFilter,
-    designationFilter,
-    classificationFilter,
-  ]);
-
-  const missingQualsCount = stats.missingQuals;
-
-  const applyMissingQualsPreset = () => {
-    setSearchQuery('');
-    setDesignationFilter('all');
-    setClassificationFilter('all');
-    setDeptFilter('all');
-    setChips([
-      { key: 'hasQualifications', active: true, inverse: true },
-      { key: 'hasPreferences', active: false, inverse: false },
-      { key: 'hasUnavailability', active: false, inverse: false },
-      { key: 'inactive', active: false, inverse: false },
-    ]);
-  };
-
-  const toggleChip = (key: ChipKey) => {
-    setChips((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, active: !c.active } : c)),
-    );
-  };
-
-  const invertChip = (key: ChipKey) => {
-    setChips((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, inverse: !c.inverse } : c)),
-    );
-  };
-
-  const activeChipCount = chips.filter((c) => c.active).length;
 
   const clearAllFilters = () => {
     setSearchQuery('');
     setDeptFilter('all');
     setDesignationFilter('all');
     setClassificationFilter('all');
-    setChips(INITIAL_CHIPS.map((c) => ({ ...c })));
+    setQuickFilter('all');
   };
 
   const activeFilterCount =
@@ -402,11 +288,10 @@ export default function FacultyPage() {
     (deptFilter !== 'all' ? 1 : 0) +
     (designationFilter !== 'all' ? 1 : 0) +
     (classificationFilter !== 'all' ? 1 : 0) +
-    activeChipCount;
+    (quickFilter !== 'all' ? 1 : 0);
 
   const hasAnyFilter = activeFilterCount > 0;
 
-  // Removable filter pills
   const filterPills = useMemo(() => {
     const pills: { label: string; onRemove: () => void; tone?: string }[] = [];
     if (searchQuery) {
@@ -438,15 +323,17 @@ export default function FacultyPage() {
         onRemove: () => setClassificationFilter('all'),
       });
     }
-    for (const chip of chips) {
-      if (!chip.active) continue;
-      const label = chip.inverse
-        ? CHIP_INVERSE_LABEL[chip.key]
-        : CHIP_LABEL[chip.key];
+    if (quickFilter !== 'all') {
+      const label =
+        quickFilter === 'active'
+          ? 'Active only'
+          : quickFilter === 'inactive'
+          ? 'Inactive only'
+          : 'Missing records';
       pills.push({
         label,
-        onRemove: () => toggleChip(chip.key),
-        tone: chip.inverse ? 'amber' : 'default',
+        onRemove: () => setQuickFilter('all'),
+        tone: quickFilter === 'missingRecords' ? 'amber' : 'default',
       });
     }
     return pills;
@@ -455,7 +342,7 @@ export default function FacultyPage() {
     deptFilter,
     designationFilter,
     classificationFilter,
-    chips,
+    quickFilter,
     departments,
     designations,
   ]);
@@ -469,8 +356,19 @@ export default function FacultyPage() {
       qc.invalidateQueries({ queryKey: ['faculty'] });
       qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
+    onError: (err: any) => {
+      const res = err?.response?.data;
+      const msg = (res?.message ?? '').toLowerCase();
+      if (msg.includes('wmsu')) {
+        setUniqueErrors({ wmsuId: res.message });
+      } else if (msg.includes('employee')) {
+        setUniqueErrors({ employeeId: res.message });
+      } else if (msg.includes('email')) {
+        setUniqueErrors({ email: res.message });
+      } else {
+        setError(res?.message ?? err.message ?? 'Failed to create');
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -482,18 +380,45 @@ export default function FacultyPage() {
       qc.invalidateQueries({ queryKey: ['faculty'] });
       qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
+    onError: (err: any) => {
+      const res = err?.response?.data;
+      if (res?.message?.toLowerCase().includes('wmsu')) {
+        setUniqueErrors({ wmsuId: res.message });
+      } else if (res?.message?.toLowerCase().includes('employee')) {
+        setUniqueErrors({ employeeId: res.message });
+      } else {
+        setError(res?.message ?? err.message ?? 'Failed to update');
+      }
+    },
   });
 
   const toggleMutation = useMutation({
     mutationFn: toggleFacultyActive,
-    onSuccess: () => {
+    onMutate: async (facultyId: string) => {
+      await qc.cancelQueries({ queryKey: ['faculty', { includeInactive: true }] });
+      const previous = qc.getQueryData<FacultyRecord[]>([
+        'faculty',
+        { includeInactive: true },
+      ]);
+      qc.setQueryData<FacultyRecord[]>(
+        ['faculty', { includeInactive: true }],
+        (old) =>
+          old?.map((f) =>
+            f.facultyId === facultyId ? { ...f, isActive: !f.isActive } : f,
+          ) ?? old,
+      );
+      return { previous };
+    },
+    onError: (err: any, _id, ctx) => {
+      if (ctx?.previous) {
+        qc.setQueryData(['faculty', { includeInactive: true }], ctx.previous);
+      }
+      setError(err?.response?.data?.message ?? 'Toggle failed');
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['faculty'] });
       qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Toggle failed'),
   });
 
   const deleteMutation = useMutation({
@@ -501,6 +426,7 @@ export default function FacultyPage() {
     onSuccess: () => {
       setSuccess('Faculty deleted.');
       setDeleteTarget(null);
+      setDetailFaculty(null);
       qc.invalidateQueries({ queryKey: ['faculty'] });
       qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
@@ -531,6 +457,7 @@ export default function FacultyPage() {
     setForm(EMPTY_FORM);
     setError(null);
     setFieldErrors({});
+    setUniqueErrors({});
   };
 
   const openCreate = () => {
@@ -543,6 +470,7 @@ export default function FacultyPage() {
     setError(null);
     setSuccess(null);
     setFieldErrors({});
+    setUniqueErrors({});
     setTimeout(() => firstNameRef.current?.focus(), 50);
   };
 
@@ -565,6 +493,7 @@ export default function FacultyPage() {
     setError(null);
     setSuccess(null);
     setFieldErrors({});
+    setUniqueErrors({});
     setTimeout(() => firstNameRef.current?.focus(), 50);
   };
 
@@ -574,21 +503,53 @@ export default function FacultyPage() {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
     setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    setUniqueErrors((prev) => ({ ...prev, [name]: undefined }));
   };
 
   const validateForm = (): boolean => {
     const errs: Partial<Record<keyof FormState, string>> = {};
+
     if (!form.firstName.trim()) errs.firstName = 'First name is required';
     if (!form.lastName.trim()) errs.lastName = 'Last name is required';
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      errs.email = 'Enter a valid email address';
-    }
+
     if (form.requiredHours) {
       const n = Number(form.requiredHours);
       if (isNaN(n) || n < 0 || n > 60) {
         errs.requiredHours = 'Hours must be between 0 and 60';
       }
     }
+
+    const otherFaculty = faculty.filter(
+      (f) => f.facultyId !== editing?.facultyId,
+    );
+
+    if (form.email.trim()) {
+      const emailTrim = form.email.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+        errs.email = 'Enter a valid email address';
+      } else if (
+        otherFaculty.some(
+          (f) => f.email?.toLowerCase() === emailTrim.toLowerCase(),
+        )
+      ) {
+        errs.email = 'This email is already in use.';
+      }
+    }
+
+    if (form.wmsuId.trim()) {
+      const idTrim = form.wmsuId.trim().toLowerCase();
+      if (otherFaculty.some((f) => f.wmsuId?.toLowerCase() === idTrim)) {
+        errs.wmsuId = 'This WMSU ID is already in use.';
+      }
+    }
+
+    if (form.employeeId.trim()) {
+      const idTrim = form.employeeId.trim().toLowerCase();
+      if (otherFaculty.some((f) => f.employeeId?.toLowerCase() === idTrim)) {
+        errs.employeeId = 'This Employee ID is already in use.';
+      }
+    }
+
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -637,15 +598,17 @@ export default function FacultyPage() {
   const initials = (f: FacultyRecord) =>
     `${f.firstName[0] ?? ''}${f.lastName[0] ?? ''}`.toUpperCase();
 
-  // ── Open the relevant management modal ──
+  // ── Option A: nested modals overlay the panel; panel stays mounted. ──
   const openQuals = (f: FacultyRecord) => {
     setQualFaculty(f);
     setQualOpen(true);
   };
+
   const openPrefs = (f: FacultyRecord) => {
     setPrefsFaculty(f);
     setPrefsOpen(true);
   };
+
   const openUnavail = (f: FacultyRecord) => {
     setUnavailFaculty(f);
     setUnavailOpen(true);
@@ -653,63 +616,41 @@ export default function FacultyPage() {
 
   // ── Columns ──
   const columns: Column<FacultyRecord>[] = [
-{
-  key: 'name',
-  header: 'Name',
-  cardVariant: 'title',
-  cellClassName: 'text-on-surface font-medium',
-  render: (f) => {
-    const status = statusByFacultyId.get(f.facultyId);
-    const missing = !status?.hasQualifications && f.isActive;
-    return (
-      <div className="flex items-center gap-2.5">
-        <span className="w-8 h-8 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center shrink-0">
-          {initials(f)}
-        </span>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate">
-              {f.lastName}, {f.firstName}
-            </span>
-            {missing && (
-              <span
-                className="inline-flex items-center text-amber-500"
-                title="No qualifications on file — rule F-5 not enforced"
-              >
-                <Icon name="warning" size={12} />
-              </span>
-            )}
-          </div>
-          {f.email && (
-            <div className="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
-              <Icon name="mail" size={10} />
-              {f.email}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  },
-},
     {
-      key: 'dept',
-      header: 'Dept',
-      cardVariant: 'meta',
-      cellClassName: 'text-on-surface-variant text-xs',
+      key: 'name',
+      header: 'Name',
+      cardVariant: 'title',
+      cellClassName: 'text-on-surface font-medium',
       render: (f) => {
-        const foreign = isForeign(f);
+        const status = statusByFacultyId.get(f.facultyId);
+        const missing = !status?.hasQualifications && f.isActive;
         return (
-          <span className="inline-flex items-center gap-1.5">
-            {foreign && (
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"
-                title="Other department — read only"
-              />
-            )}
-            <span className={foreign ? 'text-slate-500' : ''}>
-              {deptName(f.deptId)}
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center shrink-0">
+              {initials(f)}
             </span>
-          </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate">
+                  {f.lastName}, {f.firstName}
+                </span>
+                {missing && (
+                  <span
+                    className="inline-flex items-center text-amber-500"
+                    title="No qualifications on file — rule F-5 not enforced"
+                  >
+                    <Icon name="warning" size={12} />
+                  </span>
+                )}
+              </div>
+              {f.email && (
+                <div className="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
+                  <Icon name="mail" size={10} />
+                  {f.email}
+                </div>
+              )}
+            </div>
+          </div>
         );
       },
     },
@@ -724,82 +665,37 @@ export default function FacultyPage() {
       ),
     },
     {
-      key: 'designation',
-      header: 'Designation',
-      cardVariant: 'meta',
-      cellClassName: 'text-on-surface-variant text-xs',
-      render: (f) => designationName(f.designationId),
-    },
-    {
-      key: 'status-flags',
+      key: 'record-health',
       header: 'Records',
       cardVariant: 'meta',
       cellClassName: 'text-xs',
       render: (f) => {
         const s = statusByFacultyId.get(f.facultyId);
-        const hasQ = !!s?.hasQualifications;
-        const hasP = !!s?.hasPreferences;
-        const hasU = !!s?.hasUnavailability;
-        const foreign = isForeign(f);
+        const configured = [
+          !!s?.hasQualifications,
+          !!s?.hasPreferences,
+          !!s?.hasUnavailability,
+        ].filter(Boolean).length;
+        const isComplete = configured === 3;
         return (
-          <div
-            className="flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => !foreign && openQuals(f)}
-              disabled={foreign}
-              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold transition ${
-                hasQ
-                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              } disabled:cursor-not-allowed disabled:opacity-60`}
-              title={
-                hasQ
-                  ? `${s?.qualificationCount ?? 0} qualification(s) on file`
-                  : 'No qualifications on file — click to add'
-              }
+          <div className="flex items-center gap-1.5" title={`${configured} of 3 record types configured`}>
+            <div className="flex items-center gap-0.5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    configured > i ? 'bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                />
+              ))}
+            </div>
+            <span
+              className={`text-[10px] font-semibold ${
+                isComplete ? 'text-emerald-700' : 'text-amber-600'
+              }`}
             >
-              <Icon name="school" size={10} />
-              {hasQ ? s?.qualificationCount : '—'}
-            </button>
-            <button
-              type="button"
-              onClick={() => !foreign && openPrefs(f)}
-              disabled={foreign}
-              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold transition ${
-                hasP
-                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              } disabled:cursor-not-allowed disabled:opacity-60`}
-              title={
-                hasP
-                  ? `${s?.preferenceCount ?? 0} preference(s)`
-                  : 'No preferences — click to add'
-              }
-            >
-              <Icon name="event_available" size={10} />
-              {hasP ? s?.preferenceCount : '—'}
-            </button>
-            <button
-              type="button"
-              onClick={() => !foreign && openUnavail(f)}
-              disabled={foreign}
-              className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold transition ${
-                hasU
-                  ? 'bg-rose-100 text-rose-800 hover:bg-rose-200'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              } disabled:cursor-not-allowed disabled:opacity-60`}
-              title={
-                hasU
-                  ? `${s?.unavailabilityCount ?? 0} block(s)`
-                  : 'No unavailability blocks — click to add'
-              }
-            >
-              <Icon name="block" size={10} />
-              {hasU ? s?.unavailabilityCount : '—'}
-            </button>
+              {configured}/3
+            </span>
           </div>
         );
       },
@@ -820,7 +716,7 @@ export default function FacultyPage() {
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: '',
       cardVariant: 'actions',
       headerClassName: 'text-right',
       cellClassName: 'text-right',
@@ -841,9 +737,6 @@ export default function FacultyPage() {
     }
     return [
       { label: 'Edit', icon: 'edit', onClick: () => openEdit(f) },
-      { label: 'Qualifications', icon: 'school', onClick: () => openQuals(f) },
-      { label: 'Preferences', icon: 'event_available', onClick: () => openPrefs(f) },
-      { label: 'Unavailability', icon: 'block', onClick: () => openUnavail(f) },
       {
         label: f.isActive ? 'Deactivate' : 'Activate',
         icon: f.isActive ? 'toggle_off' : 'toggle_on',
@@ -855,7 +748,7 @@ export default function FacultyPage() {
             {
               label: 'Delete',
               icon: 'delete',
-              danger: true,
+                            danger: true,
               onClick: () => setDeleteTarget(f),
               disabled: deleteMutation.isPending,
             } as RowAction,
@@ -866,10 +759,17 @@ export default function FacultyPage() {
 
   const formBusy = createMutation.isPending || updateMutation.isPending;
 
+  const quickFilters: { key: QuickFilter; label: string; count: number; tone?: string }[] = [
+    { key: 'all', label: 'All', count: stats.total },
+    { key: 'active', label: 'Active', count: stats.active },
+    { key: 'missingRecords', label: 'Missing records', count: stats.missingRecords, tone: 'amber' },
+    { key: 'inactive', label: 'Inactive', count: scopedFaculty.filter((f) => !f.isActive).length },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5" data-tour="faculty-header">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="faculty-header">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Faculty</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -886,52 +786,12 @@ export default function FacultyPage() {
         </button>
       </div>
 
-      {/* ── Stats strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          label="Total"
-          value={stats.total}
-          icon="groups"
-          tone="neutral"
-        />
-        <StatCard
-          label="Active"
-          value={stats.active}
-          icon="check_circle"
-          tone="emerald"
-        />
-        <StatCard
-          label="With Qualifications"
-          value={stats.withQuals}
-          icon="school"
-          tone="blue"
-        />
-        <StatCard
-          label="Missing Qualifications"
-          value={stats.missingQuals}
-          icon="warning"
-          tone={stats.missingQuals > 0 ? 'rose' : 'neutral'}
-          onClick={
-            stats.missingQuals > 0 ? applyMissingQualsPreset : undefined
-          }
-          hint={
-            stats.missingQuals > 0
-              ? 'Click to filter'
-              : 'All active faculty have qualifications'
-          }
-        />
-      </div>
-
       {/* ── Banners ── */}
       {error && (
         <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
           <Icon name="error" size={16} className="shrink-0 mt-0.5" />
           <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss error"
-          >
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800" aria-label="Dismiss error">
             <Icon name="close" size={14} />
           </button>
         </div>
@@ -940,267 +800,127 @@ export default function FacultyPage() {
         <div className="p-3 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm flex items-start gap-2">
           <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
           <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900"
-            aria-label="Dismiss"
-          >
+          <button onClick={() => setSuccess(null)} className="text-emerald-700 hover:text-emerald-900" aria-label="Dismiss">
             <Icon name="close" size={14} />
           </button>
         </div>
       )}
 
-      {/* ── Filter panel ── */}
+      {/* ── Command bar: quick filters + search ── */}
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden" data-tour="faculty-filters">
-        {/* Panel header — always visible */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <button
-            type="button"
-            onClick={() => setFiltersExpanded((v) => !v)}
-            className="flex items-center gap-2 text-sm font-semibold text-on-surface hover:text-primary transition"
-          >
-            <Icon
-              name={filtersExpanded ? 'expand_less' : 'expand_more'}
-              size={18}
-            />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-primary text-on-primary text-[10px] font-bold">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
+        <div className="p-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface-container-low border border-surface-variant">
+              {quickFilters.map((qf) => (
+                <button
+                  key={qf.key}
+                  type="button"
+                  onClick={() => setQuickFilter(qf.key)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    quickFilter === qf.key
+                      ? qf.tone === 'amber'
+                        ? 'bg-amber-100 text-amber-900 shadow-sm'
+                        : 'bg-white text-on-surface shadow-sm'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  {qf.label}
+                  <span className={`text-[10px] font-normal ${quickFilter === qf.key ? 'opacity-70' : 'opacity-50'}`}>
+                    {qf.count}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-on-surface-variant hidden sm:inline">
-              Showing{' '}
-              <strong className="text-on-surface">
-                {filteredFaculty.length}
-              </strong>{' '}
-              of {faculty.length}
-            </span>
-            {hasAnyFilter && (
+            <div className="relative flex-1 min-w-[220px]">
+              <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search name, email, employee ID, or WMSU ID…"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1"
+                  aria-label="Clear search"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <select
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                className="bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
+              >
+                <option value="all">All depts</option>
+                {departments.filter((d) => d.isActive).map((d) => (
+                  <option key={d.deptId} value={d.deptId}>[{d.deptCode}] {d.deptName}</option>
+                ))}
+              </select>
+              <select
+                value={designationFilter}
+                onChange={(e) => setDesignationFilter(e.target.value)}
+                className="bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
+              >
+                <option value="all">All designations</option>
+                <option value="none">— None —</option>
+                {designations.map((d) => (
+                  <option key={d.designationId} value={d.designationId}>{d.designationName}</option>
+                ))}
+              </select>
+              <select
+                value={classificationFilter}
+                onChange={(e) => setClassificationFilter(e.target.value)}
+                className="bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
+              >
+                <option value="all">All classes</option>
+                {CLASSIFICATIONS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {filterPills.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {filterPills.map((pill, i) => (
+                <span
+                  key={i}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border ${
+                    pill.tone === 'amber'
+                      ? 'bg-amber-50 text-amber-900 border-amber-300'
+                      : 'bg-primary/5 text-primary border-primary/30'
+                  }`}
+                >
+                  {pill.label}
+                  <button
+                    type="button"
+                    onClick={pill.onRemove}
+                    className="hover:bg-black/5 rounded-full p-0.5"
+                    aria-label={`Remove filter: ${pill.label}`}
+                  >
+                    <Icon name="close" size={11} />
+                  </button>
+                </span>
+              ))}
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="text-xs px-3 py-1.5 rounded-lg border border-surface-variant text-on-surface-variant hover:bg-surface-container-low transition"
+                className="text-[11px] px-2 py-1 rounded-full text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition"
               >
                 Clear all
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-
-        {/* Removable filter pills */}
-        {filterPills.length > 0 && (
-          <div className="px-4 pb-3 flex flex-wrap gap-1.5 border-t border-surface-variant pt-3">
-            {filterPills.map((pill, i) => (
-              <span
-                key={i}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium border ${
-                  pill.tone === 'amber'
-                    ? 'bg-amber-50 text-amber-900 border-amber-300'
-                    : 'bg-primary/5 text-primary border-primary/30'
-                }`}
-              >
-                {pill.label}
-                <button
-                  type="button"
-                  onClick={pill.onRemove}
-                  className="hover:bg-black/5 rounded-full p-0.5"
-                  aria-label={`Remove filter: ${pill.label}`}
-                >
-                  <Icon name="close" size={11} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Expanded content */}
-        {filtersExpanded && (
-          <div className="border-t border-surface-variant p-4 space-y-4 bg-surface-container-lowest">
-            {/* Search */}
-            <div>
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Search
-                <kbd className="ml-2 px-1.5 py-0.5 text-[9px] font-mono bg-surface-container-low border border-surface-variant rounded">
-                  /
-                </kbd>
-              </label>
-              <div className="relative">
-                <Icon
-                  name="search"
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none"
-                />
-                <input
-                  ref={searchRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Name, email, employee ID, or WMSU ID…"
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1"
-                    aria-label="Clear search"
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Dropdowns */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Department
-                </label>
-                <select
-                  value={deptFilter}
-                  onChange={(e) => setDeptFilter(e.target.value)}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="all">All departments</option>
-                  {departments
-                    .filter((d) => d.isActive)
-                    .map((d) => (
-                      <option key={d.deptId} value={d.deptId}>
-                        [{d.deptCode}] {d.deptName}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Designation
-                </label>
-                <select
-                  value={designationFilter}
-                  onChange={(e) => setDesignationFilter(e.target.value)}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="all">All designations</option>
-                  <option value="none">— None —</option>
-                  {designations.map((d) => (
-                    <option key={d.designationId} value={d.designationId}>
-                      {d.designationName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Classification
-                </label>
-                <select
-                  value={classificationFilter}
-                  onChange={(e) => setClassificationFilter(e.target.value)}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="all">All classifications</option>
-                  {CLASSIFICATIONS.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Quick filter chips */}
-            <div className="pt-3 border-t border-surface-variant">
-              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">
-                  Quick filters
-                </span>
-                <span className="text-[10px] text-on-surface-variant italic">
-                  Click to filter • click the ↻ icon to show the{' '}
-                  <em>opposite</em>
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {chips.map((chip) => {
-                  const isActive = chip.active;
-                  const isInverse = chip.inverse;
-                  const label = isInverse
-                    ? CHIP_INVERSE_LABEL[chip.key]
-                    : CHIP_LABEL[chip.key];
-                  const count = chipCounts[chip.key];
-                  const disabled = count === 0;
-                  const base =
-                    'inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 text-xs font-semibold rounded-full border transition select-none';
-                  const style = isActive
-                    ? CHIP_ACTIVE_COLOR[chip.key]
-                    : 'bg-white text-on-surface-variant border-surface-variant hover:border-primary/50 hover:text-on-surface';
-                  return (
-                    <div
-                      key={chip.key}
-                      className={`${base} ${style} ${
-                        disabled ? 'opacity-50' : ''
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => !disabled && toggleChip(chip.key)}
-                        disabled={disabled}
-                        className="inline-flex items-center gap-1.5 disabled:cursor-not-allowed"
-                        title={
-                          disabled
-                            ? 'No faculty match this filter'
-                            : isActive
-                            ? 'Click to remove filter'
-                            : 'Click to filter'
-                        }
-                      >
-                        <Icon name={CHIP_ICON[chip.key]} size={12} />
-                        {label}
-                        <span className="text-[10px] font-normal opacity-70">
-                          ({count})
-                        </span>
-                      </button>
-                      {!disabled && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            invertChip(chip.key);
-                          }}
-                          className={`ml-0.5 p-0.5 rounded-full transition ${
-                            isInverse
-                              ? 'bg-amber-500 text-white'
-                              : 'hover:bg-black/10 text-current'
-                          }`}
-                          title="Invert this filter"
-                          aria-label={`Invert ${label}`}
-                        >
-                          <Icon name="swap_horiz" size={11} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {missingQualsCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={applyMissingQualsPreset}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100 transition"
-                    title={`Show ${missingQualsCount} active faculty without qualifications`}
-                  >
-                    <Icon name="warning" size={12} />
-                    Missing Qualifications ({missingQualsCount})
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {isDH && (
@@ -1218,17 +938,9 @@ export default function FacultyPage() {
       {/* ── Table / empty state ── */}
       {filteredFaculty.length === 0 && hasAnyFilter && !isLoading ? (
         <div className="rounded-xl border border-dashed border-surface-variant bg-surface-container-lowest py-16 text-center">
-          <Icon
-            name="search_off"
-            size={48}
-            className="text-slate-300 mx-auto mb-3"
-          />
-          <p className="text-base font-semibold text-on-surface">
-            No faculty match your filters
-          </p>
-          <p className="text-sm text-on-surface-variant mt-1 mb-4">
-            Try adjusting your search or clearing some filters.
-          </p>
+          <Icon name="search_off" size={48} className="text-slate-300 mx-auto mb-3" />
+          <p className="text-base font-semibold text-on-surface">No faculty match your filters</p>
+          <p className="text-sm text-on-surface-variant mt-1 mb-4">Try adjusting your search or clearing some filters.</p>
           <button
             onClick={clearAllFilters}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
@@ -1239,21 +951,74 @@ export default function FacultyPage() {
         </div>
       ) : (
         <div data-tour="faculty-table">
-<ResponsiveTable
-  columns={columns}
-  rows={filteredFaculty}
-  rowKey={(f) => f.facultyId}
-  rowTitle={(f) => `${f.lastName}, ${f.firstName}`}
-  rowSubtitle={(f) => f.email ?? ''}
-  isLoading={isLoading}
-  hasSourceRows={faculty.length > 0}
-  emptyMessage="No faculty yet. Click 'New Faculty' to add the first record."
-  noMatchMessage="No faculty match your filters."
-  getActions={getActions}
-  onRowClick={(f) => setInfoFaculty(f)}
-/>
+          <ResponsiveTable
+            columns={columns}
+            rows={filteredFaculty}
+            rowKey={(f) => f.facultyId}
+            rowTitle={(f) => `${f.lastName}, ${f.firstName}`}
+            rowSubtitle={(f) => f.email ?? ''}
+            isLoading={isLoading}
+            hasSourceRows={faculty.length > 0}
+            emptyMessage="No faculty yet. Click 'New Faculty' to add the first record."
+            noMatchMessage="No faculty match your filters."
+            getActions={getActions}
+            onRowClick={(f) => setDetailFaculty(f)}
+          />
         </div>
       )}
+
+      {/* ── Detail side panel ── */}
+      <FacultyDetailPanel
+        open={!!detailFaculty}
+        onClose={() => setDetailFaculty(null)}
+        faculty={
+          detailFaculty
+            ? faculty.find((f) => f.facultyId === detailFaculty.facultyId) ?? detailFaculty
+            : null
+        }
+        departmentLabel={deptName}
+        designationLabel={designationName}
+        status={
+          detailFaculty
+            ? (() => {
+                const s = statusByFacultyId.get(detailFaculty.facultyId);
+                return {
+                  hasQualifications: !!s?.hasQualifications,
+                  hasPreferences: !!s?.hasPreferences,
+                  hasUnavailability: !!s?.hasUnavailability,
+                  qualificationCount: s?.qualificationCount ?? 0,
+                  preferenceCount: s?.preferenceCount ?? 0,
+                  unavailabilityCount: s?.unavailabilityCount ?? 0,
+                };
+              })()
+            : undefined
+        }
+        isForeign={
+          detailFaculty
+            ? isForeign(
+                faculty.find((f) => f.facultyId === detailFaculty.facultyId) ??
+                  detailFaculty,
+              )
+            : false
+        }
+        onEdit={() => {
+          if (detailFaculty) {
+            openEdit(detailFaculty);
+          }
+        }}
+        onOpenQualifications={() => detailFaculty && openQuals(detailFaculty)}
+        onOpenPreferences={() => detailFaculty && openPrefs(detailFaculty)}
+        onOpenUnavailability={() => detailFaculty && openUnavail(detailFaculty)}
+        onToggleActive={() =>
+          detailFaculty && toggleMutation.mutate(detailFaculty.facultyId)
+        }
+        onDelete={
+          isAdminOrDean
+            ? () => detailFaculty && setDeleteTarget(detailFaculty)
+            : undefined
+        }
+        togglePending={toggleMutation.isPending}
+      />
 
       {/* ── Create / Edit modal ── */}
       <Modal
@@ -1272,7 +1037,6 @@ export default function FacultyPage() {
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Identity section */}
           <FormSection title="Identity" icon="badge">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField label="First Name" required error={fieldErrors.firstName}>
@@ -1298,13 +1062,16 @@ export default function FacultyPage() {
               </FormField>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <FormField label="Email" error={fieldErrors.email}>
+              <FormField
+                label="Email"
+                error={fieldErrors.email || uniqueErrors.email}
+              >
                 <input
                   type="email"
                   name="email"
                   value={form.email}
                   onChange={handleChange}
-                  className={inputClass(!!fieldErrors.email)}
+                  className={inputClass(!!(fieldErrors.email || uniqueErrors.email))}
                   placeholder="juan.delacruz@wmsu.edu.ph"
                 />
               </FormField>
@@ -1321,26 +1088,31 @@ export default function FacultyPage() {
             </div>
           </FormSection>
 
-          {/* Employment section */}
           <FormSection title="Employment" icon="work">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="WMSU ID">
+              <FormField
+                label="WMSU ID"
+                error={fieldErrors.wmsuId || uniqueErrors.wmsuId}
+              >
                 <input
                   type="text"
                   name="wmsuId"
                   value={form.wmsuId}
                   onChange={handleChange}
-                  className={inputClass(false)}
+                  className={inputClass(!!(fieldErrors.wmsuId || uniqueErrors.wmsuId))}
                   placeholder="e.g. 2020-12345"
                 />
               </FormField>
-              <FormField label="Employee ID">
+              <FormField
+                label="Employee ID"
+                error={fieldErrors.employeeId || uniqueErrors.employeeId}
+              >
                 <input
                   type="text"
                   name="employeeId"
                   value={form.employeeId}
                   onChange={handleChange}
-                  className={inputClass(false)}
+                  className={inputClass(!!(fieldErrors.employeeId || uniqueErrors.employeeId))}
                   placeholder="e.g. EMP-00123"
                 />
               </FormField>
@@ -1385,7 +1157,6 @@ export default function FacultyPage() {
             </div>
           </FormSection>
 
-          {/* Assignment section */}
           <FormSection title="Assignment" icon="assignment_ind">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
@@ -1533,6 +1304,7 @@ export default function FacultyPage() {
         </div>
       </Modal>
 
+      {/* ── Nested modals — Option A: panel stays mounted underneath ── */}
       <QualificationsModal
         open={qualOpen}
         onClose={() => {
@@ -1541,38 +1313,6 @@ export default function FacultyPage() {
         }}
         faculty={qualFaculty}
       />
-
-      <FacultyInfoModal
-  open={!!infoFaculty}
-  onClose={() => setInfoFaculty(null)}
-  faculty={infoFaculty}
-  departmentLabel={deptName}
-  designationLabel={designationName}
-  status={
-    infoFaculty
-      ? (() => {
-          const s = statusByFacultyId.get(infoFaculty.facultyId);
-          return {
-            hasQualifications: !!s?.hasQualifications,
-            hasPreferences: !!s?.hasPreferences,
-            hasUnavailability: !!s?.hasUnavailability,
-            qualificationCount: s?.qualificationCount ?? 0,
-            preferenceCount: s?.preferenceCount ?? 0,
-            unavailabilityCount: s?.unavailabilityCount ?? 0,
-          };
-        })()
-      : undefined
-  }
-  isForeign={infoFaculty ? isForeign(infoFaculty) : false}
-  onEdit={() => infoFaculty && openEdit(infoFaculty)}
-  onOpenQualifications={() => infoFaculty && openQuals(infoFaculty)}
-  onOpenPreferences={() => infoFaculty && openPrefs(infoFaculty)}
-  onOpenUnavailability={() => infoFaculty && openUnavail(infoFaculty)}
-  onToggleActive={() =>
-    infoFaculty && toggleMutation.mutate(infoFaculty.facultyId)
-  }
-  togglePending={toggleMutation.isPending}
-/>
 
       <PreferencesModal
         open={prefsOpen}
@@ -1595,57 +1335,7 @@ export default function FacultyPage() {
   );
 }
 
-// ── Small presentational helpers ──
-
-function StatCard({
-  label,
-  value,
-  icon,
-  tone,
-  onClick,
-  hint,
-}: {
-  label: string;
-  value: number;
-  icon: string;
-  tone: 'neutral' | 'emerald' | 'blue' | 'rose';
-  onClick?: () => void;
-  hint?: string;
-}) {
-  const tones: Record<typeof tone, string> = {
-    neutral: 'bg-surface-container-lowest border-surface-variant',
-    emerald: 'bg-emerald-50 border-emerald-200',
-    blue: 'bg-blue-50 border-blue-200',
-    rose: 'bg-rose-50 border-rose-200',
-  };
-  const iconTones: Record<typeof tone, string> = {
-    neutral: 'text-slate-500',
-    emerald: 'text-emerald-600',
-    blue: 'text-blue-600',
-    rose: 'text-rose-600',
-  };
-  const Comp = onClick ? 'button' : 'div';
-  return (
-    <Comp
-      onClick={onClick}
-      title={hint}
-      className={`text-left rounded-xl border p-3 transition ${tones[tone]} ${
-        onClick ? 'hover:shadow-md cursor-pointer' : ''
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-          {label}
-        </span>
-        <Icon name={icon} size={16} className={iconTones[tone]} />
-      </div>
-      <p className="text-2xl font-bold text-on-surface mt-1">{value}</p>
-      {hint && (
-        <p className="text-[10px] text-on-surface-variant mt-0.5">{hint}</p>
-      )}
-    </Comp>
-  );
-}
+// ── Small presentational helpers (unchanged) ──
 
 function FormSection({
   title,

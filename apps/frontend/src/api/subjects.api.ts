@@ -20,9 +20,10 @@ export interface SubjectRecord {
   lectureUnits: number;
   labUnits: number;
   deptId: string;
-  requiredRoomType: SubjectRoomType | null;
-  isMinor: boolean;
   isActive: boolean;
+  isPlaceholder: boolean;
+  isMinor: boolean;
+  requiredRoomType: string | null;
 }
 
 export interface CreateSubjectInput {

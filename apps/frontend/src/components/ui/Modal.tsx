@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import Icon from './Icon';
 
@@ -36,7 +37,17 @@ function unlockBody() {
   }
 }
 
-// ── Context so children (e.g. ModalSection) can adapt ──
+/**
+ * True if at least one Modal is currently mounted.
+ *
+ * Surfaces that also listen for Escape (e.g. side panels rendered at a lower
+ * z-index than modals) should consult this so they defer to whichever modal
+ * is on top instead of closing underneath it.
+ */
+export function isAnyModalOpen() {
+  return modalStack > 0;
+}
+
 interface ModalContextValue {
   titleId: string;
   descriptionId?: string;
@@ -49,7 +60,6 @@ export function useModal() {
   return useContext(ModalContext);
 }
 
-// ── Types ──
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -58,13 +68,10 @@ export interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
-  /** Disable close via Escape/backdrop/close button. */
   busy?: boolean;
   closeOnEscape?: boolean;
   closeOnBackdrop?: boolean;
-  /** Optional element to focus when the modal opens. */
   initialFocusRef?: React.RefObject<HTMLElement>;
-  /** Hide the top-right X button. */
   hideCloseButton?: boolean;
   className?: string;
 }
@@ -77,7 +84,6 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps['size']>, string> = {
   full: 'sm:max-w-[min(96vw,80rem)]',
 };
 
-// ── Focus trap helpers ──
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'area[href]',
@@ -124,7 +130,6 @@ export default function Modal({
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const stackOrderRef = useRef<number>(-1);
 
-  // Keep latest onClose for the keydown handler.
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -135,14 +140,13 @@ export default function Modal({
     busyRef.current = busy;
   }, [busy]);
 
-  // ── Open lifecycle ──
   useEffect(() => {
     if (!open) return;
 
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
 
     lockBody();
-    stackOrderRef.current = modalStack - 1; // this modal's index in the stack
+    stackOrderRef.current = modalStack - 1;
 
     const isTopmost = () => stackOrderRef.current === modalStack - 1;
 
@@ -185,7 +189,6 @@ export default function Modal({
 
     document.addEventListener('keydown', onKey, true);
 
-    // Focus management — prefer caller's target, else first focusable, else panel.
     const timer = window.setTimeout(() => {
       const panel = panelRef.current;
       if (!panel) return;
@@ -209,7 +212,6 @@ export default function Modal({
       window.clearTimeout(timer);
       unlockBody();
 
-      // Restore focus to the trigger if it's still in the DOM.
       const prev = previouslyFocusedRef.current;
       if (prev && document.body.contains(prev)) {
         requestAnimationFrame(() => {
@@ -224,10 +226,10 @@ export default function Modal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // ── Backdrop click: only close if both down + up land on backdrop ──
   const downOnBackdropRef = useRef(false);
 
   if (!open) return null;
+  if (typeof document === 'undefined') return null;
 
   const ctx: ModalContextValue = {
     titleId,
@@ -236,15 +238,15 @@ export default function Modal({
     onClose,
   };
 
-  return (
+  return createPortal(
     <ModalContext.Provider value={ctx}>
       <div
-        className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6"
+        className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6"
         role="presentation"
       >
         {/* Backdrop */}
         <div
-          className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-backdrop-in"
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-backdrop-in"
           onMouseDown={(e) => {
             downOnBackdropRef.current = e.target === e.currentTarget;
           }}
@@ -272,24 +274,24 @@ export default function Modal({
           aria-labelledby={titleId}
           aria-describedby={description ? descriptionId : undefined}
           className={clsx(
-            'relative w-full bg-white shadow-2xl border border-slate-200 flex flex-col',
+            'relative w-full bg-surface-container-lowest text-on-surface shadow-2xl border border-surface-variant flex flex-col',
             'max-h-[90vh] outline-none animate-fade-up rounded-xl overflow-hidden',
             SIZE_CLASSES[size],
             className,
           )}
         >
-          <header className="flex items-start justify-between gap-3 px-5 py-4 border-b border-slate-100">
+          <header className="flex items-start justify-between gap-3 px-5 py-4 border-b border-surface-variant shrink-0">
             <div className="min-w-0">
               <h2
                 id={titleId}
-                className="text-base font-bold text-slate-900 truncate"
+                className="text-base font-bold text-on-surface truncate"
               >
                 {title}
               </h2>
               {description && (
                 <p
                   id={descriptionId}
-                  className="text-xs text-slate-500 mt-0.5"
+                  className="text-xs text-on-surface-variant mt-0.5"
                 >
                   {description}
                 </p>
@@ -300,7 +302,7 @@ export default function Modal({
                 type="button"
                 onClick={() => !busy && onClose()}
                 disabled={busy}
-                className="tap-target -mr-2 hover:bg-slate-50 flex items-center justify-center text-slate-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg"
+                className="tap-target -mr-2 hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
                 aria-label="Close dialog"
               >
                 <Icon name="close" />
@@ -313,17 +315,17 @@ export default function Modal({
           </div>
 
           {footer && (
-            <footer className="border-t border-slate-100 p-4 bg-slate-50 flex flex-wrap items-center justify-end gap-2">
+            <footer className="border-t border-surface-variant p-4 bg-surface-container-low flex flex-wrap items-center justify-end gap-2 shrink-0">
               {footer}
             </footer>
           )}
         </div>
       </div>
-    </ModalContext.Provider>
+    </ModalContext.Provider>,
+    document.body
   );
 }
 
-// ── Helper: sectioned content inside a modal ──
 export function ModalSection({
   title,
   icon,
@@ -340,10 +342,10 @@ export function ModalSection({
       {title && (
         <div className="flex items-center gap-2">
           {icon && <Icon name={icon} size={16} className="text-primary" />}
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
             {title}
           </h3>
-          <div className="flex-1 h-px bg-slate-200" />
+          <div className="flex-1 h-px bg-surface-variant" />
         </div>
       )}
       {children}

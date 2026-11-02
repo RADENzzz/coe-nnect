@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchSubjects,
@@ -94,6 +94,7 @@ function extractErrorMessage(err: any, fallback: string): string {
 
 export default function SubjectsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
@@ -418,11 +419,16 @@ export default function SubjectsPage() {
       setSuccess(`Subject "${s.subjectCode}" updated.`);
       closeForm(true);
       invalidateAfterSubjectChange();
+      // Return to where the user came from, if this was a deep link
+      if (returnToRef.current) {
+        const target = returnToRef.current;
+        returnToRef.current = null;
+        navigate(target);
+      }
     },
     onError: (err: any) =>
       setError(extractErrorMessage(err, 'Failed to update')),
   });
-
   const toggleMutation = useMutation({
     mutationFn: toggleSubjectActive,
     onSuccess: () => invalidateAfterSubjectChange(),
@@ -503,6 +509,52 @@ export default function SubjectsPage() {
     setFieldErrors({});
     setTimeout(() => firstFieldRef.current?.focus(), 50);
   };
+
+  // ── Deep-link: auto-open edit modal from ?edit=<subjectId> ──
+  const editParam = searchParams.get('edit');
+  const returnToParam = searchParams.get('returnTo');
+  const hasConsumedEditParam = useRef<string | null>(null);
+  const returnToRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Save returnTo across renders so it survives the ?edit param clearing
+    if (returnToParam) {
+      returnToRef.current = returnToParam;
+    }
+  }, [returnToParam]);
+
+  useEffect(() => {
+    if (!editParam) return;
+    if (hasConsumedEditParam.current === editParam) return;
+    if (!subjects || subjects.length === 0) return;
+
+    const target = subjects.find((s) => String(s.subjectId) === editParam);
+    if (!target) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      next.delete('returnTo');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    hasConsumedEditParam.current = editParam;
+
+    if (isForeign(target)) {
+      setError(
+        `"${target.subjectCode}" belongs to another department and is read-only.`,
+      );
+    } else {
+      openEdit(target);
+    }
+
+    // Clear both ?edit and ?returnTo from the URL — we've stashed returnTo
+    // in returnToRef so it survives the modal close.
+    const next = new URLSearchParams(searchParams);
+    next.delete('edit');
+    next.delete('returnTo');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editParam, subjects]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -768,10 +820,12 @@ export default function SubjectsPage() {
 
   const renderRoomType = (s: SubjectRecord) => {
     if (!s.requiredRoomType) return <span className="text-slate-400">—</span>;
-    const icon = ROOM_TYPE_ICON[s.requiredRoomType];
+    const icon =
+      ROOM_TYPE_ICON[s.requiredRoomType as SubjectRoomType] ?? 'category';
     return (
       <span className="inline-flex items-center gap-1">
         <Icon name={icon} size={12} className="text-slate-500" />
+        ...
         <span className="capitalize">
           {s.requiredRoomType === 'any'
             ? 'Any'
@@ -1403,7 +1457,28 @@ export default function SubjectsPage() {
           <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant">
             <button
               type="button"
-              onClick={() => closeForm()}
+              onClick={() => {
+                const dirty =
+                  form.subjectCode ||
+                  form.title ||
+                  form.lectureUnits ||
+                  form.labUnits ||
+                  form.requiredRoomType ||
+                  form.isMinor ||
+                  (mode === 'edit' && form.deptId !== (editing?.deptId ?? ''));
+
+                if (dirty) {
+                  closeForm(); // opens the discard confirm modal
+                  return;
+                }
+
+                closeForm(true);
+                if (returnToRef.current) {
+                  const target = returnToRef.current;
+                  returnToRef.current = null;
+                  navigate(target);
+                }
+              }}
               disabled={formBusy}
               className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition disabled:opacity-50"
             >
@@ -1448,7 +1523,14 @@ export default function SubjectsPage() {
             </button>
             <button
               type="button"
-              onClick={() => closeForm(true)}
+              onClick={() => {
+                closeForm(true);
+                if (returnToRef.current) {
+                  const target = returnToRef.current;
+                  returnToRef.current = null;
+                  navigate(target);
+                }
+              }}
               className="px-4 py-2 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition rounded-lg"
             >
               Discard

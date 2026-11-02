@@ -34,11 +34,9 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // ── Batch selection ──
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
-  // Selecting rows only makes sense while the modal is open for this faculty.
   useEffect(() => {
     setSelectedKeys(new Set());
     setBulkConfirmOpen(false);
@@ -62,8 +60,8 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     qc.invalidateQueries({
       queryKey: ['faculty-qualifications', faculty?.facultyId],
     });
-    // Keeps the Faculty page chips (qualification counts) in sync.
     qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+    qc.invalidateQueries({ queryKey: ['faculty'] });   // ← add
   };
 
   const addMutation = useMutation({
@@ -109,7 +107,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     },
   });
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -123,7 +120,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Filter out subjects already qualified
   const existingIds = new Set(quals.map((q) => String(q.subjectId)));
   const availableSubjects = useMemo(
     () =>
@@ -153,7 +149,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     [quals],
   );
 
-  // Drop ids that no longer exist (deleted elsewhere / refetch).
   useEffect(() => {
     setSelectedKeys((prev) => {
       if (prev.size === 0) return prev;
@@ -228,7 +223,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: '',
       cardVariant: 'actions',
       render: () => null,
     },
@@ -264,7 +259,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
           </button>
         }
       >
-        <div className="space-y-5">
+        <div className="space-y-4">
           {error && (
             <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg flex items-start gap-2">
               <Icon name="error" size={16} className="shrink-0 mt-0.5" />
@@ -272,7 +267,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             </div>
           )}
 
-          {/* F-5 hint */}
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900 flex items-start gap-2">
             <Icon name="info" size={16} className="shrink-0 mt-0.5" />
             <div>
@@ -290,8 +284,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
                     on file.
                   </strong>{' '}
                   Rule F-5 restricts this faculty member to only the subjects
-                  listed below. Attempting to plot them for any other subject
-                  will be rejected.
+                  listed below.
                 </>
               )}
             </div>
@@ -434,7 +427,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             </div>
           )}
 
-          {/* List */}
           <ResponsiveTable
             columns={columns}
             rows={sortedQuals}
