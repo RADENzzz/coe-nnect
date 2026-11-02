@@ -2,7 +2,10 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSystemStatus } from '../../api/system-status.api';
 import { useAuthStore } from '../../store/auth.store';
-import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
+import {
+  isMaintenancePreviewEnabled,
+  isLocalMaintenanceBypassEnabled,
+} from '../../lib/maintenance-preview';
 
 /** These routes must stay reachable so the dev can sign in / sign out. */
 const PUBLIC_DURING_MAINTENANCE = new Set(['/login', '/maintenance']);
@@ -15,8 +18,9 @@ const PUBLIC_DURING_MAINTENANCE = new Set(['/login', '/maintenance']);
  * hidden `administrator` account bypasses the gate (both here and in the
  * backend JwtAuthGuard) so it can turn the gate back off.
  *
- * Locally, the dev can opt into `isMaintenancePreviewEnabled()` to test the
- * wall exactly as a normal user would.
+ * Locally, `isLocalMaintenanceBypassEnabled()` can ignore the maintenance
+ * flag so all roles keep working, while `isMaintenancePreviewEnabled()` still
+ * lets the dev see the wall exactly as a normal user would.
  */
 export default function MaintenanceGate({
   children,
@@ -39,8 +43,10 @@ export default function MaintenanceGate({
     refetchOnReconnect: true,
   });
 
-  const maintenance = data?.maintenanceMode === true;
   const previewAsUser = isMaintenancePreviewEnabled();
+  const maintenance =
+    (data?.maintenanceMode === true && !isLocalMaintenanceBypassEnabled()) ||
+    previewAsUser;
   const isRealDev =
     profile?.role === 'administrator' ||
     user?.app_metadata?.role === 'administrator';

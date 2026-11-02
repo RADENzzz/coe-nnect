@@ -80,6 +80,13 @@ export class SystemStatusService {
    * even when `enabled` is false.
    */
   async getMaintenanceNotice(): Promise<MaintenanceNotice> {
+    // Local-only escape hatch. The hosted database can stay in maintenance
+    // while a developer continues to use the app on their own machine.
+    // Never honored in production builds/runs.
+    if (this.isLocalMaintenanceBypassEnabled()) {
+      return { active: false, title: null, message: null };
+    }
+
     const cached = this.maintenanceCache;
     if (cached && Date.now() - cached.checkedAt < this.MAINTENANCE_TTL_MS) {
       return cached.notice;
@@ -97,6 +104,14 @@ export class SystemStatusService {
     };
     this.maintenanceCache = { checkedAt: Date.now(), notice };
     return notice;
+  }
+
+  /** Opt-in local bypass: `MAINTENANCE_BYPASS=true` in a development .env. */
+  private isLocalMaintenanceBypassEnabled(): boolean {
+    return (
+      process.env.NODE_ENV === 'development' &&
+      process.env.MAINTENANCE_BYPASS?.trim().toLowerCase() === 'true'
+    );
   }
 
   /** Called after a write so the gate takes effect immediately. */

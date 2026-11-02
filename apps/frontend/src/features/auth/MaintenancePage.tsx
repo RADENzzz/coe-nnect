@@ -5,6 +5,10 @@ import { fetchSystemStatus } from '../../api/system-status.api';
 import { Bbcode } from '../../lib/bbcode';
 import { useAuthStore } from '../../store/auth.store';
 import { supabase } from '../../lib/supabase';
+import {
+  isLocalMaintenanceBypassEnabled,
+  isMaintenancePreviewEnabled,
+} from '../../lib/maintenance-preview';
 import Icon from '../../components/ui/Icon';
 
 /**
@@ -15,6 +19,9 @@ import Icon from '../../components/ui/Icon';
  * title and message the developer writes in Dev Tools are exactly what
  * users see here. The page polls, so it clears itself as soon as the
  * developer turns maintenance mode off.
+ *
+ * Locally, a preview flag keeps the wall visible even when maintenance is
+ * bypassed, so the dev can check the exact user experience.
  */
 export default function MaintenancePage() {
   const navigate = useNavigate();
@@ -36,10 +43,16 @@ export default function MaintenancePage() {
 
   const isDev = profile?.role === 'administrator';
 
+  // Keep the wall when the database is in maintenance, or when the dev is
+  // explicitly previewing it. A local-only bypass ignores the database flag.
+  const showWall =
+    (data?.maintenanceMode === true && !isLocalMaintenanceBypassEnabled()) ||
+    isMaintenancePreviewEnabled();
+
   // If the gate is lifted (or this page is opened when there is no
   // maintenance), send the visitor back to where they belong.
   useEffect(() => {
-    if (!data || data.maintenanceMode) return;
+    if (!data || showWall) return;
     if (isDev || profile?.role === 'college_dean') {
       navigate('/dean/dashboard', { replace: true });
     } else if (profile?.role === 'department_head') {
@@ -47,7 +60,7 @@ export default function MaintenancePage() {
     } else if (!profile) {
       navigate('/login', { replace: true });
     }
-  }, [data, isDev, profile, navigate]);
+  }, [data, showWall, isDev, profile, navigate]);
 
   const handleRefresh = async () => {
     setError(null);

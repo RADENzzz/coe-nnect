@@ -8,6 +8,7 @@ import LiquidBackground from '../../components/layout/LiquidBackground';
 import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
 import { fetchSystemStatus } from '../../api/system-status.api';
+import { isLocalMaintenanceBypassEnabled } from '../../lib/maintenance-preview';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -490,8 +491,13 @@ export default function LoginPage() {
 
       // Maintenance mode: only the hidden dev account may stay signed in.
       // Checked after authentication because the role is only known then.
+      // A local-only bypass lets head/dean accounts keep testing on this machine.
       const systemStatus = await fetchSystemStatus().catch(() => null);
-      if (systemStatus?.maintenanceMode && role !== 'administrator') {
+      if (
+        systemStatus?.maintenanceMode &&
+        !isLocalMaintenanceBypassEnabled() &&
+        role !== 'administrator'
+      ) {
         await supabase.auth.signOut();
         throw new Error(
           systemStatus.title?.trim() ||
