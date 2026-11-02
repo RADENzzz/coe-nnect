@@ -6,8 +6,10 @@ import { SchedulingService } from '../src/modules/scheduling/scheduling.service'
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/common/guards/roles.guard';
 import { SupabaseService } from '../src/database/supabase.service';
+import { SystemStatusService } from '../src/modules/system-status/system-status.service';
 import { User } from '../src/modules/users/entities/user.entity';
 import { createFakeSupabase } from './fakes/supabase.fake';
+import { createFakeSystemStatus } from './fakes/system-status.fake';
 import { createTestApp } from './helpers/create-test-app';
 import { departmentHeadProfile } from './helpers/profiles';
 
@@ -27,6 +29,7 @@ describe('SchedulingController (e2e)', () => {
       providers: [
         { provide: SchedulingService, useValue: schedulingService },
         { provide: SupabaseService, useValue: createFakeSupabase() },
+        { provide: SystemStatusService, useValue: createFakeSystemStatus() },
         { provide: getRepositoryToken(User), useValue: userRepo },
         JwtAuthGuard,
         RolesGuard,
