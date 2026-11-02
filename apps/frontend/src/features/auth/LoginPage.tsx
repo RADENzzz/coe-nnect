@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { supabase, createAuthProbeClient } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
 import Modal from '../../components/ui/Modal';
@@ -8,7 +9,10 @@ import LiquidBackground from '../../components/layout/LiquidBackground';
 import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
 import { fetchSystemStatus } from '../../api/system-status.api';
-import { isLocalMaintenanceBypassEnabled } from '../../lib/maintenance-preview';
+import {
+  isLocalMaintenanceBypassEnabled,
+  isMaintenancePreviewEnabled,
+} from '../../lib/maintenance-preview';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -37,6 +41,22 @@ const LS_REMEMBERED_EMAIL = 'coe-nnect:last-email';
 const SS_DEV_PANEL_OPEN = 'coe-nnect:dev-panel-open';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Maps raw Supabase auth failures to the messages the login form shows. */
+function normalizeSignInError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/too many|rate limit/i.test(message)) {
+    return new Error(
+      'Too many attempts. Please wait a minute before trying again.',
+    );
+  }
+  if (/email not confirmed/i.test(message)) {
+    return new Error(
+      'Your email address hasn\'t been confirmed yet. Check your inbox for the confirmation link.',
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
+}
 
 /* ────────────────────────────────────────────
    DEV LOGIN POPUP
@@ -414,26 +434,75 @@ export default function LoginPage() {
     const cleanEmail = email.trim().toLowerCase();
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      // Decide whether the wall is enforced before creating an app session.
+      // Preview mode locally simulates a real maintenance window, so it is
+      // included here too.
+      const systemStatus = await fetchSystemStatus().catch(() => null);
+      const maintenanceEnforced =
+        (systemStatus?.maintenanceMode === true &&
+          !isLocalMaintenanceBypassEnabled()) ||
+        isMaintenancePreviewEnabled();
 
-      if (signInError) {
-        // Surface lockout distinctly
-        if (/too many|rate limit/i.test(signInError.message)) {
-          throw new Error(
-            'Too many attempts. Please wait a minute before trying again.',
-          );
+      let authUser!: User;
+      let metaRole: string | undefined;
+
+      if (maintenanceEnforced) {
+        // Verify the credentials with a throwaway client so a normal user is
+        // never signed in to the app. The main client is untouched, which
+        // means an existing session on another device is not signed out.
+        const probe = createAuthProbeClient();
+        const { data, error: signInError } =
+          await probe.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+
+        if (signInError) throw normalizeSignInError(signInError);
+        if (!data.user) throw new Error('No user returned from login');
+
+        metaRole = data.user.app_metadata?.role as string | undefined;
+        if (!metaRole) {
+          const { data: profileRow, error: profileError } = await probe
+            .from('users')
+            .select('role')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+          if (profileError) throw profileError;
+          metaRole = profileRow?.role as string | undefined;
         }
-        if (/email not confirmed/i.test(signInError.message)) {
-          throw new Error(
-            'Your email address hasn\'t been confirmed yet. Check your inbox for the confirmation link.',
-          );
+
+        if (metaRole !== 'administrator') {
+          // Drop only the throwaway session, then show the wall. No popup and
+          // no session in this browser (or any other device).
+          await probe.auth.signOut({ scope: 'local' });
+          navigate('/maintenance', { replace: true });
+          return;
         }
-        throw signInError;
+
+        if (!data.session) throw new Error('No session returned from login');
+
+        // The developer account is allowed in: adopt the verified session
+        // into the normal client.
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+        if (setSessionError) throw setSessionError;
+
+        authUser = data.user;
+      } else {
+        const { data, error: signInError } =
+          await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+
+        if (signInError) throw normalizeSignInError(signInError);
+        if (!data.user) throw new Error('No user returned from login');
+
+        authUser = data.user;
+        metaRole = data.user.app_metadata?.role as string | undefined;
       }
-      if (!data.user) throw new Error('No user returned from login');
 
       // Persist email if "remember me" is checked
       try {
@@ -446,20 +515,19 @@ export default function LoginPage() {
         /* ignore */
       }
 
-      const metaRole = data.user.app_metadata?.role as string | undefined;
-
       let role = metaRole;
       if (!role) {
         const { data: profile, error: profileError } = await supabase
           .from('users')
           .select('role')
-          .eq('user_id', data.user.id)
+          .eq('user_id', authUser.id)
           .maybeSingle();
 
         if (profileError) throw profileError;
 
         if (!profile) {
-          await supabase.auth.signOut();
+          // Local scope: never revoke this user's sessions on other devices.
+          await supabase.auth.signOut({ scope: 'local' });
           throw new Error(
             'Your account exists but has no profile. Contact the College Dean.',
           );
@@ -471,7 +539,7 @@ export default function LoginPage() {
       // BEFORE navigating, so we can decide whether a DH should be
       // routed to the wall or the dashboard.
       // We use the DB directly (not the API) to avoid a token-round-trip
-      // right after sign-in — the token is available on `data.session`.
+      // right after sign-in — the token is available on the session.
       let deptActive: boolean | null = null;
       if (role === 'department_head') {
         const { data: deptRow } = await supabase
@@ -479,7 +547,7 @@ export default function LoginPage() {
           .select(
             `dept_id, department:dept_id ( is_active, dept_code, dept_name )`,
           )
-          .eq('user_id', data.user.id)
+          .eq('user_id', authUser.id)
           .maybeSingle();
         const dept = Array.isArray((deptRow as any)?.department)
           ? (deptRow as any)?.department[0]
@@ -487,22 +555,6 @@ export default function LoginPage() {
         if (dept) deptActive = dept.is_active === true;
       } else if (role === 'college_dean' || role === 'administrator') {
         deptActive = true;
-      }
-
-      // Maintenance mode: only the hidden dev account may stay signed in.
-      // Checked after authentication because the role is only known then.
-      // A local-only bypass lets head/dean accounts keep testing on this machine.
-      const systemStatus = await fetchSystemStatus().catch(() => null);
-      if (
-        systemStatus?.maintenanceMode &&
-        !isLocalMaintenanceBypassEnabled() &&
-        role !== 'administrator'
-      ) {
-        await supabase.auth.signOut();
-        throw new Error(
-          systemStatus.title?.trim() ||
-            'CoE-NNECT is under maintenance. Please try again later.',
-        );
       }
 
       // Redirect based on role + dept state.
