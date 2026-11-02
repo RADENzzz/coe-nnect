@@ -5,6 +5,7 @@ import { createFakeRepository } from './fakes/repository.fake';
 function createService(
   signInResult: any,
   profiles: Record<string, any>[] = [],
+  maintenance = { active: false, title: null, message: null },
 ) {
   const supabase = {
     getClient: () => ({
@@ -13,9 +14,16 @@ function createService(
       },
     }),
   };
+  const systemStatus = {
+    getMaintenanceNotice: jest.fn().mockResolvedValue(maintenance),
+  };
   const userRepo = createFakeRepository(profiles, { idKey: 'userId' });
   return {
-    service: new AuthService(supabase as any, userRepo as any),
+    service: new AuthService(
+      supabase as any,
+      systemStatus as any,
+      userRepo as any,
+    ),
     userRepo,
   };
 }
@@ -56,5 +64,36 @@ describe('AuthService', () => {
     await expect(
       service.login('inactive@wmsu.edu.ph', 'correct-password'),
     ).rejects.toThrow('Account is deactivated');
+  });
+
+  it('rejects a non-admin sign-in while maintenance mode is on', async () => {
+    const { service } = createService(
+      {
+        data: {
+          session: { access_token: 'token', refresh_token: 'refresh' },
+          user: { id: 'user-head' },
+        },
+        error: null,
+      },
+      [
+        {
+          userId: 'user-head',
+          username: 'head',
+          email: 'head@wmsu.edu.ph',
+          role: 'department_head',
+          deptId: '1',
+          isActive: true,
+        },
+      ],
+      {
+        active: true,
+        title: 'Scheduled maintenance',
+        message: 'CoE-NNECT is down for upgrades.',
+      },
+    );
+
+    await expect(
+      service.login('head@wmsu.edu.ph', 'correct-password'),
+    ).rejects.toThrow('CoE-NNECT is down for upgrades.');
   });
 });
