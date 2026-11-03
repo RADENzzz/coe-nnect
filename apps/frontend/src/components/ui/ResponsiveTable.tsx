@@ -58,6 +58,8 @@ export interface ResponsiveTableProps<T> {
   selectable?: boolean;
   selectedKeys?: Set<string>;
   onSelectionChange?: (next: Set<string>) => void;
+  /** Return false to hide/disable the checkbox for a specific row. */
+  isRowSelectable?: (row: T) => boolean;
 
   /** Skeleton row count while loading. */
   skeletonRows?: number;
@@ -111,6 +113,7 @@ export default function ResponsiveTable<T>({
   selectable = false,
   selectedKeys,
   onSelectionChange,
+  isRowSelectable,
   skeletonRows = 5,
   emptyIcon,
   emptyAction,
@@ -175,9 +178,14 @@ export default function ResponsiveTable<T>({
   }, []);
 
   // ── Selection ──
+  // Only rows that opt in (isRowSelectable !== false) participate in
+  // select-all / indeterminate calculations.
   const allKeysOnPage = useMemo(
-    () => sortedRows.map((r) => rowKey(r)),
-    [sortedRows, rowKey],
+    () =>
+      sortedRows
+        .filter((r) => (isRowSelectable ? isRowSelectable(r) : true))
+        .map((r) => rowKey(r)),
+    [sortedRows, rowKey, isRowSelectable],
   );
 
   const allSelected =
@@ -368,7 +376,9 @@ export default function ResponsiveTable<T>({
       <tbody>
         {sortedRows.map((row) => {
           const key = rowKey(row);
-          const isSelected = !!selectedKeys?.has(key);
+          const rowSelectable =
+            selectable && (isRowSelectable?.(row) ?? true);
+          const isSelected = rowSelectable && !!selectedKeys?.has(key);
           const clickable = !!onRowClick;
           return (
             <tr
@@ -398,7 +408,7 @@ export default function ResponsiveTable<T>({
               )}
               data-selected={isSelected || undefined}
             >
-              {selectable && (
+              {rowSelectable && (
                 <td className={clsx(cellPad, 'w-0')}>
                   <input
                     type="checkbox"
@@ -473,7 +483,9 @@ export default function ResponsiveTable<T>({
           const key = rowKey(row);
           const accent = accentColor?.(row) ?? hashToColor(key);
           const actions = getActions?.(row) ?? [];
-          const isSelected = !!selectedKeys?.has(key);
+          const rowSelectable =
+            selectable && (isRowSelectable?.(row) ?? true);
+          const isSelected = rowSelectable && !!selectedKeys?.has(key);
           const clickable = !!onRowClick;
 
           const titleNode = layout.titleCols.map((c) => (
@@ -516,7 +528,7 @@ export default function ResponsiveTable<T>({
 
               <div className="flex-1 min-w-0 p-3">
                 <div className="flex items-start gap-2">
-                  {selectable && (
+                  {rowSelectable && (
                     <input
                       type="checkbox"
                       checked={isSelected}
