@@ -1,4 +1,12 @@
-import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+  useLayoutEffect,
+} from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../../../components/ui/Icon';
 
 export interface GridBlock {
@@ -58,6 +66,13 @@ const CONTEXT_HATCH_STYLE: React.CSSProperties = {
   backgroundImage:
     'repeating-linear-gradient(45deg, #e2e8f0 0 4px, #f8fafc 4px 8px)',
 };
+
+/**
+ * Stable empty-array reference. Without this, the default `[]` prop creates
+ * a fresh array on every render, which invalidates the `saved`/`locked`/
+ * `context` useMemo caches and causes 3 × 144 map writes per render.
+ */
+const EMPTY_BLOCKS: GridBlock[] = [];
 
 // ── Helpers ──
 
@@ -148,7 +163,6 @@ function mergeBlocks(blocks: GridBlock[]): GridBlock[] {
 }
 
 // ── Visual tokens per variant ──
-
 const VARIANT_TOKENS: Record<
   GridVariant,
   {
@@ -162,9 +176,7 @@ const VARIANT_TOKENS: Record<
     legendDraft: string;
     legendLocked: string;
     label: string;
-    /** Short label used in legends + aria. */
     contextLabel: string;
-    /** Icon shown on a context-only cell. */
     contextIcon: string;
   }
 > = {
@@ -198,14 +210,137 @@ const VARIANT_TOKENS: Record<
   },
 };
 
+// ── Memoized grid cell ──
+//
+// Re-renders only when one of its primitive props changes, so moving the
+// mouse across the grid re-renders 1–2 cells instead of all 144.
+// Also drops the per-cell `transition-colors` class, which was forcing the
+// CPU to repaint on every frame of a hover/drag transition (the primary
+// cause of lag when the browser's GPU acceleration is off).
+
+interface GridCellProps {
+  day: string;
+  row: number;
+  isCovered: boolean;
+  isSaved: boolean;
+  isLocked: boolean;
+  isContext: boolean;
+  isHover: boolean;
+  willAdd: boolean;
+  isFocused: boolean;
+  disabled: boolean;
+  variant: GridVariant;
+  onCellDown: (day: string, row: number, e: React.MouseEvent) => void;
+  onCellEnter: (day: string, row: number) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  onFocusCell: (day: string, row: number) => void;
+}
+
+const GridCell = React.memo(function GridCell({
+  day,
+  row,
+  isCovered,
+  isSaved,
+  isLocked,
+  isContext,
+  isHover,
+  willAdd,
+  isFocused,
+  disabled,
+  variant,
+  onCellDown,
+  onCellEnter,
+  onKeyDown,
+  onFocusCell,
+}: GridCellProps) {
+  const tokens = VARIANT_TOKENS[variant];
+  const cellStart = cellStartMin(row);
+  const cellEnd = cellStart + CELL_MINUTES;
+
+  let cellClass = 'bg-white hover:bg-slate-50';
+  let extraStyle: React.CSSProperties = {};
+
+  if (isLocked) {
+    cellClass = tokens.locked;
+  } else if (isCovered) {
+    cellClass = isSaved ? tokens.saved : tokens.draft;
+  } else if (isContext) {
+    if (variant === 'preferred') {
+      cellClass = 'bg-transparent';
+      extraStyle = CONTEXT_HATCH_STYLE;
+    } else {
+      cellClass = 'bg-transparent ring-1 ring-inset ring-blue-500';
+    }
+  }
+
+  if (isHover && !isLocked && !isContext) {
+    cellClass = willAdd
+      ? 'bg-emerald-400/60 ring-1 ring-inset ring-emerald-600'
+      : 'bg-rose-300/70 ring-1 ring-inset ring-rose-500';
+  }
+
+  const ringClass = isLocked
+    ? tokens.lockedRing
+    : isCovered && !isSaved
+    ? tokens.draftRing
+    : '';
+
+  const label = isLocked
+    ? `${day} ${fmtRange(cellStart, cellEnd)} — locked (IDP)`
+    : isContext && !isCovered
+    ? `${day} ${fmtRange(cellStart, cellEnd)} — ${tokens.contextLabel}`
+    : isCovered
+    ? `${day} ${fmtRange(cellStart, cellEnd)} — ${tokens.label}${isSaved ? ' (saved)' : ' (unsaved)'}`
+    : `${day} ${fmtRange(cellStart, cellEnd)} — available`;
+
+  return (
+    <div
+      role="gridcell"
+      tabIndex={isFocused ? 0 : -1}
+      aria-selected={isCovered}
+      aria-disabled={isContext || isLocked}
+      aria-label={label}
+      onMouseDown={(e) => onCellDown(day, row, e)}
+      onMouseEnter={() => onCellEnter(day, row)}
+      onKeyDown={onKeyDown}
+      onFocus={() => onFocusCell(day, row)}
+      style={extraStyle}
+      className={[
+        'relative h-6 border-t border-slate-100',
+        cellClass,
+        ringClass,
+        isFocused ? 'ring-2 ring-inset ring-primary' : '',
+        disabled || isLocked || isContext ? 'cursor-not-allowed' : 'cursor-pointer',
+        disabled && !isContext && !isLocked ? 'opacity-60' : '',
+      ].join(' ')}
+    >
+      {isSaved && !isHover && (
+        <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="w-1 h-1 rounded-full bg-white/90 shadow-sm" />
+        </span>
+      )}
+      {isLocked && (
+        <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-amber-900">
+          <Icon name="lock" size={10} />
+        </span>
+      )}
+      {isContext && !isCovered && !isLocked && (
+        <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-500">
+          <Icon name={tokens.contextIcon} size={9} />
+        </span>
+      )}
+    </div>
+  );
+});
+
 // ── Component ──
 
 export default function WeeklyAvailabilityGrid({
   blocks,
   onChange,
-  savedBlocks = [],
-  lockedBlocks = [],
-  contextBlocks = [],
+  savedBlocks = EMPTY_BLOCKS,
+  lockedBlocks = EMPTY_BLOCKS,
+  contextBlocks = EMPTY_BLOCKS,
   variant = 'unavailable',
   disabled = false,
 }: Props) {
@@ -223,6 +358,11 @@ export default function WeeklyAvailabilityGrid({
   const [history, setHistory] = useState<GridBlock[][]>([]);
   const [future, setFuture] = useState<GridBlock[][]>([]);
   const [focusCell, setFocusCell] = useState<{ day: string; row: number } | null>(null);
+
+  // ── Drag tooltip plumbing ──
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const mouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const rafRef = useRef<number | null>(null);
 
   const covered = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -286,12 +426,48 @@ export default function WeeklyAvailabilityGrid({
     [blocks, onChange],
   );
 
+  // Bail out when the value is unchanged — otherwise re-entering the same
+  // cell allocates a new object and forces a full re-render for nothing.
+  const setHoverStable = useCallback((day: string, row: number) => {
+    setHover((prev) =>
+      prev?.day === day && prev?.row === row ? prev : { day, row },
+    );
+  }, []);
+
+  const setFocusCellStable = useCallback((day: string, row: number) => {
+    setFocusCell((prev) =>
+      prev?.day === day && prev?.row === row ? prev : { day, row },
+    );
+  }, []);
+
+  // Track cursor for the tooltip without touching React state per pixel.
+  useEffect(() => {
+    const handleMove = (e: PointerEvent) => {
+      if (!dragRef.current?.active) return;
+      mouseRef.current = { x: e.clientX, y: e.clientY };
+      if (rafRef.current != null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        if (tooltipRef.current) {
+          const { x, y } = mouseRef.current;
+          tooltipRef.current.style.transform = `translate(${x + 16}px, ${y + 16}px)`;
+        }
+      });
+    };
+    window.addEventListener('pointermove', handleMove, { passive: true });
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
   const onCellDown = useCallback(
     (day: string, row: number, e: React.MouseEvent | React.PointerEvent) => {
       if (disabled) return;
       if (locked.get(`${day}:${row}`)) return;
       if (context.get(`${day}:${row}`)) return;
       e.preventDefault();
+      mouseRef.current = { x: e.clientX, y: e.clientY };
       const alreadyOn = covered.get(`${day}:${row}`) === true;
       dragRef.current = {
         active: true,
@@ -300,10 +476,10 @@ export default function WeeklyAvailabilityGrid({
         adding: !alreadyOn,
         hasMoved: false,
       };
-      setHover({ day, row });
-      setFocusCell({ day, row });
+      setHoverStable(day, row);
+      setFocusCellStable(day, row);
     },
-    [covered, disabled, locked, context],
+    [covered, disabled, locked, context, setHoverStable, setFocusCellStable],
   );
 
   const onCellEnter = useCallback(
@@ -313,9 +489,9 @@ export default function WeeklyAvailabilityGrid({
       if (day !== dragRef.current.startDay || row !== dragRef.current.startRow) {
         dragRef.current.hasMoved = true;
       }
-      setHover({ day, row });
+      setHoverStable(day, row);
     },
-    [context],
+    [context, setHoverStable],
   );
 
   const commitDrag = useCallback(() => {
@@ -495,9 +671,9 @@ export default function WeeklyAvailabilityGrid({
         default:
           return;
       }
-      setFocusCell({ day: DAYS[newDay], row: newRow });
+      setFocusCellStable(DAYS[newDay], newRow);
     },
-    [disabled, focusCell, covered, blocks, commit, locked, context],
+    [disabled, focusCell, covered, blocks, commit, locked, context, setFocusCellStable],
   );
 
   useEffect(() => {
@@ -510,6 +686,50 @@ export default function WeeklyAvailabilityGrid({
 
   const willAdd = dragRef.current?.adding === true;
   const totalBlocks = blocks.length;
+
+  // ── Drag-preview data ──
+  // Recomputed on every hover change during a drag (bounded by cell
+  // boundaries, not pixels), so it stays cheap even without memoization.
+  const dragInfo = (() => {
+    if (!dragRef.current?.active || !dragRef.current?.hasMoved || !hover) {
+      return null;
+    }
+    const { startDay, startRow, adding } = dragRef.current;
+    const rect = rectToBlocks(startDay, startRow, hover.day, hover.row);
+    if (rect.length === 0) return null;
+
+    let startMin = Infinity;
+    let endMin = -Infinity;
+    for (const b of rect) {
+      if (b.startMin < startMin) startMin = b.startMin;
+      if (b.endMin > endMin) endMin = b.endMin;
+    }
+
+    const firstDay = rect[0].day;
+    const lastDay = rect[rect.length - 1].day;
+    const daysLabel =
+      rect.length === 1
+        ? firstDay
+        : `${DAY_SHORT[firstDay]} – ${DAY_SHORT[lastDay]} · ${rect.length} days`;
+
+    return {
+      startMin,
+      endMin,
+      daysLabel,
+      willAdd: adding,
+    };
+  })();
+  const hasTooltip = !!dragInfo;
+
+  // Snap the tooltip to the cursor synchronously on first appearance to
+  // avoid a one-frame flash at (0,0). After that the pointermove handler
+  // owns the transform.
+  useLayoutEffect(() => {
+    if (!hasTooltip || !tooltipRef.current) return;
+    const { x, y } = mouseRef.current;
+    tooltipRef.current.style.transform = `translate(${x + 16}px, ${y + 16}px)`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTooltip]);
 
   return (
     <div className="select-none" role="grid" aria-label="Weekly availability grid">
@@ -562,7 +782,15 @@ export default function WeeklyAvailabilityGrid({
         </div>
       </div>
 
-      <div className="overflow-hidden border border-slate-200 rounded-lg">
+      {/*
+        Layout + paint containment tells the CPU rasterizer that this
+        subtree cannot affect layout outside itself. Big win for hover/drag
+        smoothness when hardware acceleration is disabled.
+      */}
+      <div
+        className="overflow-hidden border border-slate-200 rounded-lg"
+        style={{ contain: 'layout paint' }}
+      >
         {/* Header */}
         <div
           className="grid bg-slate-50"
@@ -607,109 +835,25 @@ export default function WeeklyAvailabilityGrid({
             <div key={day} className="border-l border-slate-200">
               {Array.from({ length: ROWS }).map((_, r) => {
                 const key = `${day}:${r}`;
-                const isCovered = covered.get(key) === true;
-                const isSaved = saved.get(key) === true;
-                const isLocked = locked.get(key) === true;
-                const isContext = context.get(key) === true;
-                const isHover = cellsInRect !== null && cellsInRect.has(key);
-                const isFocused = focusCell?.day === day && focusCell?.row === r;
-
-                // Cell visual priority:
-                //   locked  > interactive (saved/draft)  > context  > idle
-                // If a cell has BOTH an interactive block and context, the
-                // interactive block wins visually (context is only drawn when
-                // nothing else occupies the cell). The context flag is still
-                // honoured by the click/keyboard guards.
-                let cellClass = 'bg-white hover:bg-slate-50';
-                let extraStyle: React.CSSProperties = {};
-
-                if (isLocked) {
-                  cellClass = tokens.locked;
-                } else if (isCovered) {
-                  cellClass = isSaved ? tokens.saved : tokens.draft;
-                } else if (isContext) {
-                  // Context-only cell — variant-specific look.
-                  if (variant === 'preferred') {
-                    // Preferences grid: unavailability as gray hatch.
-                    cellClass = 'bg-transparent';
-                    extraStyle = CONTEXT_HATCH_STYLE;
-                  } else {
-                    // Unavailability grid: preference as hollow blue outline.
-                    cellClass = 'bg-transparent ring-1 ring-inset ring-blue-500';
-                  }
-                }
-
-                if (isHover && !isLocked && !isContext) {
-                  cellClass = willAdd
-                    ? 'bg-emerald-400/60 ring-1 ring-inset ring-emerald-600'
-                    : 'bg-rose-300/70 ring-1 ring-inset ring-rose-500';
-                }
-
-                const ringClass = isLocked
-                  ? tokens.lockedRing
-                  : isCovered && !isSaved
-                  ? tokens.draftRing
-                  : '';
-
-                const label = isLocked
-                  ? `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — locked (IDP)`
-                  : isContext && !isCovered
-                  ? `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — ${tokens.contextLabel}`
-                  : isCovered
-                  ? `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — ${tokens.label}${isSaved ? ' (saved)' : ' (unsaved)'}`
-                  : `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — available`;
-
-                const title = isLocked
-                  ? `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — managed by IDP`
-                  : isContext && !isCovered
-                  ? variant === 'preferred'
-                    ? 'Unavailable — managed in the Unavailability view'
-                    : 'Preferred window — managed in the Preferences view'
-                  : isCovered
-                  ? `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — click to erase${isSaved ? ' (saved)' : ''}`
-                  : `${day} ${fmtRange(cellStartMin(r), cellStartMin(r) + CELL_MINUTES)} — click or drag to mark`;
-
                 return (
-                  <div
+                  <GridCell
                     key={r}
-                    role="gridcell"
-                    tabIndex={isFocused ? 0 : -1}
-                    aria-selected={isCovered}
-                    aria-disabled={isContext || isLocked}
-                    aria-label={label}
-                    onMouseDown={(e) => onCellDown(day, r, e)}
-                    onMouseEnter={() => onCellEnter(day, r)}
+                    day={day}
+                    row={r}
+                    isCovered={covered.get(key) === true}
+                    isSaved={saved.get(key) === true}
+                    isLocked={locked.get(key) === true}
+                    isContext={context.get(key) === true}
+                    isHover={cellsInRect !== null && cellsInRect.has(key)}
+                    willAdd={willAdd}
+                    isFocused={focusCell?.day === day && focusCell?.row === r}
+                    disabled={disabled}
+                    variant={variant}
+                    onCellDown={onCellDown}
+                    onCellEnter={onCellEnter}
                     onKeyDown={onKeyDown}
-                    onFocus={() => setFocusCell({ day, row: r })}
-                    title={title}
-                    style={extraStyle}
-                    className={[
-                      'relative h-6 border-t border-slate-100 transition-colors',
-                      cellClass,
-                      ringClass,
-                      isFocused ? 'ring-2 ring-inset ring-primary' : '',
-                      disabled || isLocked || isContext
-                        ? 'cursor-not-allowed'
-                        : 'cursor-pointer',
-                      disabled && !isContext && !isLocked ? 'opacity-60' : '',
-                    ].join(' ')}
-                  >
-                    {isSaved && !isHover && (
-                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="w-1 h-1 rounded-full bg-white/90 shadow-sm" />
-                      </span>
-                    )}
-                    {isLocked && (
-                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-amber-900">
-                        <Icon name="lock" size={10} />
-                      </span>
-                    )}
-                    {isContext && !isCovered && !isLocked && (
-                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-500">
-                        <Icon name={tokens.contextIcon} size={9} />
-                      </span>
-                    )}
-                  </div>
+                    onFocusCell={setFocusCellStable}
+                  />
                 );
               })}
             </div>
@@ -757,6 +901,32 @@ export default function WeeklyAvailabilityGrid({
           </span>
         </span>
       </div>
+
+      {/* ── Floating drag-preview tooltip ── */}
+      {hasTooltip &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            className="fixed top-0 left-0 z-[300] pointer-events-none"
+            style={{ willChange: 'transform' }}
+          >
+            <div
+              className={`rounded-lg shadow-2xl px-3 py-2 text-white text-xs ${
+                dragInfo!.willAdd ? 'bg-emerald-600' : 'bg-rose-600'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-semibold whitespace-nowrap">
+                <Icon name="schedule" size={12} />
+                {fmtRange(dragInfo!.startMin, dragInfo!.endMin)}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 text-[10px] opacity-90 whitespace-nowrap">
+                <Icon name="calendar_today" size={10} />
+                {dragInfo!.daysLabel}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
