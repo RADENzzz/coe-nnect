@@ -4,12 +4,9 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchSubjects,
-  createSubject,
-  updateSubject,
   toggleSubjectActive,
   deleteSubject,
   type SubjectRecord,
-  type CreateSubjectInput,
   type SubjectRoomType,
 } from '../../api/subjects.api';
 import { fetchDepartments } from '../../api/departments.api';
@@ -23,6 +20,8 @@ import SubjectFiltersPanel, {
   type Preset,
   type PresetKey,
 } from './components/SubjectFiltersPanel';
+import SubjectFormModal from './components/SubjectFormModal';
+import SubjectDetailPanel from './components/SubjectDetailPanel';
 
 const ROOM_TYPES: Array<{ value: '' | SubjectRoomType; label: string; icon: string }> = [
   { value: '', label: '— none —', icon: 'block' },
@@ -51,6 +50,8 @@ type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
 type SortDir = 'asc' | 'desc';
 
+type Alert = { kind: 'success' | 'error'; message: string } | null;
+
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -60,31 +61,6 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-interface FormState {
-  subjectCode: string;
-  title: string;
-  lectureUnits: string;
-  labUnits: string;
-  requiredRoomType: '' | SubjectRoomType;
-  deptId: string;
-  isMinor: boolean;
-}
-
-const EMPTY_FORM: FormState = {
-  subjectCode: '',
-  title: '',
-  lectureUnits: '',
-  labUnits: '',
-  requiredRoomType: '',
-  deptId: '',
-  isMinor: false,
-};
-
-/**
- * Extract a useful error message from a failed mutation.
- * NestJS returns `{ message: string | string[], error, statusCode }`.
- * Returns the server's message if present, else falls back to err.message.
- */
 function extractErrorMessage(err: any, fallback: string): string {
   const raw = err?.response?.data?.message;
   if (Array.isArray(raw)) return raw[0] ?? fallback;
@@ -107,25 +83,31 @@ export default function SubjectsPage() {
   const [restrictionsOpen, setRestrictionsOpen] = useState(false);
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<SubjectRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
-  const [confirmCloseForm, setConfirmCloseForm] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<keyof FormState, string>>
-  >({});
   const [filtersExpanded, setFiltersExpanded] = useState(true);
 
-  // ── NEW: dedicated delete-error state ──
+  // ── Multi-select state (mirrors the Prospectus page) ──
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionPending, setBulkActionPending] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+
+  // ── Consolidated alert state (error + success share one slot) ──
+  const [alert, setAlert] = useState<Alert>(null);
+  const setSuccess = (m: string | null) =>
+    setAlert(m ? { kind: 'success', message: m } : null);
+  const setError = (m: string | null) =>
+    setAlert(m ? { kind: 'error', message: m } : null);
+
+  // ── Detail side panel state ──
+  const [detailEntry, setDetailEntry] = useState<SubjectRecord | null>(null);
+
+  // ── Dedicated delete-error state (blocked delete from backend) ──
   const [deleteError, setDeleteError] = useState<{
     subjectCode: string;
     message: string;
   } | null>(null);
 
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-
   const searchRef = useRef<HTMLInputElement>(null);
-  const firstFieldRef = useRef<HTMLInputElement>(null);
 
   // ── URL state ──
   const [searchParams, setSearchParams] = useSearchParams();
@@ -219,12 +201,12 @@ export default function SubjectsPage() {
     enabled: !!user,
   });
 
-  // ── Auto-dismiss success ──
+  // ── Auto-dismiss success only ──
   useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 4000);
+    if (!alert || alert.kind !== 'success') return;
+    const t = setTimeout(() => setAlert(null), 4000);
     return () => clearTimeout(t);
-  }, [success]);
+  }, [alert]);
 
   // ── Keyboard: / focuses search ──
   useEffect(() => {
@@ -270,6 +252,14 @@ export default function SubjectsPage() {
     [isDH, myDeptId],
   );
 
+  // ── Detail panel: live view (re-derived from query cache) ──
+  const detailLive = useMemo(() => {
+    if (!detailEntry) return null;
+    return (
+      subjects.find((s) => s.subjectId === detailEntry.subjectId) ?? detailEntry
+    );
+  }, [subjects, detailEntry]);
+
   // ── Stats (scoped) ──
   const scopedSubjects = useMemo(() => {
     if (isDH && myDeptId) {
@@ -309,17 +299,10 @@ export default function SubjectsPage() {
 
     let rows = subjects.filter((s) => {
       if (q) {
+        // Search is intentionally limited to the subject code and title.
         const code = (s.subjectCode ?? '').toLowerCase();
         const title = (s.title ?? '').toLowerCase();
-        const deptCode = (
-          deptCodeById.get(String(s.deptId ?? '')) ?? ''
-        ).toLowerCase();
-        if (
-          !code.includes(q) &&
-          !title.includes(q) &&
-          !deptCode.includes(q)
-        )
-          return false;
+        if (!code.includes(q) && !title.includes(q)) return false;
       }
 
       if (deptFilter && String(s.deptId ?? '') !== deptFilter) return false;
@@ -388,52 +371,59 @@ export default function SubjectsPage() {
     deptCodeById,
   ]);
 
+  // ── Selection-derived values ──
+  // Only subjects this user can actually manage (never foreign/read-only rows).
+  const selectedSubjects = useMemo(
+    () =>
+      subjects.filter(
+        (s) =>
+          selectedIds.has(String(s.subjectId)) && !isForeign(s),
+      ),
+    [subjects, selectedIds, isForeign],
+  );
+
+  // Prune selection when subjects disappear (concurrent deletes, etc.) or
+  // stop being manageable (e.g. a department filter changes ownership scope).
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const available = new Set(
+      subjects
+        .filter((s) => !isForeign(s))
+        .map((s) => String(s.subjectId)),
+    );
+    let needsUpdate = false;
+    for (const id of selectedIds) {
+      if (!available.has(id)) {
+        needsUpdate = true;
+        break;
+      }
+    }
+    if (needsUpdate) {
+      const next = new Set<string>();
+      for (const id of selectedIds) {
+        if (available.has(id)) next.add(id);
+      }
+      setSelectedIds(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects, isForeign]);
+
   // ── Shared invalidation helper ──
   const invalidateAfterSubjectChange = () => {
     qc.invalidateQueries({ queryKey: ['subjects'] });
     qc.invalidateQueries({ queryKey: ['coverage'] });
     qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
+    // Toggling a subject also toggles its prospectus mappings (cascade).
+    qc.invalidateQueries({ queryKey: ['prospectus'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-all'] });
+    qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
   };
 
   // ── Mutations ──
-  const createMutation = useMutation({
-    mutationFn: createSubject,
-    onSuccess: (s) => {
-      setSuccess(`Subject "${s.subjectCode}" created.`);
-      closeForm(true);
-      invalidateAfterSubjectChange();
-    },
-    onError: (err: any) =>
-      setError(extractErrorMessage(err, 'Failed to create')),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      input,
-    }: {
-      id: string;
-      input: Partial<CreateSubjectInput>;
-    }) => updateSubject(id, input),
-    onSuccess: (s) => {
-      setSuccess(`Subject "${s.subjectCode}" updated.`);
-      closeForm(true);
-      invalidateAfterSubjectChange();
-      // Return to where the user came from, if this was a deep link
-      if (returnToRef.current) {
-        const target = returnToRef.current;
-        returnToRef.current = null;
-        navigate(target);
-      }
-    },
-    onError: (err: any) =>
-      setError(extractErrorMessage(err, 'Failed to update')),
-  });
   const toggleMutation = useMutation({
     mutationFn: toggleSubjectActive,
     onSuccess: () => invalidateAfterSubjectChange(),
-    onError: (err: any) =>
-      setError(extractErrorMessage(err, 'Toggle failed')),
+    onError: (err: any) => setError(extractErrorMessage(err, 'Toggle failed')),
   });
 
   const deleteMutation = useMutation({
@@ -441,10 +431,10 @@ export default function SubjectsPage() {
     onSuccess: () => {
       setSuccess('Subject deleted.');
       setDeleteTarget(null);
+      setDetailEntry(null);
       invalidateAfterSubjectChange();
     },
     onError: (err: any) => {
-      // Close the confirm modal, show the dedicated error modal
       const target = deleteTarget;
       setDeleteTarget(null);
       setDeleteError({
@@ -454,60 +444,139 @@ export default function SubjectsPage() {
     },
   });
 
-  // ── Form ──
-  const closeForm = (force = false) => {
-    if (!force) {
-      const dirty =
-        form.subjectCode ||
-        form.title ||
-        form.lectureUnits ||
-        form.labUnits ||
-        form.requiredRoomType ||
-        form.isMinor ||
-        (mode === 'edit' && form.deptId !== (editing?.deptId ?? ''));
-      if (dirty) {
-        setConfirmCloseForm(true);
-        return;
-      }
+  // ── Multi-select helpers ──
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBulkSetActive = async (activate: boolean) => {
+    const targets = selectedSubjects.filter((s) => s.isActive !== activate);
+
+    if (targets.length === 0) {
+      setSuccess(
+        `All selected subjects are already ${activate ? 'active' : 'inactive'}.`,
+      );
+      return;
     }
-    setConfirmCloseForm(false);
-    setMode(null);
-    setEditing(null);
-    setForm(EMPTY_FORM);
+
+    setBulkActionPending(true);
     setError(null);
-    setFieldErrors({});
+    try {
+      const results = await Promise.allSettled(
+        targets.map((s) => toggleSubjectActive(s.subjectId)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        setError(
+          `${failed} of ${targets.length} subject${
+            targets.length === 1 ? '' : 's'
+          } failed to ${activate ? 'activate' : 'deactivate'}.`,
+        );
+      } else {
+        setSuccess(
+          `${activate ? 'Activated' : 'Deactivated'} ${targets.length} subject${
+            targets.length === 1 ? '' : 's'
+          }.`,
+        );
+      }
+      invalidateAfterSubjectChange();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Bulk action failed'));
+    } finally {
+      setBulkActionPending(false);
+    }
   };
 
+  const handleBulkDelete = async () => {
+    const targets = selectedSubjects;
+    if (targets.length === 0) return;
+
+    setBulkActionPending(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(
+        targets.map((s) => deleteSubject(s.subjectId)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        setError(
+          `${failed} of ${targets.length} subject${
+            targets.length === 1 ? '' : 's'
+          } could not be deleted. They may still be referenced by prospectus entries or schedules — deactivate them instead.`,
+        );
+      } else {
+        setSuccess(
+          `Deleted ${targets.length} subject${
+            targets.length === 1 ? '' : 's'
+          }.`,
+        );
+      }
+      setBulkDeleteConfirmOpen(false);
+      clearSelection();
+      if (
+        detailLive &&
+        targets.some((s) => s.subjectId === detailLive.subjectId)
+      ) {
+        setDetailEntry(null);
+      }
+      invalidateAfterSubjectChange();
+    } catch (err: any) {
+      setError(extractErrorMessage(err, 'Bulk delete failed'));
+    } finally {
+      setBulkActionPending(false);
+    }
+  };
+
+  // ── Open helpers ──
   const openCreate = () => {
-    setMode('create');
     setEditing(null);
-    setForm({
-      ...EMPTY_FORM,
-      deptId: isDH && myDeptId ? myDeptId : '',
-    });
+    setMode('create');
     setError(null);
     setSuccess(null);
-    setFieldErrors({});
-    setTimeout(() => firstFieldRef.current?.focus(), 50);
   };
 
   const openEdit = (s: SubjectRecord) => {
     if (isForeign(s)) return;
-    setMode('edit');
+    setDetailEntry(null);
     setEditing(s);
-    setForm({
-      subjectCode: s.subjectCode,
-      title: s.title,
-      lectureUnits: String(s.lectureUnits ?? 0),
-      labUnits: String(s.labUnits ?? 0),
-      requiredRoomType: (s.requiredRoomType ?? '') as '' | SubjectRoomType,
-      deptId: s.deptId ?? '',
-      isMinor: s.isMinor ?? false,
-    });
+    setMode('edit');
     setError(null);
     setSuccess(null);
-    setFieldErrors({});
-    setTimeout(() => firstFieldRef.current?.focus(), 50);
+  };
+
+  // ── Detail panel handlers ──
+  const handleOpenDetail = (s: SubjectRecord) => {
+    setDetailEntry(s);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleCloseDetail = () => setDetailEntry(null);
+
+  const handleEditFromDetail = () => {
+    if (!detailLive) return;
+    if (isForeign(detailLive)) return;
+    setEditing(detailLive);
+    setDetailEntry(null);
+    setMode('edit');
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleToggleFromDetail = () => {
+    if (!detailLive) return;
+    if (isForeign(detailLive)) return;
+    toggleMutation.mutate(detailLive.subjectId);
+  };
+
+  const handleDeleteFromDetail = () => {
+    if (!detailLive) return;
+    if (isForeign(detailLive)) return;
+    setDeleteTarget(detailLive);
+    setDetailEntry(null);
+  };
+
+  const handleOpenSubjectFromRestrictions = (subjectId: string) => {
+    const next = subjects.find((s) => String(s.subjectId) === String(subjectId));
+    if (next) setDetailEntry(next);
   };
 
   // ── Deep-link: auto-open edit modal from ?edit=<subjectId> ──
@@ -517,7 +586,6 @@ export default function SubjectsPage() {
   const returnToRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Save returnTo across renders so it survives the ?edit param clearing
     if (returnToParam) {
       returnToRef.current = returnToParam;
     }
@@ -544,11 +612,10 @@ export default function SubjectsPage() {
         `"${target.subjectCode}" belongs to another department and is read-only.`,
       );
     } else {
-      openEdit(target);
+      setEditing(target);
+      setMode('edit');
     }
 
-    // Clear both ?edit and ?returnTo from the URL — we've stashed returnTo
-    // in returnToRef so it survives the modal close.
     const next = new URLSearchParams(searchParams);
     next.delete('edit');
     next.delete('returnTo');
@@ -556,81 +623,15 @@ export default function SubjectsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editParam, subjects]);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-  ) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
-  };
-
-  const lectureUnitsNum = Number(form.lectureUnits || 0);
-  const labUnitsNum = Number(form.labUnits || 0);
-  const totalUnits = lectureUnitsNum + labUnitsNum;
-  const isMixed = lectureUnitsNum > 0 && labUnitsNum > 0;
-  const isLectureOnly = lectureUnitsNum > 0 && labUnitsNum === 0;
-  const isLabOnly = labUnitsNum > 0 && lectureUnitsNum === 0;
-
-  const validateForm = (): boolean => {
-    const errs: Partial<Record<keyof FormState, string>> = {};
-    if (!form.subjectCode.trim()) errs.subjectCode = 'Subject code is required';
-    if (!form.title.trim()) errs.title = 'Title is required';
-    if (!form.deptId) errs.deptId = 'Department is required';
-    if (!form.lectureUnits && !form.labUnits) {
-      errs.lectureUnits = 'Enter at least one unit';
+  // ── Form-modal close (handles returnTo deep-link) ──
+  const handleFormClose = () => {
+    setMode(null);
+    setEditing(null);
+    if (returnToRef.current) {
+      const target = returnToRef.current;
+      returnToRef.current = null;
+      navigate(target);
     }
-    if (lectureUnitsNum < 0 || labUnitsNum < 0) {
-      errs.labUnits = 'Units cannot be negative';
-    }
-    if (lectureUnitsNum > 12 || labUnitsNum > 12) {
-      errs.labUnits = 'Units cannot exceed 12 per component';
-    }
-    // Duplicate subject code within department
-    const code = form.subjectCode.trim().toLowerCase();
-    const deptKey = form.deptId;
-    const dup = subjects.find(
-      (s) =>
-        s.subjectId !== editing?.subjectId &&
-        String(s.deptId) === deptKey &&
-        (s.subjectCode ?? '').trim().toLowerCase() === code,
-    );
-    if (dup) {
-      errs.subjectCode = `"${form.subjectCode}" already exists in this department`;
-    }
-    setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    if (!validateForm()) return;
-
-    const lecture = lectureUnitsNum;
-    const lab = labUnitsNum;
-    const total = lecture + lab;
-
-    let requiredRoomType: SubjectRoomType | null =
-      form.requiredRoomType === '' ? null : form.requiredRoomType;
-    if (lecture > 0 && lab > 0) {
-      requiredRoomType = 'any';
-    }
-
-    const payload: CreateSubjectInput = {
-      subjectCode: form.subjectCode.trim(),
-      title: form.title.trim(),
-      totalUnits: total,
-      lectureUnits: lecture,
-      labUnits: lab,
-      requiredRoomType,
-      isMinor: form.isMinor,
-      deptId: form.deptId,
-    };
-
-    if (mode === 'create') createMutation.mutate(payload);
-    else if (mode === 'edit' && editing)
-      updateMutation.mutate({ id: editing.subjectId, input: payload });
   };
 
   const deptName = (id: string | null) => {
@@ -825,7 +826,6 @@ export default function SubjectsPage() {
     return (
       <span className="inline-flex items-center gap-1">
         <Icon name={icon} size={12} className="text-slate-500" />
-        ...
         <span className="capitalize">
           {s.requiredRoomType === 'any'
             ? 'Any'
@@ -851,9 +851,7 @@ export default function SubjectsPage() {
             {lab}Lab
           </span>
         )}
-        {lec > 0 && lab > 0 && (
-          <span className="text-slate-400">=</span>
-        )}
+        {lec > 0 && lab > 0 && <span className="text-slate-400">=</span>}
         {lec > 0 && lab > 0 && (
           <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
             {total}
@@ -906,7 +904,7 @@ export default function SubjectsPage() {
       cellClassName: 'text-xs',
       render: (s) => {
         const foreign = isForeign(s);
-        const code = deptName(s.deptId);  // already returns "—" for null
+        const code = deptName(s.deptId);
         const tone = deptTone(code === '—' ? null : code);
         return (
           <span
@@ -946,22 +944,22 @@ export default function SubjectsPage() {
     if (isForeign(s)) {
       return [
         {
-          label: 'Read only',
-          icon: 'lock',
-          onClick: () => {},
-          disabled: true,
+          label: 'View details',
+          icon: 'info',
+          onClick: () => handleOpenDetail(s),
         },
       ];
     }
     return [
+      { label: 'View details', icon: 'info', onClick: () => handleOpenDetail(s) },
+      { divider: true },
       { label: 'Edit', icon: 'edit', onClick: () => openEdit(s) },
       { divider: true },
       {
         label: s.isActive ? 'Deactivate' : 'Activate',
         icon: s.isActive ? 'toggle_off' : 'toggle_on',
         loading:
-          toggleMutation.isPending &&
-          toggleMutation.variables === s.subjectId,
+          toggleMutation.isPending && toggleMutation.variables === s.subjectId,
         onClick: () => toggleMutation.mutate(s.subjectId),
       },
       { divider: true },
@@ -970,19 +968,19 @@ export default function SubjectsPage() {
         icon: 'delete',
         danger: true,
         loading:
-          deleteMutation.isPending &&
-          deleteMutation.variables === s.subjectId,
+          deleteMutation.isPending && deleteMutation.variables === s.subjectId,
         onClick: () => setDeleteTarget(s),
       },
     ];
   };
 
-  const formBusy = createMutation.isPending || updateMutation.isPending;
-
   return (
     <div className="space-y-6">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="subjects-header">
+      <div
+        className="flex flex-wrap items-start justify-between gap-3"
+        data-tour="subjects-header"
+      >
         <div>
           <h1 className="text-2xl font-bold text-on-surface">Subjects</h1>
           <p className="text-on-surface-variant text-sm mt-1">
@@ -1040,6 +1038,7 @@ export default function SubjectsPage() {
           value={stats.total}
           icon="menu_book"
           tone="neutral"
+          loading={isLoading}
           onClick={hasAnyFilter ? clearAll : undefined}
         />
         <StatCard
@@ -1047,6 +1046,8 @@ export default function SubjectsPage() {
           value={stats.lectureOnly}
           icon="meeting_room"
           tone="blue"
+          loading={isLoading}
+          active={compFilter === 'lecture_only'}
           onClick={() => applyPreset(PRESETS[3])}
         />
         <StatCard
@@ -1054,6 +1055,8 @@ export default function SubjectsPage() {
           value={stats.labOnly}
           icon="science"
           tone="amber"
+          loading={isLoading}
+          active={compFilter === 'lab_only'}
           onClick={() => applyPreset(PRESETS[4])}
         />
         <StatCard
@@ -1061,6 +1064,8 @@ export default function SubjectsPage() {
           value={stats.mixed}
           icon="merge_type"
           tone="purple"
+          loading={isLoading}
+          active={compFilter === 'mixed'}
           onClick={() => applyPreset(PRESETS[0])}
         />
         <StatCard
@@ -1068,6 +1073,8 @@ export default function SubjectsPage() {
           value={stats.minor}
           icon="school"
           tone="purple"
+          loading={isLoading}
+          active={minorFilter === 'minor'}
           onClick={() => applyPreset(PRESETS[1])}
         />
         <StatCard
@@ -1075,47 +1082,49 @@ export default function SubjectsPage() {
           value={stats.inactive}
           icon="toggle_off"
           tone={stats.inactive > 0 ? 'rose' : 'neutral'}
+          loading={isLoading}
+          active={statusFilter === 'inactive'}
           onClick={() =>
             setFilter('status', statusFilter === 'inactive' ? 'all' : 'inactive')
           }
         />
       </div>
 
-      {/* ── Banners ── */}
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss error"
+      {/* ── Single alert region (error + success share one slot) ── */}
+      <div aria-live="polite" aria-atomic="true">
+        {alert && (
+          <div
+            className={`p-3 rounded-lg border text-sm flex items-start gap-2 ${
+              alert.kind === 'error'
+                ? 'bg-red-100 border-red-300 text-red-700'
+                : 'bg-emerald-100 border-emerald-300 text-emerald-800'
+            }`}
           >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
+            <Icon
+              name={alert.kind === 'error' ? 'error' : 'check_circle'}
+              size={16}
+              className="shrink-0 mt-0.5"
+            />
+            <span className="flex-1">{alert.message}</span>
+            <button
+              onClick={() => setAlert(null)}
+              className="opacity-70 hover:opacity-100"
+              aria-label="Dismiss alert"
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        )}
+      </div>
 
       {isDH && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
           <Icon name="info" size={16} className="mt-0.5 shrink-0" />
           <span>
             Each row shows its <strong>owning department</strong> in a colored
-            badge. Rows with a <Icon name="lock" size={11} className="inline -mb-0.5" />{' '}
-            lock icon belong to another department and are read-only. Use the{' '}
+            badge. Rows with a{' '}
+            <Icon name="lock" size={11} className="inline -mb-0.5" /> lock icon
+            belong to another department and are read-only. Use the{' '}
             <strong>Department filter</strong> to narrow the list.
           </span>
         </div>
@@ -1124,30 +1133,30 @@ export default function SubjectsPage() {
       {/* ── Filter panel ── */}
       <div data-tour="subjects-filters">
         <SubjectFiltersPanel
-        activeFilterCount={activeFilterCount}
-        filtersExpanded={filtersExpanded}
-        setFiltersExpanded={setFiltersExpanded}
-        filteredCount={filtered.length}
-        totalCount={subjects.length}
-        hasAnyFilter={hasAnyFilter}
-        clearAll={clearAll}
-        PRESETS={PRESETS}
-        isPresetActive={isPresetActive}
-        applyPreset={applyPreset}
-        filterPills={filterPills}
-        searchInput={searchInput}
-        setSearchInput={setSearchInput}
-        searchRef={searchRef}
-        deptFilter={deptFilter}
-        roomFilter={roomFilter}
-        minorFilter={minorFilter}
-        compFilter={compFilter}
-        statusFilter={statusFilter}
-        setFilter={setFilter}
-        departments={departments}
-        deptCounts={deptCounts}
-        ROOM_TYPES={ROOM_TYPES}
-      />
+          activeFilterCount={activeFilterCount}
+          filtersExpanded={filtersExpanded}
+          setFiltersExpanded={setFiltersExpanded}
+          filteredCount={filtered.length}
+          totalCount={subjects.length}
+          hasAnyFilter={hasAnyFilter}
+          clearAll={clearAll}
+          PRESETS={PRESETS}
+          isPresetActive={isPresetActive}
+          applyPreset={applyPreset}
+          filterPills={filterPills}
+          searchInput={searchInput}
+          setSearchInput={setSearchInput}
+          searchRef={searchRef}
+          deptFilter={deptFilter}
+          roomFilter={roomFilter}
+          minorFilter={minorFilter}
+          compFilter={compFilter}
+          statusFilter={statusFilter}
+          setFilter={setFilter}
+          departments={departments}
+          deptCounts={deptCounts}
+          ROOM_TYPES={ROOM_TYPES}
+        />
       </div>
 
       {/* ── Table ── */}
@@ -1185,365 +1194,177 @@ export default function SubjectsPage() {
             emptyMessage="No subjects yet."
             noMatchMessage="No subjects match your filters."
             getActions={getActions}
-            onRowClick={(s) => !isForeign(s) && openEdit(s)}
+            onRowClick={(s) => handleOpenDetail(s)}
+            selectable={canManage}
+            selectedKeys={selectedIds}
+            onSelectionChange={setSelectedIds}
+            isRowSelectable={(s) => !isForeign(s)}
             emptyIcon="menu_book"
-          emptyAction={
-            canManage ? (
-              <button
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-              >
-                <Icon name="add" size={16} />
-                Add first subject
-              </button>
-            ) : undefined
-          }
+            emptyAction={
+              canManage ? (
+                <button
+                  onClick={openCreate}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+                >
+                  <Icon name="add" size={16} />
+                  Add first subject
+                </button>
+              ) : undefined
+            }
           />
         </div>
       )}
 
-      {/* ── Create / Edit modal ── */}
-      <Modal
-        open={!!mode}
-        onClose={() => closeForm()}
-        title={
-          mode === 'create'
-            ? 'Create Subject'
-            : `Edit Subject — ${editing?.subjectCode}`
-        }
-        description={
-          mode === 'create'
-            ? 'Add a new subject to your department catalog.'
-            : 'Update this subject\'s details.'
-        }
-        size="lg"
-      >
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Live preview */}
-          {form.subjectCode && form.title && (
-            <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs">
-              <Icon name="preview" size={14} className="text-primary" />
-              <span className="font-mono font-bold text-primary">
-                {form.subjectCode}
-              </span>
-              <span className="text-slate-600">·</span>
-              <span className="text-slate-700">{form.title}</span>
-              {totalUnits > 0 && (
-                <>
-                  <span className="text-slate-600">·</span>
-                  <span className="font-semibold text-slate-800">
-                    {totalUnits} unit{totalUnits === 1 ? '' : 's'}
-                  </span>
-                </>
-              )}
-              {isMixed && (
-                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-bold uppercase">
-                  Mixed
-                </span>
-              )}
-              {form.isMinor && (
-                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] font-bold uppercase">
-                  Minor
-                </span>
-              )}
-            </div>
+      {/* ── Floating bulk action bar (auto-appears when any row is checked) ── */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl bg-slate-900 text-white shadow-2xl border border-slate-700 max-w-[calc(100vw-2rem)]">
+          <span className="text-xs sm:text-sm font-semibold px-2 whitespace-nowrap">
+            {selectedIds.size} selected
+          </span>
+          <div className="h-6 w-px bg-slate-700 shrink-0" />
+          <button
+            type="button"
+            onClick={() => handleBulkSetActive(true)}
+            disabled={bulkActionPending}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600/30 transition disabled:opacity-50 whitespace-nowrap"
+            title="Activate selected"
+          >
+            <Icon name="toggle_on" size={14} className="text-emerald-400" />
+            <span className="hidden sm:inline">Activate</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkSetActive(false)}
+            disabled={bulkActionPending}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-700 transition disabled:opacity-50 whitespace-nowrap"
+            title="Deactivate selected"
+          >
+            <Icon name="toggle_off" size={14} className="text-slate-300" />
+            <span className="hidden sm:inline">Deactivate</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulkDeleteConfirmOpen(true)}
+            disabled={bulkActionPending}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition disabled:opacity-50 whitespace-nowrap"
+            title="Delete selected"
+          >
+            <Icon name="delete" size={14} />
+            <span className="hidden sm:inline">Delete</span>
+          </button>
+          <div className="h-6 w-px bg-slate-700 shrink-0" />
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={bulkActionPending}
+            className="p-1.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50 shrink-0"
+            aria-label="Clear selection"
+            title="Clear selection"
+          >
+            <Icon name="close" size={14} />
+          </button>
+          {bulkActionPending && (
+            <Icon
+              name="progress_activity"
+              size={14}
+              className="animate-spin text-primary shrink-0"
+            />
           )}
+        </div>
+      )}
 
-          {/* Identification */}
-          <FormSection title="Identification" icon="badge">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Subject Code"
-                required
-                error={fieldErrors.subjectCode}
-              >
-                <input
-                  ref={firstFieldRef}
-                  type="text"
-                  name="subjectCode"
-                  value={form.subjectCode}
-                  onChange={handleChange}
-                  placeholder="e.g. CPE 101"
-                  className={inputClass(!!fieldErrors.subjectCode)}
-                />
-              </FormField>
-              <FormField
-                label="Department"
-                required
-                error={fieldErrors.deptId}
-                hint={isDH ? 'Locked to your department.' : undefined}
-              >
-                <select
-                  name="deptId"
-                  value={form.deptId}
-                  onChange={handleChange}
-                  disabled={isDH}
-                  className={`${inputClass(!!fieldErrors.deptId)} disabled:opacity-60 disabled:cursor-not-allowed`}
-                >
-                  <option value="">Select a department…</option>
-                  {departments
-                    .filter((d) => d.isActive)
-                    .filter((d) => !isDH || String(d.deptId) === myDeptId)
-                    .map((d) => (
-                      <option key={d.deptId} value={d.deptId}>
-                        [{d.deptCode}] {d.deptName}
-                      </option>
-                    ))}
-                </select>
-              </FormField>
-              <div className="md:col-span-2">
-                <FormField
-                  label="Title"
-                  required
-                  error={fieldErrors.title}
-                >
-                  <input
-                    type="text"
-                    name="title"
-                    value={form.title}
-                    onChange={handleChange}
-                    placeholder="e.g. Programming Logic & Design"
-                    className={inputClass(!!fieldErrors.title)}
-                  />
-                </FormField>
-              </div>
-            </div>
-          </FormSection>
-
-          {/* Units */}
-          <FormSection title="Units" icon="calculate">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Lecture Units"
-                required
-                error={fieldErrors.lectureUnits}
-              >
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="12"
-                  name="lectureUnits"
-                  value={form.lectureUnits}
-                  onChange={handleChange}
-                  placeholder="0"
-                  className={inputClass(!!fieldErrors.lectureUnits)}
-                />
-              </FormField>
-              <FormField
-                label="Lab Units"
-                required
-                error={fieldErrors.labUnits}
-              >
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="12"
-                  name="labUnits"
-                  value={form.labUnits}
-                  onChange={handleChange}
-                  placeholder="0"
-                  className={inputClass(!!fieldErrors.labUnits)}
-                />
-              </FormField>
-            </div>
-
-            {/* Unit breakdown chip */}
-            {totalUnits > 0 && (
-              <div className="flex flex-wrap items-center gap-2 mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-                <span className="font-semibold text-slate-600">
-                  Breakdown:
-                </span>
-                {lectureUnitsNum > 0 && (
-                  <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-semibold">
-                    {lectureUnitsNum} Lecture
-                  </span>
-                )}
-                {labUnitsNum > 0 && (
-                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-semibold">
-                    {labUnitsNum} Lab
-                  </span>
-                )}
-                <span className="text-slate-400">=</span>
-                <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-mono font-bold">
-                  {totalUnits} Total
-                </span>
-              </div>
-            )}
-
-            {isMixed && (
-              <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-blue-50 text-blue-900 border border-blue-200 mt-3">
-                <Icon name="info" size={14} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium">Mixed subject detected</p>
-                  <p className="mt-0.5">
-                    Room type will be set to <strong>Any</strong> on save —
-                    lecture blocks go in lecture rooms, lab blocks go in labs.
-                  </p>
-                </div>
-              </div>
-            )}
-          </FormSection>
-
-          {/* Room & classification */}
-          <FormSection title="Room & Classification" icon="tune">
-            <FormField
-              label="Required Room Type"
-              hint={
-                isMixed
-                  ? 'Auto-set to "Any" because this subject has both lecture and lab units.'
-                  : isLectureOnly
-                  ? 'Suggested: Lecture Room (no lab units).'
-                  : isLabOnly
-                  ? 'Suggested: Laboratory (no lecture units).'
-                  : 'Leave as "— none —" if the subject can be scheduled anywhere.'
-              }
-            >
-              <select
-                name="requiredRoomType"
-                value={form.requiredRoomType}
-                onChange={handleChange}
-                disabled={isMixed}
-                className={`${inputClass(false)} disabled:opacity-60 disabled:cursor-not-allowed`}
-              >
-                {ROOM_TYPES.map((rt) => (
-                  <option key={rt.value} value={rt.value}>
-                    {rt.label}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-
-            <label className="flex items-start gap-3 cursor-pointer select-none rounded-lg border border-surface-variant bg-surface-container-low p-3 hover:bg-surface-container transition mt-4">
-              <input
-                type="checkbox"
-                checked={form.isMinor}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    isMinor: e.target.checked,
-                  }))
-                }
-                className="accent-[#5c1219] w-4 h-4 mt-0.5"
-              />
-              <div className="flex-1">
-                <span className="text-sm font-semibold text-on-surface flex items-center gap-1.5">
-                  <Icon name="school" size={14} className="text-purple-600" />
-                  Minor subject
-                </span>
-                <p className="text-[11px] text-on-surface-variant mt-0.5">
-                  Taught by another department or college. Minor subjects are
-                  plotted manually <strong>before</strong> running
-                  auto-generate. Examples: Math, GenEd, PE, EPIC, NSTP.
-                </p>
-              </div>
-            </label>
-
-            {form.isMinor && (
-              <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-purple-50 text-purple-900 border border-purple-200 mt-3">
-                <Icon name="info" size={14} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium">Minor subject</p>
-                  <p className="mt-0.5">
-                    Will show a purple "Minor" badge in the table and appear in
-                    the "unplotted minors" indicator on the Timetable page.
-                  </p>
-                </div>
-              </div>
-            )}
-          </FormSection>
-
-          <div className="flex gap-3 justify-end pt-4 border-t border-surface-variant">
+      {/* ── Bulk delete confirmation ── */}
+      <Modal
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title={`Delete ${selectedIds.size} subject${
+          selectedIds.size === 1 ? '' : 's'
+        }?`}
+        size="sm"
+        footer={
+          <>
             <button
               type="button"
-              onClick={() => {
-                const dirty =
-                  form.subjectCode ||
-                  form.title ||
-                  form.lectureUnits ||
-                  form.labUnits ||
-                  form.requiredRoomType ||
-                  form.isMinor ||
-                  (mode === 'edit' && form.deptId !== (editing?.deptId ?? ''));
-
-                if (dirty) {
-                  closeForm(); // opens the discard confirm modal
-                  return;
-                }
-
-                closeForm(true);
-                if (returnToRef.current) {
-                  const target = returnToRef.current;
-                  returnToRef.current = null;
-                  navigate(target);
-                }
-              }}
-              disabled={formBusy}
-              className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition disabled:opacity-50"
+              onClick={() => setBulkDeleteConfirmOpen(false)}
+              disabled={bulkActionPending}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg disabled:opacity-50"
             >
               Cancel
             </button>
             <button
-              type="submit"
-              disabled={formBusy}
-              className="px-6 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
+              type="button"
+              onClick={handleBulkDelete}
+              disabled={bulkActionPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
-              {formBusy && (
+              {bulkActionPending && (
                 <Icon
                   name="progress_activity"
                   size={14}
                   className="animate-spin"
                 />
               )}
-              {formBusy
-                ? 'Saving…'
-                : mode === 'create'
-                ? 'Create Subject'
-                : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Unsaved changes ── */}
-      <Modal
-        open={confirmCloseForm}
-        onClose={() => setConfirmCloseForm(false)}
-        title="Discard changes?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setConfirmCloseForm(false)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Keep editing
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                closeForm(true);
-                if (returnToRef.current) {
-                  const target = returnToRef.current;
-                  returnToRef.current = null;
-                  navigate(target);
-                }
-              }}
-              className="px-4 py-2 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition rounded-lg"
-            >
-              Discard
+              {bulkActionPending
+                ? 'Deleting…'
+                : `Delete ${selectedIds.size}`}
             </button>
           </>
         }
       >
-        <p className="text-sm text-slate-600">
-          You have unsaved changes. If you close now, they'll be lost.
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-slate-600">
+            Delete{' '}
+            <strong>
+              {selectedIds.size} subject
+              {selectedIds.size === 1 ? '' : 's'}
+            </strong>
+            ?
+          </p>
+          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Subjects still referenced by prospectus entries or schedules
+              cannot be deleted. Those will be skipped — deactivate them
+              instead. This action cannot be undone.
+            </span>
+          </div>
+        </div>
       </Modal>
 
-      {/* ── Delete confirmation ── */}
+      {/* ── Detail side panel ── */}
+      {detailLive && (
+        <SubjectDetailPanel
+          open={!!detailLive}
+          onClose={handleCloseDetail}
+          subject={detailLive}
+          subjects={subjects}
+          departmentLabel={deptName}
+          isForeign={isForeign(detailLive)}
+          togglePending={
+            toggleMutation.isPending &&
+            toggleMutation.variables === detailLive.subjectId
+          }
+          onEdit={handleEditFromDetail}
+          onToggleActive={handleToggleFromDetail}
+          onDelete={handleDeleteFromDetail}
+          onOpenSubject={handleOpenSubjectFromRestrictions}
+        />
+      )}
+
+      {/* ── Create / Edit wizard ── */}
+      <SubjectFormModal
+        open={!!mode}
+        mode={mode}
+        subject={editing}
+        subjects={subjects}
+        departments={departments}
+        isDH={isDH}
+        myDeptId={myDeptId}
+        onClose={handleFormClose}
+        onSuccess={(message) => setSuccess(message)}
+      />
+
+      {/* ── Delete confirmation (with Deactivate escape hatch) ── */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -1558,6 +1379,26 @@ export default function SubjectsPage() {
             >
               Cancel
             </button>
+            {deleteTarget?.isActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deleteTarget) return;
+                  const target = deleteTarget;
+                  toggleMutation.mutate(target.subjectId, {
+                    onSuccess: () =>
+                      setSuccess(
+                        `Subject "${target.subjectCode}" deactivated (not deleted).`,
+                      ),
+                  });
+                  setDeleteTarget(null);
+                }}
+                className="px-4 py-2 text-sm font-semibold border border-amber-500/40 bg-amber-50 text-amber-800 hover:bg-amber-100 transition rounded-lg flex items-center gap-2"
+              >
+                <Icon name="toggle_off" size={14} />
+                Deactivate instead
+              </button>
+            )}
             <button
               type="button"
               onClick={() =>
@@ -1589,15 +1430,15 @@ export default function SubjectsPage() {
           <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
             <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
             <span>
-              This will remove the subject from all prospectuses and any
-              program mappings. Existing timetables that reference this
-              subject may become invalid. This action cannot be undone.
+              This will remove the subject from all prospectuses and any program
+              mappings. Existing timetables that reference this subject may
+              become invalid. This action cannot be undone.
             </span>
           </div>
         </div>
       </Modal>
 
-      {/* ── NEW: Delete blocked — dedicated error modal ── */}
+      {/* ── Delete blocked — dedicated error modal ── */}
       <Modal
         open={!!deleteError}
         onClose={() => setDeleteError(null)}
@@ -1679,12 +1520,16 @@ function StatCard({
   icon,
   tone,
   onClick,
+  loading,
+  active,
 }: {
   label: string;
   value: number;
   icon: string;
   tone: 'neutral' | 'blue' | 'amber' | 'purple' | 'rose';
   onClick?: () => void;
+  loading?: boolean;
+  active?: boolean;
 }) {
   const tones = {
     neutral: 'bg-surface-container-lowest border-surface-variant',
@@ -1704,9 +1549,10 @@ function StatCard({
   return (
     <Comp
       onClick={onClick}
-      className={`text-left rounded-xl border p-3 transition ${tones[tone]} ${
+      aria-pressed={onClick ? !!active : undefined}
+      className={`text-left rounded-xl border p-3 transition relative ${tones[tone]} ${
         onClick ? 'hover:shadow-md cursor-pointer' : ''
-      }`}
+      } ${active ? 'ring-2 ring-primary/40' : ''}`}
     >
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
@@ -1714,70 +1560,21 @@ function StatCard({
         </span>
         <Icon name={icon} size={16} className={iconTones[tone]} />
       </div>
-      <p className="text-2xl font-bold text-on-surface mt-1">{value}</p>
+      {loading ? (
+        <div className="h-7 mt-1 w-12 rounded bg-slate-200/70 animate-pulse" />
+      ) : (
+        <p className="text-2xl font-bold text-on-surface mt-1 tabular-nums">
+          {value}
+        </p>
+      )}
+      {active && (
+        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
+      )}
     </Comp>
   );
 }
 
-function FormSection({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        <Icon name={icon} size={16} className="text-primary" />
-        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-          {title}
-        </h3>
-        <div className="flex-1 h-px bg-slate-200" />
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function FormField({
-  label,
-  required,
-  error,
-  hint,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
-        {label}
-        {required && <span className="text-rose-500 ml-0.5">*</span>}
-      </label>
-      {children}
-      {error ? (
-        <p className="text-[10px] text-rose-600 mt-1 flex items-center gap-1">
-          <Icon name="error" size={10} />
-          {error}
-        </p>
-      ) : hint ? (
-        <p className="text-[10px] text-slate-400 mt-1">{hint}</p>
-      ) : null}
-    </div>
-  );
-}
-
-// Deterministic dept color — works for any dept that exists,
-// including ones created after this file was written.
-// Uses the dept code (stable) rather than the ID (may reorder on reset).
-
+// Deterministic dept color — stable across renders.
 const DEPT_PALETTE = [
   { bg: 'bg-rose-50',    fg: 'text-rose-800',    border: 'border-rose-300' },
   { bg: 'bg-blue-50',    fg: 'text-blue-800',    border: 'border-blue-300' },
@@ -1791,13 +1588,6 @@ const DEPT_PALETTE = [
   { bg: 'bg-orange-50',  fg: 'text-orange-800',  border: 'border-orange-300' },
 ];
 
-
-
-/**
- * Stable color for a department. Hashes the dept code (not the ID,
- * since IDs may be reset). Falls back to a neutral tone for unknown
- * or null codes, which only happens for orphaned subjects (Dean-only).
- */
 function deptTone(code: string | null | undefined): {
   bg: string;
   fg: string;
@@ -1816,12 +1606,4 @@ function deptTone(code: string | null | undefined): {
     hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
   }
   return DEPT_PALETTE[hash % DEPT_PALETTE.length];
-}
-
-function inputClass(hasError: boolean): string {
-  return `w-full bg-surface-container-low border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-    hasError
-      ? 'border-red-400 focus:border-red-500 focus:ring-red-500/10'
-      : 'border-surface-variant focus:border-primary focus:ring-primary/10'
-  }`;
 }

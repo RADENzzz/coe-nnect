@@ -186,7 +186,7 @@ export default function SubjectFiltersPanel({
                     type="text"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Code, title, or dept code…"
+                    placeholder="Search code or title…"
                     className="w-full bg-surface-container-low border border-surface-variant rounded-lg pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                   />
                   {searchInput && (
