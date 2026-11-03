@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
@@ -20,6 +20,7 @@ import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
 import ProspectusFormModal from './components/ProspectusFormModal';
 import FillSlotModal from './components/FillSlotModal';
+import ProspectusDetailPanel from './components/ProspectusDetailPanel';
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
 const SEMESTERS: { value: SemesterType; label: string; short: string }[] = [
@@ -55,11 +56,25 @@ export default function ProspectusPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [copyModalOpen, setCopyModalOpen] = useState(false);
 
+  // ── Detail panel state ──
+  // The open entry lives in the URL as `?detail=<prospectusId>`.
+  // This makes the panel survive navigation away and back (e.g. to edit
+  // the subject on /subjects) — `returnTo` already carries the full
+  // search string, so no extra bookkeeping is needed.
+
+  // ── Multi-select state ──
+  // No dedicated "mode" — selection is on whenever at least one row is checked.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionPending, setBulkActionPending] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
   // ── URL state ──
   const [searchParams, setSearchParams] = useSearchParams();
   const programParam = searchParams.get('program') ?? '';
   const yearParam = searchParams.get('year') ?? '';
   const semesterParam = (searchParams.get('semester') ?? '1st') as SemesterType;
+  const detailId = searchParams.get('detail');
 
   const [selectedProgramId, setSelectedProgramId] = useState(programParam);
   const [selectedYearLevel, setSelectedYearLevel] = useState<number>(
@@ -87,7 +102,7 @@ export default function ProspectusPage() {
     enabled: !!user,
   });
 
-  const { data: allEntries = [], isLoading } = useQuery({
+  const { data: allEntries = [], isLoading, isFetched } = useQuery({
     queryKey: ['prospectus'],
     queryFn: fetchProspectus,
     enabled: !!user,
@@ -120,7 +135,6 @@ export default function ProspectusPage() {
     );
   }, [programs, profile]);
 
-  // Default program
   const effectiveProgramId =
     selectedProgramId || visiblePrograms[0]?.programId || '';
 
@@ -132,7 +146,6 @@ export default function ProspectusPage() {
     [visiblePrograms, effectiveProgramId],
   );
 
-  // Write permission
   const canWrite = useMemo(() => {
     if (!profile) return false;
     if (
@@ -146,14 +159,30 @@ export default function ProspectusPage() {
     return String(currentProgram.deptId) === String(profile.dept_id ?? '');
   }, [profile, currentProgram]);
 
-  // ── Client-side subject lookup ──
   const subjectById = useMemo(() => {
     const m = new Map<string, (typeof subjects)[number]>();
     for (const s of subjects) m.set(String(s.subjectId), s);
     return m;
   }, [subjects]);
 
-  // ── Filtering ──
+  /**
+   * A prospectus mapping can't be activated while its subject is inactive —
+   * the subject-level deactivation cascade would just switch it off again.
+   */
+  const isSubjectInactive = useCallback(
+    (e: ProspectusRecord) => {
+      const full = e.subjectId ? subjectById.get(String(e.subjectId)) : undefined;
+      return !!full && full.isActive === false;
+    },
+    [subjectById],
+  );
+
+  // Derive the live detail entry from the URL + query data.
+  const detailLive = useMemo(() => {
+    if (!detailId) return null;
+    return allEntries.find((e) => e.prospectusId === detailId) ?? null;
+  }, [allEntries, detailId]);
+
   const filteredEntries = useMemo(() => {
     if (!effectiveProgramId) return [];
     return allEntries.filter(
@@ -164,7 +193,60 @@ export default function ProspectusPage() {
     );
   }, [allEntries, effectiveProgramId, selectedYearLevel, selectedSemester]);
 
-  // Counts and unit totals per year (for tabs)
+  // ── Selection-derived values ──
+  const allVisibleSelected =
+    filteredEntries.length > 0 &&
+    filteredEntries.every((e) => selectedIds.has(e.prospectusId));
+  const someVisibleSelected = selectedIds.size > 0 && !allVisibleSelected;
+  const hasSelection = selectedIds.size > 0;
+
+  // ── Reset selection on scope change (program/year/semester) ──
+  useEffect(() => {
+    setSelectedIds(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProgramId, selectedYearLevel, selectedSemester]);
+
+  // ── Prune selection when entries disappear (concurrent deletes, etc.) ──
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const available = new Set(allEntries.map((e) => e.prospectusId));
+    let needsUpdate = false;
+    for (const id of selectedIds) {
+      if (!available.has(id)) {
+        needsUpdate = true;
+        break;
+      }
+    }
+    if (needsUpdate) {
+      const filtered = new Set<string>();
+      for (const id of selectedIds) {
+        if (available.has(id)) filtered.add(id);
+      }
+      setSelectedIds(filtered);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allEntries]);
+
+  // ── Drop `?detail=` if its entry no longer exists (e.g. deleted) ──
+  useEffect(() => {
+    if (!detailId) return;
+    if (!isFetched) return; // don't run while the query is disabled/loading
+    if (!allEntries.some((e) => e.prospectusId === detailId)) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('detail');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId, allEntries, isFetched]);
+
+  // ── Tri-state select-all checkbox ──
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [someVisibleSelected]);
+
+  // ── Counts and unit totals per year (for tabs) ──
   const yearStats = useMemo(() => {
     const map: Record<number, { count: number; units: number }> = {};
     for (const y of YEAR_LEVELS) map[y] = { count: 0, units: 0 };
@@ -183,7 +265,6 @@ export default function ProspectusPage() {
     return map;
   }, [allEntries, effectiveProgramId, selectedSemester]);
 
-  // Total units in current view
   const currentViewStats = useMemo(() => {
     let units = 0;
     let active = 0;
@@ -199,7 +280,6 @@ export default function ProspectusPage() {
     };
   }, [filteredEntries]);
 
-  // Program stats for the dropdown (subjects per program)
   const programStats = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of allEntries) {
@@ -209,7 +289,6 @@ export default function ProspectusPage() {
     return m;
   }, [allEntries]);
 
-  // Group programs for the dropdown
   const programOptions = useMemo(
     () =>
       visiblePrograms.map((p) => ({
@@ -226,7 +305,7 @@ export default function ProspectusPage() {
     qc.invalidateQueries({ queryKey: ['prospectus-by-program'] });
     qc.invalidateQueries({ queryKey: ['coverage'] });
     qc.invalidateQueries({ queryKey: ['unplotted-minors'] });
-    qc.invalidateQueries({ queryKey: ['subjects'] }); // slot might have been deactivated
+    qc.invalidateQueries({ queryKey: ['subjects'] });
   };
 
   // ── Mutations ──
@@ -242,6 +321,10 @@ export default function ProspectusPage() {
     onSuccess: () => {
       setSuccess('Prospectus entry removed.');
       setDeleteTarget(null);
+      // If the panel was showing this entry, it will disappear on its own:
+      // `detailLive` is derived from `allEntries` + `?detail=`, and the
+      // stale-param cleanup effect strips the query string once the refetch
+      // confirms the entry is gone.
       invalidateAfterProspectusChange();
     },
     onError: (err: any) =>
@@ -260,10 +343,24 @@ export default function ProspectusPage() {
       setError(err?.response?.data?.message ?? 'Failed to fill slot'),
   });
 
-  // ── Bulk action: activate/deactivate all visible ──
-  const handleBulkToggle = async (activate: boolean) => {
-    const targets = filteredEntries.filter((e) => e.isActive !== activate);
-    if (targets.length === 0) return;
+  // ── Bulk action: activate/deactivate ALL visible (quick path) ──
+  const handleBulkToggleAllVisible = async (activate: boolean) => {
+    const candidates = filteredEntries.filter((e) => e.isActive !== activate);
+    // Entries whose subject is inactive can't be activated.
+    const targets = activate
+      ? candidates.filter((e) => !isSubjectInactive(e))
+      : candidates;
+    const skipped = candidates.length - targets.length;
+
+    if (targets.length === 0) {
+      if (skipped > 0) {
+        setError(
+          'Those entries belong to inactive subjects. Reactivate the subject on the Subjects page first.',
+        );
+      }
+      return;
+    }
+
     setBulkBusy(true);
     setError(null);
     try {
@@ -275,7 +372,7 @@ export default function ProspectusPage() {
       setSuccess(
         `${activate ? 'Activated' : 'Deactivated'} ${targets.length} entr${
           targets.length === 1 ? 'y' : 'ies'
-        }.`,
+        }.${skipped > 0 ? ` ${skipped} skipped (subject inactive).` : ''}`,
       );
       invalidateAfterProspectusChange();
     } catch (err: any) {
@@ -285,7 +382,111 @@ export default function ProspectusPage() {
     }
   };
 
-  // ── Handlers ──
+  // ── Selection helpers ──
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(filteredEntries.map((e) => e.prospectusId)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Selection-based bulk activate/deactivate ──
+  const handleBulkSetActive = async (activate: boolean) => {
+    const candidates = Array.from(selectedIds)
+      .map((id) => allEntries.find((e) => e.prospectusId === id))
+      .filter((e): e is ProspectusRecord => !!e && e.isActive !== activate);
+
+    // Entries whose subject is inactive can't be activated.
+    const targets = activate
+      ? candidates.filter((e) => !isSubjectInactive(e))
+      : candidates;
+    const skipped = candidates.length - targets.length;
+
+    if (targets.length === 0) {
+      if (skipped > 0) {
+        setError(
+          'Those entries belong to inactive subjects. Reactivate the subject on the Subjects page first.',
+        );
+      } else {
+        setSuccess(
+          `All selected entries are already ${activate ? 'active' : 'inactive'}.`,
+        );
+      }
+      return;
+    }
+
+    setBulkActionPending(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(
+        targets.map((e) => toggleProspectusActive(e.prospectusId)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        setError(
+          `${failed} of ${targets.length} entr${
+            targets.length === 1 ? 'y' : 'ies'
+          } failed to ${activate ? 'activate' : 'deactivate'}.`,
+        );
+      } else {
+        setSuccess(
+          `${activate ? 'Activated' : 'Deactivated'} ${targets.length} entr${
+            targets.length === 1 ? 'y' : 'ies'
+          }.${skipped > 0 ? ` ${skipped} skipped (subject inactive).` : ''}`,
+        );
+      }
+      invalidateAfterProspectusChange();
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'Bulk action failed');
+    } finally {
+      setBulkActionPending(false);
+    }
+  };
+
+  // ── Selection-based bulk remove ──
+  const handleBulkRemove = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    setBulkActionPending(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteProspectus(id)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        setError(
+          `${failed} of ${ids.length} entr${
+            ids.length === 1 ? 'y' : 'ies'
+          } failed to remove.`,
+        );
+      } else {
+        setSuccess(
+          `Removed ${ids.length} entr${ids.length === 1 ? 'y' : 'ies'}.`,
+        );
+      }
+      setBulkDeleteConfirmOpen(false);
+      clearSelection();
+      // Do not force-close the panel — if its entry wasn't among the removed
+      // items, it should stay open. If it was, the derivation + cleanup handles it.
+      invalidateAfterProspectusChange();
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'Bulk remove failed');
+    } finally {
+      setBulkActionPending(false);
+    }
+  };
+
+  // ── Row-level handlers ──
   const handleAdd = () => {
     setEditing(null);
     setModalOpen(true);
@@ -299,6 +500,60 @@ export default function ProspectusPage() {
     setModalOpen(true);
     setError(null);
     setSuccess(null);
+  };
+
+  const handleOpenDetail = (entry: ProspectusRecord) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('detail', entry.prospectusId);
+    setSearchParams(next, { replace: true });
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleCloseDetail = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('detail');
+    setSearchParams(next, { replace: true });
+  };
+
+  const handleEditFromDetail = () => {
+    if (!detailLive || !canWrite) return;
+    setEditing(detailLive);
+    handleCloseDetail();
+    setModalOpen(true);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleEditSubjectFromDetail = () => {
+    if (!detailLive?.subjectId) return;
+    // NOTE: Do NOT touch `?detail=` here. Keeping it in `searchParams`
+    // means `returnTo` already contains `&detail=<id>`, so the panel
+    // re-opens after the user cancels / saves / discards on /subjects.
+    const params = new URLSearchParams(searchParams);
+    const returnTo = `/prospectus?${params.toString()}`;
+    navigate(
+      `/subjects?edit=${detailLive.subjectId}&returnTo=${encodeURIComponent(
+        returnTo,
+      )}`,
+    );
+  };
+
+  const handleFillSlotFromDetail = () => {
+    if (!detailLive) return;
+    setFillTarget(detailLive);
+    handleCloseDetail();
+  };
+
+  const handleToggleFromDetail = () => {
+    if (!detailLive) return;
+    toggleMutation.mutate(detailLive.prospectusId);
+  };
+
+  const handleDeleteFromDetail = () => {
+    if (!detailLive) return;
+    setDeleteTarget(detailLive);
+    handleCloseDetail();
   };
 
   // ── Formatting helpers ──
@@ -400,29 +655,47 @@ export default function ProspectusPage() {
           : undefined;
         const isMinor = full?.isMinor ?? false;
         const isPlaceholder = full?.isPlaceholder ?? false;
+        const isSelected = selectedIds.has(e.prospectusId);
         return (
-          <div className="flex flex-col gap-1">
-            <span className="inline-flex items-center gap-1.5">
-              {isMinor && (
+          <div className="flex items-center gap-2">
+            {/* Always-visible selection checkbox (only for writers). */}
+            {canWrite && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={(ev) => {
+                  ev.stopPropagation();
+                  toggleSelect(e.prospectusId);
+                }}
+                onClick={(ev) => ev.stopPropagation()}
+                onMouseDown={(ev) => ev.stopPropagation()}
+                className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer shrink-0"
+                aria-label={`Select ${e.subject?.subjectCode ?? 'prospectus entry'}`}
+              />
+            )}
+            <div className="flex flex-col gap-1">
+              <span className="inline-flex items-center gap-1.5">
+                {isMinor && (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800"
+                    title="Minor subject"
+                  >
+                    <Icon name="school" size={9} />
+                    Minor
+                  </span>
+                )}
+                {e.subject?.subjectCode ?? '—'}
+              </span>
+              {isPlaceholder && (
                 <span
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800"
-                  title="Minor subject"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 w-fit"
+                  title="This is an elective placeholder — fill it with a real course"
                 >
-                  <Icon name="school" size={9} />
-                  Minor
+                  <Icon name="warning" size={10} />
+                  Needs Course
                 </span>
               )}
-              {e.subject?.subjectCode ?? '—'}
-            </span>
-            {isPlaceholder && (
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 w-fit"
-                title="This is an elective placeholder — fill it with a real course"
-              >
-                <Icon name="warning" size={10} />
-                Needs Course
-              </span>
-            )}
+            </div>
           </div>
         );
       },
@@ -473,10 +746,9 @@ export default function ProspectusPage() {
     if (!canWrite) {
       return [
         {
-          label: 'Read only',
-          icon: 'lock',
-          onClick: () => {},
-          disabled: true,
+          label: 'View details',
+          icon: 'info',
+          onClick: () => handleOpenDetail(e),
         },
       ];
     }
@@ -486,7 +758,6 @@ export default function ProspectusPage() {
 
     const actions: RowAction[] = [];
 
-    // Edit Subject Details — deep link to /subjects?edit=<id>
     if (!isPlaceholder && e.subjectId) {
       actions.push({
         label: 'Edit subject info',
@@ -496,7 +767,6 @@ export default function ProspectusPage() {
       actions.push({ divider: true });
     }
 
-    // Fill Slot action — only for placeholders
     if (isPlaceholder) {
       actions.push({
         label: 'Fill Slot',
@@ -508,9 +778,15 @@ export default function ProspectusPage() {
 
     actions.push({ label: 'Edit placement', icon: 'edit', onClick: () => handleEdit(e) });
     actions.push({ divider: true });
+    const subjectInactive = !!full && full.isActive === false;
     actions.push({
-      label: e.isActive ? 'Deactivate' : 'Activate',
+      label: e.isActive
+        ? 'Deactivate'
+        : subjectInactive
+        ? 'Activate (subject inactive)'
+        : 'Activate',
       icon: e.isActive ? 'toggle_off' : 'toggle_on',
+      disabled: !e.isActive && subjectInactive,
       loading:
         toggleMutation.isPending &&
         toggleMutation.variables === e.prospectusId,
@@ -786,9 +1062,29 @@ export default function ProspectusPage() {
             })}
           </div>
 
-          {/* ── Current view stats ── */}
+          {/* ── Current view stats + select-all ── */}
           {currentViewStats.subjects > 0 && (
             <div className="flex flex-wrap items-center gap-3 text-xs">
+              {canWrite && (
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none rounded-md px-1.5 py-0.5 -ml-1.5 hover:bg-slate-100 transition">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={(e) =>
+                      e.target.checked ? selectAllVisible() : clearSelection()
+                    }
+                    className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                  />
+                  <span className="font-semibold text-slate-700">
+                    {allVisibleSelected
+                      ? 'Deselect all'
+                      : someVisibleSelected
+                      ? 'Select all visible'
+                      : 'Select all'}
+                  </span>
+                </label>
+              )}
               <span className="text-slate-500">
                 <strong className="text-slate-800 font-bold text-base">
                   {currentViewStats.subjects}
@@ -810,12 +1106,12 @@ export default function ProspectusPage() {
                   </span>
                 </>
               )}
-              {canWrite && currentViewStats.subjects > 1 && (
+              {canWrite && !hasSelection && currentViewStats.subjects > 1 && (
                 <>
                   <span className="ml-auto" />
                   <button
                     type="button"
-                    onClick={() => handleBulkToggle(true)}
+                    onClick={() => handleBulkToggleAllVisible(true)}
                     disabled={
                       bulkBusy ||
                       currentViewStats.active === currentViewStats.subjects
@@ -828,7 +1124,7 @@ export default function ProspectusPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleBulkToggle(false)}
+                    onClick={() => handleBulkToggleAllVisible(false)}
                     disabled={bulkBusy || currentViewStats.inactive === 0}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                     title="Deactivate all visible entries"
@@ -880,11 +1176,108 @@ export default function ProspectusPage() {
                 emptyMessage="No subjects for this combination yet."
                 noMatchMessage="No subjects match your filters."
                 getActions={getActions}
-                onRowClick={canWrite ? handleEdit : undefined}
+                onRowClick={handleOpenDetail}
               />
             </div>
           )}
         </>
+      )}
+
+      {/* ── Floating bulk action bar (auto-appears when any row is checked) ── */}
+      {hasSelection && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl bg-slate-900 text-white shadow-2xl border border-slate-700 max-w-[calc(100vw-2rem)]">
+          <span className="text-xs sm:text-sm font-semibold px-2 whitespace-nowrap">
+            {selectedIds.size} selected
+          </span>
+          <div className="h-6 w-px bg-slate-700 shrink-0" />
+          <button
+            type="button"
+            onClick={() => handleBulkSetActive(true)}
+            disabled={bulkActionPending}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-600/30 transition disabled:opacity-50 whitespace-nowrap"
+            title="Activate selected"
+          >
+            <Icon name="toggle_on" size={14} className="text-emerald-400" />
+            <span className="hidden sm:inline">Activate</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkSetActive(false)}
+            disabled={bulkActionPending}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-700 transition disabled:opacity-50 whitespace-nowrap"
+            title="Deactivate selected"
+          >
+            <Icon name="toggle_off" size={14} className="text-slate-300" />
+            <span className="hidden sm:inline">Deactivate</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulkDeleteConfirmOpen(true)}
+            disabled={bulkActionPending}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/20 transition disabled:opacity-50 whitespace-nowrap"
+            title="Remove selected"
+          >
+            <Icon name="delete" size={14} />
+            <span className="hidden sm:inline">Remove</span>
+          </button>
+          <div className="h-6 w-px bg-slate-700 shrink-0" />
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={bulkActionPending}
+            className="p-1.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50 shrink-0"
+            aria-label="Clear selection"
+            title="Clear selection"
+          >
+            <Icon name="close" size={14} />
+          </button>
+          {bulkActionPending && (
+            <Icon
+              name="progress_activity"
+              size={14}
+              className="animate-spin text-primary shrink-0"
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Detail side panel ── */}
+      {detailLive && (
+        <ProspectusDetailPanel
+          open={!!detailLive}
+          onClose={handleCloseDetail}
+          entry={detailLive}
+          subject={
+            detailLive.subjectId
+              ? subjectById.get(String(detailLive.subjectId))
+              : undefined
+          }
+          semesterLabel={
+            SEMESTERS.find((s) => s.value === detailLive.semester)?.label ?? ''
+          }
+          isPlaceholder={
+            !!(
+              detailLive.subjectId &&
+              subjectById.get(String(detailLive.subjectId))?.isPlaceholder
+            )
+          }
+          isMinor={
+            !!(
+              detailLive.subjectId &&
+              subjectById.get(String(detailLive.subjectId))?.isMinor
+            )
+          }
+          canWrite={canWrite}
+          togglePending={
+            toggleMutation.isPending &&
+            toggleMutation.variables === detailLive.prospectusId
+          }
+          onEditPlacement={handleEditFromDetail}
+          onEditSubject={handleEditSubjectFromDetail}
+          onFillSlot={handleFillSlotFromDetail}
+          onToggleActive={handleToggleFromDetail}
+          onDelete={handleDeleteFromDetail}
+        />
       )}
 
       {/* ── Add/Edit modal ── */}
@@ -903,7 +1296,6 @@ export default function ProspectusPage() {
           defaultSemester={selectedSemester}
           existingEntries={allEntries}
           onEditSubject={(subjectId) => {
-            // Build the current prospectus URL so SubjectsPage can return here.
             const params = new URLSearchParams(searchParams);
             const returnTo = `/prospectus?${params.toString()}`;
             navigate(
@@ -953,7 +1345,7 @@ export default function ProspectusPage() {
         />
       )}
 
-      {/* ── Delete confirmation ── */}
+      {/* ── Delete confirmation (single) ── */}
       <Modal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -999,6 +1391,63 @@ export default function ProspectusPage() {
               Removing this mapping will not delete the subject itself — only
               its placement in {currentProgram?.programCode}. Existing
               timetable entries referencing this subject may become orphaned.
+            </span>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Bulk delete confirmation ── */}
+      <Modal
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title={`Remove ${selectedIds.size} entr${
+          selectedIds.size === 1 ? 'y' : 'ies'
+        }?`}
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setBulkDeleteConfirmOpen(false)}
+              disabled={bulkActionPending}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkRemove}
+              disabled={bulkActionPending}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
+            >
+              {bulkActionPending && (
+                <Icon
+                  name="progress_activity"
+                  size={14}
+                  className="animate-spin"
+                />
+              )}
+              {bulkActionPending
+                ? 'Removing…'
+                : `Remove ${selectedIds.size}`}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <p className="text-sm text-slate-600">
+            Remove{' '}
+            <strong>
+              {selectedIds.size} entr{selectedIds.size === 1 ? 'y' : 'ies'}
+            </strong>{' '}
+            from the prospectus?
+          </p>
+          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
+            <span>
+              This only removes the mappings — the subjects themselves are
+              untouched. Existing timetable entries referencing these subjects
+              may become orphaned.
             </span>
           </div>
         </div>

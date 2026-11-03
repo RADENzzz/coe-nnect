@@ -48,6 +48,8 @@ export interface ProspectusRecord {
   yearLevel: number;
   semester: SemesterType;
   isActive: boolean;
+  /** Set when the row was auto-deactivated because its subject was deactivated. */
+  deactivatedBySubject?: boolean;
 
   slotLabel?: string | null;
 
