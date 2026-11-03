@@ -167,8 +167,38 @@ export class SubjectsService {
   async toggleActive(id: string, profile: User): Promise<Subject> {
     const found = await this.assertOwnership(id, profile);
     await this.departments.assertDepartmentActive(found.deptId);
-    found.isActive = !found.isActive;
-    return this.repo.save(found);
+
+    const nextActive = !found.isActive;
+    found.isActive = nextActive;
+    const saved = await this.repo.save(found);
+
+    await this.cascadeProspectusActive(id, nextActive);
+
+    return saved;
+  }
+
+  /**
+   * Keep prospectus mappings in sync with their subject.
+   *
+   * Deactivating a subject deactivates its active prospectus rows and marks
+   * them, so reactivating the subject can restore exactly those rows.
+   * Rows a user deactivated by hand are left untouched in both directions.
+   */
+  private async cascadeProspectusActive(
+    subjectId: string,
+    active: boolean,
+  ): Promise<void> {
+    const rows = await this.prospectusRepo.find({
+      where: active
+        ? { subjectId, deactivatedBySubject: true }
+        : { subjectId, isActive: true },
+    });
+
+    for (const row of rows) {
+      row.isActive = active;
+      row.deactivatedBySubject = !active;
+      await this.prospectusRepo.save(row);
+    }
   }
 
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
