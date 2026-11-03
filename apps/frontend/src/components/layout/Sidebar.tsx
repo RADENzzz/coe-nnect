@@ -1,4 +1,11 @@
-import { useRef, useCallback, useEffect } from 'react';
+import {
+  useRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react';
 import { NavLink } from 'react-router-dom';
 import clsx from 'clsx';
 import Icon from '../ui/Icon';
@@ -11,6 +18,101 @@ import {
   type RoleNav,
 } from '../../lib/constants/nav-config';
 
+type NavLinkItem = RoleNav['main'][number];
+type NavTone = 'primary' | 'footer';
+
+const FOCUS_RING =
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50';
+const ICON_BUTTON =
+  `flex items-center justify-center transition-colors rounded ${FOCUS_RING}`;
+const NAV_LINK_BASE =
+  `flex items-center gap-3 font-semibold text-sm transition-colors rounded ${FOCUS_RING}`;
+
+const NAV_TONES: Record<
+  NavTone,
+  { idle: string; active: string; iconIdleClass?: string }
+> = {
+  primary: {
+    idle: 'text-white/80 hover:bg-white/10 hover:text-white',
+    active: 'sidebar-active',
+  },
+  footer: {
+    // Secondary nav reads dimmer at rest, with a warmer active pill.
+    idle: 'text-white/55 hover:bg-white/5 hover:text-white/90',
+    active: 'sidebar-active sidebar-active--footer',
+    iconIdleClass: 'opacity-80',
+  },
+};
+
+interface SidebarNavItemProps {
+  item: NavLinkItem;
+  collapsed: boolean;
+  tone: NavTone;
+}
+
+function SidebarNavItem({ item, collapsed, tone }: SidebarNavItemProps) {
+  const t = NAV_TONES[tone];
+
+  return (
+    <NavLink
+      to={item.path}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) =>
+        clsx(
+          NAV_LINK_BASE,
+          collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
+          isActive ? t.active : t.idle,
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon
+            name={item.icon}
+            filled={isActive}
+            className={isActive ? undefined : t.iconIdleClass}
+          />
+          {!collapsed && <span className="truncate">{item.label}</span>}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+interface SidebarNavSectionProps {
+  items: NavLinkItem[];
+  collapsed: boolean;
+  ariaLabel: string;
+  tone?: NavTone;
+  className?: string;
+}
+
+function SidebarNavSection({
+  items,
+  collapsed,
+  ariaLabel,
+  tone = 'primary',
+  className,
+}: SidebarNavSectionProps) {
+  if (items.length === 0) return null;
+
+  return (
+    <div
+      aria-label={ariaLabel}
+      className={clsx('flex flex-col gap-px px-2', className)}
+    >
+      {items.map((item) => (
+        <SidebarNavItem
+          key={item.path}
+          item={item}
+          collapsed={collapsed}
+          tone={tone}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface SidebarProps {
   nav: RoleNav;
 }
@@ -22,37 +124,49 @@ export default function Sidebar({ nav }: SidebarProps) {
   const collapsed = useUiStore((s) => s.isSidebarCollapsed);
   const hidden = useUiStore((s) => s.isSidebarHidden);
   const pin = useUiStore((s) => s.sidebarPin);
-  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
   const toggleSidebarPin = useUiStore((s) => s.toggleSidebarPin);
 
-  const subtitle =
-    nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle;
+  const subtitle = useMemo(
+    () =>
+      nav.brandSubtitle === 'Department Portal' ? deptName : nav.brandSubtitle,
+    [nav.brandSubtitle, deptName],
+  );
 
   // Filter role-gated items (e.g. Dev Tools is administrator-only)
-  const visibleMain = filterNavByRole(nav.main, profile?.role);
-  const visibleFooter = filterNavByRole(nav.footer, profile?.role);
+  const visibleMain = useMemo(
+    () => filterNavByRole(nav.main, profile?.role),
+    [nav.main, profile?.role],
+  );
+  const visibleFooter = useMemo(
+    () => filterNavByRole(nav.footer, profile?.role),
+    [nav.footer, profile?.role],
+  );
 
   const collapseTimerRef = useRef<number | null>(null);
   const hoveredRef = useRef(false);
 
-  const expand = useCallback(() => {
-    if (collapseTimerRef.current) {
+  const clearCollapseTimer = useCallback(() => {
+    if (collapseTimerRef.current !== null) {
       window.clearTimeout(collapseTimerRef.current);
       collapseTimerRef.current = null;
     }
+  }, []);
+
+  const expand = useCallback(() => {
+    clearCollapseTimer();
     setSidebarCollapsed(false);
-  }, [setSidebarCollapsed]);
+  }, [clearCollapseTimer, setSidebarCollapsed]);
 
   const scheduleCollapse = useCallback(() => {
-    if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+    clearCollapseTimer();
     // A rail pinned open never auto-collapses.
     if (useUiStore.getState().sidebarPin === 'open') return;
     collapseTimerRef.current = window.setTimeout(() => {
       setSidebarCollapsed(true);
       collapseTimerRef.current = null;
     }, 150);
-  }, [setSidebarCollapsed]);
+  }, [clearCollapseTimer, setSidebarCollapsed]);
 
   const handleTogglePin = useCallback(() => {
     const before = useUiStore.getState().sidebarPin;
@@ -65,12 +179,38 @@ export default function Sidebar({ nav }: SidebarProps) {
     }
   }, [toggleSidebarPin, setSidebarCollapsed]);
 
-  const pinLabel =
-    pin === 'auto'
-      ? collapsed
-        ? 'Pin sidebar collapsed'
-        : 'Pin sidebar open'
-      : 'Unpin sidebar';
+  const handleMouseEnter = useCallback(() => {
+    hoveredRef.current = true;
+    // A rail pinned shut stays shut on hover; the pin button is the only
+    // way to open it explicitly.
+    if (useUiStore.getState().sidebarPin !== 'closed') expand();
+  }, [expand]);
+
+  const handleMouseLeave = useCallback(() => {
+    hoveredRef.current = false;
+    scheduleCollapse();
+  }, [scheduleCollapse]);
+
+  const handleBlur = useCallback(
+    (e: FocusEvent<HTMLElement>) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        scheduleCollapse();
+      }
+    },
+    [scheduleCollapse],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLElement>) => {
+      if (e.key === 'Escape' && !collapsed) {
+        setSidebarCollapsed(true);
+      }
+    },
+    [collapsed, setSidebarCollapsed],
+  );
+
+  const isPinned = pin !== 'auto';
+  const pinLabel = isPinned ? 'Unpin sidebar' : 'Pin sidebar open';
 
   // Removed from the layout entirely (not just collapsed) — used while a
   // table/row is being edited so the rail can't be hover-expanded mid-drag.
@@ -79,41 +219,27 @@ export default function Sidebar({ nav }: SidebarProps) {
     // No mouseleave fires when the element unmounts, so clear the hover
     // bookkeeping by hand.
     hoveredRef.current = false;
-    if (collapseTimerRef.current) {
-      window.clearTimeout(collapseTimerRef.current);
-      collapseTimerRef.current = null;
-    }
-  }, [hidden]);
+    clearCollapseTimer();
+  }, [hidden, clearCollapseTimer]);
 
   if (hidden) return null;
 
   return (
     <nav
-      onMouseEnter={() => {
-        hoveredRef.current = true;
-        // A rail pinned shut stays shut on hover; the chevron is the only
-        // way to open it explicitly.
-        if (useUiStore.getState().sidebarPin !== 'closed') expand();
-      }}
-      onMouseLeave={() => {
-        hoveredRef.current = false;
-        scheduleCollapse();
-      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onFocus={expand}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          scheduleCollapse();
-        }
-      }}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
       aria-label="Main navigation"
       data-tour="sidebar"
       className={clsx(
         'hidden md:flex flex-col h-screen bg-[#5c1219] border-r border-black/10 fixed left-0 top-0 z-50 app-sidebar',
-        'transition-[width] duration-200 ease-out',
+        'transition-[width] duration-200 ease-out motion-reduce:transition-none',
         collapsed ? 'w-[68px]' : 'w-64',
       )}
     >
-      {/* Brand + toggle */}
+      {/* Brand + pin (pin only when expanded) */}
       <div
         className={clsx(
           'border-b border-white/10 flex items-center',
@@ -150,127 +276,45 @@ export default function Sidebar({ nav }: SidebarProps) {
         </div>
 
         {!collapsed && (
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={handleTogglePin}
-              aria-pressed={pin !== 'auto'}
-              aria-label={pinLabel}
-              title={
-                pin === 'auto'
-                  ? 'Pin sidebar open — keep it expanded'
-                  : 'Unpin sidebar — back to hover behaviour'
-              }
-              className={clsx(
-                'w-7 h-7 flex items-center justify-center transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-                pin !== 'auto'
-                  ? 'text-white bg-white/15 hover:bg-white/25'
-                  : 'text-white/60 hover:text-white hover:bg-white/10',
-              )}
-            >
-              <Icon name="push_pin" size={16} filled={pin !== 'auto'} />
-            </button>
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
-            >
-              <Icon name="chevron_left" size={18} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {collapsed && (
-        <div className="mx-2 mt-2 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={expand}
-            className="flex-1 h-8 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
-          >
-            <Icon name="chevron_right" size={18} />
-          </button>
           <button
             type="button"
             onClick={handleTogglePin}
-            aria-pressed={pin !== 'auto'}
+            aria-pressed={isPinned}
             aria-label={pinLabel}
             title={
-              pin === 'auto'
-                ? 'Pin sidebar collapsed — stop it expanding on hover'
-                : 'Unpin sidebar — back to hover behaviour'
+              isPinned
+                ? 'Unpin sidebar — back to hover behaviour'
+                : 'Pin sidebar open — keep it expanded'
             }
             className={clsx(
-              'w-8 h-8 flex items-center justify-center transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-              pin !== 'auto'
+              ICON_BUTTON,
+              'w-7 h-7 shrink-0',
+              isPinned
                 ? 'text-white bg-white/15 hover:bg-white/25'
                 : 'text-white/60 hover:text-white hover:bg-white/10',
             )}
           >
-            <Icon name="push_pin" size={16} filled={pin !== 'auto'} />
+            <Icon name="push_pin" size={16} filled={isPinned} />
           </button>
-        </div>
-      )}
-
-      {/* Main Nav */}
-      <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2">
-        {visibleMain.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            title={collapsed ? item.label : undefined}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-                collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
-                isActive
-                  ? 'sidebar-active'
-                  : 'text-white/80 hover:bg-white/10 hover:text-white',
-              )
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <Icon name={item.icon} filled={isActive} />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </>
-            )}
-          </NavLink>
-        ))}
+        )}
       </div>
 
-      {/* Footer Nav */}
-      {visibleFooter.length > 0 && (
-        <div className="flex flex-col gap-px py-2 border-t border-white/10 px-2">
-          {visibleFooter.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              title={collapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-                  collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
-                  isActive
-                    ? 'sidebar-active'
-                    : 'text-white/80 hover:bg-white/10 hover:text-white',
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon name={item.icon} filled={isActive} />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      )}
+      {/* Main Nav */}
+      <SidebarNavSection
+        items={visibleMain}
+        collapsed={collapsed}
+        ariaLabel="Primary navigation"
+        className="flex-1 py-2 overflow-y-auto"
+      />
+
+      {/* Footer Nav — secondary tone */}
+      <SidebarNavSection
+        items={visibleFooter}
+        collapsed={collapsed}
+        ariaLabel="Secondary navigation"
+        tone="footer"
+        className="py-2 border-t border-white/10"
+      />
     </nav>
   );
 }
