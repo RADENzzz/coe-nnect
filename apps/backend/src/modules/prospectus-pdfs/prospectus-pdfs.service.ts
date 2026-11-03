@@ -51,6 +51,29 @@ interface UserProfile {
 const SUBJECT_CODE_RE =
   /^[A-Za-z][A-Za-z0-9&.\-]{1,11}(?:\s+[A-Za-z0-9&.\-]{1,16}){0,4}$/;
 
+/**
+ * Infer the default room type for an imported subject from its unit split.
+ *
+ * - pure lecture   → 'lecture_room'
+ * - mixed lec+lab  → 'any' (the block kind decides which room each session uses)
+ * - pure lab       → 'laboratory'
+ * - no units       → null
+ *
+ * Specialised rooms such as 'computer_lab' and 'drafting_room' are never
+ * inferred: those are optional and must be chosen explicitly by the user.
+ */
+export function inferRoomTypeFromUnits(
+  lectureUnits: number,
+  labUnits: number,
+): string | null {
+  const hasLecture = lectureUnits > 0;
+  const hasLab = labUnits > 0;
+  if (hasLecture && hasLab) return 'any';
+  if (hasLecture) return 'lecture_room';
+  if (hasLab) return 'laboratory';
+  return null;
+}
+
 @Injectable()
 export class ProspectusPdfsService {
   private readonly logger = new Logger(ProspectusPdfsService.name);
@@ -669,8 +692,7 @@ export class ProspectusPdfsService {
           );
         }
 
-        const isMixed = lec > 0 && lab > 0;
-        const inferredRoomType: string | null = isMixed ? 'any' : null;
+        const inferredRoomType = inferRoomTypeFromUnits(lec, lab);
 
         let subject = await this.subjectRepo.findOne({
           where: { subjectCode: code },
@@ -692,9 +714,19 @@ export class ProspectusPdfsService {
           subject = await this.subjectRepo.save(subject);
           subjectsCreated++;
         } else {
+          // Backfill a missing room type from the unit split. A mixed
+          // subject also replaces a stale auto-inferred basic type, but
+          // specialised types the user chose (computer_lab, drafting_room,
+          // other) are never overwritten.
           const current = subject.requiredRoomType ?? null;
-          if (isMixed && current !== 'any') {
-            subject.requiredRoomType = 'any';
+          const isStaleBasicType =
+            inferredRoomType === 'any' &&
+            (current === 'lecture_room' || current === 'laboratory');
+          if (
+            inferredRoomType !== null &&
+            (current === null || isStaleBasicType)
+          ) {
+            subject.requiredRoomType = inferredRoomType;
             await this.subjectRepo.save(subject);
           }
           subjectsExisting++;
@@ -862,7 +894,6 @@ export class ProspectusPdfsService {
     });
     if (existing) return existing;
 
-    const isMixed = params.lec > 0 && params.lab > 0;
     const subject = this.subjectRepo.create({
       subjectCode: slotCode,
       title: params.title,
@@ -873,7 +904,7 @@ export class ProspectusPdfsService {
       isActive: true,
       isMinor: false,
       isPlaceholder: true,
-      requiredRoomType: isMixed ? 'any' : null,
+      requiredRoomType: inferRoomTypeFromUnits(params.lec, params.lab),
     });
     return this.subjectRepo.save(subject);
   }
@@ -895,9 +926,18 @@ export class ProspectusPdfsService {
 
     if (existing) {
       if (!existing.isActive) {
-        existing.isActive = true;
-        await this.prospectusRepo.save(existing);
-        return { created: true };
+        // Don't resurrect a mapping whose subject is inactive — that would
+        // bypass the subject-level deactivation cascade.
+        const subject = await this.subjectRepo.findOne({
+          where: { subjectId: params.subjectId },
+        });
+        if (subject?.isActive) {
+          existing.isActive = true;
+          existing.deactivatedBySubject = false;
+          await this.prospectusRepo.save(existing);
+          return { created: true };
+        }
+        return { created: false };
       }
       return { created: false };
     }

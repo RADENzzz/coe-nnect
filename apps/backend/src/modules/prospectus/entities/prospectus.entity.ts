@@ -37,6 +37,14 @@ export class Prospectus {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  /**
+   * True when this row was deactivated automatically because its subject
+   * was deactivated. Used to restore only cascade-deactivated rows when
+   * the subject is reactivated, leaving manual choices untouched.
+   */
+  @Column({ name: 'deactivated_by_subject', default: false })
+  deactivatedBySubject: boolean;
+
   // ── Multi-session scheduling (Phase 2) ──
   @Column({ name: 'lecture_sessions_per_week', type: 'smallint', default: 1 })
   lectureSessionsPerWeek: number;

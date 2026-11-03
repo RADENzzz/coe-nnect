@@ -143,6 +143,7 @@ export class ProspectusService {
         );
       }
       existing.isActive = true;
+      existing.deactivatedBySubject = false;
       return this.repo.save(existing);
     }
 
@@ -202,7 +203,26 @@ export class ProspectusService {
 
     if (dto.yearLevel !== undefined) found.yearLevel = dto.yearLevel;
     if (dto.semester !== undefined) found.semester = dto.semester;
-    if (dto.isActive !== undefined) found.isActive = dto.isActive;
+    if (dto.isActive !== undefined) {
+      // Activating a mapping is only allowed while its subject is active.
+      if (dto.isActive && !found.isActive) {
+        const subject = await this.subjects.findOne({
+          where: { subjectId: found.subjectId },
+        });
+        if (!subject) {
+          throw new BadRequestException('Subject not found.');
+        }
+        if (!subject.isActive) {
+          throw new BadRequestException(
+            `Subject "${subject.subjectCode}" is inactive. Reactivate it on the Subjects page first.`,
+          );
+        }
+      }
+      found.isActive = dto.isActive;
+      // A manual activation takes ownership of the row back from the
+      // subject-level cascade.
+      if (dto.isActive) found.deactivatedBySubject = false;
+    }
 
     if (dto.lectureSessionsPerWeek !== undefined)
       found.lectureSessionsPerWeek = dto.lectureSessionsPerWeek;
@@ -228,7 +248,24 @@ export class ProspectusService {
 
     await this.assertProgramWriteAccess(found.programId, caller);
 
+    // A mapping may only be activated while its subject is active.
+    // Otherwise the subject-level deactivation cascade is pointless.
+    if (!found.isActive) {
+      const subject = await this.subjects.findOne({
+        where: { subjectId: found.subjectId },
+      });
+      if (!subject) {
+        throw new BadRequestException('Subject not found.');
+      }
+      if (!subject.isActive) {
+        throw new BadRequestException(
+          `Subject "${subject.subjectCode}" is inactive. Reactivate it on the Subjects page first.`,
+        );
+      }
+    }
+
     found.isActive = !found.isActive;
+    if (found.isActive) found.deactivatedBySubject = false;
     await this.repo.save(found);
     return this.findOne(id);
   }
