@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchFacultyUnavailability,
@@ -80,6 +80,11 @@ function gridHas(list: GridBlock[], b: GridBlock): boolean {
   return list.some((x) => sameBlock(x, b));
 }
 
+function extractMessage(err: unknown): string {
+  const e = err as any;
+  return e?.response?.data?.message ?? e?.message ?? 'unknown error';
+}
+
 export default function UnavailabilityModal({
   open,
   onClose,
@@ -92,14 +97,23 @@ export default function UnavailabilityModal({
   const [reason, setReason] = useState('');
   const [draftBlocks, setDraftBlocks] = useState<GridBlock[]>([]);
   const [confirmClose, setConfirmClose] = useState(false);
-  const [savingPhase, setSavingPhase] = useState<'idle' | 'removing' | 'adding'>(
-    'idle',
-  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // After a rollback we deliberately skip the next hydration pass so the
+  // user's draft isn't wiped by the reverted server snapshot.
+  const skipHydrateRef = useRef(false);
+
+  // Stable query key for this modal's data.
+  const existingKey = useMemo(
+    () => ['faculty-unavailability', faculty?.facultyId, termId] as const,
+    [faculty?.facultyId, termId],
+  );
 
   // ── Load existing unavailability ──
   const { data: existing = [], isLoading } = useQuery({
-    queryKey: ['faculty-unavailability', faculty?.facultyId, termId],
+    queryKey: existingKey,
     queryFn: () => fetchFacultyUnavailability(faculty!.facultyId, termId),
     enabled: open && !!faculty,
   });
@@ -151,17 +165,31 @@ export default function UnavailabilityModal({
     [preferences],
   );
 
-  // Rebuild draft when modal opens / term changes / saved data arrives.
+  // Rebuild draft when the modal opens / term changes / server snapshot changes.
+  // Draft-only state (reason, error, success, showAdvanced) is managed in a
+  // separate effect so an in-flight save doesn't blow it away.
   useEffect(() => {
     if (!open) return;
+    if (skipHydrateRef.current) {
+      skipHydrateRef.current = false;
+      return;
+    }
     setDraftBlocks(savedBlocks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, termId, existing.length]);
+
+  // Reset UI-only state when the modal is (re)opened for a different target.
+  useEffect(() => {
+    if (!open) return;
     setReason('');
     setError(null);
     setSuccess(null);
-    setSavingPhase('idle');
+    setIsSaving(false);
+    setJustSaved(false);
     setShowAdvanced(false);
+    skipHydrateRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, termId, existing.length]);
+  }, [open, faculty?.facultyId, termId]);
 
   // ── Mutations ──
   const addMutation = useMutation({
@@ -177,8 +205,6 @@ export default function UnavailabilityModal({
     mutationFn: (id: string) =>
       removeFacultyUnavailability(faculty!.facultyId, id),
   });
-
-  const saving = savingPhase === 'removing' || savingPhase === 'adding';
 
   // ── Diff (true delta) ──
   const diff = useMemo(() => {
@@ -213,17 +239,48 @@ export default function UnavailabilityModal({
     );
   }, [draftBlocks, contextBlocks]);
 
-  // ── Save ──
+  // ── Save (optimistic) ──
   const handleSave = async () => {
-    if (!hasChanges || saving) return;
+    if (!hasChanges || isSaving) return;
     setError(null);
     setSuccess(null);
+    setIsSaving(true);
+    setJustSaved(true);
+    // Auto-hide the "Saved" chip after a beat.
+    window.setTimeout(() => setJustSaved(false), 2000);
+
+    const previous = qc.getQueryData<FacultyUnavailability[]>(existingKey);
+
+    // ⚡ Optimistic write — cache reflects the new state *immediately*.
+    //    IDP rows are preserved untouched; only local rows follow the diff.
+    const optimistic: FacultyUnavailability[] = [
+      ...existing.filter(
+        (u) =>
+          u.source !== 'local' ||
+          !diff.toRemove.some(
+            (r) => r.unavailabilityId === u.unavailabilityId,
+          ),
+      ),
+      ...diff.toAdd.map(
+        (b, i) =>
+          ({
+            unavailabilityId: `temp-${Date.now()}-${i}`,
+            facultyId: faculty!.facultyId,
+            dayOfWeek: b.day as FullDayName,
+            startTime: toHHMM(b.startMin),
+            endTime: toHHMM(b.endMin),
+            source: 'local',
+            reason: reason.trim() || undefined,
+            termId,
+          }) as FacultyUnavailability,
+      ),
+    ];
+    qc.setQueryData(existingKey, optimistic);
 
     const errors: string[] = [];
 
     try {
       if (diff.toRemove.length > 0) {
-        setSavingPhase('removing');
         const results = await Promise.allSettled(
           diff.toRemove.map((u) =>
             removeMutation.mutateAsync(u.unavailabilityId),
@@ -234,18 +291,13 @@ export default function UnavailabilityModal({
             errors.push(
               `Failed to remove ${diff.toRemove[i].dayOfWeek} ${
                 diff.toRemove[i].startTime
-              }: ${
-                (r.reason as any)?.response?.data?.message ??
-                (r.reason as any)?.message ??
-                'unknown error'
-              }`,
+              }: ${extractMessage(r.reason)}`,
             );
           }
         });
       }
 
       if (diff.toAdd.length > 0) {
-        setSavingPhase('adding');
         const results = await Promise.allSettled(
           diff.toAdd.map((b) =>
             addMutation.mutateAsync({
@@ -261,43 +313,43 @@ export default function UnavailabilityModal({
             errors.push(
               `Failed to add ${diff.toAdd[i].day} ${toHHMM(
                 diff.toAdd[i].startMin,
-              )}: ${
-                (r.reason as any)?.response?.data?.message ??
-                (r.reason as any)?.message ??
-                'unknown error'
-              }`,
+              )}: ${extractMessage(r.reason)}`,
             );
           }
         });
       }
 
       if (errors.length > 0) {
+        if (previous) {
+          skipHydrateRef.current = true;
+          qc.setQueryData(existingKey, previous);
+        }
+        setJustSaved(false);
         setError(
           `${errors.length} operation${errors.length === 1 ? '' : 's'} failed:\n` +
             errors.slice(0, 3).join('\n') +
             (errors.length > 3 ? `\n…and ${errors.length - 3} more` : ''),
         );
-        setSavingPhase('idle');
+        // Still refresh so partial success is reflected.
         qc.invalidateQueries({ queryKey: ['faculty-unavailability'] });
         qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
         qc.invalidateQueries({ queryKey: ['faculty'] });
-        return;
+      } else {
+        setSuccess('Unavailability saved.');
+        setReason('');
+        qc.invalidateQueries({ queryKey: ['faculty-unavailability'] });
+        qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+        qc.invalidateQueries({ queryKey: ['faculty'] });
       }
-
-      // Success — refresh everything the page and modal depend on.
-      setSavingPhase('idle');
-      setSuccess('Unavailability saved.');
-      setReason('');
-      qc.invalidateQueries({ queryKey: ['faculty-unavailability'] });
-      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
-      qc.invalidateQueries({ queryKey: ['faculty'] });
     } catch (err) {
-      setError(
-        (err as any)?.response?.data?.message ??
-          (err as any)?.message ??
-          'Save failed',
-      );
-      setSavingPhase('idle');
+      if (previous) {
+        skipHydrateRef.current = true;
+        qc.setQueryData(existingKey, previous);
+      }
+      setJustSaved(false);
+      setError(extractMessage(err));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -309,12 +361,12 @@ export default function UnavailabilityModal({
   }, [success]);
 
   const handleRequestClose = useCallback(() => {
-    if (hasChanges && !saving) {
+    if (hasChanges && !isSaving) {
       setConfirmClose(true);
     } else {
       onClose();
     }
-  }, [hasChanges, saving, onClose]);
+  }, [hasChanges, isSaving, onClose]);
 
   const sortedExisting = useMemo(() => {
     return [...existing].sort((a, b) => {
@@ -324,6 +376,13 @@ export default function UnavailabilityModal({
       return a.startTime.localeCompare(b.startTime);
     });
   }, [existing]);
+
+  const saveLabel =
+    justSaved && !hasChanges
+      ? 'Saved'
+      : hasChanges
+      ? 'Save changes'
+      : 'No changes';
 
   return (
     <>
@@ -337,7 +396,13 @@ export default function UnavailabilityModal({
         size="lg"
         footer={
           <>
-            {hasChanges && (
+            {justSaved && !hasChanges && (
+              <span className="mr-auto text-xs text-emerald-700 font-semibold self-center inline-flex items-center gap-1">
+                <Icon name="check_circle" size={14} />
+                Saved
+              </span>
+            )}
+            {!justSaved && hasChanges && (
               <span className="mr-auto text-xs text-slate-500 self-center">
                 <span className="text-emerald-700 font-semibold">
                   +{diff.added}
@@ -352,31 +417,19 @@ export default function UnavailabilityModal({
             <button
               type="button"
               onClick={handleRequestClose}
-              disabled={saving}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-50 rounded-lg"
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-50 rounded-lg active:scale-[0.98]"
             >
               Close
             </button>
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || isLoading || !hasChanges}
-              className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
+              disabled={isSaving || isLoading || !hasChanges}
+              className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2 active:scale-[0.98]"
             >
-              {saving && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {saving
-                ? savingPhase === 'removing'
-                  ? 'Removing old blocks…'
-                  : 'Adding new blocks…'
-                : hasChanges
-                ? 'Save changes'
-                : 'No changes'}
+              {justSaved && !hasChanges && <Icon name="check" size={14} />}
+              {saveLabel}
             </button>
           </>
         }
@@ -442,7 +495,7 @@ export default function UnavailabilityModal({
                 lockedBlocks={lockedBlocks}
                 contextBlocks={contextBlocks}
                 variant="unavailable"
-                disabled={saving}
+                disabled={isSaving}
               />
             )}
           </div>
@@ -452,7 +505,7 @@ export default function UnavailabilityModal({
             <button
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition rounded-lg"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition rounded-lg active:scale-[0.99]"
             >
               <span className="flex items-center gap-2">
                 <Icon
@@ -618,7 +671,7 @@ export default function UnavailabilityModal({
             <button
               type="button"
               onClick={() => setConfirmClose(false)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg active:scale-[0.98]"
             >
               Keep editing
             </button>
@@ -628,7 +681,7 @@ export default function UnavailabilityModal({
                 setConfirmClose(false);
                 onClose();
               }}
-              className="px-4 py-2 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition rounded-lg"
+              className="px-4 py-2 text-sm font-semibold bg-rose-600 text-white hover:bg-rose-700 transition rounded-lg active:scale-[0.98]"
             >
               Discard
             </button>

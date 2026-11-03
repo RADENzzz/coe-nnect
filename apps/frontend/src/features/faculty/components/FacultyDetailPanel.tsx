@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../../../components/ui/Icon';
 import StatusBadge, { ActiveBadge } from '../../../components/ui/StatusBadge';
+import { isAnyModalOpen } from '../../../components/ui/Modal';
 import type { FacultyRecord, FacultyClass } from '../../../api/faculty.api';
 
 const CLASS_TONE: Record<FacultyClass, 'info' | 'warning' | 'purple' | 'neutral'> = {
@@ -63,11 +64,13 @@ export default function FacultyDetailPanel({
     if (open) setTab('profile');
   }, [faculty?.facultyId, open]);
 
-  // Close on Escape.
+  // Close on Escape — but defer to any modal above us.
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (isAnyModalOpen()) return; // a modal will handle it
+      onClose();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -106,10 +109,9 @@ export default function FacultyDetailPanel({
     !!status?.hasUnavailability,
   ].filter(Boolean).length;
 
-  // NOTE: Using createPortal to escape any parent containers that might cause the "cut off from top" issue
   return createPortal(
     <>
-      {/* Backdrop - Increased z-index to ensure it covers the header */}
+      {/* Backdrop */}
       <div
         className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm transition-opacity ${
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
@@ -118,7 +120,7 @@ export default function FacultyDetailPanel({
         aria-hidden="true"
       />
 
-      {/* Panel - z-[110] to sit above the backdrop and any top nav */}
+      {/* Panel */}
       <aside
         role="dialog"
         aria-modal="true"
@@ -390,7 +392,6 @@ function RecordsTab({
   const TOTAL = 3;
   const complete = configuredCount === TOTAL;
 
-  // Progress arc via SVG (renders cleanly at 40px)
   const radius = 16;
   const stroke = 4;
   const circumference = 2 * Math.PI * radius;
@@ -398,7 +399,6 @@ function RecordsTab({
 
   return (
     <div className="space-y-3">
-      {/* Progress header */}
       <div className="rounded-lg border border-surface-variant bg-surface-container-low px-3 py-3 flex items-center gap-3">
         <div className="relative w-10 h-10 shrink-0">
           <svg
@@ -425,9 +425,7 @@ function RecordsTab({
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={offset}
-              className={
-                complete ? 'text-emerald-500' : 'text-primary'
-              }
+              className={complete ? 'text-emerald-500' : 'text-primary'}
               style={{ transition: 'stroke-dashoffset 300ms ease' }}
             />
           </svg>
@@ -601,7 +599,6 @@ function RecordCard({
       : 'text-slate-500 bg-slate-500/10',
   }[tone];
 
-  // Use a button if it's clickable, otherwise a div (e.g., for foreign faculty)
   const Comp = onClick ? 'button' : 'div';
 
   return (
@@ -643,7 +640,6 @@ function RecordCard({
           {description}
         </p>
 
-        {/* Subtle indicator that the whole card is clickable */}
         {onClick && (
           <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary/80 group-hover:text-primary">
             Manage{' '}

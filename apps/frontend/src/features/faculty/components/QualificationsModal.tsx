@@ -23,6 +23,15 @@ interface Props {
   faculty: FacultyRecord | null;
 }
 
+/**
+ * Normalise whatever a mutation might throw (Axios error, plain Error,
+ * network failure, or a raw string) into a display string.
+ */
+function extractMessage(err: unknown, fallback: string): string {
+  const e = err as any;
+  return e?.response?.data?.message ?? e?.message ?? fallback;
+}
+
 export default function QualificationsModal({ open, onClose, faculty }: Props) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +53,13 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     setError(null);
   }, [faculty?.facultyId, open]);
 
+  const qualsKey = useMemo(
+    () => ['faculty-qualifications', faculty?.facultyId] as const,
+    [faculty?.facultyId],
+  );
+
   const { data: quals = [], isLoading } = useQuery({
-    queryKey: ['faculty-qualifications', faculty?.facultyId],
+    queryKey: qualsKey,
     queryFn: () => fetchFacultyQualifications(faculty!.facultyId),
     enabled: open && !!faculty,
   });
@@ -57,53 +71,94 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
   });
 
   const invalidateQuals = () => {
-    qc.invalidateQueries({
-      queryKey: ['faculty-qualifications', faculty?.facultyId],
-    });
+    qc.invalidateQueries({ queryKey: qualsKey });
     qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
-    qc.invalidateQueries({ queryKey: ['faculty'] });   // ← add
+    qc.invalidateQueries({ queryKey: ['faculty'] });
   };
 
+  // ── add (optimistic) ──
   const addMutation = useMutation({
     mutationFn: (subjectId: string) =>
       addFacultyQualification(faculty!.facultyId, subjectId),
-    onSuccess: () => {
-      invalidateQuals();
-      setSelectedSubjectId('');
-      setSearch('');
-      setError(null);
+    onMutate: async (subjectId) => {
+      await qc.cancelQueries({ queryKey: qualsKey });
+      const previous = qc.getQueryData<FacultyQualification[]>(qualsKey);
+      const subject = subjects.find(
+        (s) => String(s.subjectId) === String(subjectId),
+      );
+      const tempId = `temp-${Date.now()}`;
+      const temp = {
+        qualId: tempId,
+        facultyId: faculty!.facultyId,
+        subjectId,
+        subject,
+      } as FacultyQualification;
+      qc.setQueryData<FacultyQualification[]>(qualsKey, (old) => [
+        ...(old ?? []),
+        temp,
+      ]);
+      return { previous, tempId };
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to add'),
+    onSuccess: (real, _v, ctx) => {
+      qc.setQueryData<FacultyQualification[]>(qualsKey, (old) =>
+        (old ?? []).map((q) => (q.qualId === ctx?.tempId ? real : q)),
+      );
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+      qc.invalidateQueries({ queryKey: ['faculty'] });
+    },
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qualsKey, ctx.previous);
+      setError(extractMessage(err, 'Failed to add'));
+    },
   });
 
+  // ── remove (optimistic) ──
   const removeMutation = useMutation({
     mutationFn: (qualId: string) =>
       removeFacultyQualification(faculty!.facultyId, qualId),
+    onMutate: async (qualId) => {
+      await qc.cancelQueries({ queryKey: qualsKey });
+      const previous = qc.getQueryData<FacultyQualification[]>(qualsKey);
+      qc.setQueryData<FacultyQualification[]>(qualsKey, (old) =>
+        (old ?? []).filter((q) => String(q.qualId) !== String(qualId)),
+      );
+      return { previous };
+    },
     onSuccess: () => {
-      invalidateQuals();
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+      qc.invalidateQueries({ queryKey: ['faculty'] });
       setRemoveTarget(null);
     },
-    onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to remove',
-      ),
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qualsKey, ctx.previous);
+      setError(extractMessage(err, 'Failed to remove'));
+    },
   });
 
+  // ── bulk remove (optimistic) ──
   const bulkRemoveMutation = useMutation({
     mutationFn: (qualIds: string[]) =>
       removeFacultyQualificationsBulk(faculty!.facultyId, qualIds),
+    onMutate: async (qualIds) => {
+      await qc.cancelQueries({ queryKey: qualsKey });
+      const previous = qc.getQueryData<FacultyQualification[]>(qualsKey);
+      const set = new Set(qualIds.map(String));
+      qc.setQueryData<FacultyQualification[]>(qualsKey, (old) =>
+        (old ?? []).filter((q) => !set.has(String(q.qualId))),
+      );
+      return { previous };
+    },
     onSuccess: () => {
-      invalidateQuals();
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+      qc.invalidateQueries({ queryKey: ['faculty'] });
       setSelectedKeys(new Set());
       setBulkConfirmOpen(false);
       setError(null);
     },
-    onError: (err: any) => {
+    onError: (err: any, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qualsKey, ctx.previous);
       setBulkConfirmOpen(false);
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to remove',
-      );
+      setError(extractMessage(err, 'Failed to remove'));
     },
   });
 
@@ -184,7 +239,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     [sortedQuals, selectedKeys],
   );
   const selectedCount = selectedQuals.length;
-  const isBusy = removeMutation.isPending || bulkRemoveMutation.isPending;
 
   const columns: Column<FacultyQualification>[] = [
     {
@@ -235,9 +289,18 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       icon: 'delete',
       danger: true,
       onClick: () => setRemoveTarget(q),
-      disabled: isBusy,
     },
   ];
+
+  const handleAdd = () => {
+    if (!selectedSubjectId) return;
+    const id = selectedSubjectId;
+    // Clear the input *before* the mutation so the row appears instantly.
+    setSelectedSubjectId('');
+    setSearch('');
+    setDropdownOpen(false);
+    addMutation.mutate(id);
+  };
 
   return (
     <>
@@ -253,7 +316,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg active:scale-[0.98]"
           >
             Close
           </button>
@@ -366,14 +429,13 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
               )}
             </div>
             <button
-              onClick={() => {
-                if (selectedSubjectId) addMutation.mutate(selectedSubjectId);
-              }}
-              disabled={!selectedSubjectId || addMutation.isPending}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={handleAdd}
+              disabled={!selectedSubjectId}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
             >
               <Icon name="add" size={16} />
-              {addMutation.isPending ? 'Adding…' : 'Add'}
+              Add
             </button>
           </div>
 
@@ -391,8 +453,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
               <button
                 type="button"
                 onClick={toggleSelectAll}
-                disabled={isBusy}
-                className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                className="text-xs font-semibold text-primary hover:underline"
               >
                 {allSelected ? 'Clear selection' : 'Select all'}
               </button>
@@ -409,16 +470,14 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
                 <button
                   type="button"
                   onClick={() => setSelectedKeys(new Set())}
-                  disabled={isBusy}
-                  className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 rounded-md hover:bg-white transition disabled:opacity-50"
+                  className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 rounded-md hover:bg-white transition active:scale-[0.98]"
                 >
                   Clear
                 </button>
                 <button
                   type="button"
                   onClick={() => setBulkConfirmOpen(true)}
-                  disabled={isBusy}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 transition disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 transition active:scale-[0.98]"
                 >
                   <Icon name="delete" size={14} />
                   Delete selected
@@ -457,26 +516,23 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             <button
               type="button"
               onClick={() => setRemoveTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg active:scale-[0.98]"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={() =>
-                removeTarget && removeMutation.mutate(removeTarget.qualId)
-              }
-              disabled={removeMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
+              onClick={() => {
+                if (!removeTarget) return;
+                const id = removeTarget.qualId;
+                // Optimistic removal in onMutate deletes the row instantly;
+                // close the confirm dialog immediately for zero perceived latency.
+                setRemoveTarget(null);
+                removeMutation.mutate(id);
+              }}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg flex items-center gap-2 active:scale-[0.98]"
             >
-              {removeMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {removeMutation.isPending ? 'Removing…' : 'Remove'}
+              Remove
             </button>
           </>
         }
@@ -490,9 +546,7 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       {/* Batch remove confirmation */}
       <Modal
         open={bulkConfirmOpen}
-        onClose={() => {
-          if (!bulkRemoveMutation.isPending) setBulkConfirmOpen(false);
-        }}
+        onClose={() => setBulkConfirmOpen(false)}
         title="Delete qualifications?"
         size="sm"
         footer={
@@ -500,31 +554,21 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
             <button
               type="button"
               onClick={() => setBulkConfirmOpen(false)}
-              disabled={bulkRemoveMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg disabled:opacity-50"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg active:scale-[0.98]"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={() =>
-                bulkRemoveMutation.mutate(
-                  selectedQuals.map((q) => String(q.qualId)),
-                )
-              }
-              disabled={bulkRemoveMutation.isPending || selectedCount === 0}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
+              onClick={() => {
+                const ids = selectedQuals.map((q) => String(q.qualId));
+                setBulkConfirmOpen(false);
+                bulkRemoveMutation.mutate(ids);
+              }}
+              disabled={selectedCount === 0}
+              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2 active:scale-[0.98]"
             >
-              {bulkRemoveMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {bulkRemoveMutation.isPending
-                ? 'Deleting…'
-                : `Delete ${selectedCount}`}
+              Delete {selectedCount}
             </button>
           </>
         }
