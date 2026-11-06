@@ -124,6 +124,7 @@ export class ProgramsService {
     if (
       caller.role !== 'administrator' &&
       caller.role !== 'college_dean' &&
+      caller.role !== 'college_secretary' &&
       caller.role !== 'department_head'
     ) {
       throw new ForbiddenException(

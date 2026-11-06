@@ -76,7 +76,11 @@ export class ProspectusService {
       throw new BadRequestException('Program not found.');
     }
 
-    if (caller.role === 'administrator' || caller.role === 'college_dean') {
+    if (
+      caller.role === 'administrator' ||
+      caller.role === 'college_dean' ||
+      caller.role === 'college_secretary'
+    ) {
       return program;
     }
 

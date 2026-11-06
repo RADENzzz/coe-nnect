@@ -67,13 +67,13 @@ export class ProgramsController {
     return { data: await this.programs.findOne(id) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post()
   async create(@Body() dto: CreateProgramDto, @Req() req: any) {
     return { data: await this.programs.create(dto, callerFromRequest(req)) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return {
@@ -81,7 +81,7 @@ export class ProgramsController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,

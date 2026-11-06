@@ -196,7 +196,8 @@ export default function ProspectusPdfListPage() {
   const canUpload =
     profile?.role === 'department_head' ||
     profile?.role === 'administrator' ||
-    profile?.role === 'college_dean';
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary';
 
   const hasAnyFilter = !!search;
 

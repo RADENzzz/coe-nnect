@@ -303,7 +303,8 @@ export class SubjectsService {
       }
     } else if (
       profile.role !== 'administrator' &&
-      profile.role !== 'college_dean'
+      profile.role !== 'college_dean' &&
+      profile.role !== 'college_secretary'
     ) {
       throw new ForbiddenException(
         'Only deans and department heads can manage restrictions.',
@@ -369,7 +370,8 @@ export class SubjectsService {
       }
     } else if (
       profile.role !== 'administrator' &&
-      profile.role !== 'college_dean'
+      profile.role !== 'college_dean' &&
+      profile.role !== 'college_secretary'
     ) {
       throw new ForbiddenException(
         'Only deans and department heads can manage restrictions.',
@@ -415,7 +417,8 @@ export class SubjectsService {
       }
     } else if (
       profile.role !== 'administrator' &&
-      profile.role !== 'college_dean'
+      profile.role !== 'college_dean' &&
+      profile.role !== 'college_secretary'
     ) {
       throw new ForbiddenException(
         'Only deans and department heads can manage restrictions.',

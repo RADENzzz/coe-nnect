@@ -63,8 +63,10 @@ export default function FacultyPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Auth-derived flags
-  const isAdminOrDean =
-    profile?.role === 'administrator' || profile?.role === 'college_dean';
+  const isCollegeWide =
+    profile?.role === 'administrator' ||
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
@@ -522,7 +524,7 @@ export default function FacultyPage() {
         onClick: () => toggleMutation.mutate(f.facultyId),
         disabled: toggleMutation.isPending,
       },
-    ...(isAdminOrDean || isDH
+    ...(isCollegeWide || isDH
       ? [
           {
             label: 'Delete',
@@ -841,7 +843,7 @@ export default function FacultyPage() {
           detailFaculty && toggleMutation.mutate(detailFaculty.facultyId)
         }
         onDelete={
-          isAdminOrDean || isDH
+          isCollegeWide || isDH
             ? () => detailFaculty && setDeleteTarget(detailFaculty)
             : undefined
         }

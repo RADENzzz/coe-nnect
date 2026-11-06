@@ -57,7 +57,11 @@ export class FacultyService {
 
     const faculty = await this.findOne(facultyId);
 
-    if (profile.role === 'administrator' || profile.role === 'college_dean') {
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean' ||
+      profile.role === 'college_secretary'
+    ) {
       return faculty;
     }
 

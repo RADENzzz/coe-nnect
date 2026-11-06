@@ -30,7 +30,9 @@ async function main() {
   const password = (await ask('Password (min 8): ')).trim();
   const username = (await ask('Username: ')).trim();
   const role = (
-    await ask('Role (administrator | college_dean | department_head | viewer): ')
+    await ask(
+      'Role (administrator | college_dean | college_secretary | department_head | viewer): ',
+    )
   ).trim();
   const deptId = (await ask('Department ID (optional, blank if none): ')).trim();
   const facultyId = (await ask('Faculty ID (optional, blank if none): ')).trim();

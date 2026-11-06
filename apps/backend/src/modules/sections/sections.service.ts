@@ -42,7 +42,11 @@ export class SectionsService {
 
     const section = await this.findOne(sectionId);
 
-    if (profile.role === 'administrator' || profile.role === 'college_dean') {
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean' ||
+      profile.role === 'college_secretary'
+    ) {
       return section;
     }
 
@@ -66,7 +70,11 @@ export class SectionsService {
     programId: string | null | undefined,
     profile: User,
   ): Promise<void> {
-    if (profile.role === 'administrator' || profile.role === 'college_dean') {
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean' ||
+      profile.role === 'college_secretary'
+    ) {
       return;
     }
     if (profile.role !== 'department_head') {

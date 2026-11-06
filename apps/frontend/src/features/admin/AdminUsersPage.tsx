@@ -25,6 +25,7 @@ type Mode = 'create' | 'edit';
 const ROLE_TONE: Record<string, 'danger' | 'warning' | 'info' | 'neutral'> = {
   administrator: 'danger',
   college_dean: 'warning',
+  college_secretary: 'warning',
   department_head: 'info',
   viewer: 'neutral',
 };
@@ -42,7 +43,7 @@ export default function AdminUsersPage() {
     () => searchParams.get('q') ?? '',
   );
   const [roleFilter, setRoleFilter] = useState<
-    'all' | 'college_dean' | 'department_head'
+    'all' | 'college_dean' | 'college_secretary' | 'department_head'
   >('all');
   const [deptListFilter, setDeptListFilter] = useState<string>('all');
 
@@ -541,13 +542,18 @@ export default function AdminUsersPage() {
             value={roleFilter}
             onChange={(e) =>
               setRoleFilter(
-                e.target.value as 'all' | 'college_dean' | 'department_head',
+                e.target.value as
+                  | 'all'
+                  | 'college_dean'
+                  | 'college_secretary'
+                  | 'department_head',
               )
             }
             className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           >
             <option value="all">All roles</option>
             <option value="college_dean">College Dean</option>
+            <option value="college_secretary">College Secretary</option>
             <option value="department_head">Department Head</option>
           </select>
         </div>
@@ -674,6 +680,7 @@ export default function AdminUsersPage() {
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               >
                 <option value="department_head">Department Head</option>
+                <option value="college_secretary">College Secretary</option>
                 <option value="college_dean">College Dean</option>
                 {mode === 'edit' &&
                   (form.role === 'administrator' || form.role === 'viewer') && (

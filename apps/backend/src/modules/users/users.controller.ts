@@ -39,7 +39,7 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 @ApiTags('Users')
 @ApiBearerAuth('supabase-jwt')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('college_dean')
+@Roles('college_dean', 'college_secretary')
 @Controller('v1/users')
 export class UsersController {
   constructor(private service: UsersService) {}
@@ -47,7 +47,7 @@ export class UsersController {
   // ── Static-prefix routes (before @Get(':id')) ──
 
   @Get('directory')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async findDirectory() {
     const data = await this.service.findDirectory();
     return { data };
@@ -57,14 +57,14 @@ export class UsersController {
    * Self-service password change.
    *
    * Any authenticated user may change their OWN password. This route
-   * overrides the class-level @Roles('college_dean') so DHs (and the
+   * overrides the class-level @Roles('college_dean', 'college_secretary') so DHs (and the
    * hidden dev account) can use it.
    *
    * Route ordering: declared before @Get(':id') — otherwise Nest
    * matches 'me' as a user ID.
    */
   @Post('me/password')
-  @Roles('college_dean', 'department_head', 'administrator')
+  @Roles('college_dean', 'college_secretary', 'department_head', 'administrator')
   @HttpCode(200)
   @Auditable({ action: 'user.password_changed', source: 'Users' })
   async changeOwnPassword(@Req() req: any, @Body() dto: ChangePasswordDto) {

@@ -31,7 +31,6 @@ interface Props {
   departments: Department[];
   isDH: boolean;
   myDeptId: string | null;
-  isAdminOrDean: boolean;
   onClose: () => void;
   onSuccess: (message: string) => void;
   onError: (message: string) => void;
@@ -47,7 +46,6 @@ export default function RoomFormModal({
   departments,
   isDH,
   myDeptId,
-  isAdminOrDean,
   onClose,
   onSuccess,
   onError,

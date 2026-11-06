@@ -33,7 +33,11 @@ export class RoomsService {
 
     const room = await this.findOne(roomId);
 
-    if (profile.role === 'administrator' || profile.role === 'college_dean') {
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean' ||
+      profile.role === 'college_secretary'
+    ) {
       return room;
     }
 
