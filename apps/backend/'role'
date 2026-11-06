@@ -1,0 +1,13 @@
+◇ injected env (14) from .env
+┌─────────┬─────────────┬───────────────────┬─────────────────────────┬──────────────────────────┐
+│ (index) │ username    │ role              │ email                   │ created_at               │
+├─────────┼─────────────┼───────────────────┼─────────────────────────┼──────────────────────────┤
+│ 0       │ 'sec'       │ 'viewer'          │ 'sec@wmsu.edu.ph'       │ 2026-11-06T00:41:50.583Z │
+│ 1       │ 'dean'      │ 'college_dean'    │ 'dean@wmsu.edu.ph'      │ 2026-11-01T08:16:01.593Z │
+│ 2       │ 'head.enve' │ 'department_head' │ 'head.enve@wmsu.edu.ph' │ 2026-11-01T08:16:01.130Z │
+│ 3       │ 'head.ge'   │ 'department_head' │ 'head.ge@wmsu.edu.ph'   │ 2026-11-01T08:16:00.686Z │
+│ 4       │ 'head.ee'   │ 'department_head' │ 'head.ee@wmsu.edu.ph'   │ 2026-11-01T08:16:00.236Z │
+│ 5       │ 'head.cpe'  │ 'department_head' │ 'head.cpe@wmsu.edu.ph'  │ 2026-11-01T08:15:59.764Z │
+│ 6       │ 'dev-admin' │ 'administrator'   │ 'dev-admin@wmsu.edu.ph' │ 2026-10-23T01:17:12.893Z │
+└─────────┴─────────────┴───────────────────┴─────────────────────────┴──────────────────────────┘
+ERR syntax error at or near "as"
