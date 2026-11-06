@@ -57,7 +57,11 @@ export default function MaintenancePage() {
   // Redirect out once the wall is no longer shown.
   useEffect(() => {
     if (!data || showWall) return;
-    if (isDev || profile?.role === 'college_dean') {
+    if (
+      isDev ||
+      profile?.role === 'college_dean' ||
+      profile?.role === 'college_secretary'
+    ) {
       navigate('/dean/dashboard', { replace: true });
     } else if (profile?.role === 'department_head') {
       navigate('/dashboard', { replace: true });

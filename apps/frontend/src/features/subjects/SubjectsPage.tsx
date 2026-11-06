@@ -74,11 +74,13 @@ export default function SubjectsPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
 
-  const isAdminOrDean =
-    profile?.role === 'administrator' || profile?.role === 'college_dean';
+  const isCollegeWide =
+    profile?.role === 'administrator' ||
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
-  const canManage = isDH || isAdminOrDean;
+  const canManage = isDH || isCollegeWide;
 
   const [restrictionsOpen, setRestrictionsOpen] = useState(false);
   const [mode, setMode] = useState<Mode | null>(null);

@@ -9,7 +9,12 @@ export interface AuthUser {
   id: string;
   username: string;
   email: string;
-  role: 'administrator' | 'college_dean' | 'department_head' | 'viewer';
+  role:
+    | 'administrator'
+    | 'college_dean'
+    | 'college_secretary'
+    | 'department_head'
+    | 'viewer';
   deptId: string | null;
   deptCode: string | null;
   deptName: string | null;

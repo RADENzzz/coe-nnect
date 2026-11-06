@@ -64,7 +64,7 @@ export class FacultyController {
   // ── FR 3.1.3 — Bulk status summary (static prefix, before :id) ──
 
   @Get('status-summary')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async getStatusSummary(@Query() query: FacultyStatusSummaryQueryDto) {
     const data = await this.faculty.getStatusSummary(query.deptId);
     return { data };
@@ -77,7 +77,7 @@ export class FacultyController {
     return { data: await this.faculty.findQualifications(id) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post(':id/qualifications')
   async addQualification(
     @Param('id') id: string,
@@ -87,7 +87,7 @@ export class FacultyController {
     return { data: await this.faculty.addQualification(id, dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/qualifications/:qualId')
   async updateQualification(
     @Param('id') id: string,
@@ -105,7 +105,7 @@ export class FacultyController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post(':id/qualifications/bulk-delete')
   @Auditable({
     action: 'faculty.qualification.bulk_delete',
@@ -121,7 +121,7 @@ export class FacultyController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete(':id/qualifications/:qualId')
   async removeQualification(
     @Param('id') id: string,
@@ -138,7 +138,7 @@ export class FacultyController {
     return { data: await this.faculty.findPreferences(id) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post(':id/preferences')
   async addPreference(
     @Param('id') id: string,
@@ -148,7 +148,7 @@ export class FacultyController {
     return { data: await this.faculty.addPreference(id, dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/preferences/:preferenceId')
   async updatePreference(
     @Param('id') id: string,
@@ -166,7 +166,7 @@ export class FacultyController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete(':id/preferences/:preferenceId')
   async removePreference(
     @Param('id') id: string,
@@ -181,7 +181,7 @@ export class FacultyController {
   // ═══════════════════════════════════════════════════════════
 
   @Get(':id/unavailability')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async findUnavailability(
     @Param('id') id: string,
     @Query('termId') termId?: string,
@@ -191,7 +191,7 @@ export class FacultyController {
   }
 
   @Post(':id/unavailability')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Auditable({
     action: 'faculty.unavailability.create',
     source: 'Faculty',
@@ -205,7 +205,7 @@ export class FacultyController {
   }
 
   @Patch(':id/unavailability/:uid')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Auditable({
     action: 'faculty.unavailability.update',
     source: 'Faculty',
@@ -220,7 +220,7 @@ export class FacultyController {
   }
 
   @Delete(':id/unavailability/:uid')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Auditable({
     action: 'faculty.unavailability.delete',
     source: 'Faculty',
@@ -240,13 +240,13 @@ export class FacultyController {
     return { data: await this.faculty.findOne(id) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post()
   async create(@Body() dto: CreateFacultyDto, @Req() req: any) {
     return { data: await this.faculty.create(dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -256,13 +256,13 @@ export class FacultyController {
     return { data: await this.faculty.update(id, dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return { data: await this.faculty.toggleActive(id, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.faculty.remove(id, req.profile);

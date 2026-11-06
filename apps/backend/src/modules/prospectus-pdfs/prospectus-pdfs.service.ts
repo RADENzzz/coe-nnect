@@ -507,7 +507,11 @@ export class ProspectusPdfsService {
           'You can only import into programs from your own department.',
         );
       }
-    } else if (user.role !== 'administrator' && user.role !== 'college_dean') {
+    } else if (
+      user.role !== 'administrator' &&
+      user.role !== 'college_dean' &&
+      user.role !== 'college_secretary'
+    ) {
       throw new ForbiddenException('Insufficient role for import.');
     }
 
@@ -982,7 +986,11 @@ export class ProspectusPdfsService {
     user: UserProfile,
     deptId: string,
   ): void {
-    if (user.role === 'administrator' || user.role === 'college_dean') {
+    if (
+      user.role === 'administrator' ||
+      user.role === 'college_dean' ||
+      user.role === 'college_secretary'
+    ) {
       return;
     }
     if (user.role === 'department_head') {

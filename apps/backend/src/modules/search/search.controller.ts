@@ -13,7 +13,7 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  @Roles('administrator', 'college_dean', 'department_head')
+  @Roles('administrator', 'college_dean', 'college_secretary', 'department_head')
   async search(
     @Query('q') q: string,
     @Query('limit') limit: string | undefined,

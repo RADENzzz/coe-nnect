@@ -50,28 +50,28 @@ export class TermsController {
   }
 
   @Auditable({ action: 'term.create', source: 'Terms' })
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Post()
   async create(@Body() dto: CreateTermDto) {
     return { data: await this.terms.create(dto) };
   }
 
   @Auditable({ action: 'term.deactivate', source: 'Terms' })
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Patch(':id/deactivate')
   async deactivate(@Param('id') id: string) {
     return { data: await this.terms.deactivate(id) };
   }
 
   @Auditable({ action: 'term.activate', source: 'Terms' })
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Patch(':id/activate')
   async activate(@Param('id') id: string) {
     return { data: await this.terms.activate(id) };
   }
 
   @Auditable({ action: 'term.delete', source: 'Terms' })
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.terms.remove(id);

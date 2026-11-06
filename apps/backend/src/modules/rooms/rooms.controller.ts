@@ -60,14 +60,14 @@ export class RoomsController {
    * catchall — Nest resolves in declaration order.
    */
   @Get('preferences/all')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async listAllPreferences() {
     const data = await this.rooms.findAllPreferences();
     return { data };
   }
 
   @Get('preferences')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async listPreferences(@Query('roomId') roomId: string, @Req() req: any) {
     const data = await this.rooms.findPreferencesForRoom(
       roomId,
@@ -77,7 +77,7 @@ export class RoomsController {
   }
 
   @Post('preferences')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async upsertPreference(
     @Body() dto: CreateRoomPreferenceDto,
     @Req() req: any,
@@ -87,7 +87,7 @@ export class RoomsController {
   }
 
   @Delete('preferences/:id')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   async removePreference(@Param('id') id: string, @Req() req: any) {
     return this.rooms.removePreference(id, req.profile);
   }
@@ -101,13 +101,13 @@ export class RoomsController {
     return { data: await this.rooms.findOne(id) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post()
   async create(@Body() dto: CreateRoomDto, @Req() req: any) {
     return { data: await this.rooms.create(dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -117,13 +117,13 @@ export class RoomsController {
     return { data: await this.rooms.update(id, dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return { data: await this.rooms.toggleActive(id, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.rooms.remove(id, req.profile);

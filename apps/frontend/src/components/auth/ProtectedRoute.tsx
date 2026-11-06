@@ -52,6 +52,7 @@ export default function ProtectedRoute({
     let fallback = '/dashboard';
     if (profile.role === 'administrator') fallback = '/dean';
     if (profile.role === 'college_dean') fallback = '/dean';
+    if (profile.role === 'college_secretary') fallback = '/dean';
     
     return <Navigate to={fallback} replace />;
   }

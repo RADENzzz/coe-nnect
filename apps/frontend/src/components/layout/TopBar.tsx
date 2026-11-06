@@ -205,7 +205,8 @@ export default function TopBar({ label }: TopBarProps) {
   const openMobileDrawer = useUiStore((s) => s.openMobileDrawer);
   const profile = useAuthStore((s) => s.profile);
   const isDevAccount = profile?.role === 'administrator';
-  const isDean = profile?.role === 'college_dean';
+  const isDean =
+    profile?.role === 'college_dean' || profile?.role === 'college_secretary';
   const logout = useLogout();
   const navigate = useNavigate();
   const location = useLocation();

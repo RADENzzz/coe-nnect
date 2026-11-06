@@ -33,9 +33,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
-  // Viewers and the dev account don't get chat.
+  // Viewers, the dev account, and the college secretary (chat is
+  // dean/DH only on the API) don't get chat.
   const isEligible =
-    profile?.role !== 'viewer' && profile?.role !== 'administrator';
+    profile?.role !== 'viewer' &&
+    profile?.role !== 'administrator' &&
+    profile?.role !== 'college_secretary';
 
   const { data: conversations = [] } = useConversations(isEligible);
 

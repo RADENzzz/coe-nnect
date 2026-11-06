@@ -46,11 +46,13 @@ export default function RoomsPage() {
   const profile = useAuthStore((s) => s.profile);
   const [searchParams] = useSearchParams();
 
-  const isAdminOrDean =
-    profile?.role === 'administrator' || profile?.role === 'college_dean';
+  const isCollegeWide =
+    profile?.role === 'administrator' ||
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
-  const canCreate = isDH || isAdminOrDean;
+  const canCreate = isDH || isCollegeWide;
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<RoomRecord | null>(null);
@@ -101,7 +103,7 @@ export default function RoomsPage() {
   const { data: allPreferences = [] } = useQuery({
     queryKey: ['room-preferences', 'all'],
     queryFn: fetchAllRoomPreferences,
-    enabled: !!user && (isDH || isAdminOrDean),
+    enabled: !!user && (isDH || isCollegeWide),
     staleTime: 30_000,
   });
 
@@ -484,7 +486,7 @@ export default function RoomsPage() {
 
     const actions: RowAction[] = [];
 
-    if (!r.deptId && (isDH || isAdminOrDean)) {
+    if (!r.deptId && (isDH || isCollegeWide)) {
       actions.push({
         label: 'Preferences',
         icon: 'star',
@@ -504,7 +506,7 @@ export default function RoomsPage() {
       },
     );
 
-    if (isAdminOrDean || isDH) {
+    if (isCollegeWide || isDH) {
       actions.push({ divider: true });
       actions.push({
         label: 'Delete',
@@ -938,7 +940,7 @@ export default function RoomsPage() {
         departmentLabel={deptName}
         isForeign={detailTarget ? isForeign(detailTarget) : false}
         canManagePreferences={
-          (isDH || isAdminOrDean) && !detailTarget?.deptId
+          (isDH || isCollegeWide) && !detailTarget?.deptId
         }
         onEdit={() => {
           if (detailTarget) openEdit(detailTarget);
@@ -962,7 +964,6 @@ export default function RoomsPage() {
         departments={departments}
         isDH={isDH}
         myDeptId={myDeptId}
-        isAdminOrDean={isAdminOrDean}
         onClose={closeForm}
         onSuccess={handleFormSuccess}
         onError={(msg) => setError(msg)}

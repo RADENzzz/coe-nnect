@@ -12,6 +12,7 @@ import { createFakeSupabase } from './fakes/supabase.fake';
 import { createFakeSystemStatus } from './fakes/system-status.fake';
 import { createTestApp } from './helpers/create-test-app';
 import {
+  collegeSecretaryProfile,
   deanProfile,
   departmentHeadProfile,
   inactiveProfile,
@@ -73,6 +74,19 @@ describe('Role isolation (e2e)', () => {
       'cs',
       departmentHeadProfile,
       50,
+    );
+  });
+
+  it('allows a college secretary to use the search endpoint college-wide', async () => {
+    userRepo.findOne.mockResolvedValue(collegeSecretaryProfile);
+
+    const response = await getSearch().expect(200);
+
+    expect(response.body).toEqual({ query: 'cs', results: [] });
+    expect(searchService.search).toHaveBeenCalledWith(
+      'cs',
+      collegeSecretaryProfile,
+      20,
     );
   });
 

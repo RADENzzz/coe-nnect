@@ -36,7 +36,7 @@ function setupSwagger(app: any, apiPrefix: string) {
       [
         'College of Engineering Scheduling System — Western Mindanao State University.',
         '',
-        '**Roles:** `college_dean`, `department_head`, `administrator` (hidden dev).',
+        '**Roles:** `college_dean`, `college_secretary`, `department_head`, `administrator` (hidden dev).',
         '',
         '**Auth:** Bearer JWT (Supabase access token).',
         'Click **Authorize** and paste a Supabase access token.',

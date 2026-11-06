@@ -37,13 +37,13 @@ export class DesignationsController {
     return { data: await this.config.findAllDesignations() };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Post()
   async create(@Body() dto: CreateDesignationDto) {
     return { data: await this.config.createDesignation(dto) };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -52,7 +52,7 @@ export class DesignationsController {
     return { data: await this.config.updateDesignation(id, dto) };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     return this.config.removeDesignation(id);

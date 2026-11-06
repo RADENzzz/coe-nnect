@@ -82,7 +82,11 @@ export class AuthService {
     // Dean/Admin are never walled — they need to see all departments to
     // reactivate one. Return true regardless of any dept.
     let deptActive: boolean | null = null;
-    if (profile.role === 'college_dean' || profile.role === 'administrator') {
+    if (
+      profile.role === 'college_dean' ||
+      profile.role === 'college_secretary' ||
+      profile.role === 'administrator'
+    ) {
       deptActive = true;
     } else if (profile.department) {
       deptActive = profile.department.isActive === true;

@@ -13,6 +13,7 @@ import { Department } from '../../departments/entities/department.entity';
 export type UserRole =
   | 'administrator'
   | 'college_dean'
+  | 'college_secretary'
   | 'department_head'
   | 'viewer';
 
@@ -35,7 +36,13 @@ export class User {
 
   @Column({
     type: 'enum',
-    enum: ['administrator', 'college_dean', 'department_head', 'viewer'],
+    enum: [
+      'administrator',
+      'college_dean',
+      'college_secretary',
+      'department_head',
+      'viewer',
+    ],
   })
   role: UserRole;
 

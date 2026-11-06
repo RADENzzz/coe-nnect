@@ -4,6 +4,7 @@ import { User } from '@supabase/supabase-js';
 export type UserRole =
   | 'administrator'
   | 'college_dean'
+  | 'college_secretary'
   | 'department_head'
   | 'viewer';
 
