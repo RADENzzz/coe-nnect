@@ -30,7 +30,7 @@ export default function FacultyPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Form modal state — the modal owns the form
   const [mode, setMode] = useState<Mode | null>(null);
@@ -111,6 +111,22 @@ export default function FacultyPage() {
     for (const row of statusSummary) m.set(row.facultyId, row);
     return m;
   }, [statusSummary]);
+
+  // Deep-link receiver: /faculty?faculty=<id> opens that instructor's panel.
+  const lastFacultyParam = useRef<string | null>(null);
+  useEffect(() => {
+    const facultyId = searchParams.get('faculty');
+    if (!facultyId || facultyId === lastFacultyParam.current) return;
+    if (isLoading) return;
+
+    const match = faculty.find((f) => String(f.facultyId) === facultyId);
+    lastFacultyParam.current = facultyId;
+    if (match) setDetailFaculty(match);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('faculty');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, faculty, isLoading]);
 
   // Auto-dismiss success
   useEffect(() => {

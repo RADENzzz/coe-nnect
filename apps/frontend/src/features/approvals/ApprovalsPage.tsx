@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -95,6 +96,10 @@ export default function ApprovalsPage() {
   // In-flight row mutation (for disabling per-row actions)
   const [mutatingId, setMutatingId] = useState<string | null>(null);
 
+  // Deep-link receiver: /approvals?request=<id> or /dean/requests?request=<id>
+  const [searchParams, setSearchParams] = useSearchParams();
+  const lastRequestParam = useRef<string | null>(null);
+
   // Auto-dismiss toasts
   useEffect(() => {
     if (!success) return;
@@ -135,6 +140,25 @@ export default function ApprovalsPage() {
     queryFn: fetchFacultyRequests,
     enabled: !!user,
   });
+
+  // Open the exact request referenced by a notification deep link.
+  useEffect(() => {
+    const requestId = searchParams.get('request');
+    if (!requestId || requestId === lastRequestParam.current) return;
+    if (isLoading) return;
+
+    const match = requests.find((r) => String(r.requestId) === requestId);
+    lastRequestParam.current = requestId;
+    if (match) {
+      setDetailTarget(match);
+    } else {
+      setError(`Request #${requestId} is not visible to you.`);
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('request');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, requests, isLoading]);
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],

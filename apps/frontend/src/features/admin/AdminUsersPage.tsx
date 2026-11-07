@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -33,7 +33,7 @@ const ROLE_TONE: Record<string, 'danger' | 'warning' | 'info' | 'neutral'> = {
 export default function AdminUsersPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<UserRecord | null>(null);
@@ -243,6 +243,22 @@ export default function AdminUsersPage() {
     setError(null);
     setSuccess(null);
   };
+
+  // Deep-link receiver: /users?user=<id> (or /dean/users?user=<id>).
+  const lastUserParam = useRef<string | null>(null);
+  useEffect(() => {
+    const userId = searchParams.get('user');
+    if (!userId || userId === lastUserParam.current) return;
+    if (isLoading) return;
+
+    const match = users.find((u) => String(u.userId) === userId);
+    lastUserParam.current = userId;
+    if (match) openEdit(match);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('user');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, users, isLoading]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,

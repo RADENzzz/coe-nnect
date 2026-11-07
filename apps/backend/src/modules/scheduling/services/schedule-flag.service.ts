@@ -35,6 +35,7 @@ export class ScheduleFlagService {
 
     const found = await this.scheduleRepo.findOne({
       where: { scheduleId: id },
+      relations: ['subject', 'sectionRef', 'room', 'term', 'faculty'],
     });
     if (!found) throw new NotFoundException('Schedule entry not found');
 
@@ -51,17 +52,47 @@ export class ScheduleFlagService {
 
     const ownerDHs = await this.recipients.departmentHeadsOfSchedule(id);
     const dean = await this.recipients.collegeDean();
+
+    const subjectCode = found.subject?.subjectCode ?? null;
+    const subjectTitle = found.subject?.title ?? null;
+    const sectionCode =
+      found.sectionRef?.sectionCode ?? found.section ?? null;
+    const roomCode = found.room?.roomNumber ?? found.externalRoomName ?? null;
+    const termName = found.term?.termName ?? null;
+    const facultyName = found.faculty
+      ? `${found.faculty.firstName ?? ''} ${found.faculty.lastName ?? ''}`.trim() ||
+        null
+      : found.externalFacultyName ?? null;
+    const timeLabel =
+      found.startTime && found.endTime
+        ? `${found.startTime.slice(0, 5)}–${found.endTime.slice(0, 5)}`
+        : found.startTime?.slice(0, 5) ?? null;
+    const entryLabel =
+      [subjectCode, sectionCode].filter(Boolean).join(' · ') ||
+      'Schedule entry';
+
     await this.dispatcher.dispatch('schedule.flagged', {
       recipientUserIds: this.recipients.uniq([...ownerDHs, ...dean]),
-      title: 'Schedule entry flagged',
-      body: `An entry was flagged for review: ${reason}`,
+      title: `${entryLabel} flagged for review`,
+      body: [reason, roomCode, found.dayOfWeek, timeLabel]
+        .filter(Boolean)
+        .join(' · '),
       entityType: 'schedule',
       entityId: id,
       payload: {
         reason,
         flaggedBy: user.userId,
-        flaggedByName: user.email ?? null,
-        subjectCode: null,
+        flaggedByName: user.username ?? user.email ?? null,
+        subjectCode,
+        subjectTitle,
+        sectionCode,
+        roomCode,
+        termName,
+        facultyName,
+        dayOfWeek: found.dayOfWeek,
+        startTime: found.startTime,
+        endTime: found.endTime,
+        deptId: found.deptId,
       },
     });
 

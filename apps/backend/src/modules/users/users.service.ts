@@ -164,15 +164,24 @@ export class UsersService {
       ? admins.filter((id) => id !== actingUserId)
       : admins;
 
+    const dept = saved.deptId
+      ? await this.deptRepo.findOne({ where: { deptId: saved.deptId } })
+      : null;
+
     await this.dispatcher.dispatch('user.created', {
       recipientUserIds: recipients,
-      title: 'User account created',
-      body: `${saved.username} was created with role ${saved.role}.`,
+      title: `User account created: ${saved.username}`,
+      body:
+        `${saved.username} (${saved.role.replace(/_/g, ' ')}) was created` +
+        (dept?.deptCode ? ` in ${dept.deptCode}.` : '.'),
       entityType: 'user',
       entityId: String(saved.userId),
       payload: {
         role: saved.role,
         deptId: saved.deptId ?? null,
+        deptCode: dept?.deptCode ?? null,
+        deptName: dept?.deptName ?? null,
+        email: saved.email,
         createdBy: actingUserId ?? null,
       },
     });
@@ -228,15 +237,24 @@ export class UsersService {
         ? admins.filter((id) => id !== actingUserId)
         : admins;
 
+      const dept = saved.deptId
+        ? await this.deptRepo.findOne({ where: { deptId: saved.deptId } })
+        : null;
+
       await this.dispatcher.dispatch('user.deactivated', {
         recipientUserIds: recipients,
-        title: 'User account deactivated',
-        body: `${saved.username} was deactivated.`,
+        title: `User account deactivated: ${saved.username}`,
+        body:
+          `${saved.username} (${saved.role.replace(/_/g, ' ')}) was deactivated` +
+          (dept?.deptCode ? ` · ${dept.deptCode}.` : '.'),
         entityType: 'user',
         entityId: String(saved.userId),
         payload: {
           role: saved.role,
           deptId: saved.deptId ?? null,
+          deptCode: dept?.deptCode ?? null,
+          deptName: dept?.deptName ?? null,
+          email: saved.email,
           deactivatedBy: actingUserId ?? null,
         },
       });

@@ -8,6 +8,10 @@ import { SupabaseService } from '../../../database/supabase.service';
 import { ConstraintsService } from '../../constraints/constraints.service';
 import { NotificationDispatcherService } from '../../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../../notifications/recipients.service';
+import {
+  loadDeptLabel,
+  loadTermName,
+} from '../../notifications/notification-context';
 import { Schedule } from '../entities/schedule.entity';
 import { RuleContextBuilder } from './rule-context.builder';
 import { SchedulingCoverageService } from './scheduling-coverage.service';
@@ -180,13 +184,31 @@ export class AutoGenerateService {
     this.autoGenerateInFlight.add(key);
 
     const starterDHs = await this.recipients.departmentHeadsOf(deptId);
+    const contextDb = this.supabase.getAdminClient();
+    const [dept, termName] = await Promise.all([
+      loadDeptLabel(contextDb, deptId),
+      loadTermName(contextDb, termId),
+    ]);
+    const deptLabel =
+      dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
+
     await this.dispatcher.dispatch('auto_generate.started', {
       recipientUserIds: starterDHs,
-      title: 'Auto-generate started',
-      body: `Schedule generation started for term ${termId}.`,
+      title: `Auto-generate started: ${deptLabel}`,
+      body:
+        `Schedule generation started for ${deptLabel}` +
+        (termName ? ` · ${termName}` : '') +
+        '.',
       entityType: 'term',
       entityId: termId,
-      payload: { deptId, triggeredBy: userId },
+      payload: {
+        deptId,
+        deptCode: dept.deptCode,
+        deptName: dept.deptName,
+        termId,
+        termName,
+        triggeredBy: userId,
+      },
     });
 
     try {
@@ -288,21 +310,32 @@ export class AutoGenerateService {
         const dean = await this.recipients.collegeDean();
         await this.dispatcher.dispatch('room_sufficiency.below_threshold', {
           recipientUserIds: this.recipients.uniq([...admins, ...dean]),
-          title: 'Room capacity below threshold',
-          body: sufficiency.hint,
-          entityType: 'term',
-          entityId: termId,
-          payload: { deptId, deficits: sufficiency.deficits },
-        });
-
-        await this.dispatcher.dispatch('auto_generate.failed', {
-          recipientUserIds: starterDHs,
-          title: 'Auto-generate failed',
+          title: `Room shortage: ${deptLabel}`,
           body: sufficiency.hint,
           entityType: 'term',
           entityId: termId,
           payload: {
             deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
+            deficits: sufficiency.deficits,
+          },
+        });
+
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: starterDHs,
+          title: `Auto-generate failed: ${deptLabel}`,
+          body: sufficiency.hint,
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
             reason: 'insufficient_rooms',
             deficits: sufficiency.deficits,
           },
@@ -327,12 +360,16 @@ export class AutoGenerateService {
 
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
-          title: 'Auto-generate failed',
+          title: `Auto-generate failed: ${deptLabel}`,
           body: 'Solver service is unavailable. Please try again later.',
           entityType: 'term',
           entityId: termId,
           payload: {
             deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
             reason: 'solver_unavailable',
             error: outcome.error.message,
           },
@@ -347,11 +384,18 @@ export class AutoGenerateService {
 
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
-          title: 'Auto-generate failed',
+          title: `Auto-generate failed: ${deptLabel}`,
           body: outcome.message ?? 'Solver returned no solution.',
           entityType: 'term',
           entityId: termId,
-          payload: { deptId, reason: 'no_solution' },
+          payload: {
+            deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
+            reason: 'no_solution',
+          },
         });
 
         return {
@@ -371,12 +415,16 @@ export class AutoGenerateService {
 
         await this.dispatcher.dispatch('auto_generate.failed', {
           recipientUserIds: starterDHs,
-          title: 'Auto-generate failed',
+          title: `Auto-generate failed: ${deptLabel}`,
           body: `Generated schedule has ${validation.hardFailures.length} constraint failure(s).`,
           entityType: 'term',
           entityId: termId,
           payload: {
             deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
             reason: 'constraint_validation',
             failures: validation.hardFailures.slice(0, 10),
           },
@@ -396,11 +444,22 @@ export class AutoGenerateService {
 
       await this.dispatcher.dispatch('auto_generate.finished', {
         recipientUserIds: starterDHs,
-        title: 'Auto-generate finished',
-        body: `Generated ${saved.length} schedule entries. Review the preview to accept or discard.`,
+        title: `Auto-generate finished: ${deptLabel}`,
+        body:
+          `Generated ${saved.length} schedule entr${saved.length === 1 ? 'y' : 'ies'} ` +
+          `for ${deptLabel}` +
+          (termName ? ` · ${termName}` : '') +
+          '. Review the preview to accept or discard.',
         entityType: 'term',
         entityId: termId,
-        payload: { deptId, scheduleCount: saved.length },
+        payload: {
+          deptId,
+          deptCode: dept.deptCode,
+          deptName: dept.deptName,
+          termId,
+          termName,
+          scheduleCount: saved.length,
+        },
       });
 
       return {
