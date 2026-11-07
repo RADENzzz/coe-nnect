@@ -775,9 +775,10 @@ export class ProspectusPdfsService {
     const totalProcessed = prospectusCreated + prospectusSkipped;
     await this.dispatcher.dispatch('prospectus.imported', {
       recipientUserIds: [user.userId],
-      title: 'Prospectus imported',
+      title: `Prospectus imported: ${program.programCode}`,
       body:
-        `Imported ${prospectusCreated} prospectus entr${prospectusCreated === 1 ? 'y' : 'ies'}` +
+        `${pdf.originalFilename} — ` +
+        `imported ${prospectusCreated} prospectus entr${prospectusCreated === 1 ? 'y' : 'ies'}` +
         (subjectsCreated > 0
           ? `, created ${subjectsCreated} new subject${subjectsCreated === 1 ? '' : 's'}`
           : '') +
@@ -791,6 +792,10 @@ export class ProspectusPdfsService {
       entityId: String(pdfId),
       payload: {
         programId,
+        programCode: program.programCode,
+        programName: program.programName,
+        fileName: pdf.originalFilename,
+        departmentId: String(pdf.departmentId),
         subjectsCreated,
         subjectsExisting,
         slotsCreated,

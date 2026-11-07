@@ -25,6 +25,7 @@ import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
+import { loadRequestContext } from '../notifications/notification-context';
 import { DepartmentsService } from '../departments/departments.service';
 
 type DayOfWeek =
@@ -357,19 +358,45 @@ export class SchedulingService {
         const targetDHs = await this.recipients.departmentHeadsOf(
           gate.facultyDeptId,
         );
-        await this.dispatcher.dispatch('faculty_request.created', {
+        const requestingDeptId = user?.deptId
+          ? String(user.deptId)
+          : subjectDeptId;
+        const ctx = await loadRequestContext(
+          this.supabase.getAdminClient(),
+          {
+            requestingDeptId,
+            targetDeptId: gate.facultyDeptId,
+            subjectId: dto.subjectId,
+            termId: dto.termId,
+          },
+        );
+        const subjectLabel = ctx.subjectCode ?? 'a subject';
+
+        await this.dispatcher.dispatch('request.submitted', {
           recipientUserIds: targetDHs,
-          title: 'Cross-department faculty request',
+          title: `Cross-dept request: ${ctx.subjectCode ?? 'faculty'}`,
           body:
-            `A faculty member from your department is scheduled for ` +
-            `a subject from another department. Approve or reject on the Approvals page.`,
+            `${ctx.requestingDeptCode ?? 'Another department'} requested ` +
+            `faculty from ${ctx.targetDeptCode ?? 'your department'} for ` +
+            `${subjectLabel}` +
+            (ctx.termName ? ` (${ctx.termName})` : '') +
+            '. Approve or reject on the Approvals page.',
           entityType: 'faculty_request',
           entityId: gate.requestId,
           payload: {
             requestId: gate.requestId,
-            termId: dto.termId,
+            requestingDeptId,
+            targetDeptId: gate.facultyDeptId,
+            requestingDeptCode: ctx.requestingDeptCode,
+            targetDeptCode: ctx.targetDeptCode,
             subjectId: dto.subjectId,
-            facultyId: dto.facultyId,
+            subjectCode: ctx.subjectCode,
+            subjectTitle: ctx.subjectTitle,
+            facultyId: dto.facultyId ?? null,
+            termId: dto.termId,
+            termName: ctx.termName,
+            sectionCode: dto.section ?? null,
+            reason: 'schedule_plot',
           },
         });
       } catch (err) {
@@ -702,19 +729,45 @@ export class SchedulingService {
             const targetDHs = await this.recipients.departmentHeadsOf(
               gate.facultyDeptId,
             );
-            await this.dispatcher.dispatch('faculty_request.created', {
+            const requestingDeptId = user?.deptId
+              ? String(user.deptId)
+              : subjDeptId;
+            const ctx = await loadRequestContext(
+              this.supabase.getAdminClient(),
+              {
+                requestingDeptId,
+                targetDeptId: gate.facultyDeptId,
+                subjectId: saved.subjectId,
+                termId: saved.termId,
+              },
+            );
+            const subjectLabel = ctx.subjectCode ?? 'a subject';
+
+            await this.dispatcher.dispatch('request.submitted', {
               recipientUserIds: targetDHs,
-              title: 'Cross-department faculty request',
+              title: `Cross-dept request: ${ctx.subjectCode ?? 'faculty'}`,
               body:
-                'A schedule edit created a new cross-department faculty ' +
-                'assignment. Approve or reject on the Approvals page.',
+                `A schedule edit made ` +
+                `${ctx.requestingDeptCode ?? 'another department'} request ` +
+                `faculty from ${ctx.targetDeptCode ?? 'your department'} for ` +
+                `${subjectLabel}` +
+                (ctx.termName ? ` (${ctx.termName})` : '') +
+                '. Approve or reject on the Approvals page.',
               entityType: 'faculty_request',
               entityId: gate.requestId,
               payload: {
                 requestId: gate.requestId,
-                termId: saved.termId,
+                requestingDeptId,
+                targetDeptId: gate.facultyDeptId,
+                requestingDeptCode: ctx.requestingDeptCode,
+                targetDeptCode: ctx.targetDeptCode,
                 subjectId: saved.subjectId,
+                subjectCode: ctx.subjectCode,
+                subjectTitle: ctx.subjectTitle,
                 facultyId: saved.facultyId,
+                termId: saved.termId,
+                termName: ctx.termName,
+                sectionCode: saved.section ?? null,
                 reason: 'schedule_edit',
               },
             });
@@ -756,16 +809,41 @@ export class SchedulingService {
 
     if (previousStatus !== status) {
       const recipients = await this.recipients.departmentHeadsOfSchedule(id);
+
+      const subjectCode = saved.subject?.subjectCode ?? null;
+      const subjectTitle = saved.subject?.title ?? null;
+      const sectionCode =
+        saved.sectionRef?.sectionCode ?? saved.section ?? null;
+      const roomCode = saved.room?.roomNumber ?? saved.externalRoomName ?? null;
+      const termName = saved.term?.termName ?? null;
+      const entryLabel =
+        [subjectCode, sectionCode].filter(Boolean).join(' · ') ||
+        'A schedule entry';
+
       await this.dispatcher.dispatch('schedule.status_changed', {
         recipientUserIds: recipients,
-        title: 'Schedule status changed',
-        body: `${found.subject?.subjectCode ?? 'A schedule entry'} moved from ${previousStatus} to ${status}.`,
+        title: `Schedule status: ${entryLabel}`,
+        body:
+          `${entryLabel} moved from ${previousStatus} to ${status}` +
+          (roomCode ? ` · ${roomCode}` : '') +
+          (termName ? ` · ${termName}` : '') +
+          '.',
         entityType: 'schedule',
         entityId: id,
         payload: {
           previousStatus,
           newStatus: status,
           changedBy: user?.userId ?? null,
+          changedByName: user?.username ?? user?.email ?? null,
+          subjectCode,
+          subjectTitle,
+          sectionCode,
+          roomCode,
+          termName,
+          deptId: saved.deptId,
+          dayOfWeek: saved.dayOfWeek,
+          startTime: saved.startTime,
+          endTime: saved.endTime,
         },
       });
     }

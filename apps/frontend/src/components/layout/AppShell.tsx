@@ -11,6 +11,7 @@ import { getNavForRole } from '../../lib/constants/nav-config';
 import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
+import NotificationToaster from '../../features/notifications/NotificationToaster';
 import LiquidBackground from './LiquidBackground';
 import TutorialProvider from '../../features/tutorial/TutorialProvider';
 
@@ -77,6 +78,7 @@ function ShellInner() {
       </div>
 
       <BottomNav items={nav.bottom} />
+      <NotificationToaster />
       <TutorialProvider />
     </div>
   );

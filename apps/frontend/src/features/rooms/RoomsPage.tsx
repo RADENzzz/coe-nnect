@@ -44,7 +44,7 @@ export default function RoomsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const isCollegeWide =
     profile?.role === 'administrator' ||
@@ -93,6 +93,21 @@ export default function RoomsPage() {
         : null,
     [rooms, detailRoomId],
   );
+
+  // Deep-link receiver: /rooms?room=<id> opens that room's panel.
+  const lastRoomParam = useRef<string | null>(null);
+  useEffect(() => {
+    const roomId = searchParams.get('room');
+    if (!roomId || roomId === lastRoomParam.current) return;
+    if (isLoading) return;
+
+    lastRoomParam.current = roomId;
+    if (rooms.some((r) => r.roomId === roomId)) setDetailRoomId(roomId);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('room');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, rooms, isLoading]);
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],

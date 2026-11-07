@@ -91,6 +91,7 @@ function App() {
               element={<DeanDepartmentsManagePage />}
             />
             <Route path="approvals" element={<DeanApprovalsPage />} />
+            <Route path="requests" element={<ApprovalsPage />} />
             <Route path="timetable" element={<TimetablePage readOnly />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="faculty" element={<FacultyPage />} />

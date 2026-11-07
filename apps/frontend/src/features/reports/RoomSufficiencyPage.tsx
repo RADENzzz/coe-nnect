@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -21,9 +22,28 @@ export default function RoomSufficiencyPage() {
   const isAdminOrDean =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
 
-  const [deptFilter, setDeptFilter] = useState<string>(
-    isDH && myDeptId ? myDeptId : '',
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [deptFilter, setDeptFilter] = useState<string>(() => {
+    const fromUrl = searchParams.get('dept');
+    if (fromUrl) return fromUrl;
+    return isDH && myDeptId ? myDeptId : '';
+  });
+
+  // Deep-link receiver: /reports/rooms?dept=<id> (or the Dean variant).
+  const lastDeptParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (isDH) return; // DH is locked to their own department.
+    const deptId = searchParams.get('dept');
+    if (!deptId || deptId === lastDeptParam.current) return;
+
+    lastDeptParam.current = deptId;
+    setDeptFilter(deptId);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('dept');
+    setSearchParams(next, { replace: true });
+  }, [isDH, searchParams, setSearchParams]);
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],

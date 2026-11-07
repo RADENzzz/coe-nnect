@@ -73,6 +73,7 @@ const DEAN_NAV: RoleNav = {
 
     // ── Work ──
     { label: 'Schedule Approvals', path: '/dean/approvals',       icon: 'pending_actions',   primary: true },
+    { label: 'Faculty Requests',   path: '/dean/requests',        icon: 'swap_horiz',        primary: true },
     { label: 'Timetable',          path: '/dean/timetable',       icon: 'calendar_view_month' },
     { label: 'Import Prospectus',  path: '/dean/import',          icon: 'upload_file' },
     { label: 'Reports',            path: '/dean/reports',         icon: 'bar_chart' },
