@@ -45,7 +45,7 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg select-none active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40"
           >
             Cancel
           </button>
@@ -53,7 +53,7 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
             type="button"
             onClick={submit}
             disabled={verifying || !password}
-            className="px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50 bg-red-600 hover:bg-red-700 rounded-lg"
+            className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition rounded-lg select-none active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {verifying ? 'Verifying…' : 'Delete user'}
           </button>
@@ -81,6 +81,12 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
             placeholder="Your admin password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && password && !verifying) {
+                e.preventDefault();
+                submit();
+              }
+            }}
             className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-on-surface text-sm focus:outline-none focus:border-primary"
           />
         </div>

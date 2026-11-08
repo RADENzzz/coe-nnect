@@ -65,18 +65,24 @@ export default function AdminUsersPage() {
     queryKey: ['users'],
     queryFn: fetchUsers,
     enabled: !!user,
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
     queryFn: () => fetchDepartments(),
     enabled: !!user,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
   });
 
   const { data: faculty = [] } = useQuery({
     queryKey: ['faculty', { includeInactive: false }],
     queryFn: () => fetchFaculty(false),
     enabled: !!user,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
   });
 
   const facultyById = useMemo(() => {
@@ -110,13 +116,31 @@ export default function AdminUsersPage() {
 
   const toggleMutation = useMutation({
     mutationFn: toggleUserActive,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
-    onError: (err: any) => setPageError(err?.response?.data?.message ?? 'Toggle failed'),
+    onMutate: async (userId: string) => {
+      await qc.cancelQueries({ queryKey: ['users'] });
+      const prev = qc.getQueryData<UserRecord[]>(['users']);
+      qc.setQueryData<UserRecord[]>(['users'], (old) =>
+        old?.map((u) =>
+          String(u.userId) === String(userId) ? { ...u, isActive: !u.isActive } : u,
+        ),
+      );
+      return { prev };
+    },
+    onError: (err: any, _userId, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['users'], ctx.prev);
+      setPageError(err?.response?.data?.message ?? 'Toggle failed');
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteUser,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: (_data, userId) => {
+      qc.setQueryData<UserRecord[]>(['users'], (old) =>
+        old?.filter((u) => String(u.userId) !== String(userId)),
+      );
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
     // No onError — DeleteUserModal handles it via promise rejection.
   });
 
