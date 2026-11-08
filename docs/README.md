@@ -13,6 +13,11 @@ Use these guides to set up the applications, understand workspace packages, and 
 - [Database structure](DATABASE%20STRUCTURE/README.md) — ERDs, table inventory, enums, constraints, and the current SQL snapshot.
 - [Testing and database validation](testing.md) — backend test commands, fake adapters, migration checks, and CI coverage.
 
+## Integrations
+
+- [IDP integration](integrations/idp.md) — faculty roster, qualifications, and unavailability sync with the Institutional Data Platform.
+- [IDP Milestone 1 checkpoint](integrations/idp-milestone-1-checkpoint.md) — implementation record, verification, and handoff notes.
+
 ## Operations
 
 - [Backup and restore](operations/backup-restore.md) — database, storage, verification, and production restore procedure.
@@ -22,7 +27,7 @@ Use these guides to set up the applications, understand workspace packages, and 
 ## Packages and services
 
 - [Constraint rules](packages/constraint-rules.md) — the integrated TypeScript scheduling rules engine.
-- [IDP client](packages/idp-client.md) — reserved package; not implemented or integrated.
+- [IDP client](packages/idp-client.md) — reserved package; the working IDP integration lives in the backend module.
 - [Prospectus parser](packages/prospectus-parser.md) — standalone FastAPI service for extracting selectable PDF text.
 - [Shared types](packages/shared-types.md) — reserved package; no shared types are exported yet.
 - [Solver service](packages/solver-service.md) — separately deployed OR-Tools service called by backend auto-generation.

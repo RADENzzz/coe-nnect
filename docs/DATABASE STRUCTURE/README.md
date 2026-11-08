@@ -342,6 +342,9 @@ Key constraints and behavior:
 - `faculty_request` enforces `requesting_dept_id <> target_dept_id` and uses `faculty_request_status`: `pending`, `approved`, `rejected`, `cancelled`.
 - `subject_restriction` enforces `subject_id_1 <> subject_id_2`.
 - `faculty_unavailability.source` is `local` or `idp`; `faculty_commitment` is the fixed external commitment feed.
+- `faculty.sync_status` is `pending`, `synced`, or `failed`; `last_synced_at` records the last successful IDP apply. Local edits to IDP-owned identity fields set `pending`. See the [IDP integration guide](../integrations/idp.md).
+- `faculty_qualification.source_system` is `IDP` for rows received from IDP and `NULL` for local rows.
+- `faculty_unavailability.external_id` is the IDP idempotency key for `source='idp'` rows.
 - `cross_department_request.status` is free text with a default of `pending`, not the `faculty_request_status` enum.
 
 ## 3. Scheduling core
