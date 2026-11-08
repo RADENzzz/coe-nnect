@@ -27,6 +27,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { DevToolsModule } from './modules/dev-tools/dev-tools.module';
 import { SystemStatusModule } from './modules/system-status/system-status.module';
 import { HealthModule } from './modules/health/health.module';
+import { IdpModule } from './modules/idp/idp.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { HealthModule } from './modules/health/health.module';
     DevToolsModule,
     SystemStatusModule,
     HealthModule,
+    IdpModule,
   ],
   providers: [
     {
