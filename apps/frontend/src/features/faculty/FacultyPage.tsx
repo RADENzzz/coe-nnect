@@ -7,6 +7,7 @@ import {
   toggleFacultyActive,
   deleteFaculty,
   fetchFacultyStatusSummary,
+  syncFacultyFromIdp,
   type FacultyRecord,
 } from '../../api/faculty.api';
 import { fetchDepartments } from '../../api/departments.api';
@@ -376,6 +377,48 @@ export default function FacultyPage() {
       setError(err?.response?.data?.message ?? 'Delete failed'),
   });
 
+  // FR 3.1.11 — pull the roster from IDP. The backend scopes a department
+  // head to their own department automatically.
+  const idpSyncMutation = useMutation({
+    mutationFn: () => syncFacultyFromIdp(),
+    onSuccess: (summary) => {
+      const parts = [
+        `${summary.created} created`,
+        `${summary.updated} updated`,
+        `${summary.unchanged} unchanged`,
+      ];
+      if (summary.skipped) parts.push(`${summary.skipped} skipped`);
+      if (summary.failed) parts.push(`${summary.failed} failed`);
+      if (summary.qualificationsAdded) {
+        parts.push(`${summary.qualificationsAdded} qualification(s) added`);
+      }
+      if (summary.unavailabilitySynced) {
+        parts.push(`${summary.unavailabilitySynced} unavailability row(s)`);
+      }
+      setSuccess(`Refreshed from IDP: ${parts.join(', ')}.`);
+
+      if (summary.errors.length > 0) {
+        const preview = summary.errors
+          .slice(0, 3)
+          .map((e) => e.message)
+          .join(' | ');
+        setError(
+          `IDP sync finished with ${summary.errors.length} issue(s): ${preview}`,
+        );
+      }
+
+      qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+    },
+    onError: (err: any) => {
+      setError(
+        err?.response?.data?.error?.message ??
+          err?.response?.data?.message ??
+          'IDP refresh failed.',
+      );
+    },
+  });
+
   const deptName = (id: string | null) => {
     if (!id) return '—';
     const d = departments.find((x) => String(x.deptId) === String(id));
@@ -586,13 +629,32 @@ export default function FacultyPage() {
             {isDH && myDeptId ? ' in your department' : ''}.
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition shadow-sm"
-        >
-          <Icon name="add" size={18} />
-          New Faculty
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setError(null);
+              setSuccess(null);
+              idpSyncMutation.mutate();
+            }}
+            disabled={idpSyncMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant bg-surface-container-lowest text-on-surface text-sm font-semibold hover:bg-surface-container-low transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Pull the latest faculty roster, qualifications, and unavailability from IDP"
+          >
+            <Icon
+              name="sync"
+              size={18}
+              spin={idpSyncMutation.isPending}
+            />
+            {idpSyncMutation.isPending ? 'Refreshing…' : 'Refresh from IDP'}
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition shadow-sm"
+          >
+            <Icon name="add" size={18} />
+            New Faculty
+          </button>
+        </div>
       </div>
 
       {/* ── Banners ── */}

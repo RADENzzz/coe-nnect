@@ -77,6 +77,7 @@ function setupSwagger(app: any, apiPrefix: string) {
     .addTag('Stats', 'System statistics + repo metadata')
     .addTag('Search', 'Global search')
     .addTag('Dev Tools', 'Developer-only tools (hidden admin)')
+    .addTag('IDP', 'Institutional Data Platform integration (health, webhooks, faculty sync)')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
@@ -97,6 +98,9 @@ function setupSwagger(app: any, apiPrefix: string) {
 async function createApp() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: false,
+    // Required by IdpSignatureGuard: HMAC-SHA256 is computed over the exact
+    // bytes IDP signed, so Nest must retain the raw request body.
+    rawBody: true,
     // In dev, hide the noisiest startup categories. Set DEV_VERBOSE_LOGS=true
     // to see everything. Production and LOG_FORMAT=json use one JSON object
     // per line so a log drain can parse them without a vendor SDK.

@@ -151,6 +151,16 @@ export class FacultyService {
       await this.departments.assertDepartmentActive(found.deptId);
     }
 
+    const changesIdpOwnedIdentity =
+      (dto.firstName !== undefined && dto.firstName !== found.firstName) ||
+      (dto.lastName !== undefined && dto.lastName !== found.lastName) ||
+      (dto.email !== undefined && (dto.email ?? null) !== found.email) ||
+      (dto.contact !== undefined && (dto.contact ?? null) !== found.contact) ||
+      (dto.wmsuId !== undefined && (dto.wmsuId ?? null) !== found.wmsuId) ||
+      (dto.employeeId !== undefined &&
+        (dto.employeeId ?? null) !== found.employeeId) ||
+      (dto.deptId !== undefined && (dto.deptId ?? null) !== found.deptId);
+
     if (dto.firstName !== undefined) found.firstName = dto.firstName;
     if (dto.lastName !== undefined) found.lastName = dto.lastName;
     if (dto.email !== undefined) found.email = dto.email ?? null;
@@ -165,6 +175,12 @@ export class FacultyService {
     if (dto.requiredHours !== undefined)
       found.requiredHours = dto.requiredHours ?? null;
 
+    // Contract 3.3 — an edit to an IDP-owned identity field marks the row as
+    // pending so an incoming IDP update is rejected until it is reconciled.
+    if (changesIdpOwnedIdentity) {
+      found.syncStatus = 'pending';
+    }
+
     return this.repo.save(found);
   }
 
@@ -172,6 +188,8 @@ export class FacultyService {
     const found = await this.assertOwnership(id, profile);
     await this.departments.assertDepartmentActive(found.deptId);
     found.isActive = !found.isActive;
+    // is_active is IDP-owned; mark the row pending for the next reconciliation.
+    found.syncStatus = 'pending';
     return this.repo.save(found);
   }
 
