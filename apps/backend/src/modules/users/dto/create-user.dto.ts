@@ -18,7 +18,11 @@ import {
  * The DB enum still contains both values (see user.entity.ts), but
  * the API surface refuses them.
  */
-export const ASSIGNABLE_ROLES = ['college_dean', 'department_head'] as const;
+export const ASSIGNABLE_ROLES = [
+  'college_dean',
+  'college_secretary',
+  'department_head',
+] as const;
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 export class CreateUserDto {

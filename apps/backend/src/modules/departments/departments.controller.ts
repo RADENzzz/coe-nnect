@@ -44,28 +44,28 @@ export class DepartmentsController {
     return { data };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Post()
   async create(@Body() dto: CreateDepartmentDto) {
     const data = await this.service.create(dto);
     return { data };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
     const data = await this.service.update(id, dto);
     return { data };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string) {
     const data = await this.service.toggleActive(id);
     return { data };
   }
 
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Delete(':id')
   async remove(@Param('id') id: string) {
     await this.service.remove(id);

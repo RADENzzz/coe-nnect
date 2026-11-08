@@ -1,6 +1,11 @@
 import { api } from './client';
 
-export type UserRole = 'administrator' | 'college_dean' | 'department_head' | 'viewer';
+export type UserRole =
+  | 'administrator'
+  | 'college_dean'
+  | 'college_secretary'
+  | 'department_head'
+  | 'viewer';
 
 export interface UserRecord {
   userId: string;

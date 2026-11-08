@@ -507,7 +507,11 @@ export class ProspectusPdfsService {
           'You can only import into programs from your own department.',
         );
       }
-    } else if (user.role !== 'administrator' && user.role !== 'college_dean') {
+    } else if (
+      user.role !== 'administrator' &&
+      user.role !== 'college_dean' &&
+      user.role !== 'college_secretary'
+    ) {
       throw new ForbiddenException('Insufficient role for import.');
     }
 
@@ -771,9 +775,10 @@ export class ProspectusPdfsService {
     const totalProcessed = prospectusCreated + prospectusSkipped;
     await this.dispatcher.dispatch('prospectus.imported', {
       recipientUserIds: [user.userId],
-      title: 'Prospectus imported',
+      title: `Prospectus imported: ${program.programCode}`,
       body:
-        `Imported ${prospectusCreated} prospectus entr${prospectusCreated === 1 ? 'y' : 'ies'}` +
+        `${pdf.originalFilename} — ` +
+        `imported ${prospectusCreated} prospectus entr${prospectusCreated === 1 ? 'y' : 'ies'}` +
         (subjectsCreated > 0
           ? `, created ${subjectsCreated} new subject${subjectsCreated === 1 ? '' : 's'}`
           : '') +
@@ -787,6 +792,10 @@ export class ProspectusPdfsService {
       entityId: String(pdfId),
       payload: {
         programId,
+        programCode: program.programCode,
+        programName: program.programName,
+        fileName: pdf.originalFilename,
+        departmentId: String(pdf.departmentId),
         subjectsCreated,
         subjectsExisting,
         slotsCreated,
@@ -982,7 +991,11 @@ export class ProspectusPdfsService {
     user: UserProfile,
     deptId: string,
   ): void {
-    if (user.role === 'administrator' || user.role === 'college_dean') {
+    if (
+      user.role === 'administrator' ||
+      user.role === 'college_dean' ||
+      user.role === 'college_secretary'
+    ) {
       return;
     }
     if (user.role === 'department_head') {

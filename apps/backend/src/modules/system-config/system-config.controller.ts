@@ -37,7 +37,7 @@ export class SystemConfigController {
 
   // Only the College Dean can write
   @Auditable({ action: 'system_config.update', source: 'SystemConfig' })
-  @Roles('college_dean')
+  @Roles('college_dean', 'college_secretary')
   @Patch()
   async updateSettings(@Body() dto: UpdateSettingsDto) {
     return { data: await this.config.updateSettings(dto.settings) };

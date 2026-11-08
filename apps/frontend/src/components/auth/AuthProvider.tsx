@@ -27,7 +27,11 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
   // state. For role=viewer (retired), treat as not-walled.
   const role = data.role as UserProfile['role'];
   let deptActive: boolean | null = null;
-  if (role === 'college_dean' || role === 'administrator') {
+  if (
+    role === 'college_dean' ||
+    role === 'college_secretary' ||
+    role === 'administrator'
+  ) {
     deptActive = true;
   } else if (dept) {
     deptActive = dept.is_active === true;
@@ -56,7 +60,11 @@ function profileFromMeta(user: any): UserProfile {
   // Fast-path metadata has no is_active — assume active. The DB
   // profile fetch that follows will correct it if the dept is inactive.
   const deptActive: boolean | null =
-    role === 'college_dean' || role === 'administrator' ? true : null;
+    role === 'college_dean' ||
+    role === 'college_secretary' ||
+    role === 'administrator'
+      ? true
+      : null;
 
   return {
     user_id: user.id,

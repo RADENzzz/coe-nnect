@@ -10,6 +10,11 @@ import { Repository } from 'typeorm';
 import { SupabaseService } from '../../../database/supabase.service';
 import { NotificationDispatcherService } from '../../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../../notifications/recipients.service';
+import {
+  loadDeptLabel,
+  loadRequestContext,
+  loadTermName,
+} from '../../notifications/notification-context';
 import { Schedule } from '../entities/schedule.entity';
 
 /**
@@ -35,6 +40,9 @@ export class ScheduleFacultyService {
 
     const found = await this.scheduleRepo.findOne({
       where: { scheduleId },
+      // Relations are needed downstream by notification builders (subject,
+      // section, room, term) after the ownership check succeeds.
+      relations: ['subject', 'sectionRef', 'room', 'term', 'faculty'],
     });
     if (!found) throw new NotFoundException('Schedule entry not found');
 
@@ -81,23 +89,37 @@ export class ScheduleFacultyService {
       const requiredHours = Number(fac.required_hours ?? 18);
       if (totalHours <= requiredHours) return;
 
+      const db = this.supabase.getAdminClient();
+      const [dept, termName] = await Promise.all([
+        loadDeptLabel(db, fac.dept_id),
+        loadTermName(db, termId),
+      ]);
+
       const ownerDHs = await this.recipients.departmentHeadsOf(
         String(fac.dept_id),
       );
       const dean = await this.recipients.collegeDean();
 
+      const facultyName = `${fac.first_name} ${fac.last_name}`.trim();
+      const deptSuffix = dept.deptCode ? ` (${dept.deptCode})` : '';
+
       await this.dispatcher.dispatch('faculty.overloaded', {
         recipientUserIds: this.recipients.uniq([...ownerDHs, ...dean]),
-        title: 'Faculty workload exceeds cap',
+        title: `${facultyName} over workload cap`,
         body:
-          `${fac.first_name} ${fac.last_name} is assigned ${totalHours}h ` +
-          `(cap: ${requiredHours}h).`,
+          `${facultyName}${deptSuffix} is assigned ${totalHours}h ` +
+          `(cap: ${requiredHours}h)` +
+          (termName ? ` · ${termName}.` : '.'),
         entityType: 'faculty',
         entityId: facultyId,
         payload: {
-          facultyName: `${fac.first_name} ${fac.last_name}`,
+          facultyName,
           totalHours,
           requiredHours,
+          deptId: fac.dept_id != null ? String(fac.dept_id) : null,
+          deptCode: dept.deptCode,
+          termId,
+          termName,
         },
       });
     } catch (err) {
@@ -228,7 +250,9 @@ export class ScheduleFacultyService {
 
       const { data: req, error: reqErr } = await db
         .from('faculty_request')
-        .select('request_id, status')
+        .select(
+          'request_id, status, requesting_dept_id, target_dept_id, subject_id, term_id',
+        )
         .eq('request_id', requestId)
         .maybeSingle();
 
@@ -268,27 +292,41 @@ export class ScheduleFacultyService {
       );
 
       try {
-        const { data: fullReq } = await db
-          .from('faculty_request')
-          .select('target_dept_id')
-          .eq('request_id', requestId)
-          .maybeSingle();
+        if (req.target_dept_id) {
+          const [targetDHs, ctx] = await Promise.all([
+            this.recipients.departmentHeadsOf(String(req.target_dept_id)),
+            loadRequestContext(db, {
+              requestingDeptId: req.requesting_dept_id,
+              targetDeptId: req.target_dept_id,
+              subjectId: req.subject_id,
+              termId: req.term_id,
+            }),
+          ]);
 
-        if (fullReq?.target_dept_id) {
-          const targetDHs = await this.recipients.departmentHeadsOf(
-            String(fullReq.target_dept_id),
-          );
+          const subjectLabel = ctx.subjectCode ?? 'A subject';
           await this.dispatcher.dispatch('request.cancelled', {
             recipientUserIds: targetDHs,
-            title: 'Cross-dept request cancelled',
+            title: `Cross-dept request cancelled: ${subjectLabel}`,
             body:
-              'A cross-department faculty request was auto-cancelled ' +
-              'because the linked class was deleted.',
+              `The request for ${subjectLabel}` +
+              (ctx.termName ? ` (${ctx.termName})` : '') +
+              ' was auto-cancelled because the linked class was deleted.',
             entityType: 'faculty_request',
             entityId: requestId,
             payload: {
               reason: 'schedule_deleted',
               requestId,
+              requestingDeptId: req.requesting_dept_id
+                ? String(req.requesting_dept_id)
+                : null,
+              targetDeptId: String(req.target_dept_id),
+              requestingDeptCode: ctx.requestingDeptCode,
+              targetDeptCode: ctx.targetDeptCode,
+              subjectId: req.subject_id ? String(req.subject_id) : null,
+              subjectCode: ctx.subjectCode,
+              subjectTitle: ctx.subjectTitle,
+              termId: req.term_id ? String(req.term_id) : null,
+              termName: ctx.termName,
             },
           });
         }

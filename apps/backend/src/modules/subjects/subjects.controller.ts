@@ -57,7 +57,7 @@ export class SubjectsController {
     return { data: await this.subjects.findAllRestrictions(termId) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post('restrictions')
   async createRestriction(
     @Body() dto: CreateSubjectRestrictionDto,
@@ -72,7 +72,7 @@ export class SubjectsController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch('restrictions/:id')
   async updateRestriction(
     @Param('id') id: string,
@@ -84,7 +84,7 @@ export class SubjectsController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete('restrictions/:id')
   async removeRestriction(@Param('id') id: string, @Req() req: any) {
     return this.subjects.removeRestriction(id, req.profile);
@@ -97,13 +97,13 @@ export class SubjectsController {
     return { data: await this.subjects.findOne(id) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post()
   async create(@Body() dto: CreateSubjectDto, @Req() req: any) {
     return { data: await this.subjects.create(dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -113,13 +113,13 @@ export class SubjectsController {
     return { data: await this.subjects.update(id, dto, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return { data: await this.subjects.toggleActive(id, req.profile) };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.subjects.remove(id, req.profile);

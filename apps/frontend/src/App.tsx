@@ -75,7 +75,7 @@ function App() {
       <Route
         element={
           <ProtectedRoute
-            allowedRoles={['administrator', 'college_dean']}
+            allowedRoles={['administrator', 'college_dean', 'college_secretary']}
             redirectTo="/login"
           />
         }
@@ -91,9 +91,13 @@ function App() {
               element={<DeanDepartmentsManagePage />}
             />
             <Route path="approvals" element={<DeanApprovalsPage />} />
+            <Route path="requests" element={<ApprovalsPage />} />
             <Route path="timetable" element={<TimetablePage readOnly />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="faculty" element={<FacultyPage />} />
+            <Route path="subjects" element={<SubjectsPage />} />
+            <Route path="sections" element={<SectionsPage />} />
+            <Route path="rooms" element={<RoomsPage />} />
             <Route path="system-settings" element={<SystemConfigPage />} />
             <Route path="audit-trail" element={<AuditTrailPage />} />
             <Route path="dev-tools" element={<DevToolsPage />} />

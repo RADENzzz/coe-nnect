@@ -1,6 +1,12 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import type { NotificationItem as NotificationData } from '../../api/notifications.api';
+import {
+  notificationChips,
+  notificationHref,
+  notificationIcon,
+  shellForPath,
+} from '../../lib/notification-target';
 
 interface NotificationItemProps {
   item: NotificationData;
@@ -8,48 +14,6 @@ interface NotificationItemProps {
   onDelete: (id: string) => void;
   onClose?: () => void;
   compact?: boolean;
-}
-
-// ── Icon per category ──
-function iconForCategory(category: string): string {
-  switch (category) {
-    case 'schedule':
-      return 'event';
-    case 'approvals':
-      return 'task_alt';
-    case 'scheduling':
-      return 'auto_awesome';
-    case 'academic':
-      return 'school';
-    case 'faculty':
-      return 'person';
-    case 'facility':
-      return 'meeting_room';
-    case 'admin':
-      return 'admin_panel_settings';
-    default:
-      return 'notifications';
-  }
-}
-
-// ── Deep-link target ──
-function linkFor(item: NotificationData): string | null {
-  switch (item.entityType) {
-    case 'schedule':
-      return `/timetable?focus=${item.entityId}`;
-    case 'faculty_request':
-      return `/approvals`;
-    case 'faculty':
-      return `/faculty`;
-    case 'term':
-      return `/timetable`;
-    case 'prospectus_pdf':
-      return `/import/${item.entityId}`;
-    case 'user':
-      return `/admin/users`;
-    default:
-      return null;
-  }
 }
 
 // ── Relative time ──
@@ -79,7 +43,11 @@ export default function NotificationItem({
   compact = false,
 }: NotificationItemProps) {
   const navigate = useNavigate();
-  const href = linkFor(item);
+  const location = useLocation();
+  const shell = shellForPath(location.pathname);
+  const href = notificationHref(item, shell);
+  const chips = notificationChips(item);
+  const visibleChips = compact ? chips.slice(0, 3) : chips;
 
   const handleOpen = () => {
     if (!item.isRead) onMarkRead(item.notificationId);
@@ -93,9 +61,22 @@ export default function NotificationItem({
     <div
       className={`group relative flex gap-3 px-4 ${
         compact ? 'py-3' : 'py-4'
-      } transition-colors hover:bg-slate-50 ${
-        item.isRead ? '' : 'bg-[#5c1219]/[0.03]'
-      }`}
+      } transition-colors ${
+        href
+          ? 'cursor-pointer hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40'
+          : ''
+      } ${item.isRead ? '' : 'bg-[#5c1219]/[0.03]'}`}
+      role={href ? 'button' : undefined}
+      tabIndex={href ? 0 : undefined}
+      aria-label={href ? `Open notification: ${item.title}` : undefined}
+      onClick={handleOpen}
+      onKeyDown={(e) => {
+        if (!href) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleOpen();
+        }
+      }}
     >
       {/* Left accent bar for unread */}
       {!item.isRead && (
@@ -113,15 +94,11 @@ export default function NotificationItem({
             : 'bg-[#5c1219]/10 text-[#5c1219]'
         }`}
       >
-        <Icon name={iconForCategory(item.category)} size={16} />
+        <Icon name={notificationIcon(item)} size={16} />
       </div>
 
       {/* Body */}
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="flex-1 min-w-0 text-left"
-      >
+      <div className="flex-1 min-w-0">
         <p
           className={`text-sm leading-tight ${
             item.isRead
@@ -140,10 +117,34 @@ export default function NotificationItem({
             {item.body}
           </p>
         )}
-        <p className="text-[11px] text-slate-400 mt-1">
-          {relativeTime(item.createdAt)}
-        </p>
-      </button>
+
+        {visibleChips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {visibleChips.map((chip) => (
+              <span
+                key={`${chip.icon}-${chip.label}`}
+                title={chip.title}
+                className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-medium text-slate-600"
+              >
+                <Icon name={chip.icon} size={11} />
+                <span className="max-w-[180px] truncate">{chip.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-[11px] text-slate-400">
+            {relativeTime(item.createdAt)}
+          </span>
+          {href && (
+            <span className="text-[11px] font-semibold text-[#5c1219] inline-flex items-center gap-0.5">
+              Open
+              <Icon name="chevron_right" size={12} />
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Actions */}
       <div className="shrink-0 flex flex-col items-end justify-between gap-2">
@@ -166,7 +167,7 @@ export default function NotificationItem({
             e.stopPropagation();
             onDelete(item.notificationId);
           }}
-          className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity"
+          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity"
           title="Delete"
           aria-label="Delete notification"
         >

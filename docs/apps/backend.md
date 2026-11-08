@@ -4,9 +4,34 @@ The `apps/backend` directory contains the NestJS API used by CoE-NNECT. It provi
 
 ## Modules and API behavior
 
-Feature modules are registered in `src/app.module.ts`. They cover users and authentication; departments, programs, terms, faculty, subjects, prospectuses, sections, and rooms; schedules, constraints, and approvals; system configuration, audit, chat, and notifications; and prospectus PDF management.
+Feature modules are registered in `src/app.module.ts`. They cover users and authentication; departments, programs, terms, faculty, subjects, prospectuses, sections, and rooms; schedules, constraints, and approvals; system configuration, audit, chat, and notifications; prospectus PDF management; and the Institutional Data Platform (IDP) integration.
 
 The global API prefix defaults to `/api` and can be changed with `API_PREFIX`. Routes use NestJS validation. Socket.IO gateways support real-time features. See the [scheduling API reference](../interface-contract/docs/interface-contract/scheduling-api.md) for schedule routes and payload conventions.
+
+## IDP integration
+
+The `IdpModule` under `src/modules/idp` implements Milestone 1 of the CoE-NNECT ↔ IDP v2.0 contract using Pattern A (REST + webhooks).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/idp/v1/health` | Public | Integration and configuration health |
+| `POST` | `/api/idp/v1/webhooks/faculty-changed` | HMAC-SHA256 | Faculty change event from IDP |
+| `POST` | `/api/v1/idp/faculty/sync` | Bearer JWT + role guard | User-triggered roster refresh |
+
+The sync pulls faculty identity, qualifications, and unavailability from IDP, matches records by `wmsu_id` then `employee_id`, and maintains `faculty.sync_status` / `last_synced_at`. Local identity edits mark a row pending and block incoming IDP updates with `409 local_edit_pending`. Webhooks are signed with HMAC-SHA256 over the raw request body; `main.ts` enables `rawBody: true` for this reason.
+
+Configure the integration in `apps/backend/.env`:
+
+```dotenv
+IDP_ENABLED=false
+IDP_BASE_URL=
+IDP_API_KEY=
+IDP_WEBHOOK_SECRET=
+IDP_REQUEST_TIMEOUT_MS=15000
+IDP_WEBHOOK_TOLERANCE_MS=300000
+```
+
+See the [IDP integration guide](../integrations/idp.md) for payloads, sync semantics, error codes, and the open items with the IDP team.
 
 ## Setup and local development
 
@@ -23,7 +48,7 @@ Set the Supabase and PostgreSQL configuration in `apps/backend/.env`, then run t
 pnpm --filter @coe-nnect/backend dev
 ```
 
-The API listens on port `3000` by default; set `PORT` to change it. Refer to the [backend environment template](../../apps/backend/.env.example) for all supported values, including `DATABASE_URL`, Supabase credentials, `FRONTEND_URL`, and `PROSPECTUS_PARSER_URL`.
+The API listens on port `3000` by default; set `PORT` to change it. Refer to the [backend environment template](../../apps/backend/.env.example) for all supported values, including `DATABASE_URL`, Supabase credentials, `FRONTEND_URL`, `PROSPECTUS_PARSER_URL`, and the `IDP_*` integration variables.
 
 ## Security and observability
 
@@ -107,4 +132,4 @@ pnpm --filter @coe-nnect/backend typecheck
 pnpm --filter @coe-nnect/backend test
 ```
 
-Application code is under `src/`; end-to-end tests and Jest configuration are under `test/`.
+Application code is under `src/`; end-to-end tests and Jest configuration are under `test/`. IDP coverage lives in `test/idp.service.spec.ts` and `test/idp-signature.guard.spec.ts`; see the [testing guide](../testing.md).

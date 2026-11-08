@@ -73,6 +73,7 @@ const DEAN_NAV: RoleNav = {
 
     // ── Work ──
     { label: 'Schedule Approvals', path: '/dean/approvals',       icon: 'pending_actions',   primary: true },
+    { label: 'Faculty Requests',   path: '/dean/requests',        icon: 'swap_horiz',        primary: true },
     { label: 'Timetable',          path: '/dean/timetable',       icon: 'calendar_view_month' },
     { label: 'Import Prospectus',  path: '/dean/import',          icon: 'upload_file' },
     { label: 'Reports',            path: '/dean/reports',         icon: 'bar_chart' },
@@ -89,6 +90,38 @@ const DEAN_NAV: RoleNav = {
     { label: 'Departments', path: '/dean/departments',    icon: 'corporate_fare',      primary: true },
     { label: 'Users',       path: '/dean/users',          icon: 'manage_accounts',     primary: true },
     { label: 'Approvals',   path: '/dean/approvals',      icon: 'pending_actions',     primary: true },
+  ],
+};
+
+/**
+ * College Secretary navigation.
+ *
+ * The secretary is college-wide: every operational page the Dean has,
+ * minus approvals, audit trail, reports and dev tools.
+ */
+const SECRETARY_NAV: RoleNav = {
+  brandSubtitle: 'College Secretary',
+  topBarLabel: 'College Secretary',
+  main: [
+    { label: 'Dashboard',         path: '/dean/dashboard',       icon: 'dashboard',        primary: true },
+    { label: 'Departments',       path: '/dean/departments',     icon: 'corporate_fare',   primary: true },
+    { label: 'Programs',          path: '/dean/programs',        icon: 'school' },
+    { label: 'Subjects',          path: '/dean/subjects',        icon: 'menu_book' },
+    { label: 'Sections',          path: '/dean/sections',        icon: 'view_module' },
+    { label: 'Rooms',             path: '/dean/rooms',           icon: 'meeting_room' },
+    { label: 'Faculty',           path: '/dean/faculty',         icon: 'groups',           primary: true },
+    { label: 'Users',             path: '/dean/users',           icon: 'manage_accounts',  primary: true },
+    { label: 'Import Prospectus', path: '/dean/import',          icon: 'upload_file' },
+    { label: 'System Settings',   path: '/dean/system-settings', icon: 'settings' },
+  ],
+  footer: [
+    { label: 'Help', path: '/dean/help', icon: 'help_outline' },
+  ],
+  bottom: [
+    { label: 'Dashboard',   path: '/dean/dashboard',   icon: 'dashboard',        primary: true },
+    { label: 'Departments', path: '/dean/departments', icon: 'corporate_fare',   primary: true },
+    { label: 'Users',       path: '/dean/users',       icon: 'manage_accounts',  primary: true },
+    { label: 'Faculty',     path: '/dean/faculty',     icon: 'groups',           primary: true },
   ],
 };
 
@@ -124,6 +157,7 @@ const DEV_NAV: RoleNav = {
 export const NAV_BY_ROLE: Record<Role, RoleNav> = {
   [ROLES.ADMIN]:     DEV_NAV,     // ← was DEAN_NAV
   [ROLES.DEAN]:      DEAN_NAV,
+  [ROLES.SECRETARY]: SECRETARY_NAV,
   [ROLES.DEPT_HEAD]: DH_NAV,
   [ROLES.VIEWER]:    DH_NAV,
 };

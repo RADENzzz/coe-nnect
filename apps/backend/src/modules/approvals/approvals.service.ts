@@ -13,6 +13,7 @@ import { RespondFacultyRequestDto } from './dto/respond-faculty-request.dto';
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
+import { loadRequestContext } from '../notifications/notification-context';
 import { SupabaseService } from '../../database/supabase.service';
 
 @Injectable()
@@ -95,17 +96,40 @@ export class ApprovalsService {
       (user as any).email ??
       'A department head';
 
+    const ctx = await loadRequestContext(this.supabase.getAdminClient(), {
+      requestingDeptId: saved.requestingDeptId,
+      targetDeptId: saved.targetDeptId,
+      subjectId: saved.subjectId,
+      termId: saved.termId,
+    });
+    const subjectLabel = ctx.subjectCode ?? 'a subject';
+
     await this.dispatcher.dispatch('request.submitted', {
       recipientUserIds: this.recipients.uniq([...targetDHs, ...dean]),
-      title: 'Cross-dept faculty request submitted',
-      body: `${requesterName} requested faculty from your department.`,
+      title: `Cross-dept request: ${ctx.subjectCode ?? 'faculty'}`,
+      body:
+        `${requesterName} (${ctx.requestingDeptCode ?? 'requesting dept'}) ` +
+        `requested faculty from ${ctx.targetDeptCode ?? 'your department'} ` +
+        `for ${subjectLabel}` +
+        (ctx.termName ? ` (${ctx.termName})` : '') +
+        '.',
       entityType: 'faculty_request',
       entityId: String(saved.requestId),
       payload: {
         requestingDeptId: String(saved.requestingDeptId),
         targetDeptId: String(saved.targetDeptId),
+        requestingDeptCode: ctx.requestingDeptCode,
+        targetDeptCode: ctx.targetDeptCode,
+        requestingDeptName: ctx.requestingDeptName,
+        targetDeptName: ctx.targetDeptName,
         subjectId: String(saved.subjectId),
+        subjectCode: ctx.subjectCode,
+        subjectTitle: ctx.subjectTitle,
         termId: String(saved.termId),
+        termName: ctx.termName,
+        facultyId: saved.facultyId ?? null,
+        reason: saved.reason,
+        requestedByName: requesterName,
       },
     });
 
@@ -163,16 +187,39 @@ export class ApprovalsService {
       (user as any).email ??
       'A department head';
 
+    const ctx = await loadRequestContext(this.supabase.getAdminClient(), {
+      requestingDeptId: saved.requestingDeptId,
+      targetDeptId: saved.targetDeptId,
+      subjectId: saved.subjectId,
+      termId: saved.termId,
+    });
+    const subjectLabel = ctx.subjectCode ?? 'a subject';
+
     await this.dispatcher.dispatch('request.cancelled', {
       recipientUserIds: this.recipients.uniq([...targetDHs, ...dean]),
-      title: 'Cross-dept request cancelled',
-      body: `A request from ${cancellerName}'s department was cancelled.`,
+      title: `Cross-dept request cancelled: ${ctx.subjectCode ?? 'request'}`,
+      body:
+        `${cancellerName} cancelled the request for ${subjectLabel}` +
+        (ctx.termName ? ` (${ctx.termName})` : '') +
+        ` · ${ctx.requestingDeptCode ?? 'requesting dept'} → ` +
+        `${ctx.targetDeptCode ?? 'target dept'}.`,
       entityType: 'faculty_request',
       entityId: String(saved.requestId),
       payload: {
         requestingDeptId: String(saved.requestingDeptId),
         targetDeptId: String(saved.targetDeptId),
+        requestingDeptCode: ctx.requestingDeptCode,
+        targetDeptCode: ctx.targetDeptCode,
+        requestingDeptName: ctx.requestingDeptName,
+        targetDeptName: ctx.targetDeptName,
+        subjectId: String(saved.subjectId),
+        subjectCode: ctx.subjectCode,
+        subjectTitle: ctx.subjectTitle,
+        termId: String(saved.termId),
+        termName: ctx.termName,
+        facultyId: saved.facultyId ?? null,
         cancelledBy: userId,
+        cancelledByName: cancellerName,
       },
     });
 
@@ -227,19 +274,51 @@ export class ApprovalsService {
       status === 'approved' ? 'request.approved' : 'request.rejected';
     const verb = status === 'approved' ? 'approved' : 'rejected';
 
+    const responderName =
+      (user as any).firstName ??
+      (user as any).username ??
+      (user as any).email ??
+      'The target department head';
+
+    const ctx = await loadRequestContext(this.supabase.getAdminClient(), {
+      requestingDeptId: saved.requestingDeptId,
+      targetDeptId: saved.targetDeptId,
+      subjectId: saved.subjectId,
+      termId: saved.termId,
+    });
+    const subjectLabel = ctx.subjectCode ?? 'a subject';
+    const deptSuffix =
+      ctx.targetDeptCode && ctx.requestingDeptCode
+        ? ` · ${ctx.requestingDeptCode} → ${ctx.targetDeptCode}`
+        : '';
+
     await this.dispatcher.dispatch(triggerKey, {
       recipientUserIds: requestingDHs,
-      title: `Cross-dept request ${verb}`,
+      title: `Cross-dept request ${verb}: ${ctx.subjectCode ?? 'faculty'}`,
       body:
-        status === 'approved'
-          ? `Your request was approved${remarks ? `: ${remarks}` : '.'}`
-          : `Your request was rejected${remarks ? `: ${remarks}` : '.'}`,
+        `${responderName} ${verb} the request for ${subjectLabel}` +
+        (ctx.termName ? ` (${ctx.termName})` : '') +
+        deptSuffix +
+        (remarks ? ` — ${remarks}` : '.'),
       entityType: 'faculty_request',
       entityId: String(saved.requestId),
       payload: {
         requestingDeptId: String(saved.requestingDeptId),
         targetDeptId: String(saved.targetDeptId),
+        requestingDeptCode: ctx.requestingDeptCode,
+        targetDeptCode: ctx.targetDeptCode,
+        requestingDeptName: ctx.requestingDeptName,
+        targetDeptName: ctx.targetDeptName,
+        subjectId: String(saved.subjectId),
+        subjectCode: ctx.subjectCode,
+        subjectTitle: ctx.subjectTitle,
+        termId: String(saved.termId),
+        termName: ctx.termName,
+        facultyId: saved.facultyId ?? null,
+        previousStatus: 'pending',
+        newStatus: status,
         respondedBy: userId,
+        respondedByName: responderName,
         remarks: remarks ?? null,
       },
     });

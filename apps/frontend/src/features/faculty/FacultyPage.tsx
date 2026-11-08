@@ -7,6 +7,7 @@ import {
   toggleFacultyActive,
   deleteFaculty,
   fetchFacultyStatusSummary,
+  syncFacultyFromIdp,
   type FacultyRecord,
 } from '../../api/faculty.api';
 import { fetchDepartments } from '../../api/departments.api';
@@ -30,7 +31,7 @@ export default function FacultyPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Form modal state — the modal owns the form
   const [mode, setMode] = useState<Mode | null>(null);
@@ -63,8 +64,10 @@ export default function FacultyPage() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Auth-derived flags
-  const isAdminOrDean =
-    profile?.role === 'administrator' || profile?.role === 'college_dean';
+  const isCollegeWide =
+    profile?.role === 'administrator' ||
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary';
   const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
@@ -109,6 +112,22 @@ export default function FacultyPage() {
     for (const row of statusSummary) m.set(row.facultyId, row);
     return m;
   }, [statusSummary]);
+
+  // Deep-link receiver: /faculty?faculty=<id> opens that instructor's panel.
+  const lastFacultyParam = useRef<string | null>(null);
+  useEffect(() => {
+    const facultyId = searchParams.get('faculty');
+    if (!facultyId || facultyId === lastFacultyParam.current) return;
+    if (isLoading) return;
+
+    const match = faculty.find((f) => String(f.facultyId) === facultyId);
+    lastFacultyParam.current = facultyId;
+    if (match) setDetailFaculty(match);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('faculty');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, faculty, isLoading]);
 
   // Auto-dismiss success
   useEffect(() => {
@@ -358,6 +377,48 @@ export default function FacultyPage() {
       setError(err?.response?.data?.message ?? 'Delete failed'),
   });
 
+  // FR 3.1.11 — pull the roster from IDP. The backend scopes a department
+  // head to their own department automatically.
+  const idpSyncMutation = useMutation({
+    mutationFn: () => syncFacultyFromIdp(),
+    onSuccess: (summary) => {
+      const parts = [
+        `${summary.created} created`,
+        `${summary.updated} updated`,
+        `${summary.unchanged} unchanged`,
+      ];
+      if (summary.skipped) parts.push(`${summary.skipped} skipped`);
+      if (summary.failed) parts.push(`${summary.failed} failed`);
+      if (summary.qualificationsAdded) {
+        parts.push(`${summary.qualificationsAdded} qualification(s) added`);
+      }
+      if (summary.unavailabilitySynced) {
+        parts.push(`${summary.unavailabilitySynced} unavailability row(s)`);
+      }
+      setSuccess(`Refreshed from IDP: ${parts.join(', ')}.`);
+
+      if (summary.errors.length > 0) {
+        const preview = summary.errors
+          .slice(0, 3)
+          .map((e) => e.message)
+          .join(' | ');
+        setError(
+          `IDP sync finished with ${summary.errors.length} issue(s): ${preview}`,
+        );
+      }
+
+      qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
+    },
+    onError: (err: any) => {
+      setError(
+        err?.response?.data?.error?.message ??
+          err?.response?.data?.message ??
+          'IDP refresh failed.',
+      );
+    },
+  });
+
   const deptName = (id: string | null) => {
     if (!id) return '—';
     const d = departments.find((x) => String(x.deptId) === String(id));
@@ -522,7 +583,7 @@ export default function FacultyPage() {
         onClick: () => toggleMutation.mutate(f.facultyId),
         disabled: toggleMutation.isPending,
       },
-    ...(isAdminOrDean || isDH
+    ...(isCollegeWide || isDH
       ? [
           {
             label: 'Delete',
@@ -568,13 +629,32 @@ export default function FacultyPage() {
             {isDH && myDeptId ? ' in your department' : ''}.
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition shadow-sm"
-        >
-          <Icon name="add" size={18} />
-          New Faculty
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setError(null);
+              setSuccess(null);
+              idpSyncMutation.mutate();
+            }}
+            disabled={idpSyncMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-surface-variant bg-surface-container-lowest text-on-surface text-sm font-semibold hover:bg-surface-container-low transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Pull the latest faculty roster, qualifications, and unavailability from IDP"
+          >
+            <Icon
+              name="sync"
+              size={18}
+              spin={idpSyncMutation.isPending}
+            />
+            {idpSyncMutation.isPending ? 'Refreshing…' : 'Refresh from IDP'}
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition shadow-sm"
+          >
+            <Icon name="add" size={18} />
+            New Faculty
+          </button>
+        </div>
       </div>
 
       {/* ── Banners ── */}
@@ -841,7 +921,7 @@ export default function FacultyPage() {
           detailFaculty && toggleMutation.mutate(detailFaculty.facultyId)
         }
         onDelete={
-          isAdminOrDean || isDH
+          isCollegeWide || isDH
             ? () => detailFaculty && setDeleteTarget(detailFaculty)
             : undefined
         }

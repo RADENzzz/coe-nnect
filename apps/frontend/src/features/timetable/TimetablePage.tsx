@@ -602,6 +602,33 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm, myDeptId]);
 
+  // Deep-link receiver: /timetable?preview=1 (from the
+  // auto_generate.finished notification) auto-resumes the pending preview
+  // that is being held for this user.
+  const [previewApplied, setPreviewApplied] = useState(false);
+  useEffect(() => {
+    if (previewApplied) return;
+    if (searchParams.get('preview') !== '1') return;
+    if (
+      !pendingAutoGenerate?.heldByUser ||
+      pendingAutoGenerate.state !== 'pending_confirm'
+    ) {
+      return;
+    }
+
+    setPreviewApplied(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('preview');
+    setSearchParams(next, { replace: true });
+    void handleResumePendingPreview();
+  }, [
+    previewApplied,
+    searchParams,
+    setSearchParams,
+    pendingAutoGenerate,
+    handleResumePendingPreview,
+  ]);
+
   const handleDiscardPendingPreview = useCallback(async () => {
     if (!activeTerm || !myDeptId) return;
     queryClient.setQueryData(

@@ -7,6 +7,15 @@ export const deanProfile = {
   isActive: true,
 };
 
+export const collegeSecretaryProfile = {
+  userId: 'user-secretary',
+  username: 'college.secretary',
+  email: 'secretary@wmsu.edu.ph',
+  role: 'college_secretary',
+  deptId: null,
+  isActive: true,
+};
+
 export const departmentHeadProfile = {
   userId: 'user-dh',
   username: 'department.head',

@@ -66,8 +66,11 @@ export default function ProgramsPage() {
 
   const role = profile?.role;
   const isDH = role === 'department_head';
-  const isDean = role === 'college_dean' || role === 'administrator';
-  const canManage = isDH || isDean;
+  const isCollegeWide =
+    role === 'college_dean' ||
+    role === 'college_secretary' ||
+    role === 'administrator';
+  const canManage = isDH || isCollegeWide;
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
   const [mode, setMode] = useState<Mode | null>(null);
@@ -389,7 +392,7 @@ export default function ProgramsPage() {
             finally create class sections for the program.
           </p>
         </div>
-        {!isDean && (
+        {!isCollegeWide && (
           <Link
             to="/subjects"
             className="text-xs font-semibold text-blue-700 hover:text-blue-900 whitespace-nowrap flex items-center gap-1"

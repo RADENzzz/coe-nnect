@@ -6,6 +6,7 @@ The `apps/frontend` directory contains the CoE-NNECT browser application. It is 
 
 - Login and role-protected workspaces for department heads, deans, and administrators.
 - Academic data management, schedule planning and review, timetable views, and schedule generation.
+- Faculty management with qualifications, preferences, unavailability, and a **Refresh from IDP** action that pulls the latest roster from the Institutional Data Platform.
 - Reports, audit history, approvals, notifications, chat, and settings.
 - Prospectus PDF import with editor-defined table and cell regions.
 

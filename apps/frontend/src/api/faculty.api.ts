@@ -19,6 +19,8 @@ export interface FacultyRecord {
   classification: FacultyClass;
   requiredHours: number | null;
   isActive: boolean;
+  syncStatus?: 'pending' | 'synced' | 'failed';
+  lastSyncedAt?: string | null;
 }
 
 export interface CreateFacultyInput {
@@ -86,4 +88,49 @@ export async function toggleFacultyActive(id: string): Promise<FacultyRecord> {
 
 export async function deleteFaculty(id: string): Promise<void> {
   await api.delete(`/v1/faculty/${id}`);
+}
+
+// ────────────────────────────────────────────────────────────
+// FR 3.1.11 — Refresh from IDP (Milestone 1)
+// ────────────────────────────────────────────────────────────
+
+export interface IdpSyncError {
+  code: string;
+  message: string;
+  wmsu_id?: string | null;
+  employee_id?: string | null;
+  subject_code?: string | null;
+  external_id?: string | null;
+}
+
+export interface IdpSyncSummary {
+  fetched: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  qualificationsAdded: number;
+  unavailabilitySynced: number;
+  errors: IdpSyncError[];
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface IdpSyncInput {
+  departmentCode?: string;
+  termCode?: string;
+  includeQualifications?: boolean;
+  includeUnavailability?: boolean;
+}
+
+/**
+ * Pull the faculty roster (and optionally qualifications/unavailability)
+ * from IDP. Department heads are scoped to their own department server-side.
+ */
+export async function syncFacultyFromIdp(
+  input: IdpSyncInput = {},
+): Promise<IdpSyncSummary> {
+  const { data } = await api.post('/v1/idp/faculty/sync', input);
+  return data.data;
 }

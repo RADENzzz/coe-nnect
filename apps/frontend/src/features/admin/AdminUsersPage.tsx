@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,6 +25,7 @@ type Mode = 'create' | 'edit';
 const ROLE_TONE: Record<string, 'danger' | 'warning' | 'info' | 'neutral'> = {
   administrator: 'danger',
   college_dean: 'warning',
+  college_secretary: 'warning',
   department_head: 'info',
   viewer: 'neutral',
 };
@@ -32,7 +33,7 @@ const ROLE_TONE: Record<string, 'danger' | 'warning' | 'info' | 'neutral'> = {
 export default function AdminUsersPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<UserRecord | null>(null);
@@ -42,7 +43,7 @@ export default function AdminUsersPage() {
     () => searchParams.get('q') ?? '',
   );
   const [roleFilter, setRoleFilter] = useState<
-    'all' | 'college_dean' | 'department_head'
+    'all' | 'college_dean' | 'college_secretary' | 'department_head'
   >('all');
   const [deptListFilter, setDeptListFilter] = useState<string>('all');
 
@@ -242,6 +243,22 @@ export default function AdminUsersPage() {
     setError(null);
     setSuccess(null);
   };
+
+  // Deep-link receiver: /users?user=<id> (or /dean/users?user=<id>).
+  const lastUserParam = useRef<string | null>(null);
+  useEffect(() => {
+    const userId = searchParams.get('user');
+    if (!userId || userId === lastUserParam.current) return;
+    if (isLoading) return;
+
+    const match = users.find((u) => String(u.userId) === userId);
+    lastUserParam.current = userId;
+    if (match) openEdit(match);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('user');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, users, isLoading]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -541,13 +558,18 @@ export default function AdminUsersPage() {
             value={roleFilter}
             onChange={(e) =>
               setRoleFilter(
-                e.target.value as 'all' | 'college_dean' | 'department_head',
+                e.target.value as
+                  | 'all'
+                  | 'college_dean'
+                  | 'college_secretary'
+                  | 'department_head',
               )
             }
             className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
           >
             <option value="all">All roles</option>
             <option value="college_dean">College Dean</option>
+            <option value="college_secretary">College Secretary</option>
             <option value="department_head">Department Head</option>
           </select>
         </div>
@@ -674,6 +696,7 @@ export default function AdminUsersPage() {
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-on-surface text-sm focus:outline-none focus:border-primary"
               >
                 <option value="department_head">Department Head</option>
+                <option value="college_secretary">College Secretary</option>
                 <option value="college_dean">College Dean</option>
                 {mode === 'edit' &&
                   (form.role === 'administrator' || form.role === 'viewer') && (

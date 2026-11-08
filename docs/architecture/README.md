@@ -18,6 +18,7 @@ flowchart LR
     Rules[TypeScript constraint-rules package]
     Parser[FastAPI prospectus parser]
     Solver[FastAPI OR-Tools solver]
+    IDP[Institutional Data Platform]
 
     User --> Browser
     Browser --> Web
@@ -29,6 +30,8 @@ flowchart LR
     API --> Rules
     API -->|PDF extraction requests| Parser
     API -->|auto-generation requests| Solver
+    API -->|faculty pulls| IDP
+    IDP -->|signed faculty webhooks| API
 ```
 
 The parser and solver are separate processes and communicate with the backend over HTTP. They are not imported into the browser or run in the NestJS process. The solver is nevertheless part of the active auto-generation flow: the backend calls it using `SOLVER_URL` (default `http://localhost:8000`).
@@ -45,8 +48,9 @@ The parser and solver are separate processes and communicate with the backend ov
 | Constraint rules | Deterministic hard/soft rule evaluation for manual schedule validation and generated-schedule checks | `packages/constraint-rules` |
 | PDF parser | Reads selectable PDF text within client-defined table/cell regions | `packages/prospectus-parser` — FastAPI |
 | Schedule solver | Builds candidate schedules from academic inputs using OR-Tools CP-SAT | `packages/solver-service` — FastAPI |
+| IDP integration | Pulls faculty identity, qualifications, and unavailability; receives signed faculty-change webhooks | `apps/backend/src/modules/idp` — NestJS module |
 
-The root pnpm workspace contains both applications and the packages above. `packages/idp-client` is reserved and not integrated. `packages/shared-types` is also not an active shared contract: frontend and backend currently maintain their own types.
+The root pnpm workspace contains both applications and the packages above. `packages/idp-client` is reserved and is not the implementation of the IDP integration: Milestone 1 lives in the backend `IdpModule`. `packages/shared-types` is also not an active shared contract: frontend and backend currently maintain their own types.
 
 ## Application structure
 
@@ -128,6 +132,10 @@ This is text extraction from PDF text content within defined regions, not a gene
 
 Notifications are persisted for inbox/history access. The notifications module dispatches configured trigger events, while the Socket.IO gateway verifies a Supabase token at connection time and joins the socket to a private `user:<id>` room for live notification and unread-count updates. The cron scheduler is enabled for notification retention work. Chat is exposed through its own API module.
 
+### IDP faculty sync
+
+The IDP integration implements Milestone 1 of the CoE-NNECT ↔ IDP v2.0 contract. The `IdpModule` exposes a public `/api/idp/v1/*` namespace for health and signed faculty-change webhooks, and an authenticated `POST /api/v1/idp/faculty/sync` trigger used by the Faculty page's **Refresh from IDP** button. It pulls the roster, qualifications, and unavailability from IDP, matches faculty by `wmsu_id` then `employee_id`, applies IDP-owned identity fields, and maintains `faculty.sync_status` / `last_synced_at`. Inbound webhooks are verified with HMAC-SHA256 over the raw body and a timestamp tolerance. Local identity edits mark a row pending, which blocks incoming IDP updates with `409 local_edit_pending` until reconciled. See the [IDP integration guide](../integrations/idp.md).
+
 ## Deployment and local development
 
 The repository includes Vercel configuration for the Vite frontend and NestJS API, and Railway configuration for the Python parser and solver. These files describe deployment/build integration, while actual deployments still require external environment configuration and managed Supabase/PostgreSQL resources.
@@ -145,19 +153,20 @@ Local defaults used by the development script are:
 
 ## Architectural boundaries and current status
 
-- **Active synchronous paths:** Browser → NestJS API; backend → PostgreSQL/Supabase; backend → parser for PDF extraction; backend → solver for auto-generation.
+- **Active synchronous paths:** Browser → NestJS API; backend → PostgreSQL/Supabase; backend → parser for PDF extraction; backend → solver for auto-generation; backend → IDP for faculty pulls; IDP → backend for signed webhooks.
 - **Validation source:** TypeScript constraints are used by API schedule validation and as a post-solve validation gate. The solver's optimization constraints and objectives are implemented separately in Python.
 - **No shared TS contract package:** The `shared-types` workspace package is not currently the source of frontend/backend API contracts.
-- **No IDP integration:** The IDP client package is reserved and does not currently exchange data with the university IDP system.
+- **IDP integration:** Milestone 1 (faculty roster, qualifications, unavailability, signed faculty webhooks, and the user-triggered refresh) is implemented in `apps/backend/src/modules/idp`. Schedule publishing, change requests, and the settings UI are later milestones. The `packages/idp-client` package remains a placeholder.
 - **Schema ownership:** SQL/Supabase workflows own the database schema; TypeORM synchronization must remain disabled.
 
 ## Further documentation
 
 - [Backend API guide](../apps/backend.md)
 - [Frontend guide](../apps/frontend.md)
+- [IDP integration](../integrations/idp.md)
 - [Constraint rules](../packages/constraint-rules.md)
 - [Solver service](../packages/solver-service.md)
 - [Prospectus parser](../packages/prospectus-parser.md)
 - [Shared types status](../packages/shared-types.md)
-- [IDP client status](../packages/idp-client.md)
+- [IDP client package status](../packages/idp-client.md)
 - [Documentation index](../README.md)

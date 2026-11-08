@@ -133,6 +133,8 @@ export class NotificationDispatcherService {
           entityType: n.entityType,
           entityId: n.entityId,
           payload: n.payload,
+          isRead: n.isRead ?? false,
+          readAt: n.readAt ?? null,
           createdAt: n.createdAt,
         });
 

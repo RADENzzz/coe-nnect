@@ -4,8 +4,11 @@ import { SetMetadata } from '@nestjs/common';
  * Role type — kept in sync with the Postgres `user_role` enum.
  *
  * User-facing roles after the Admin→Dean consolidation:
- *   - college_dean     (top user-facing role; inherits all admin powers)
- *   - department_head  (scoped to one department)
+ *   - college_dean      (top user-facing role; inherits all admin powers)
+ *   - college_secretary (college-wide operations; everything the Dean
+ *                        can do EXCEPT approvals, audit trail, reports
+ *                        and dev tools)
+ *   - department_head   (scoped to one department)
  *
  * Internal roles (never shown in the UI, retained for dev/demo and
  * audit-history reasons — see Checkpoint v21 D3):
@@ -22,6 +25,7 @@ import { SetMetadata } from '@nestjs/common';
 export type UserRole =
   | 'administrator'
   | 'college_dean'
+  | 'college_secretary'
   | 'department_head'
   | 'viewer';
 

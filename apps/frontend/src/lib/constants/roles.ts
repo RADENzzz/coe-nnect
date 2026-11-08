@@ -5,6 +5,7 @@ import type { UserRole } from '../../store/auth.store';
  *
  * User-facing roles (post Admin→Dean consolidation):
  *   - DEAN       (top role — inherits all admin powers)
+ *   - SECRETARY  (college-wide operations; no approvals/audit/reports)
  *   - DEPT_HEAD  (scoped to one department)
  *
  * Internal roles (never shown in the UI):
@@ -17,6 +18,7 @@ import type { UserRole } from '../../store/auth.store';
 export const ROLES = {
   ADMIN: 'administrator',
   DEAN: 'college_dean',
+  SECRETARY: 'college_secretary',
   DEPT_HEAD: 'department_head',
   VIEWER: 'viewer',
 } as const satisfies Record<string, UserRole>;
@@ -26,6 +28,7 @@ export type Role = UserRole;
 export const ROLE_LABELS: Record<Role, string> = {
   administrator: 'Administrator',
   college_dean: 'College Dean',
+  college_secretary: 'College Secretary',
   department_head: 'Department Head',
   viewer: 'Viewer',
 };
@@ -41,6 +44,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_HOME: Record<Role, string> = {
   administrator: '/dean/dashboard',
   college_dean: '/dean/dashboard',
+  college_secretary: '/dean/dashboard',
   department_head: '/dashboard',
   viewer: '/login',
 };
@@ -49,5 +53,9 @@ export const ROLE_HOME: Record<Role, string> = {
  * Roles that can be assigned via the Users UI. Excludes the hidden
  * dev-only `administrator` and the legacy `viewer`.
  */
-export const ASSIGNABLE_ROLES = ['college_dean', 'department_head'] as const;
+export const ASSIGNABLE_ROLES = [
+  'college_dean',
+  'college_secretary',
+  'department_head',
+] as const;
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];

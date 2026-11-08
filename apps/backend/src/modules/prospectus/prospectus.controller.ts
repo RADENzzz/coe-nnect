@@ -56,7 +56,7 @@ export class ProspectusController {
   }
 
   // NOTE: fill-slot must come BEFORE :id
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/fill-slot')
   @Auditable({ action: 'prospectus.fill_slot', source: 'Prospectus' })
   async fillSlot(
@@ -82,7 +82,7 @@ export class ProspectusController {
   // Writes
   // ─────────────────────────────────────────────
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Post()
   async create(@Body() dto: CreateProspectusDto, @Req() req: any) {
     return {
@@ -90,7 +90,7 @@ export class ProspectusController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id')
   async update(
     @Param('id') id: string,
@@ -102,7 +102,7 @@ export class ProspectusController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Patch(':id/toggle-active')
   async toggleActive(@Param('id') id: string, @Req() req: any) {
     return {
@@ -110,7 +110,7 @@ export class ProspectusController {
     };
   }
 
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'college_secretary', 'department_head')
   @Delete(':id')
   async remove(@Param('id') id: string, @Req() req: any) {
     return this.prospectus.remove(id, callerFromRequest(req));

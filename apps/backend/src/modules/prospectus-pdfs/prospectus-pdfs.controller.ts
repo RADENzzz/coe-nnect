@@ -52,7 +52,7 @@ interface RequestWithProfile extends Request {
 @ApiBearerAuth('supabase-jwt')
 @Controller('v1/prospectus-pdfs')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('college_dean', 'department_head')
+@Roles('college_dean', 'college_secretary', 'department_head')
 export class ProspectusPdfsController {
   constructor(private readonly service: ProspectusPdfsService) {}
 

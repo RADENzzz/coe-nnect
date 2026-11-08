@@ -3,7 +3,11 @@ import { SupabaseService } from '../../database/supabase.service';
 
 interface SearchContext {
   userId: string;
-  role: 'administrator' | 'college_dean' | 'department_head';
+  role:
+    | 'administrator'
+    | 'college_dean'
+    | 'college_secretary'
+    | 'department_head';
   deptId?: string | null;
 }
 
@@ -62,7 +66,9 @@ export class SearchService {
         ? String(user.deptId)
         : null;
     const isAdminOrDean =
-      user.role === 'administrator' || user.role === 'college_dean';
+      user.role === 'administrator' ||
+      user.role === 'college_dean' ||
+      user.role === 'college_secretary';
 
     const [subjects, faculty, rooms, sections, users, terms] =
       await Promise.all([

@@ -94,13 +94,14 @@ export class TermsService {
     const dean = await this.recipients.collegeDean();
     await this.dispatcher.dispatch('term.activated', {
       recipientUserIds: this.recipients.uniq([...allDHs, ...dean]),
-      title: 'New term activated',
+      title: `New term activated: ${activated.termName}`,
       body: `${activated.termName} (AY ${activated.schoolYear}) is now active.`,
       entityType: 'term',
       entityId: String(activated.termId),
       payload: {
         termName: activated.termName,
         schoolYear: activated.schoolYear,
+        semester: activated.semester,
       },
     });
 

@@ -36,6 +36,7 @@ export default function RoomPreferencesModal({
   const isDH = profile?.role === 'department_head';
   const isDean =
     profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary' ||
     profile?.role === 'administrator';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 

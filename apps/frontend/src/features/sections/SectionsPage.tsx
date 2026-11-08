@@ -44,8 +44,12 @@ export default function SectionsPage() {
 
   const isAdmin = profile?.role === 'administrator';
   const isDH = profile?.role === 'department_head';
+  const isCollegeWide =
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary' ||
+    isAdmin;
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
-  const canManage = isDH || isAdmin;
+  const canManage = isDH || isCollegeWide;
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Section | null>(null);

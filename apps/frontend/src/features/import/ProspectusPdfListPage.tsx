@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import ResponsiveTable, { type Column } from '@/components/ui/ResponsiveTable';
 import type { RowAction } from '@/components/ui/RowActionMenu';
+import { shellForPath } from '@/lib/notification-target';
 import {
   fetchProspectusPdfs,
   uploadProspectusPdf,
@@ -19,7 +20,10 @@ const MAX_TABLES = 12;
 export default function ProspectusPdfListPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const profile = useAuthStore((s) => s.profile);
+  const shell = shellForPath(location.pathname);
+  const openPdf = (pdfId: string) => navigate(`${shell}/import/${pdfId}`);
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProspectusPdf | null>(null);
@@ -59,7 +63,7 @@ export default function ProspectusPdfListPage() {
     onSuccess: (pdf) => {
       qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
       setUploadOpen(false);
-      navigate(`/import/${pdf.pdfId}`);
+      openPdf(pdf.pdfId);
     },
     onError: (err: any) => {
       setError(err?.response?.data?.message ?? 'Upload failed');
@@ -179,7 +183,7 @@ export default function ProspectusPdfListPage() {
     {
       label: 'Open',
       icon: 'edit',
-      onClick: () => navigate(`/import/${p.pdfId}`),
+      onClick: () => openPdf(p.pdfId),
     },
     { divider: true },
     {
@@ -196,7 +200,8 @@ export default function ProspectusPdfListPage() {
   const canUpload =
     profile?.role === 'department_head' ||
     profile?.role === 'administrator' ||
-    profile?.role === 'college_dean';
+    profile?.role === 'college_dean' ||
+    profile?.role === 'college_secretary';
 
   const hasAnyFilter = !!search;
 
@@ -319,7 +324,7 @@ export default function ProspectusPdfListPage() {
           emptyMessage="No prospectus PDFs uploaded yet."
           noMatchMessage="No PDFs match your search."
           getActions={getActions}
-          onRowClick={(p) => navigate(`/import/${p.pdfId}`)}
+          onRowClick={(p) => openPdf(p.pdfId)}
         />
         )}
       </div>

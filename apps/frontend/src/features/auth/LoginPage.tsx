@@ -553,7 +553,11 @@ export default function LoginPage() {
           ? (deptRow as any)?.department[0]
           : (deptRow as any)?.department;
         if (dept) deptActive = dept.is_active === true;
-      } else if (role === 'college_dean' || role === 'administrator') {
+      } else if (
+        role === 'college_dean' ||
+        role === 'college_secretary' ||
+        role === 'administrator'
+      ) {
         deptActive = true;
       }
 
@@ -567,7 +571,11 @@ export default function LoginPage() {
         navigate('/department-deactivated', { replace: true });
       } else if (from) {
         navigate(from, { replace: true });
-      } else if (role === 'administrator' || role === 'college_dean') {
+      } else if (
+        role === 'administrator' ||
+        role === 'college_dean' ||
+        role === 'college_secretary'
+      ) {
         navigate('/dean/dashboard', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
