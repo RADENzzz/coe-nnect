@@ -93,8 +93,9 @@ Here is the automatic schedule generator in action:
 - Provide role-based workspaces for college deans, department heads, and administrators.
 - View timetables and reports, review audit history, and use notifications and chat.
 - Import prospectus information from PDF text using editor-defined regions.
+- Refresh faculty, qualifications, and unavailability from the university's Institutional Data Platform (IDP) and receive signed faculty-change webhooks.
 
-The Python OR-Tools solver is a separately deployed service called by the backend during automatic schedule generation. The IDP client remains reserved and is not integrated. See the [system architecture](docs/architecture/README.md) and [package documentation](docs/README.md) for details.
+The Python OR-Tools solver is a separately deployed service called by the backend during automatic schedule generation. The IDP integration (Milestone 1) lives in `apps/backend/src/modules/idp`; the `packages/idp-client` package remains a placeholder. See the [IDP integration guide](docs/integrations/idp.md), [system architecture](docs/architecture/README.md), and [package documentation](docs/README.md) for details.
 
 ## Repository layout
 
@@ -104,7 +105,7 @@ apps/
   frontend/                React + Vite web application
 packages/
   constraint-rules/        TypeScript scheduling rules engine
-  idp-client/              Reserved IDP integration package
+  idp-client/              Reserved IDP client package (integration lives in the backend)
   prospectus-parser/       FastAPI PDF text extraction service
   shared-types/            Reserved shared TypeScript types package
   solver-service/          Standalone OR-Tools scheduling service

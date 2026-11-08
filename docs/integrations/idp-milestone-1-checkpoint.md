@@ -1,13 +1,16 @@
 # IDP Integration — Milestone 1 Checkpoint
 
-> Status: **implemented, verified, not yet merged**
+> Status: **implemented, verified, committed, open for review (PR #68)**
 > Branch: `idp/integration` (based on `main` at `586819d`)
 > Contract: `Documents/CoE-NNECT-IDP API Contract v2.txt` (v2.0, 2026-10-23)
 > Pattern: **A — server-to-server REST + signed webhooks**
+> Feature guide: [IDP integration](idp.md)
 
 This file is the continuation point for the IDP integration. It records what
 Milestone 1 does, where the code lives, how to configure it, and what remains
-open with the IDP team.
+open with the IDP team. The canonical feature guide is
+[`docs/integrations/idp.md`](idp.md); this checkpoint adds the implementation
+history, file inventory, and handoff notes.
 
 ---
 

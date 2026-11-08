@@ -35,6 +35,26 @@ The test app factory is
 application with the same validation pipe used by production, without importing
 `AppModule` or opening real connections.
 
+### IDP integration tests
+
+The IDP Milestone 1 tests use in-memory fake repositories and a mocked IDP
+client, so they need no database or network access:
+
+- `apps/backend/test/idp.service.spec.ts`
+- `apps/backend/test/idp-signature.guard.spec.ts`
+
+Run only those files:
+
+```powershell
+cd apps/backend
+npx jest --runInBand test/idp.service.spec.ts test/idp-signature.guard.spec.ts
+```
+
+Coverage includes HMAC acceptance/rejection, the timestamp tolerance window,
+roster creation, idempotent second pulls, unknown department codes,
+`409 local_edit_pending`, webhook dedupe / `409 duplicate_key`, and
+`faculty.created`. See the [IDP integration guide](integrations/idp.md).
+
 ## Browser end-to-end tests
 
 Playwright drives the actual scheduling workflow:
