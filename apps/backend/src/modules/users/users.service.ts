@@ -132,30 +132,68 @@ export class UsersService {
         password: dto.password,
         email_confirm: true,
         app_metadata: appMetadata,
+        user_metadata: {
+          role: dto.role,
+          username: dto.username,
+          dept_id: dto.deptId ?? null,
+          faculty_id: dto.facultyId ?? null,
+        },
       });
 
     if (error) throw new ConflictException(error.message);
     if (!data.user) throw new Error('Supabase did not return a user');
-
-    // 5. Fetch the profile the trigger created, or fall back to manual
+    // 5. Reconcile the profile row with what we actually requested.
+    //
+    // The `on_auth_user_created` trigger inserts into public.users using
+    // `raw_app_meta_data->>'role'`, falling back to 'viewer'. Supabase
+    // does NOT guarantee app_metadata is present in raw_app_meta_data at
+    // the exact moment the AFTER INSERT trigger fires, so the trigger
+    // intermittently writes 'viewer' even though we passed the correct
+    // role to admin.createUser(). Force the intended values through so
+    // the row always matches the API contract.
     let saved: User;
     const profile = await this.userRepo.findOne({
       where: { userId: data.user.id },
     });
 
     if (!profile) {
-      const fallback = this.userRepo.create({
-        userId: data.user.id,
-        username: dto.username,
-        email: dto.email,
-        role: dto.role as UserRole,
-        deptId: dto.deptId ?? null,
-        facultyId: dto.facultyId ?? null,
-        isActive: true,
-      });
-      saved = await this.userRepo.save(fallback);
+      // Trigger didn't run (or was disabled) — insert ourselves.
+      saved = await this.userRepo.save(
+        this.userRepo.create({
+          userId: data.user.id,
+          username: dto.username,
+          email: dto.email,
+          role: dto.role as UserRole,
+          deptId: dto.deptId ?? null,
+          facultyId: dto.facultyId ?? null,
+          isActive: true,
+        }),
+      );
     } else {
-      saved = profile;
+      // Trigger ran, but possibly with stale/empty metadata. Reconcile.
+      let dirty = false;
+      const intendedRole = dto.role as UserRole;
+      const intendedDeptId = dto.deptId ?? null;
+      const intendedFacultyId = dto.facultyId ?? null;
+
+      if (profile.role !== intendedRole) {
+        profile.role = intendedRole;
+        dirty = true;
+      }
+      if (profile.username !== dto.username) {
+        profile.username = dto.username;
+        dirty = true;
+      }
+      if ((profile.deptId ?? null) !== intendedDeptId) {
+        profile.deptId = intendedDeptId;
+        dirty = true;
+      }
+      if ((profile.facultyId ?? null) !== intendedFacultyId) {
+        profile.facultyId = intendedFacultyId;
+        dirty = true;
+      }
+
+      saved = dirty ? await this.userRepo.save(profile) : profile;
     }
 
     // ═══ Notification: user.created ═══
