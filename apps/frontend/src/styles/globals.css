@@ -1574,6 +1574,39 @@ html {
   color: #f8fafc;
 }
 
+/* ── Landing page ──
+   The hero title is yellow in light mode. In dark mode it follows the
+   user's chosen accent instead of the global white heading rule above. */
+.landing-accent {
+  color: #facc15;
+}
+
+.dark .landing-accent {
+  color: rgb(var(--accent-tint));
+}
+
+/* Always-dark footer. The light theme uses a deep navy, while dark mode
+   hands the surface to the active theme's primary container. It never
+   resolves to white, unlike the inverted slate scale. */
+.landing-footer {
+  background-color: #0b1120;
+  background-image: radial-gradient(
+    circle at 18% 0%,
+    rgba(250, 204, 21, 0.1),
+    transparent 42%
+  );
+  color: #cbd5e1;
+}
+
+.dark .landing-footer {
+  background-color: rgb(var(--primary-container));
+  background-image: radial-gradient(
+    circle at 18% 0%,
+    rgb(var(--accent-tint) / 0.14),
+    transparent 42%
+  );
+}
+
 .dark *:focus-visible {
   outline-color: var(--accent-tint);
 }
