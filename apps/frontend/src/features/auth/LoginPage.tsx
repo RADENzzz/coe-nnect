@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase, createAuthProbeClient } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
@@ -140,7 +140,7 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
                       name={acct.icon}
                       filled
                       size={16}
-                      className="text-[#5c1219]"
+                      className="text-primary"
                     />
                   </span>
                   <div className="flex-1 min-w-0">
@@ -161,7 +161,7 @@ function DevLoginPopup({ accounts, onFill }: DevLoginPopupProps) {
                   <button
                     type="button"
                     onClick={() => onFill(acct.email, acct.password)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-[#5c1219] text-white text-[11px] font-semibold hover:opacity-90 active:scale-[0.98] transition-all rounded"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-primary text-on-primary text-[11px] font-semibold hover:opacity-90 active:scale-[0.98] transition-all rounded"
                   >
                     <Icon name="login" size={14} />
                     Fill
@@ -323,7 +323,7 @@ function ForgotPasswordModal({
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@wmsu.edu.ph"
                   autoFocus
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                 />
               </div>
             </>
@@ -341,7 +341,7 @@ function ForgotPasswordModal({
               <button
                 type="submit"
                 disabled={sending}
-                className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 rounded-lg disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 rounded-lg disabled:opacity-50 flex items-center gap-2"
               >
                 {sending && (
                   <Icon
@@ -616,19 +616,19 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={() => setAppearanceOpen(true)}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:text-[#5c1219]"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-outline-variant bg-surface text-slate-500 shadow-sm transition-colors hover:text-primary"
           aria-label="Appearance settings"
           title="Appearance settings"
         >
           <Icon name="palette" size={18} />
         </button>
-        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-outline-variant bg-surface shadow-sm">
           <ThemeToggle />
         </div>
       </div>
 
       {/* ───────── LEFT: Brand Panel ───────── */}
-      <div className="login-brand hidden lg:flex lg:w-[45%] relative bg-[#5c1219] overflow-hidden">
+      <div className="login-brand hidden lg:flex lg:w-[45%] relative bg-primary overflow-hidden">
         <svg
           className="absolute inset-0 w-full h-full opacity-[0.07]"
           xmlns="http://www.w3.org/2000/svg"
@@ -655,19 +655,29 @@ export default function LoginPage() {
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl animate-pulse-slower" />
 
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 border border-white/20 bg-white/10 flex items-center justify-center">
+          <Link
+            to="/"
+            className="group flex w-fit items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            aria-label="Back to the CoE-NNECT public landing page"
+            title="Back to public landing page"
+          >
+            <div className="w-10 h-10 border border-white/25 bg-white/10 flex items-center justify-center transition-colors group-hover:bg-white/20">
               <Icon name="school" filled className="text-white" size={24} />
             </div>
             <div>
               <p className="text-sm font-bold tracking-tight text-white">
                 CoE-NNECT
               </p>
-              <p className="text-[14px] text-white/60">
+              <p className="text-[14px] text-white/80 group-hover:text-white transition-colors">
                 WMSU · College of Engineering
               </p>
             </div>
-          </div>
+            <Icon
+              name="arrow_back"
+              size={16}
+              className="ml-1 text-white/50 opacity-0 transition-all group-hover:-translate-x-0.5 group-hover:opacity-100"
+            />
+          </Link>
 
           <div className="animate-fade-up">
             <h1 className="text-5xl font-extrabold leading-tight tracking-tight text-white">
@@ -675,15 +685,15 @@ export default function LoginPage() {
               <br />
               ENGINEERING
               <br />
-              <span className="text-white/50">SCHEDULING SYSTEM</span>
+              <span className="text-white/70">SCHEDULING SYSTEM</span>
             </h1>
-            <p className="mt-4 text-sm text-white/60 max-w-xs">
+            <p className="mt-4 text-sm text-white/80 max-w-xs">
               Manage faculty schedules, resolve conflicts, and plan academic
               terms, all in one place.
             </p>
           </div>
 
-          <p className="text-[11px] text-white/30">
+          <p className="text-[11px] text-white/45">
             © {new Date().getFullYear()} Western Mindanao State University
           </p>
         </div>
@@ -696,15 +706,29 @@ export default function LoginPage() {
           className="w-full max-w-sm animate-slide-in"
           style={error ? { animation: 'shake 400ms ease-in-out' } : undefined}
         >
-          <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-9 h-9 bg-[#5c1219] flex items-center justify-center">
-              <Icon name="school" filled className="text-white" size={22} />
+          <Link
+            to="/"
+            className="group lg:hidden flex w-fit items-center gap-3 mb-8 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-label="Back to the CoE-NNECT public landing page"
+            title="Back to public landing page"
+          >
+            <div className="w-9 h-9 bg-primary flex items-center justify-center">
+              <Icon name="school" filled className="text-on-primary" size={22} />
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-900">CoE-NNECT</p>
-              <p className="text-[11px] text-slate-500">WMSU Scheduling</p>
+              <p className="text-sm font-bold text-slate-900 transition-colors group-hover:text-primary">
+                CoE-NNECT
+              </p>
+              <p className="text-[11px] text-slate-500">
+                WMSU · College of Engineering
+              </p>
             </div>
-          </div>
+            <Icon
+              name="arrow_back"
+              size={14}
+              className="text-slate-400 opacity-0 transition-all group-hover:-translate-x-0.5 group-hover:opacity-100"
+            />
+          </Link>
 
           <SystemStatusBanner />
 
@@ -795,14 +819,14 @@ export default function LoginPage() {
                   type="checkbox"
                   checked={remember}
                   onChange={(e) => setRemember(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-[#5c1219]"
+                  className="w-3.5 h-3.5 accent-primary"
                 />
                 Remember email
               </label>
               <button
                 type="button"
                 onClick={() => setForgotOpen(true)}
-                className="text-xs font-semibold text-[#5c1219] hover:underline"
+                className="text-xs font-semibold text-primary hover:underline"
               >
                 Forgot password?
               </button>
@@ -812,7 +836,7 @@ export default function LoginPage() {
               type="submit"
               disabled={!canSubmit}
               aria-busy={loading || undefined}
-              className="w-full py-2.5 mt-3 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/40 focus-visible:ring-offset-2"
+              className="w-full py-2.5 mt-3 bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
             >
               <span
                 className={`flex items-center justify-center gap-2 transition-transform duration-200 ${
@@ -921,7 +945,7 @@ function FloatingInput({
       {icon && (
         <span
           className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors z-10 ${
-            focused ? 'text-[#5c1219]' : 'text-slate-400'
+            focused ? 'text-primary' : 'text-slate-400'
           }`}
           aria-hidden
         >
@@ -946,7 +970,7 @@ function FloatingInput({
           showPasswordToggle ? 'pr-10' : 'pr-3'
         } pt-5 pb-1.5 text-sm bg-white border transition-all duration-200 outline-none text-slate-900 rounded ${
           focused
-            ? 'border-slate-500 shadow-[0_0_0_2px_rgba(92,18,25,0.12)]'
+            ? 'border-primary shadow-[0_0_0_2px_rgb(var(--primary)/0.12)]'
             : 'border-slate-300 hover:border-slate-400'
         }`}
       />
@@ -957,7 +981,7 @@ function FloatingInput({
           icon ? 'left-10' : 'left-3'
         } pointer-events-none transition-all duration-200 ${
           isActive
-            ? 'top-1.5 text-[10px] font-semibold text-[#5c1219] tracking-wide uppercase'
+            ? 'top-1.5 text-[10px] font-semibold text-primary tracking-wide uppercase'
             : 'top-1/2 -translate-y-1/2 text-sm text-slate-400'
         }`}
       >

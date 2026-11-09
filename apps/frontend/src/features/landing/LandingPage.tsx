@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import Icon from '../../components/ui/Icon';
+import ThemeToggle from '../../components/ui/ThemeToggle';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchPublicFaculty,
@@ -36,7 +37,7 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
       <div className="flex items-center gap-2 text-slate-500">
         <Icon name={icon} size={16} />
         <span className="text-[11px] font-bold uppercase tracking-wider">
@@ -68,7 +69,7 @@ function TabButton({
       onClick={onClick}
       className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition ${
         active
-          ? 'border-[#5c1219] text-[#5c1219]'
+          ? 'border-primary text-primary'
           : 'border-transparent text-slate-500 hover:text-slate-800'
       }`}
     >
@@ -113,7 +114,7 @@ function PanelState({
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-lg bg-[#5c1219] px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+          className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary transition hover:opacity-90"
         >
           Retry
         </button>
@@ -202,7 +203,7 @@ function SchedulesPanel({
               value={selectedTermId}
               onChange={(event) => onTermChange(event.target.value)}
               disabled={!data?.terms.length}
-              className="h-10 min-w-48 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10 disabled:opacity-50"
+              className="h-10 min-w-48 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
             >
               {(data?.terms ?? []).map((term) => (
                 <option key={term.termId} value={term.termId}>
@@ -220,7 +221,7 @@ function SchedulesPanel({
             <select
               value={department}
               onChange={(event) => setDepartment(event.target.value)}
-              className="h-10 min-w-36 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+              className="h-10 min-w-36 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
             >
               <option value="">All departments</option>
               {departments.map((code) => (
@@ -243,7 +244,7 @@ function SchedulesPanel({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search subject, section, faculty, room…"
-            className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+            className="h-10 w-full rounded-lg border border-outline bg-surface pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </label>
       </div>
@@ -262,7 +263,7 @@ function SchedulesPanel({
       />
 
       {!isLoading && !isError && filtered.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -395,14 +396,14 @@ function FacultyPanel({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search faculty or designation…"
-            className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+            className="h-10 w-full rounded-lg border border-outline bg-surface pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </label>
 
         <select
           value={department}
           onChange={(event) => setDepartment(event.target.value)}
-          className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+          className="h-10 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
         >
           <option value="">All departments</option>
           {(data?.departments ?? []).map((item) => (
@@ -412,12 +413,12 @@ function FacultyPanel({
           ))}
         </select>
 
-        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700">
+        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-700">
           <input
             type="checkbox"
             checked={idpOnly}
             onChange={(event) => setIdpOnly(event.target.checked)}
-            className="h-4 w-4 accent-[#5c1219]"
+            className="h-4 w-4 accent-primary"
           />
           IDP-linked only
         </label>
@@ -436,7 +437,7 @@ function FacultyPanel({
       />
 
       {!isLoading && !isError && filtered.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -487,7 +488,7 @@ function FacultyPanel({
         </div>
       )}
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-500">
+      <div className="mt-4 rounded-xl border border-outline-variant bg-slate-50 p-4 text-xs leading-relaxed text-slate-500">
         <p className="font-semibold text-slate-700">
           About the public faculty directory
         </p>
@@ -546,11 +547,11 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <div className="min-h-screen bg-background text-on-background">
+      <header className="sticky top-0 z-40 border-b border-outline-variant bg-surface/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center bg-[#5c1219] text-white">
+          <Link to="/" className="group flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center bg-primary text-on-primary">
               <Icon name="school" filled size={22} />
             </span>
             <span>
@@ -567,32 +568,37 @@ export default function LandingPage() {
             <button
               type="button"
               onClick={() => goToTab('schedules')}
-              className="transition hover:text-[#5c1219]"
+              className="transition hover:text-primary"
             >
               Published schedules
             </button>
             <button
               type="button"
               onClick={() => goToTab('faculty')}
-              className="transition hover:text-[#5c1219]"
+              className="transition hover:text-primary"
             >
               Faculty &amp; IDP
             </button>
           </nav>
 
-          <Link
-            to={dashboardPath}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#5c1219] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-          >
-            <Icon name={user ? 'dashboard' : 'login'} size={17} />
-            <span className="hidden sm:inline">
-              {user ? 'Open dashboard' : 'Sign in'}
-            </span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-outline-variant bg-surface">
+              <ThemeToggle />
+            </div>
+            <Link
+              to={dashboardPath}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90"
+            >
+              <Icon name={user ? 'dashboard' : 'login'} size={17} />
+              <span className="hidden sm:inline">
+                {user ? 'Open dashboard' : 'Sign in'}
+              </span>
+            </Link>
+          </div>
         </div>
       </header>
 
-      <section className="relative overflow-hidden bg-[#5c1219] text-white">
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary-container text-white">
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]"
           xmlns="http://www.w3.org/2000/svg"
@@ -627,9 +633,9 @@ export default function LandingPage() {
             <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
               College of Engineering
               <br />
-              <span className="text-white/50">class schedules, in one place.</span>
+              <span className="text-white/65">class schedules, in one place.</span>
             </h1>
-            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/70 sm:text-base">
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
               Browse officially published schedules, check room and instructor
               assignments, and see which faculty records are connected to the
               university&apos;s Institutional Data Platform.
@@ -638,7 +644,7 @@ export default function LandingPage() {
               <button
                 type="button"
                 onClick={() => goToTab('schedules')}
-                className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#5c1219] transition hover:bg-white/90"
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-primary transition hover:bg-white/90"
               >
                 Browse schedules
                 <Icon name="arrow_downward" size={16} />
@@ -653,8 +659,8 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/15 bg-white/5 p-6 backdrop-blur-sm">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
+          <div className="rounded-2xl border border-white/15 bg-white/10 p-6 backdrop-blur-sm">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
               Current public snapshot
             </p>
             <dl className="mt-4 space-y-3 text-sm">
@@ -683,7 +689,7 @@ export default function LandingPage() {
                 </dd>
               </div>
             </dl>
-            <p className="mt-4 text-[11px] leading-relaxed text-white/45">
+            <p className="mt-4 text-[11px] leading-relaxed text-white/60">
               Only published schedules are shown. Drafts, flagged rows, and
               entries waiting on faculty approval stay internal.
             </p>
@@ -724,7 +730,7 @@ export default function LandingPage() {
         id="public-content"
         className="mx-auto w-full max-w-7xl scroll-mt-24 px-4 pb-16 pt-10 sm:px-6 lg:px-8"
       >
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-slate-200">
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-outline-variant">
           <div className="flex gap-5">
             <TabButton
               active={tab === 'schedules'}
@@ -771,7 +777,7 @@ export default function LandingPage() {
         )}
       </main>
 
-      <footer className="border-t border-slate-200 bg-white">
+      <footer className="border-t border-outline-variant bg-surface">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <p>
             © {new Date().getFullYear()} Western Mindanao State University ·
