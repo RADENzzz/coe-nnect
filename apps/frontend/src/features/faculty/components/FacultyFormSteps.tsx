@@ -5,6 +5,8 @@ import type { Department } from '../../../api/departments.api';
 import {
   CLASSIFICATIONS,
   CLASS_TONE,
+  DEFAULT_REQUIRED_HOURS,
+  computeRequiredHours,
   FormSection,
   FormField,
   inputClass,
@@ -15,6 +17,7 @@ import {
 export interface DesignationItem {
   designationId: string;
   designationName: string;
+  releaseHours: number;
 }
 
 interface StepProps {
@@ -148,7 +151,11 @@ export function EmploymentStep({
         <FormField
           label="Required Hours"
           error={fieldErrors.requiredHours}
-          hint="Leave blank to use the 18h default."
+          hint={
+            form.designationId
+              ? 'Auto-set from the selected designation.'
+              : `Leave blank to use the ${DEFAULT_REQUIRED_HOURS}h default.`
+          }
         >
           <div className="relative">
             <input
@@ -184,6 +191,12 @@ export function AssignmentStep({
   designations: DesignationItem[];
   isDH: boolean;
 }) {
+  const selectedDesignation = form.designationId
+    ? designations.find(
+        (d) => String(d.designationId) === String(form.designationId),
+      )
+    : null;
+
   return (
     <FormSection title="Assignment" icon="assignment_ind">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -208,11 +221,38 @@ export function AssignmentStep({
               ))}
           </select>
         </FormField>
-        <FormField label="Designation">
+        <FormField
+          label="Designation"
+          hint={
+            selectedDesignation && selectedDesignation.releaseHours > 0
+              ? `Auto-sets required hours to ${computeRequiredHours(
+                  selectedDesignation.releaseHours,
+                )}h/wk (${DEFAULT_REQUIRED_HOURS}h base − ${
+                  selectedDesignation.releaseHours
+                }h release).`
+              : undefined
+          }
+        >
           <select
             name="designationId"
             value={form.designationId}
-            onChange={(e) => setField('designationId', e.target.value)}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setField('designationId', newId);
+              const d = newId
+                ? designations.find(
+                    (x) => String(x.designationId) === newId,
+                  )
+                : null;
+              if (d) {
+                setField(
+                  'requiredHours',
+                  String(computeRequiredHours(d.releaseHours)),
+                );
+              } else {
+                setField('requiredHours', '');
+              }
+            }}
             className={inputClass(false)}
           >
             <option value="">— None —</option>

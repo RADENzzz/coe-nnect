@@ -27,6 +27,7 @@ interface Props {
   faculty: FacultyRecord | null;
   departmentLabel: (id: string | null) => string;
   designationLabel: (id: string | null) => string;
+  requiredHoursLabel: (faculty: FacultyRecord) => string;
   status?: StatusInfo;
   isForeign?: boolean;
   onEdit: () => void;
@@ -46,6 +47,7 @@ export default function FacultyDetailPanel({
   faculty,
   departmentLabel,
   designationLabel,
+  requiredHoursLabel,
   status,
   isForeign = false,
   onEdit,
@@ -211,6 +213,7 @@ export default function FacultyDetailPanel({
               faculty={faculty}
               departmentLabel={departmentLabel}
               designationLabel={designationLabel}
+              requiredHoursLabel={requiredHoursLabel}
               copiedKey={copiedKey}
               onCopy={copy}
             />
@@ -283,12 +286,14 @@ function ProfileTab({
   faculty,
   departmentLabel,
   designationLabel,
+  requiredHoursLabel,
   copiedKey,
   onCopy,
 }: {
   faculty: FacultyRecord;
   departmentLabel: (id: string | null) => string;
   designationLabel: (id: string | null) => string;
+  requiredHoursLabel: (faculty: FacultyRecord) => string;
   copiedKey: string | null;
   onCopy: (key: string, value: string) => void;
 }) {
@@ -361,11 +366,7 @@ function ProfileTab({
         <InfoRow
           label="Required Hours"
           icon="schedule"
-          value={
-            faculty.requiredHours != null
-              ? `${faculty.requiredHours} hours/week`
-              : '18 hours/week (default)'
-          }
+          value={requiredHoursLabel(faculty)}
         />
       </InfoSection>
     </div>

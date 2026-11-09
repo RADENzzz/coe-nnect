@@ -54,6 +54,21 @@ export const EMPTY_FORM: FormState = {
   requiredHours: '',
 };
 
+export const DEFAULT_REQUIRED_HOURS = 18;
+
+/**
+ * Derive required teaching hours from a designation's release hours.
+ * Base load is 18h/week; designations release a portion of it.
+ */
+export function computeRequiredHours(
+  releaseHours: number | null | undefined,
+  baseHours: number = DEFAULT_REQUIRED_HOURS,
+): number {
+  const release = Number(releaseHours ?? 0);
+  if (!isFinite(release) || release <= 0) return baseHours;
+  return Math.max(0, baseHours - release);
+}
+
 export interface StepDef {
   label: string;
   icon: string;
