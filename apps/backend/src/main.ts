@@ -78,6 +78,7 @@ function setupSwagger(app: any, apiPrefix: string) {
     .addTag('Search', 'Global search')
     .addTag('Dev Tools', 'Developer-only tools (hidden admin)')
     .addTag('IDP', 'Institutional Data Platform integration (health, webhooks, faculty sync)')
+    .addTag('Public', 'Public landing page: published schedules, statistics, faculty directory')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

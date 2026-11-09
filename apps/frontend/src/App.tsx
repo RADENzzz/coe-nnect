@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import LoginPage from './features/auth/LoginPage';
+import LandingPage from './features/landing/LandingPage';
 import MaintenancePage from './features/auth/MaintenancePage';
 import DepartmentDeactivatedPage from './features/auth/DepartmentDeactivatedPage';
 import DashboardPage from './features/dashboard/DashboardPage';
@@ -54,6 +55,7 @@ function App() {
   return (
     <MaintenanceGate>
       <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
 
@@ -137,8 +139,7 @@ function App() {
          * That's the point — no chrome, no polling, no stale fetches.
          */}
         <Route element={<DepartmentActiveGate />}>
-          <Route path="/" element={<AppShell />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route element={<AppShell />}>
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="timetable" element={<TimetablePage />} />
             <Route path="sections" element={<SectionsPage />} />
@@ -174,7 +175,7 @@ function App() {
         element={<Navigate to="/dean/dashboard" replace />}
       />
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </MaintenanceGate>
   );
