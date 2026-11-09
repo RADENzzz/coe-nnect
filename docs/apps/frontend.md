@@ -4,13 +4,14 @@ The `apps/frontend` directory contains the CoE-NNECT browser application. It is 
 
 ## Features
 
+- Public landing page at `/` with published schedules, key statistics, and a faculty/IDP tab. It reads only from `/api/v1/public/*`; drafts, flagged rows, pending faculty requests, and all contact or identifier fields stay internal.
 - Login and role-protected workspaces for department heads, deans, and administrators.
 - Academic data management, schedule planning and review, timetable views, and schedule generation.
 - Faculty management with qualifications, preferences, unavailability, and a **Refresh from IDP** action that pulls the latest roster from the Institutional Data Platform.
 - Reports, audit history, approvals, notifications, chat, and settings.
 - Prospectus PDF import with editor-defined table and cell regions.
 
-Routes are assembled in `src/App.tsx`; route guards enforce role access. The PDF import and editing experience is restricted to desktop-sized viewports.
+Routes are assembled in `src/App.tsx`; route guards enforce role access. The landing page stays reachable during maintenance mode because it is read-only and does not require a session. The PDF import and editing experience is restricted to desktop-sized viewports.
 
 ## Setup and local development
 

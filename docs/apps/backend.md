@@ -8,6 +8,18 @@ Feature modules are registered in `src/app.module.ts`. They cover users and auth
 
 The global API prefix defaults to `/api` and can be changed with `API_PREFIX`. Routes use NestJS validation. Socket.IO gateways support real-time features. See the [scheduling API reference](../interface-contract/docs/interface-contract/scheduling-api.md) for schedule routes and payload conventions.
 
+## Public API
+
+The `PublicModule` under `src/modules/public` backs the public landing page. These routes are unauthenticated and are intentionally separate from the application API.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/v1/public/overview` | Public | Aggregate counts: published entries/terms, active departments/faculty/subjects/rooms, IDP-linked faculty |
+| `GET` | `/api/v1/public/schedules?termId=` | Public | Published schedule entries, optionally filtered by term |
+| `GET` | `/api/v1/public/faculty?departmentCode=&idpOnly=` | Public | Minimal faculty directory (name, department, designation, IDP-linked status) |
+
+The queries exclude drafts, flagged rows, rows with a pending cross-department faculty request, inactive departments, and rows missing a day or start/end time. The faculty payload never includes email, contact number, employee ID, WMSU ID, credentials, webhook secrets, or internal integration URLs. Responses are cacheable for 60 seconds and remain subject to the global rate limiter.
+
 ## IDP integration
 
 The `IdpModule` under `src/modules/idp` implements Milestone 1 of the CoE-NNECT ↔ IDP v2.0 contract using Pattern A (REST + webhooks).

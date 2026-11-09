@@ -230,6 +230,16 @@ it the guard fails closed.
 - The current implementation keeps seen keys in memory for 30 days. This is
   process-local; a durable `idp_processed_event` table is a follow-up.
 
+## Public-page exposure
+
+The public landing page uses a separate read-only API under `/api/v1/public/*`.
+It exposes only published schedules, aggregate counts, and faculty names,
+departments, designations, and an IDP-linked badge. It never returns IDP
+credentials, API keys, webhook secrets, internal integration URLs, or faculty
+email/contact/employee/WMSU identifiers. Keep any new public field review
+focused on that boundary; the existing Swagger docs remain gated in production
+by `ENABLE_SWAGGER=true` plus basic auth.
+
 ## Error format
 
 IDP-namespace failures use the contract envelope:

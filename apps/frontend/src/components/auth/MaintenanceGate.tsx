@@ -7,8 +7,11 @@ import {
   isLocalMaintenanceBypassEnabled,
 } from '../../lib/maintenance-preview';
 
-/** These routes must stay reachable so the dev can sign in / sign out. */
-const PUBLIC_DURING_MAINTENANCE = new Set(['/login', '/maintenance']);
+/**
+ * These routes stay reachable during maintenance: the public landing page is
+ * read-only, and the dev still needs to sign in / out and see the wall.
+ */
+const PUBLIC_DURING_MAINTENANCE = new Set(['/', '/login', '/maintenance']);
 
 /**
  * App-wide maintenance gate.
