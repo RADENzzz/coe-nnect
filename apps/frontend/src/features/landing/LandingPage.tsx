@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
@@ -52,22 +52,39 @@ function StatCard({
   );
 }
 
+function HeroStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
+        {label}
+      </dt>
+      <dd className="mt-1 text-2xl font-extrabold text-white">{value}</dd>
+    </div>
+  );
+}
+
 function TabButton({
+  id,
   active,
   icon,
   children,
   onClick,
 }: {
+  id: string;
   active: boolean;
   icon: string;
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      role="tab"
+      id={id}
+      aria-selected={active}
+      aria-controls="public-panel"
       onClick={onClick}
-      className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition ${
+      className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
         active
           ? 'border-primary text-primary'
           : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -84,11 +101,17 @@ function PanelState({
   error,
   empty,
   onRetry,
+  onClear,
+  emptyTitle = 'No matching records.',
+  emptyHint = 'Try clearing the search or choosing a different filter.',
 }: {
   loading: boolean;
   error: boolean;
   empty: boolean;
   onRetry: () => void;
+  onClear?: () => void;
+  emptyTitle?: string;
+  emptyHint?: string;
 }) {
   if (loading) {
     return (
@@ -126,12 +149,17 @@ function PanelState({
     return (
       <div className="flex flex-col items-center gap-2 py-16 text-center">
         <Icon name="search_off" size={28} className="text-slate-400" />
-        <p className="text-sm font-semibold text-slate-800">
-          No matching records.
-        </p>
-        <p className="text-xs text-slate-500">
-          Try clearing the search or choosing a different filter.
-        </p>
+        <p className="text-sm font-semibold text-slate-800">{emptyTitle}</p>
+        <p className="max-w-sm text-xs text-slate-500">{emptyHint}</p>
+        {onClear && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="mt-1 rounded-lg border border-outline bg-surface px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
     );
   }
@@ -191,6 +219,8 @@ function SchedulesPanel({
     });
   }, [entries, department, search]);
 
+  const hasActiveFilters = Boolean(search.trim()) || Boolean(department);
+
   return (
     <div>
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
@@ -249,7 +279,7 @@ function SchedulesPanel({
         </label>
       </div>
 
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-xs text-slate-500" aria-live="polite">
         Showing <strong className="text-slate-700">{filtered.length}</strong> of{' '}
         {entries.length} published class blocks
         {data?.term ? ` for ${data.term.termCode ?? data.term.termName}` : ''}.
@@ -260,6 +290,22 @@ function SchedulesPanel({
         error={isError}
         empty={!isLoading && !isError && filtered.length === 0}
         onRetry={onRetry}
+        onClear={
+          hasActiveFilters
+            ? () => {
+                setSearch('');
+                setDepartment('');
+              }
+            : undefined
+        }
+        emptyTitle={
+          entries.length === 0 ? 'No published schedules yet.' : undefined
+        }
+        emptyHint={
+          entries.length === 0
+            ? 'Published class blocks will appear here once the college publishes them.'
+            : undefined
+        }
       />
 
       {!isLoading && !isError && filtered.length > 0 && (
@@ -361,6 +407,8 @@ function FacultyPanel({
     });
   }, [department, faculty, idpOnly, search]);
 
+  const hasActiveFilters = Boolean(search.trim()) || Boolean(department) || idpOnly;
+
   return (
     <div>
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -424,7 +472,7 @@ function FacultyPanel({
         </label>
       </div>
 
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-xs text-slate-500" aria-live="polite">
         Showing <strong className="text-slate-700">{filtered.length}</strong>{' '}
         faculty records.
       </p>
@@ -434,6 +482,23 @@ function FacultyPanel({
         error={isError}
         empty={!isLoading && !isError && filtered.length === 0}
         onRetry={onRetry}
+        onClear={
+          hasActiveFilters
+            ? () => {
+                setSearch('');
+                setDepartment('');
+                setIdpOnly(false);
+              }
+            : undefined
+        }
+        emptyTitle={
+          faculty.length === 0 ? 'No faculty records yet.' : undefined
+        }
+        emptyHint={
+          faculty.length === 0
+            ? 'Faculty records will appear here once they are added to the directory.'
+            : undefined
+        }
       />
 
       {!isLoading && !isError && filtered.length > 0 && (
@@ -564,18 +629,22 @@ export default function LandingPage() {
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 md:flex">
+          <nav className="hidden items-center gap-6 text-sm font-semibold md:flex">
             <button
               type="button"
               onClick={() => goToTab('schedules')}
-              className="transition hover:text-primary"
+              className={`transition hover:text-primary ${
+                tab === 'schedules' ? 'text-primary' : 'text-slate-600'
+              }`}
             >
               Published schedules
             </button>
             <button
               type="button"
               onClick={() => goToTab('faculty')}
-              className="transition hover:text-primary"
+              className={`transition hover:text-primary ${
+                tab === 'faculty' ? 'text-primary' : 'text-slate-600'
+              }`}
             >
               Faculty &amp; IDP
             </button>
@@ -624,18 +693,19 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
 
-        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.35fr,1fr] lg:items-center lg:px-8 lg:py-24">
+        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.3fr,1fr] lg:items-center lg:px-8 lg:py-24">
           <div>
-            <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/80">
+            <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85">
               <Icon name="public" size={14} />
               Public schedule portal
             </span>
-            <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+            <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">
               College of Engineering
-              <br />
-              <span className="text-white/65">class schedules, in one place.</span>
+              <span className="mt-2 block text-2xl font-semibold text-white/75 sm:text-3xl">
+                class schedules, in one place.
+              </span>
             </h1>
-            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
+            <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
               Browse officially published schedules, check room and instructor
               assignments, and see which faculty records are connected to the
               university&apos;s Institutional Data Platform.
@@ -661,78 +731,46 @@ export default function LandingPage() {
 
           <div className="rounded-2xl border border-white/15 bg-white/10 p-6 backdrop-blur-sm">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-              Current public snapshot
+              At a glance
             </p>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
-                <dt className="text-white/65">Published class blocks</dt>
-                <dd className="font-extrabold">
-                  {overview.data?.publishedEntries ?? '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
-                <dt className="text-white/65">Published terms</dt>
-                <dd className="font-extrabold">
-                  {overview.data?.publishedTerms ?? '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
-                <dt className="text-white/65">Active faculty</dt>
-                <dd className="font-extrabold">
-                  {overview.data?.activeFaculty ?? '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-white/65">IDP-linked faculty</dt>
-                <dd className="font-extrabold">
-                  {overview.data?.idpLinkedFaculty ?? '—'}
-                </dd>
-              </div>
+            <dl className="mt-4 grid grid-cols-2 gap-3">
+              <HeroStat
+                label="Published class blocks"
+                value={overview.data?.publishedEntries ?? '—'}
+              />
+              <HeroStat
+                label="Published terms"
+                value={overview.data?.publishedTerms ?? '—'}
+              />
+              <HeroStat
+                label="Active faculty"
+                value={overview.data?.activeFaculty ?? '—'}
+              />
+              <HeroStat
+                label="IDP-linked faculty"
+                value={overview.data?.idpLinkedFaculty ?? '—'}
+              />
             </dl>
             <p className="mt-4 text-[11px] leading-relaxed text-white/60">
               Only published schedules are shown. Drafts, flagged rows, and
-              entries waiting on faculty approval stay internal.
+              entries awaiting faculty approval stay internal.
             </p>
           </div>
         </div>
       </section>
 
-      <div className="mx-auto -mt-8 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard
-            icon="schedule"
-            label="Published classes"
-            value={overview.data?.publishedEntries ?? '—'}
-            hint="Visible on this portal"
-          />
-          <StatCard
-            icon="school"
-            label="Departments"
-            value={overview.data?.activeDepartments ?? '—'}
-            hint="Active engineering departments"
-          />
-          <StatCard
-            icon="groups"
-            label="Faculty"
-            value={overview.data?.activeFaculty ?? '—'}
-            hint="Active faculty records"
-          />
-          <StatCard
-            icon="link"
-            label="IDP-linked"
-            value={overview.data?.idpLinkedFaculty ?? '—'}
-            hint="Connected to the IDP"
-          />
-        </div>
-      </div>
-
       <main
         id="public-content"
         className="mx-auto w-full max-w-7xl scroll-mt-24 px-4 pb-16 pt-10 sm:px-6 lg:px-8"
       >
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-outline-variant">
-          <div className="flex gap-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
+          <div
+            role="tablist"
+            aria-label="Public data views"
+            className="flex gap-5"
+          >
             <TabButton
+              id="tab-schedules"
               active={tab === 'schedules'}
               icon="schedule"
               onClick={() => setTab('schedules')}
@@ -740,6 +778,7 @@ export default function LandingPage() {
               Published schedules
             </TabButton>
             <TabButton
+              id="tab-faculty"
               active={tab === 'faculty'}
               icon="groups"
               onClick={() => setTab('faculty')}
@@ -747,7 +786,7 @@ export default function LandingPage() {
               Faculty &amp; IDP
             </TabButton>
           </div>
-          {schedules.data?.generatedAt && (
+          {tab === 'schedules' && schedules.data?.generatedAt && (
             <p className="pb-3 text-[11px] text-slate-400">
               Snapshot generated{' '}
               {new Date(schedules.data.generatedAt).toLocaleString(undefined, {
@@ -758,23 +797,31 @@ export default function LandingPage() {
           )}
         </div>
 
-        {tab === 'schedules' ? (
-          <SchedulesPanel
-            data={schedules.data}
-            isLoading={schedules.isLoading}
-            isError={schedules.isError}
-            onRetry={() => void schedules.refetch()}
-            selectedTermId={selectedTermId}
-            onTermChange={(next) => setTermId(next)}
-          />
-        ) : (
-          <FacultyPanel
-            data={faculty.data}
-            isLoading={faculty.isLoading}
-            isError={faculty.isError}
-            onRetry={() => void faculty.refetch()}
-          />
-        )}
+        <div
+          role="tabpanel"
+          id="public-panel"
+          aria-labelledby={
+            tab === 'schedules' ? 'tab-schedules' : 'tab-faculty'
+          }
+        >
+          {tab === 'schedules' ? (
+            <SchedulesPanel
+              data={schedules.data}
+              isLoading={schedules.isLoading}
+              isError={schedules.isError}
+              onRetry={() => void schedules.refetch()}
+              selectedTermId={selectedTermId}
+              onTermChange={(next) => setTermId(next)}
+            />
+          ) : (
+            <FacultyPanel
+              data={faculty.data}
+              isLoading={faculty.isLoading}
+              isError={faculty.isError}
+              onRetry={() => void faculty.refetch()}
+            />
+          )}
+        </div>
       </main>
 
       <footer className="border-t border-outline-variant bg-surface">
