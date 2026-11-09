@@ -50,12 +50,16 @@ interface TutorialState {
   /** Tour currently being shown, or null. */
   activeTourId: string | null;
   stepIndex: number;
+  /** Tour queued to start after navigating to its page. */
+  pendingTourId: string | null;
   /** First-run welcome dialog. */
   welcomeOpen: boolean;
   /** Guide library opened from the TopBar. */
   guidesOpen: boolean;
 
   startTour: (id: string) => void;
+  queueTour: (id: string) => void;
+  consumePendingTour: () => void;
   closeTour: () => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -86,6 +90,7 @@ export const useTutorialStore = create<TutorialState>((set, get) => {
     ...initial,
     activeTourId: null,
     stepIndex: 0,
+    pendingTourId: null,
     welcomeOpen: false,
     guidesOpen: false,
 
@@ -94,10 +99,24 @@ export const useTutorialStore = create<TutorialState>((set, get) => {
       set({
         activeTourId: id,
         stepIndex: 0,
+        pendingTourId: null,
         welcomeOpen: false,
         guidesOpen: false,
       });
     },
+
+    queueTour: (id) => {
+      if (!getTour(id)) return;
+      set({
+        pendingTourId: id,
+        activeTourId: null,
+        stepIndex: 0,
+        welcomeOpen: false,
+        guidesOpen: false,
+      });
+    },
+
+    consumePendingTour: () => set({ pendingTourId: null }),
 
     closeTour: () => set({ activeTourId: null, stepIndex: 0 }),
 
@@ -157,6 +176,7 @@ export const useTutorialStore = create<TutorialState>((set, get) => {
       set({
         activeTourId: null,
         stepIndex: 0,
+        pendingTourId: null,
         guidesOpen: false,
         welcomeOpen: true,
       });

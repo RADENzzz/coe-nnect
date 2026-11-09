@@ -35,8 +35,8 @@ export function TeamInfo() {
 
   return (
     <div>
-      <h2 className="mb-4 text-xl font-semibold text-slate-900">About the Team</h2>
-      <p className="mb-8 text-sm leading-relaxed text-slate-700">
+      <h2 className="mb-4 text-xl font-semibold text-on-surface">About the Team</h2>
+      <p className="mb-8 text-sm leading-relaxed text-on-surface-variant">
         CoE-NNECT is developed by a multidisciplinary team from the College of
         Engineering, Western Mindanao State University, in collaboration with
         the project client.
@@ -53,14 +53,14 @@ export function TeamInfo() {
           >
             <div className="mb-3 flex items-baseline justify-between gap-3">
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
                   {group.label}
                 </h3>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-on-surface-variant">
                   {group.description}
                 </p>
               </div>
-              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-slate-400">
+              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-on-surface-variant/80">
                 {group.members.length} member
                 {group.members.length === 1 ? '' : 's'}
               </span>
@@ -104,11 +104,11 @@ export function TeamInfo() {
                 {CLIENT.initials}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-base font-semibold text-slate-900">
+                <div className="text-base font-semibold text-on-surface">
                   {CLIENT.name}
                 </div>
-                <div className="text-xs text-slate-500">{CLIENT.role}</div>
-                <div className="mt-1 text-xs text-slate-600">{CLIENT.focus}</div>
+                <div className="text-xs text-on-surface-variant">{CLIENT.role}</div>
+                <div className="mt-1 text-xs text-on-surface-variant">{CLIENT.focus}</div>
               </div>
             </div>
           </SpotlightCard>

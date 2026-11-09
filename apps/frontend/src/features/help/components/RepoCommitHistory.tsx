@@ -105,7 +105,7 @@ function SummaryTile({
         />
       )}
       <div className="relative">
-        <div className="flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider text-slate-500">
+        <div className="flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider text-on-surface-variant">
           <span className="material-symbols-outlined text-[12px] text-brand-600">
             {icon}
           </span>
@@ -195,11 +195,11 @@ export function RepoCommitHistory() {
 
   if (isLoading) {
     return (
-      <div className="border border-slate-200 bg-white p-5 text-center">
+      <div className="border border-outline-variant bg-surface p-5 text-center">
         <span className="material-symbols-outlined animate-spin text-[20px] text-brand-700">
           progress_activity
         </span>
-        <p className="mt-2 text-xs text-slate-500">Loading commit history…</p>
+        <p className="mt-2 text-xs text-on-surface-variant">Loading commit history…</p>
       </div>
     );
   }
@@ -239,7 +239,7 @@ export function RepoCommitHistory() {
               </span>
             </span>
           </div>
-          <h2 className="text-xl font-semibold text-slate-900">
+          <h2 className="text-xl font-semibold text-on-surface">
             Development History
           </h2>
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-700">
@@ -290,7 +290,7 @@ export function RepoCommitHistory() {
       </div>
 
       {/* ── Footnote ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-[10px] text-slate-500">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant pt-3 text-[10px] text-on-surface-variant">
         <span>
           Data from GitHub API ·{' '}
           {data.cached ? (

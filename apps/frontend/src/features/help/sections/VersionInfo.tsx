@@ -6,12 +6,12 @@ import { Stagger, StaggerItem } from '../components/animations';
 export function VersionInfo() {
   return (
     <div>
-      <h2 className="mb-4 text-xl font-semibold text-slate-900">Version Info</h2>
-      <p className="mb-6 text-sm leading-relaxed text-slate-700">
+      <h2 className="mb-4 text-xl font-semibold text-on-surface">Version Info</h2>
+      <p className="mb-6 text-sm leading-relaxed text-on-surface-variant">
         Current build details for CoE-NNECT.
       </p>
 
-      <Stagger className="border border-slate-200 bg-white" step={0.05}>
+      <Stagger className="border border-outline-variant bg-surface" step={0.05}>
         <StaggerItem>
           <Row label="Product" value={ABOUT.product} />
         </StaggerItem>
@@ -59,23 +59,22 @@ function Row({
 
   return (
     <motion.div
-      whileHover={{ backgroundColor: 'rgba(248, 250, 252, 1)' }}
       className={
-        'grid grid-cols-1 gap-1 px-4 py-3 md:grid-cols-[160px_1fr] md:gap-4 ' +
-        (last ? '' : 'border-b border-slate-100')
+        'grid grid-cols-1 gap-1 px-4 py-3 transition-colors hover:bg-surface-container-low md:grid-cols-[160px_1fr] md:gap-4 ' +
+        (last ? '' : 'border-b border-outline-variant/60')
       }
     >
-      <div className="text-xs font-medium uppercase tracking-wider text-slate-500">
+      <div className="text-xs font-medium uppercase tracking-wider text-on-surface-variant">
         {label}
       </div>
-      <div className="flex items-center justify-between gap-3 text-sm text-slate-800">
+      <div className="flex items-center justify-between gap-3 text-sm text-on-surface">
         <span>{value}</span>
         {copyable && (
           <button
             type="button"
             onClick={onCopy}
             aria-label={`Copy ${label}`}
-            className="flex h-7 w-7 items-center justify-center border border-slate-200 text-slate-500 transition-colors hover:border-brand-300 hover:text-brand-700"
+            className="flex h-7 w-7 items-center justify-center border border-outline-variant text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary"
           >
             <span className="material-symbols-outlined text-[14px]">
               {copied ? 'check' : 'content_copy'}
