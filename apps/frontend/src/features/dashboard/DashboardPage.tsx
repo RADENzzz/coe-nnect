@@ -150,7 +150,6 @@ export default function DashboardPage() {
     [schedules, myDeptId],
   );
 
-  // ⚠️ Dept-scoped flagged (was previously org-wide)
   const myFlagged = useMemo(
     () =>
       flagged.filter(
@@ -200,7 +199,6 @@ export default function DashboardPage() {
     () => computeDepartmentSnapshot(mySchedules),
     [mySchedules],
   );
-  const assignmentGaps = snapshotStats.gaps;
   const headerRole = profile?.role ? humanizeRole(profile.role) : undefined;
 
   const isLoading = schedLoading || reqLoading;
@@ -250,7 +248,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      {/* ── Header ── */}
       <DashboardHeader
         tourId="dash-header"
         eyebrow="Department overview"
@@ -258,18 +255,15 @@ export default function DashboardPage() {
         title={`${greeting(now)}, ${firstName}`}
         subtitle={
           <>
-            Here is the current status of the{' '}
+            A quick read on{' '}
             <strong className="font-semibold text-on-surface">
               {deptName}
             </strong>{' '}
-            schedule
-            {activeTerm
-              ? ` for ${activeTerm.termName} ${activeTerm.schoolYear}.`
-              : '.'}
+            — today's classes, teaching load, and requests.
           </>
         }
         status={
-          <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface px-3 py-1.5 shadow-sm">
+          <div className="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface px-2.5 py-1.5 shadow-sm">
             <span
               className="flex items-center gap-1.5 font-mono text-[11px] text-on-surface-variant"
               aria-live="polite"
@@ -286,7 +280,7 @@ export default function DashboardPage() {
               type="button"
               onClick={refreshAll}
               disabled={isFetchingAny}
-              className="rounded-md p-1.5 text-on-surface-variant transition hover:bg-surface-container disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="rounded-md p-1 text-on-surface-variant transition hover:bg-surface-container disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
             >
@@ -298,266 +292,163 @@ export default function DashboardPage() {
             </button>
           </div>
         }
+        actions={
+          <>
+            <Link
+              to="/reports"
+              className="hidden items-center gap-1.5 rounded-lg border border-outline-variant bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container-low sm:inline-flex"
+            >
+              <Icon name="bar_chart" size={14} />
+              Reports
+            </Link>
+            <Link
+              to="/timetable"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition hover:opacity-90"
+            >
+              <Icon name="calendar_view_month" size={14} />
+              Open timetable
+            </Link>
+          </>
+        }
       />
 
       <TermStatusCard term={activeTerm} scheduleStatusCounts={byStatus} />
 
-      {(pendingIncoming.length > 0 ||
-        flaggedCount > 0 ||
-        assignmentGaps > 0) && (
-        <div className="mt-4 flex flex-wrap items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-            <Icon name="warning" size={18} filled />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-amber-900">
-              Needs your attention
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
-              {[
-                pendingIncoming.length > 0
-                  ? `${pendingIncoming.length} cross-department request${
-                      pendingIncoming.length === 1 ? '' : 's'
-                    } waiting for your review`
-                  : null,
-                flaggedCount > 0
-                  ? `${flaggedCount} flagged entr${
-                      flaggedCount === 1 ? 'y' : 'ies'
-                    } to check`
-                  : null,
-                assignmentGaps > 0
-                  ? `${assignmentGaps} class block${
-                      assignmentGaps === 1 ? '' : 's'
-                    } missing an instructor or room`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {pendingIncoming.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setBreakdown('tasks')}
-                className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-800"
-              >
-                Review requests
-              </button>
-            )}
-            {flaggedCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setBreakdown('flagged')}
-                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
-              >
-                Review flagged
-              </button>
-            )}
-            {assignmentGaps > 0 && (
-              <button
-                type="button"
-                onClick={() => navigate('/timetable')}
-                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
-              >
-                Review timetable
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <div
+        className="mt-3 flex flex-wrap items-center gap-1.5"
+        data-tour="dash-actions"
+      >
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-on-surface-variant">
+          Quick actions
+        </span>
+        <QuickAction
+          icon="add"
+          label="New schedule"
+          onClick={() => navigate('/timetable')}
+        />
+        <QuickAction
+          icon="task_alt"
+          label="Tasks"
+          badge={pendingIncoming.length}
+          accent={pendingIncoming.length > 0 ? 'amber' : 'default'}
+          onClick={() => setBreakdown('tasks')}
+        />
+        <QuickAction
+          icon="flag"
+          label="Flagged"
+          badge={flaggedCount}
+          accent={flaggedCount > 0 ? 'rose' : 'default'}
+          onClick={() => setBreakdown('flagged')}
+        />
+        <QuickAction
+          icon="search"
+          label="Faculty"
+          onClick={() => navigate('/faculty')}
+        />
+      </div>
 
-      {/* ── Bento grid ── */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6 mt-4">
-        <div
-          className="md:col-span-4 bg-white border border-slate-200 p-5 shadow-sm rounded-xl flex flex-col"
-          data-tour="dash-actions"
-        >
-          <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-3 border-b border-slate-100 pb-3 flex items-center gap-2">
-            <Icon name="bolt" size={14} className="text-amber-500" filled />
-            Quick Actions
-          </h3>
-          <div className="grid grid-cols-2 gap-2.5 flex-1">
-            <QuickAction
-              icon="add_circle"
-              label="New Schedule"
-              accent="brand"
-              onClick={() => navigate('/timetable')}
-            />
-            <QuickAction
-              icon="task_alt"
-              label="Tasks"
-              accent="amber"
-              badge={pendingIncoming.length}
-              onClick={() => setBreakdown('tasks')}
-            />
-            <QuickAction
-              icon="flag"
-              label="Flagged"
-              accent="rose"
-              badge={flaggedCount}
-              onClick={() => setBreakdown('flagged')}
-            />
-            <QuickAction
-              icon="search"
-              label="Search Faculty"
-              accent="blue"
-              onClick={() => navigate('/faculty')}
-            />
-            <QuickAction
-              icon="calendar_view_month"
-              label="Timetable"
-              accent="emerald"
-              onClick={() => navigate('/timetable')}
-            />
-            <QuickAction
-              icon="bar_chart"
-              label="Reports"
-              accent="blue"
-              onClick={() => navigate('/reports')}
-            />
-          </div>
-        </div>
-
-        <div
-          className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-          data-tour="dash-stats"
-        >
+      <div
+        className="mt-3 overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm"
+        data-tour="dash-stats"
+      >
+        <div className="grid grid-cols-2 gap-px bg-outline-variant/50 md:grid-cols-4">
           <SummaryCard
             icon="view_timeline"
-            accent="blue"
-            badge={activeTerm?.termName ?? 'No term'}
-            badgeVariant="neutral"
-            label="Active Schedules"
-            value={String(totalSchedules)}
-            isLoading={isLoading}
-            clickable={!isLoading && totalSchedules > 0}
-            onClick={() => setBreakdown('schedules')}
+            label="Class blocks"
+            value={totalSchedules}
             hint={
+              !activeTerm
+                ? 'No active term'
+                : totalSchedules > 0
+                ? `${byStatus.draft} draft · ${byStatus.review} in review`
+                : 'No class blocks yet'
+            }
+            isLoading={isLoading}
+            onClick={
               totalSchedules > 0
-                ? `View all ${totalSchedules} schedule entries`
+                ? () => setBreakdown('schedules')
                 : undefined
             }
-            footer={
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="inline-flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  <span className="font-semibold text-slate-700">
-                    {byStatus.draft}
-                  </span>
-                  <span>draft</span>
-                </span>
-                <span className="inline-flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  <span className="font-semibold text-amber-700">
-                    {byStatus.review}
-                  </span>
-                  <span>review</span>
-                </span>
-              </div>
-            }
           />
           <SummaryCard
-            icon="checklist"
-            accent="amber"
-            badge={pendingIncoming.length > 0 ? 'Urgent' : 'Clear'}
-            badgeVariant={pendingIncoming.length > 0 ? 'danger' : 'success'}
-            label="Tasks to do"
-            value={String(pendingIncoming.length)}
-            isLoading={isLoading}
-            clickable={!isLoading && pendingIncoming.length > 0}
-            onClick={() => setBreakdown('tasks')}
-            hint={
-              pendingIncoming.length > 0
-                ? `Review ${pendingIncoming.length} pending cross-dept requests`
-                : 'No pending tasks'
-            }
-            footer={
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    pendingIncoming.length > 0
-                      ? 'bg-amber-500 animate-pulse'
-                      : 'bg-emerald-500'
-                  }`}
-                />
-                <span className="text-xs text-slate-500">
-                  {pendingIncoming.length > 0
-                    ? `${pendingIncoming.length} request${
-                        pendingIncoming.length === 1 ? '' : 's'
-                      } pending`
-                    : 'No pending requests'}
-                </span>
-              </div>
-            }
-          />
-          <SummaryCard
-            icon="donut_large"
-            accent="brand"
-            label="Completion Rate"
+            icon="check_circle"
+            label="Completion"
             value={`${completionRate}%`}
-            isLoading={isLoading}
-            clickable={!isLoading && totalSchedules > 0}
-            onClick={() => setBreakdown('completion')}
             hint={
               totalSchedules > 0
                 ? `${finalizedOrPublished} of ${totalSchedules} finalized or published`
+                : 'Nothing scheduled yet'
+            }
+            tone={
+              totalSchedules > 0 && completionRate === 100
+                ? 'success'
+                : 'default'
+            }
+            isLoading={isLoading}
+            onClick={
+              totalSchedules > 0
+                ? () => setBreakdown('completion')
                 : undefined
             }
-            footer={
-              <div className="w-full">
-                <div className="w-full bg-slate-100 h-2 overflow-hidden rounded-full">
-                  <div
-                    className="bg-gradient-to-r from-[#5c1219] to-[#8b1e2a] h-2 transition-all duration-500 rounded-full"
-                    style={{ width: `${completionRate}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1.5 text-right tabular-nums">
-                  {finalizedOrPublished}/{totalSchedules} complete
-                </p>
-              </div>
+          />
+          <SummaryCard
+            icon="task_alt"
+            label="Pending tasks"
+            value={pendingIncoming.length}
+            hint={
+              pendingIncoming.length > 0
+                ? 'Cross-department requests'
+                : 'Nothing waiting'
+            }
+            tone={pendingIncoming.length > 0 ? 'warning' : 'success'}
+            isLoading={isLoading}
+            onClick={
+              pendingIncoming.length > 0
+                ? () => setBreakdown('tasks')
+                : undefined
             }
           />
           <SummaryCard
             icon="flag"
-            accent="rose"
-            badge={flaggedCount > 0 ? 'Action' : 'Clean'}
-            badgeVariant={flaggedCount > 0 ? 'rose' : 'success'}
-            label="Flagged for review"
-            value={String(flaggedCount)}
-            isLoading={isFlaggedLoading}
-            clickable={!isFlaggedLoading && flaggedCount > 0}
-            onClick={() => setBreakdown('flagged')}
+            label="Flagged"
+            value={flaggedCount}
             hint={
-              flaggedCount > 0
-                ? `${flaggedCount} entr${flaggedCount === 1 ? 'y' : 'ies'} need review`
+              !activeTerm
+                ? 'No active term'
+                : flaggedCount > 0
+                ? 'Entries to review'
                 : 'Nothing flagged'
             }
-            footer={
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    flaggedCount > 0 ? 'bg-rose-500' : 'bg-emerald-500'
-                  }`}
-                />
-                <span className="text-xs text-slate-500">
-                  {flaggedCount > 0
-                    ? `${flaggedCount} entr${
-                        flaggedCount === 1 ? 'y' : 'ies'
-                      } need review`
-                    : 'Nothing flagged'}
-                </span>
-              </div>
+            tone={
+              !activeTerm
+                ? 'default'
+                : flaggedCount > 0
+                ? 'danger'
+                : 'success'
+            }
+            isLoading={isFlaggedLoading}
+            onClick={
+              flaggedCount > 0 ? () => setBreakdown('flagged') : undefined
             }
           />
         </div>
+        {activeTerm && (
+          <div className="border-t border-outline-variant/60 px-4 py-2.5">
+            <DepartmentSnapshot
+              schedules={mySchedules}
+              stats={snapshotStats}
+              onReviewGaps={() => navigate('/timetable')}
+            />
+          </div>
+        )}
       </div>
 
-      <DepartmentSnapshot schedules={mySchedules} stats={snapshotStats} />
-
       {/* ── Today + Recent Activity ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-tour="dash-today">
-        <div className="lg:col-span-1">
+      <div
+        className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12"
+        data-tour="dash-today"
+      >
+        <div className="lg:col-span-5">
           <TodayScheduleStrip
             schedules={mySchedules}
             now={now}
@@ -565,44 +456,46 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white">
-            <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Icon name="history" size={14} className="text-slate-400" />
-              Recent Scheduling Activity
+        <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm lg:col-span-7">
+          <div className="flex items-center justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
+            <h3 className="text-sm font-bold text-on-surface">
+              Recent activity
             </h3>
             {recentActivity.length > 0 && (
               <Link
                 to="/approvals"
-                className="text-xs font-semibold text-[#5c1219] hover:underline flex items-center gap-1"
+                className="text-[11px] font-semibold text-primary hover:underline"
               >
                 View all
-                <Icon name="arrow_forward" size={12} />
               </Link>
             )}
           </div>
-          <div>
+          <div className="flex-1">
             {isLoading ? (
-              <div className="py-14 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
-                <Icon name="progress_activity" size={16} className="animate-spin" />
+              <div className="flex items-center justify-center gap-2 py-14 text-sm text-on-surface-variant">
+                <Icon
+                  name="progress_activity"
+                  size={16}
+                  className="animate-spin"
+                />
                 Loading activity…
               </div>
             ) : recentActivity.length === 0 ? (
               <BreakdownEmpty
                 icon="inbox"
                 message="No recent activity in your department."
-                actionLabel="Open Approvals"
+                actionLabel="Open approvals"
                 onAction={() => navigate('/approvals')}
               />
             ) : (
               Object.entries(groupedActivity).map(([group, items]) => (
                 <div key={group}>
-                  <div className="px-5 py-2 bg-slate-50/80 border-y border-slate-100">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="border-y border-outline-variant/50 bg-surface-container-low/60 px-4 py-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                       {group}
                     </span>
                   </div>
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-outline-variant/50">
                     {items.map((r) => {
                       const isIncoming =
                         String(r.targetDeptId) === myDeptId &&
@@ -617,12 +510,12 @@ export default function DashboardPage() {
                       const iconBg = isApproved
                         ? 'bg-emerald-50'
                         : isRejected
-                        ? 'bg-red-50'
+                        ? 'bg-rose-50'
                         : 'bg-amber-50';
                       const iconColor = isApproved
                         ? 'text-emerald-700'
                         : isRejected
-                        ? 'text-red-700'
+                        ? 'text-rose-700'
                         : 'text-amber-700';
 
                       return (
@@ -641,7 +534,9 @@ export default function DashboardPage() {
                                 {deptCode(r.targetDeptId)}
                               </span>
                               {' · '}
-                              <span className="text-slate-600">{r.reason}</span>
+                              <span className="text-on-surface-variant">
+                                {r.reason}
+                              </span>
                             </>
                           }
                           time={relativeTime(r.createdAt)}

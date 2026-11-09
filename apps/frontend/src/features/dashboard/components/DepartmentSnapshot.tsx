@@ -5,114 +5,72 @@ import {
 } from '../utils/dashboard.utils';
 import type { RawSchedule } from '../../../api/schedule.api';
 
-type TileTone = 'default' | 'warning' | 'danger';
-
 /**
- * Compact workload summary for the department head dashboard.
- * Counts only rows that are already visible to the department.
+ * Department workload line.
  *
- * Pass `stats` when the caller already computed the snapshot (the
- * dashboard reuses the same numbers for its attention strip); otherwise
- * the component derives them from `schedules`.
+ * Faculty, rooms, sections, and weekly teaching hours in one compact row.
+ * Assignment gaps are the only thing that gets a button, because they are
+ * the only item here that blocks publishing.
  */
 export default function DepartmentSnapshot({
   schedules,
   stats: providedStats,
+  onReviewGaps,
 }: {
   schedules: RawSchedule[];
   stats?: DepartmentSnapshotStats;
+  onReviewGaps?: () => void;
 }) {
   const stats = providedStats ?? computeDepartmentSnapshot(schedules);
 
-  const tiles: Array<{
-    icon: string;
-    label: string;
-    value: number;
-    hint: string;
-    tone: TileTone;
-  }> = [
-    {
-      icon: 'person',
-      label: 'Faculty assigned',
-      value: stats.faculty,
-      hint: 'Teaching this term',
-      tone: 'default',
-    },
-    {
-      icon: 'schedule',
-      label: 'Weekly class hours',
-      value: stats.weeklyHours,
-      hint: 'Across all class blocks',
-      tone: 'default',
-    },
-    {
-      icon: 'meeting_room',
-      label: 'Rooms in use',
-      value: stats.rooms,
-      hint: 'Assigned teaching spaces',
-      tone: 'default',
-    },
-    {
-      icon: 'group',
-      label: 'Sections covered',
-      value: stats.sections,
-      hint: 'Distinct section codes',
-      tone: 'default',
-    },
-    {
-      icon: 'person_off',
-      label: 'No instructor',
-      value: stats.unassignedFaculty,
-      hint:
-        stats.unassignedFaculty > 0
-          ? 'Assign faculty before publishing'
-          : 'Every block has an instructor',
-      tone: stats.unassignedFaculty > 0 ? 'danger' : 'default',
-    },
-    {
-      icon: 'wrong_location',
-      label: 'No room',
-      value: stats.missingRoom,
-      hint:
-        stats.missingRoom > 0
-          ? 'Assign a room before publishing'
-          : 'Every block has a room',
-      tone: stats.missingRoom > 0 ? 'warning' : 'default',
-    },
+  const items = [
+    { label: 'faculty', value: stats.faculty },
+    { label: 'rooms', value: stats.rooms },
+    { label: 'sections', value: stats.sections },
+    { label: 'hrs/week', value: stats.weeklyHours },
   ];
 
-  const toneClasses: Record<TileTone, string> = {
-    default: 'bg-primary/10 text-primary',
-    warning:
-      'bg-amber-50 text-amber-700 dark:bg-[#f59e0b]/10 dark:text-[#fcd34d]',
-    danger: 'bg-rose-50 text-rose-700 dark:bg-[#f43f5e]/10 dark:text-[#fda4af]',
-  };
-
   return (
-    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-      {tiles.map((tile) => (
-        <div
-          key={tile.label}
-          className="rounded-xl border border-outline-variant bg-surface p-4 shadow-sm"
-        >
-          <div className="flex items-center gap-2 text-on-surface-variant">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-on-surface-variant">
+      <span className="inline-flex items-center gap-1.5 font-semibold uppercase tracking-wider">
+        <Icon name="corporate_fare" size={12} />
+        Workload
+      </span>
+      {items.map((item, index) => (
+        <span key={item.label} className="inline-flex items-baseline gap-1">
+          <strong className="font-semibold text-on-surface tabular-nums">
+            {item.value}
+          </strong>
+          {item.label}
+          {index < items.length - 1 && (
             <span
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${toneClasses[tile.tone]}`}
+              className="ml-2 text-on-surface-variant/40"
+              aria-hidden="true"
             >
-              <Icon name={tile.icon} size={16} filled />
+              ·
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider leading-tight">
-              {tile.label}
-            </span>
-          </div>
-          <p className="mt-3 text-2xl font-extrabold tracking-tight text-on-surface tabular-nums">
-            {tile.value}
-          </p>
-          <p className="mt-0.5 text-[11px] leading-snug text-on-surface-variant">
-            {tile.hint}
-          </p>
-        </div>
+          )}
+        </span>
       ))}
+
+      <span className="ml-auto">
+        {stats.gaps > 0 ? (
+          <button
+            type="button"
+            onClick={onReviewGaps}
+            className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+          >
+            <Icon name="warning" size={11} />
+            {stats.gaps} assignment gap{stats.gaps === 1 ? '' : 's'}
+            <Icon name="arrow_forward" size={10} />
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+            <Icon name="check_circle" size={11} />
+            Assignments complete
+          </span>
+        )}
+      </span>
     </div>
   );
 }

@@ -1,97 +1,84 @@
 import Icon from '../../../components/ui/Icon';
 
-type Accent = 'brand' | 'blue' | 'amber' | 'rose' | 'emerald';
-type BadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'brand' | 'rose';
+type Tone = 'default' | 'success' | 'warning' | 'danger';
 
-const BADGE: Record<BadgeVariant, string> = {
-  neutral: 'bg-slate-100 text-slate-600 border-slate-200',
-  success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  warning: 'bg-amber-50 text-amber-700 border-amber-200',
-  danger:  'bg-red-50 text-red-700 border-red-200',
-  brand:   'bg-red-50 text-red-800 border-red-200',
-  rose:    'bg-rose-50 text-rose-700 border-rose-200',
+const VALUE_TONE: Record<Tone, string> = {
+  default: 'text-on-surface',
+  success: 'text-emerald-700',
+  warning: 'text-amber-700',
+  danger: 'text-rose-700',
 };
 
-const ICON_ACCENT: Record<Accent, { bg: string; border: string; text: string }> = {
-  brand:   { bg: 'bg-[#5c1219]/5', border: 'border-[#5c1219]/20', text: 'text-[#5c1219]' },
-  blue:    { bg: 'bg-blue-50',     border: 'border-blue-200',     text: 'text-blue-700' },
-  amber:   { bg: 'bg-amber-50',    border: 'border-amber-200',    text: 'text-amber-700' },
-  rose:    { bg: 'bg-rose-50',     border: 'border-rose-200',     text: 'text-rose-700' },
-  emerald: { bg: 'bg-emerald-50',  border: 'border-emerald-200',  text: 'text-emerald-700' },
+const DOT_TONE: Record<Tone, string> = {
+  default: 'bg-transparent',
+  success: 'bg-emerald-500',
+  warning: 'bg-amber-500',
+  danger: 'bg-rose-500',
 };
 
+/**
+ * Minimal dashboard metric.
+ *
+ * Designed to sit inside a divided grid — no icon tile, no badge chrome,
+ * just a label, the number, and one line of context. The value takes a
+ * status tone only when something actually needs attention.
+ */
 export default function SummaryCard({
   icon,
-  badge,
-  badgeVariant = 'neutral',
   label,
   value,
-  footer,
-  onClick,
-  clickable,
-  isLoading,
-  accent = 'brand',
   hint,
+  tone = 'default',
+  isLoading,
+  onClick,
 }: {
   icon: string;
-  badge?: string;
-  badgeVariant?: BadgeVariant;
   label: string;
-  value: string;
-  footer?: React.ReactNode;
-  onClick?: () => void;
-  clickable?: boolean;
-  isLoading?: boolean;
-  accent?: Accent;
+  value: string | number;
   hint?: string;
+  tone?: Tone;
+  isLoading?: boolean;
+  onClick?: () => void;
 }) {
-  const ia = ICON_ACCENT[accent];
-  const Wrapper = clickable ? 'button' : 'div';
-  return (
-    <Wrapper
-      onClick={onClick}
-      disabled={!clickable}
-      title={hint}
-      aria-label={hint ?? label}
-      className={
-        'group bg-white border border-slate-200 p-5 shadow-sm transition-all duration-200 text-left w-full rounded-xl focus:outline-none ' +
-        (clickable
-          ? 'hover:border-[#5c1219]/30 hover:shadow-md hover:-translate-y-0.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#5c1219]/30'
-          : 'hover:border-slate-300')
-      }
-    >
-      <div className="flex justify-between items-start mb-4">
-        <div
-          className={`w-10 h-10 rounded-lg border ${ia.border} ${ia.bg} flex items-center justify-center ${ia.text} transition-transform duration-200 group-hover:scale-105`}
-        >
-          {isLoading ? (
-            <Icon name="progress_activity" size={18} className="animate-spin" />
-          ) : (
-            <Icon name={icon} size={20} filled />
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          {badge && (
-            <span
-              className={`text-[10px] font-bold uppercase tracking-wider border px-2 py-1 rounded-md ${BADGE[badgeVariant]}`}
-            >
-              {badge}
-            </span>
-          )}
-          {clickable && (
-            <Icon
-              name="chevron_right"
-              size={16}
-              className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all duration-200"
-            />
-          )}
-        </div>
-      </div>
-      <p className="text-xs font-medium text-slate-500 mb-1.5">{label}</p>
-      <div className="text-3xl font-extrabold text-slate-900 tracking-tight tabular-nums">
+  const body = (
+    <>
+      <span className="flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+        <Icon name={icon} size={12} className="shrink-0" />
+        <span className="truncate">{label}</span>
+        {tone !== 'default' && (
+          <span
+            className={`ml-auto h-1.5 w-1.5 shrink-0 rounded-full ${DOT_TONE[tone]}`}
+            aria-hidden="true"
+          />
+        )}
+      </span>
+      <span
+        className={`text-[22px] font-bold leading-none tracking-tight tabular-nums ${VALUE_TONE[tone]}`}
+      >
         {isLoading ? '—' : value}
-      </div>
-      {footer && <div className="mt-4">{footer}</div>}
-    </Wrapper>
+      </span>
+      {hint && (
+        <span className="text-[11px] leading-snug text-on-surface-variant">
+          {hint}
+        </span>
+      )}
+    </>
   );
+
+  const className =
+    'group flex min-w-0 flex-col items-start gap-1 bg-surface px-4 py-3.5 text-left';
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`${className} cursor-pointer transition-colors hover:bg-surface-container-low focus:outline-none focus-visible:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30`}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={className}>{body}</div>;
 }
