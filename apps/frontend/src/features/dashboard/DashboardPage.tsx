@@ -17,6 +17,7 @@ import { fetchUserDirectory } from '../../api/users.api';
 import {
   QuickAction,
   SummaryCard,
+  DashboardHeader,
   ActivityItem,
   BreakdownEmpty,
   TodayScheduleStrip,
@@ -30,7 +31,9 @@ import {
   FlaggedModal,
 } from './components';
 import {
+  computeDepartmentSnapshot,
   greeting,
+  humanizeRole,
   relativeDay,
   relativeTime,
 } from './utils/dashboard.utils';
@@ -193,6 +196,12 @@ export default function DashboardPage() {
       ? Math.round((finalizedOrPublished / totalSchedules) * 100)
       : 0;
   const flaggedCount = myFlagged.length;
+  const snapshotStats = useMemo(
+    () => computeDepartmentSnapshot(mySchedules),
+    [mySchedules],
+  );
+  const assignmentGaps = snapshotStats.gaps;
+  const headerRole = profile?.role ? humanizeRole(profile.role) : undefined;
 
   const isLoading = schedLoading || reqLoading;
   const isFlaggedLoading = flaggedLoading;
@@ -242,33 +251,31 @@ export default function DashboardPage() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-6 mt-1 md:mt-0" data-tour="dash-header">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#5c1219] to-[#3d0b10] flex items-center justify-center shadow-sm shrink-0">
-              <Icon name="dashboard" size={24} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-                {greeting(now)}, {firstName}
-              </h1>
-              <p className="text-sm text-slate-500">
-                Here is the current status of the{' '}
-                <strong className="text-slate-700">{deptName}</strong> department
-                schedule
-                {activeTerm
-                  ? ` ${activeTerm.termName} ${activeTerm.schoolYear}.`
-                  : '.'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
+      <DashboardHeader
+        tourId="dash-header"
+        eyebrow="Department overview"
+        roleLabel={headerRole}
+        title={`${greeting(now)}, ${firstName}`}
+        subtitle={
+          <>
+            Here is the current status of the{' '}
+            <strong className="font-semibold text-on-surface">
+              {deptName}
+            </strong>{' '}
+            schedule
+            {activeTerm
+              ? ` for ${activeTerm.termName} ${activeTerm.schoolYear}.`
+              : '.'}
+          </>
+        }
+        status={
+          <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface px-3 py-1.5 shadow-sm">
             <span
-              className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5"
+              className="flex items-center gap-1.5 font-mono text-[11px] text-on-surface-variant"
               aria-live="polite"
             >
               <span
-                className={`inline-block w-1.5 h-1.5 rounded-full ${
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
                   isFetchingAny ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
                 }`}
               />
@@ -276,9 +283,10 @@ export default function DashboardPage() {
               {refreshedLabel}
             </span>
             <button
+              type="button"
               onClick={refreshAll}
               disabled={isFetchingAny}
-              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="rounded-md p-1.5 text-on-surface-variant transition hover:bg-surface-container disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               title="Refresh dashboard"
               aria-label="Refresh dashboard"
             >
@@ -289,12 +297,14 @@ export default function DashboardPage() {
               />
             </button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <TermStatusCard term={activeTerm} scheduleStatusCounts={byStatus} />
 
-      {(pendingIncoming.length > 0 || flaggedCount > 0) && (
+      {(pendingIncoming.length > 0 ||
+        flaggedCount > 0 ||
+        assignmentGaps > 0) && (
         <div className="mt-4 flex flex-wrap items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
             <Icon name="warning" size={18} filled />
@@ -303,16 +313,26 @@ export default function DashboardPage() {
             <p className="text-sm font-bold text-amber-900">
               Needs your attention
             </p>
-            <p className="mt-0.5 text-xs text-amber-800">
-              {pendingIncoming.length > 0 &&
-                `${pendingIncoming.length} cross-department request${
-                  pendingIncoming.length === 1 ? '' : 's'
-                } waiting for your review`}
-              {pendingIncoming.length > 0 && flaggedCount > 0 && ' · '}
-              {flaggedCount > 0 &&
-                `${flaggedCount} flagged entr${
-                  flaggedCount === 1 ? 'y' : 'ies'
-                } to check`}
+            <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
+              {[
+                pendingIncoming.length > 0
+                  ? `${pendingIncoming.length} cross-department request${
+                      pendingIncoming.length === 1 ? '' : 's'
+                    } waiting for your review`
+                  : null,
+                flaggedCount > 0
+                  ? `${flaggedCount} flagged entr${
+                      flaggedCount === 1 ? 'y' : 'ies'
+                    } to check`
+                  : null,
+                assignmentGaps > 0
+                  ? `${assignmentGaps} class block${
+                      assignmentGaps === 1 ? '' : 's'
+                    } missing an instructor or room`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -332,6 +352,15 @@ export default function DashboardPage() {
                 className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
               >
                 Review flagged
+              </button>
+            )}
+            {assignmentGaps > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/timetable')}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
+              >
+                Review timetable
               </button>
             )}
           </div>
@@ -524,7 +553,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <DepartmentSnapshot schedules={mySchedules} />
+      <DepartmentSnapshot schedules={mySchedules} stats={snapshotStats} />
 
       {/* ── Today + Recent Activity ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-tour="dash-today">

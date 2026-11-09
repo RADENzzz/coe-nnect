@@ -46,6 +46,17 @@ export default function TodayScheduleStrip({
   const upNext = todaySchedules.find(
     (s) => timeToMinutes(scheduleEnd(s) || '23:59') >= nowMin,
   );
+  const upNextStart = upNext
+    ? timeToMinutes(scheduleStart(upNext) || '23:59')
+    : null;
+  const minutesUntilUpNext =
+    upNextStart !== null && upNextStart >= nowMin
+      ? upNextStart - nowMin
+      : null;
+  const upNextLabel =
+    minutesUntilUpNext !== null && minutesUntilUpNext <= 120
+      ? `Up next · ${minutesUntilUpNext}m`
+      : 'Up next';
 
   return (
     <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden flex flex-col">
@@ -107,8 +118,8 @@ export default function TodayScheduleStrip({
                       {s.subject?.subjectCode ?? '—'}
                     </span>
                     {isUpNext && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#5c1219] text-white shrink-0">
-                        Up next
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-primary text-on-primary shrink-0">
+                        {upNextLabel}
                       </span>
                     )}
                   </div>
