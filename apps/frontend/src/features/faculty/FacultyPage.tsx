@@ -22,7 +22,12 @@ import PreferencesModal from './components/PreferencesModal';
 import UnavailabilityModal from './components/UnavailabilityModal';
 import FacultyDetailPanel from './components/FacultyDetailPanel';
 import FacultyFormModal from './components/FacultyFormModal';
-import { CLASSIFICATIONS, CLASS_TONE } from './components/FacultyFormFields';
+import {
+  CLASSIFICATIONS,
+  CLASS_TONE,
+  DEFAULT_REQUIRED_HOURS,
+  computeRequiredHours,
+} from './components/FacultyFormFields';
 
 type Mode = 'create' | 'edit';
 type QuickFilter = 'all' | 'active' | 'missingRecords' | 'inactive';
@@ -433,6 +438,32 @@ export default function FacultyPage() {
     return d?.designationName ?? '—';
   };
 
+  const formatRequiredHours = (f: FacultyRecord): string => {
+    const d = f.designationId
+      ? designations.find(
+          (x) => String(x.designationId) === String(f.designationId),
+        )
+      : null;
+    if (d) return `${computeRequiredHours(d.releaseHours)}h`;
+    return f.requiredHours != null
+      ? `${f.requiredHours}h`
+      : `${DEFAULT_REQUIRED_HOURS}h (default)`;
+  };
+
+  const formatRequiredHoursDetailed = (f: FacultyRecord): string => {
+    const d = f.designationId
+      ? designations.find(
+          (x) => String(x.designationId) === String(f.designationId),
+        )
+      : null;
+    if (d) {
+      return `${computeRequiredHours(d.releaseHours)} hours/week (auto from designation)`;
+    }
+    return f.requiredHours != null
+      ? `${f.requiredHours} hours/week`
+      : `${DEFAULT_REQUIRED_HOURS} hours/week (default)`;
+  };
+
   const initials = (f: FacultyRecord) =>
     `${f.firstName[0] ?? ''}${f.lastName[0] ?? ''}`.toUpperCase();
 
@@ -545,8 +576,7 @@ export default function FacultyPage() {
       header: 'Hours',
       cardVariant: 'mono',
       cellClassName: 'text-on-surface-variant font-mono text-xs',
-      render: (f) =>
-        f.requiredHours != null ? `${f.requiredHours}h` : '18h (default)',
+      render: (f) => formatRequiredHours(f),
     },
     {
       key: 'status',
@@ -886,6 +916,7 @@ export default function FacultyPage() {
         }
         departmentLabel={deptName}
         designationLabel={designationName}
+        requiredHoursLabel={formatRequiredHoursDetailed}
         status={
           detailFaculty
             ? (() => {

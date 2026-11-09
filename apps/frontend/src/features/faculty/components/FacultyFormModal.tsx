@@ -10,7 +10,7 @@ import {
   type CreateFacultyInput,
 } from '../../../api/faculty.api';
 import {
-  EMPTY_FORM, STEP_DEFS, StepIndicator,
+  EMPTY_FORM, STEP_DEFS, StepIndicator, computeRequiredHours,
   type FormState, type FieldErrors,
 } from './FacultyFormFields';
 import {
@@ -56,6 +56,12 @@ export default function FacultyFormModal({
     if (mode === 'create') {
       setForm({ ...EMPTY_FORM, deptId: isDH && myDeptId ? myDeptId : '' });
     } else if (mode === 'edit' && faculty) {
+      const d = faculty.designationId
+        ? designations.find(
+            (x) => String(x.designationId) === String(faculty.designationId),
+          )
+        : null;
+
       setForm({
         firstName: faculty.firstName,
         lastName: faculty.lastName,
@@ -66,8 +72,11 @@ export default function FacultyFormModal({
         deptId: faculty.deptId ?? '',
         designationId: faculty.designationId ?? '',
         classification: faculty.classification,
-        requiredHours:
-          faculty.requiredHours != null ? String(faculty.requiredHours) : '',
+        requiredHours: d
+          ? String(computeRequiredHours(d.releaseHours))
+          : faculty.requiredHours != null
+            ? String(faculty.requiredHours)
+            : '',
       });
     }
     setStepIdx(0);
@@ -232,6 +241,18 @@ export default function FacultyFormModal({
     }
   };
 
+  // Derived baseline so an auto-computed value doesn't register as dirty.
+  const baselineRequiredHours = (() => {
+    if (mode !== 'edit' || !faculty) return '';
+    const d = faculty.designationId
+      ? designations.find(
+          (x) => String(x.designationId) === String(faculty.designationId),
+        )
+      : null;
+    if (d) return String(computeRequiredHours(d.releaseHours));
+    return faculty.requiredHours != null ? String(faculty.requiredHours) : '';
+  })();
+
   const isDirty = (): boolean => {
     if (mode === 'create') {
       return !!(
@@ -251,7 +272,7 @@ export default function FacultyFormModal({
         form.deptId !== (faculty.deptId ?? '') ||
         form.designationId !== (faculty.designationId ?? '') ||
         form.classification !== faculty.classification ||
-        form.requiredHours !== (faculty.requiredHours != null ? String(faculty.requiredHours) : '')
+        form.requiredHours !== baselineRequiredHours
       );
     }
     return false;
