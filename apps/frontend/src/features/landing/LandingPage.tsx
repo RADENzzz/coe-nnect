@@ -16,13 +16,20 @@ import {
 type LandingTab = 'schedules' | 'faculty';
 
 const DAY_TONE: Record<string, string> = {
-  Monday: 'bg-rose-50 text-rose-700 border-rose-200',
-  Tuesday: 'bg-amber-50 text-amber-700 border-amber-200',
-  Wednesday: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Thursday: 'bg-sky-50 text-sky-700 border-sky-200',
-  Friday: 'bg-violet-50 text-violet-700 border-violet-200',
-  Saturday: 'bg-slate-100 text-slate-700 border-slate-200',
-  Sunday: 'bg-slate-100 text-slate-700 border-slate-200',
+  Monday:
+    'bg-rose-50 text-rose-700 border-rose-200 dark:bg-[#f43f5e]/10 dark:text-[#fda4af] dark:border-[#f43f5e]/30',
+  Tuesday:
+    'bg-amber-50 text-amber-700 border-amber-200 dark:bg-[#f59e0b]/10 dark:text-[#fcd34d] dark:border-[#f59e0b]/30',
+  Wednesday:
+    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-[#10b981]/10 dark:text-[#6ee7b7] dark:border-[#10b981]/30',
+  Thursday:
+    'bg-sky-50 text-sky-700 border-sky-200 dark:bg-[#0ea5e9]/10 dark:text-[#7dd3fc] dark:border-[#0ea5e9]/30',
+  Friday:
+    'bg-violet-50 text-violet-700 border-violet-200 dark:bg-[#8b5cf6]/10 dark:text-[#c4b5fd] dark:border-[#8b5cf6]/30',
+  Saturday:
+    'bg-slate-100 text-slate-700 border-slate-200 dark:bg-[#64748b]/15 dark:text-[#cbd5e1] dark:border-[#64748b]/30',
+  Sunday:
+    'bg-slate-100 text-slate-700 border-slate-200 dark:bg-[#64748b]/15 dark:text-[#cbd5e1] dark:border-[#64748b]/30',
 };
 
 function StatCard({
@@ -38,16 +45,66 @@ function StatCard({
 }) {
   return (
     <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
-      <div className="flex items-center gap-2 text-slate-500">
+      <div className="flex items-center gap-2 text-on-surface-variant">
         <Icon name={icon} size={16} />
         <span className="text-[11px] font-bold uppercase tracking-wider">
           {label}
         </span>
       </div>
-      <p className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900">
+      <p className="mt-3 text-3xl font-extrabold tracking-tight text-on-surface">
         {value}
       </p>
-      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+      {hint && (
+        <p className="mt-1 text-xs text-on-surface-variant">{hint}</p>
+      )}
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon,
+  eyebrow,
+  title,
+  body,
+  actionLabel,
+  onAction,
+  to,
+}: {
+  icon: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  actionLabel: string;
+  onAction?: () => void;
+  to?: string;
+}) {
+  const actionClasses =
+    'mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary transition-colors hover:text-primary/80';
+
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-outline-variant bg-surface p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+      <div className="absolute inset-x-0 top-0 h-0.5 origin-left scale-x-0 bg-primary transition-transform duration-500 group-hover:scale-x-100" />
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-105">
+        <Icon name={icon} size={19} />
+      </span>
+      <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+        {eyebrow}
+      </p>
+      <h3 className="mt-1 text-base font-semibold text-on-surface">{title}</h3>
+      <p className="mt-1.5 text-sm leading-relaxed text-on-surface-variant">
+        {body}
+      </p>
+      {to ? (
+        <Link to={to} className={actionClasses}>
+          {actionLabel}
+          <Icon name="arrow_forward" size={14} />
+        </Link>
+      ) : (
+        <button type="button" onClick={onAction} className={actionClasses}>
+          {actionLabel}
+          <Icon name="arrow_forward" size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -87,7 +144,7 @@ function TabButton({
       className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
         active
           ? 'border-primary text-primary'
-          : 'border-transparent text-slate-500 hover:text-slate-800'
+          : 'border-transparent text-on-surface-variant hover:text-on-surface'
       }`}
     >
       <Icon name={icon} size={17} />
@@ -115,7 +172,7 @@ function PanelState({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-on-surface-variant">
         <Icon name="progress_activity" size={18} spin />
         Loading public data…
       </div>
@@ -125,12 +182,12 @@ function PanelState({
   if (error) {
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <Icon name="warning" size={28} className="text-amber-600" />
+        <Icon name="warning" size={28} className="text-amber-500" />
         <div>
-          <p className="text-sm font-semibold text-slate-800">
+          <p className="text-sm font-semibold text-on-surface">
             Public data is temporarily unavailable.
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-on-surface-variant">
             Please try again in a moment.
           </p>
         </div>
@@ -148,14 +205,16 @@ function PanelState({
   if (empty) {
     return (
       <div className="flex flex-col items-center gap-2 py-16 text-center">
-        <Icon name="search_off" size={28} className="text-slate-400" />
-        <p className="text-sm font-semibold text-slate-800">{emptyTitle}</p>
-        <p className="max-w-sm text-xs text-slate-500">{emptyHint}</p>
+        <Icon name="search_off" size={28} className="text-on-surface-variant" />
+        <p className="text-sm font-semibold text-on-surface">{emptyTitle}</p>
+        <p className="max-w-sm text-xs text-on-surface-variant">
+          {emptyHint}
+        </p>
         {onClear && (
           <button
             type="button"
             onClick={onClear}
-            className="mt-1 rounded-lg border border-outline bg-surface px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            className="mt-1 rounded-lg border border-outline-variant bg-surface px-4 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
           >
             Clear filters
           </button>
@@ -226,14 +285,14 @@ function SchedulesPanel({
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
               Academic term
             </span>
             <select
               value={selectedTermId}
               onChange={(event) => onTermChange(event.target.value)}
               disabled={!data?.terms.length}
-              className="h-10 min-w-48 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+              className="h-10 min-w-48 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
             >
               {(data?.terms ?? []).map((term) => (
                 <option key={term.termId} value={term.termId}>
@@ -245,13 +304,13 @@ function SchedulesPanel({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
               Department
             </span>
             <select
               value={department}
               onChange={(event) => setDepartment(event.target.value)}
-              className="h-10 min-w-36 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+              className="h-10 min-w-36 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
             >
               <option value="">All departments</option>
               {departments.map((code) => (
@@ -268,19 +327,20 @@ function SchedulesPanel({
           <Icon
             name="search"
             size={17}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
           />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search subject, section, faculty, room…"
-            className="h-10 w-full rounded-lg border border-outline bg-surface pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-10 w-full rounded-lg border border-outline-variant bg-surface pl-9 pr-3 text-sm text-on-surface outline-none transition placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </label>
       </div>
 
-      <p className="mt-3 text-xs text-slate-500" aria-live="polite">
-        Showing <strong className="text-slate-700">{filtered.length}</strong> of{' '}
+      <p className="mt-3 text-xs text-on-surface-variant" aria-live="polite">
+        Showing{' '}
+        <strong className="text-on-surface">{filtered.length}</strong> of{' '}
         {entries.length} published class blocks
         {data?.term ? ` for ${data.term.termCode ?? data.term.termName}` : ''}.
       </p>
@@ -311,8 +371,8 @@ function SchedulesPanel({
       {!isLoading && !isError && filtered.length > 0 && (
         <div className="mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <table className="min-w-full divide-y divide-outline-variant text-sm">
+              <thead className="bg-surface-container-low text-left text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
                 <tr>
                   <th className="px-4 py-3">Day</th>
                   <th className="px-4 py-3">Time</th>
@@ -323,48 +383,51 @@ function SchedulesPanel({
                   <th className="px-4 py-3">Dept</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-outline-variant/70">
                 {filtered.map((entry) => (
-                  <tr key={entry.scheduleId} className="hover:bg-slate-50/70">
+                  <tr
+                    key={entry.scheduleId}
+                    className="transition-colors hover:bg-surface-container-low/70"
+                  >
                     <td className="whitespace-nowrap px-4 py-3">
                       <span
                         className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-bold ${
                           DAY_TONE[entry.dayOfWeek] ??
-                          'border-slate-200 bg-slate-100 text-slate-700'
+                          'border-outline-variant bg-surface-container text-on-surface-variant'
                         }`}
                       >
                         {entry.dayOfWeek}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-700">
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-on-surface-variant">
                       {entry.startTime}–{entry.endTime}
                     </td>
                     <td className="min-w-48 px-4 py-3">
-                      <p className="font-semibold text-slate-900">
+                      <p className="font-semibold text-on-surface">
                         {entry.subjectCode ?? '—'}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-on-surface-variant">
                         {entry.subjectTitle ?? 'Untitled subject'}
                       </p>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                    <td className="whitespace-nowrap px-4 py-3 text-on-surface">
                       {entry.sectionCode ?? '—'}
                     </td>
-                    <td className="min-w-44 px-4 py-3 text-slate-700">
+                    <td className="min-w-44 px-4 py-3 text-on-surface">
                       {entry.facultyName ??
                         entry.externalFacultyName ??
                         'Unassigned'}
                     </td>
-                    <td className="min-w-32 px-4 py-3 text-slate-700">
+                    <td className="min-w-32 px-4 py-3 text-on-surface">
                       {entry.roomNumber ?? entry.externalRoomName ?? '—'}
                       {entry.building && (
-                        <span className="block text-[11px] text-slate-400">
+                        <span className="block text-[11px] text-on-surface-variant/70">
                           {entry.building}
                         </span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                      <span className="rounded-md bg-surface-container px-2 py-0.5 text-[11px] font-bold text-on-surface-variant">
                         {entry.departmentCode ?? '—'}
                       </span>
                     </td>
@@ -438,20 +501,20 @@ function FacultyPanel({
           <Icon
             name="search"
             size={17}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
           />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search faculty or designation…"
-            className="h-10 w-full rounded-lg border border-outline bg-surface pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-10 w-full rounded-lg border border-outline-variant bg-surface pl-9 pr-3 text-sm text-on-surface outline-none transition placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
         </label>
 
         <select
           value={department}
           onChange={(event) => setDepartment(event.target.value)}
-          className="h-10 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+          className="h-10 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
         >
           <option value="">All departments</option>
           {(data?.departments ?? []).map((item) => (
@@ -461,7 +524,7 @@ function FacultyPanel({
           ))}
         </select>
 
-        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-outline bg-surface px-3 text-sm font-medium text-slate-700">
+        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface">
           <input
             type="checkbox"
             checked={idpOnly}
@@ -472,8 +535,8 @@ function FacultyPanel({
         </label>
       </div>
 
-      <p className="mt-3 text-xs text-slate-500" aria-live="polite">
-        Showing <strong className="text-slate-700">{filtered.length}</strong>{' '}
+      <p className="mt-3 text-xs text-on-surface-variant" aria-live="polite">
+        Showing <strong className="text-on-surface">{filtered.length}</strong>{' '}
         faculty records.
       </p>
 
@@ -504,8 +567,8 @@ function FacultyPanel({
       {!isLoading && !isError && filtered.length > 0 && (
         <div className="mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <table className="min-w-full divide-y divide-outline-variant text-sm">
+              <thead className="bg-surface-container-low text-left text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
                 <tr>
                   <th className="px-4 py-3">Faculty</th>
                   <th className="px-4 py-3">Department</th>
@@ -513,29 +576,32 @@ function FacultyPanel({
                   <th className="px-4 py-3">IDP connection</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-outline-variant/70">
                 {filtered.map((member) => (
-                  <tr key={member.facultyId} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-3 font-semibold text-slate-900">
+                  <tr
+                    key={member.facultyId}
+                    className="transition-colors hover:bg-surface-container-low/70"
+                  >
+                    <td className="px-4 py-3 font-semibold text-on-surface">
                       {member.fullName}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                    <td className="whitespace-nowrap px-4 py-3 text-on-surface">
                       {member.departmentCode ?? '—'}
                       {member.departmentName && (
-                        <span className="block text-[11px] text-slate-400">
+                        <span className="block text-[11px] text-on-surface-variant/70">
                           {member.departmentName}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-on-surface">
                       {member.designation ?? '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
                           member.idpLinked
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-100 text-slate-500'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-[#10b981]/30 dark:bg-[#10b981]/10 dark:text-[#6ee7b7]'
+                            : 'border-outline-variant bg-surface-container text-on-surface-variant'
                         }`}
                       >
                         <Icon
@@ -553,8 +619,8 @@ function FacultyPanel({
         </div>
       )}
 
-      <div className="mt-4 rounded-xl border border-outline-variant bg-slate-50 p-4 text-xs leading-relaxed text-slate-500">
-        <p className="font-semibold text-slate-700">
+      <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-4 text-xs leading-relaxed text-on-surface-variant">
+        <p className="font-semibold text-on-surface">
           About the public faculty directory
         </p>
         <p className="mt-1">
@@ -602,17 +668,35 @@ export default function LandingPage() {
 
   const selectedTermId = termId ?? schedules.data?.term?.termId ?? '';
 
+  const prefersReducedMotion = () =>
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   const goToTab = (next: LandingTab) => {
     setTab(next);
     requestAnimationFrame(() => {
-      document
-        .getElementById('public-content')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('public-data')?.scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     });
   };
 
   return (
     <div className="min-h-screen bg-background text-on-background">
+      <a
+        href="#public-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-primary"
+      >
+        Skip to public data
+      </a>
       <header className="sticky top-0 z-40 border-b border-outline-variant bg-surface/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <Link to="/" className="group flex items-center gap-3">
@@ -620,10 +704,10 @@ export default function LandingPage() {
               <Icon name="school" filled size={22} />
             </span>
             <span>
-              <span className="block text-sm font-extrabold tracking-tight text-slate-900">
+              <span className="block text-sm font-extrabold tracking-tight text-on-surface">
                 CoE-NNECT
               </span>
-              <span className="block text-[11px] text-slate-500">
+              <span className="block text-[11px] text-on-surface-variant">
                 WMSU · College of Engineering
               </span>
             </span>
@@ -634,7 +718,7 @@ export default function LandingPage() {
               type="button"
               onClick={() => goToTab('schedules')}
               className={`transition hover:text-primary ${
-                tab === 'schedules' ? 'text-primary' : 'text-slate-600'
+                tab === 'schedules' ? 'text-primary' : 'text-on-surface-variant'
               }`}
             >
               Published schedules
@@ -643,7 +727,7 @@ export default function LandingPage() {
               type="button"
               onClick={() => goToTab('faculty')}
               className={`transition hover:text-primary ${
-                tab === 'faculty' ? 'text-primary' : 'text-slate-600'
+                tab === 'faculty' ? 'text-primary' : 'text-on-surface-variant'
               }`}
             >
               Faculty &amp; IDP
@@ -695,12 +779,21 @@ export default function LandingPage() {
 
         <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.3fr,1fr] lg:items-center lg:px-8 lg:py-24">
           <div>
-            <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85">
-              <Icon name="public" size={14} />
-              Public schedule portal
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85">
+                <Icon name="public" size={14} />
+                Public schedule portal
+              </span>
+              {schedules.data?.term && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">
+                  <Icon name="event_available" size={13} />
+                  {schedules.data.term.termCode ??
+                    schedules.data.term.termName}
+                </span>
+              )}
+            </div>
             <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl">
-              College of Engineering
+              <span className="landing-accent">College of Engineering</span>
               <span className="mt-2 block text-2xl font-semibold text-white/75 sm:text-3xl">
                 class schedules, in one place.
               </span>
@@ -763,77 +856,246 @@ export default function LandingPage() {
         id="public-content"
         className="mx-auto w-full max-w-7xl scroll-mt-24 px-4 pb-16 pt-10 sm:px-6 lg:px-8"
       >
-        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
-          <div
-            role="tablist"
-            aria-label="Public data views"
-            className="flex gap-5"
-          >
-            <TabButton
-              id="tab-schedules"
-              active={tab === 'schedules'}
-              icon="schedule"
-              onClick={() => setTab('schedules')}
-            >
-              Published schedules
-            </TabButton>
-            <TabButton
-              id="tab-faculty"
-              active={tab === 'faculty'}
-              icon="groups"
-              onClick={() => setTab('faculty')}
-            >
-              Faculty &amp; IDP
-            </TabButton>
-          </div>
-          {tab === 'schedules' && schedules.data?.generatedAt && (
-            <p className="pb-3 text-[11px] text-slate-400">
-              Snapshot generated{' '}
-              {new Date(schedules.data.generatedAt).toLocaleString(undefined, {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              })}
+        <section aria-labelledby="portal-highlights" className="mb-12">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                Explore the portal
+              </p>
+              <h2
+                id="portal-highlights"
+                className="mt-1 text-2xl font-semibold text-on-surface"
+              >
+                What you can do here
+              </h2>
+            </div>
+            <p className="max-w-md text-xs leading-relaxed text-on-surface-variant">
+              Public schedules and faculty records, no account needed. Sign in
+              when you are ready to manage your department.
             </p>
-          )}
-        </div>
+          </div>
 
-        <div
-          role="tabpanel"
-          id="public-panel"
-          aria-labelledby={
-            tab === 'schedules' ? 'tab-schedules' : 'tab-faculty'
-          }
+          <div className="grid gap-4 md:grid-cols-3">
+            <FeatureCard
+              icon="schedule"
+              eyebrow="Schedules"
+              title="Find a class"
+              body="Filter by term or department, then search by subject, section, instructor, or room."
+              actionLabel="Browse schedules"
+              onAction={() => goToTab('schedules')}
+            />
+            <FeatureCard
+              icon="groups"
+              eyebrow="Directory"
+              title="Check faculty & IDP links"
+              body="See active faculty by department and which records are connected to the university IDP."
+              actionLabel="Open directory"
+              onAction={() => goToTab('faculty')}
+            />
+            <FeatureCard
+              icon="dashboard"
+              eyebrow="Workspace"
+              title="Manage your department"
+              body="Department heads build and publish timetables; the dean and secretary oversee the college."
+              actionLabel={user ? 'Open dashboard' : 'Sign in to manage'}
+              to={dashboardPath}
+            />
+          </div>
+        </section>
+
+        <section
+          id="public-data"
+          aria-labelledby="public-data-title"
+          className="scroll-mt-24"
         >
-          {tab === 'schedules' ? (
-            <SchedulesPanel
-              data={schedules.data}
-              isLoading={schedules.isLoading}
-              isError={schedules.isError}
-              onRetry={() => void schedules.refetch()}
-              selectedTermId={selectedTermId}
-              onTermChange={(next) => setTermId(next)}
-            />
-          ) : (
-            <FacultyPanel
-              data={faculty.data}
-              isLoading={faculty.isLoading}
-              isError={faculty.isError}
-              onRetry={() => void faculty.refetch()}
-            />
-          )}
-        </div>
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                Public data
+              </p>
+              <h2
+                id="public-data-title"
+                className="mt-1 text-2xl font-semibold text-on-surface"
+              >
+                Browse the college
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-on-surface-variant">
+                Published schedules and faculty records, refreshed
+                automatically.
+              </p>
+            </div>
+            {tab === 'schedules' && schedules.data?.generatedAt && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-low px-3 py-1.5 text-[11px] text-on-surface-variant">
+                <Icon name="schedule" size={13} />
+                Updated{' '}
+                {new Date(schedules.data.generatedAt).toLocaleString(undefined, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
+            <div
+              role="tablist"
+              aria-label="Public data views"
+              className="flex gap-5"
+            >
+              <TabButton
+                id="tab-schedules"
+                active={tab === 'schedules'}
+                icon="schedule"
+                onClick={() => setTab('schedules')}
+              >
+                Published schedules
+              </TabButton>
+              <TabButton
+                id="tab-faculty"
+                active={tab === 'faculty'}
+                icon="groups"
+                onClick={() => setTab('faculty')}
+              >
+                Faculty &amp; IDP
+              </TabButton>
+            </div>
+          </div>
+
+          <div
+            role="tabpanel"
+            id="public-panel"
+            aria-labelledby={
+              tab === 'schedules' ? 'tab-schedules' : 'tab-faculty'
+            }
+          >
+            {tab === 'schedules' ? (
+              <SchedulesPanel
+                data={schedules.data}
+                isLoading={schedules.isLoading}
+                isError={schedules.isError}
+                onRetry={() => void schedules.refetch()}
+                selectedTermId={selectedTermId}
+                onTermChange={(next) => setTermId(next)}
+              />
+            ) : (
+              <FacultyPanel
+                data={faculty.data}
+                isLoading={faculty.isLoading}
+                isError={faculty.isError}
+                onRetry={() => void faculty.refetch()}
+              />
+            )}
+          </div>
+        </section>
       </main>
 
-      <footer className="border-t border-outline-variant bg-surface">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p>
-            © {new Date().getFullYear()} Western Mindanao State University ·
-            College of Engineering
-          </p>
-          <p className="sm:text-right">
-            Public data only. For corrections, contact your department head or
-            the College Dean.
-          </p>
+      <footer className="landing-footer border-t border-white/10">
+        <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="grid gap-10 lg:grid-cols-[1.4fr,1fr,1fr]">
+            <div>
+              <Link to="/" className="inline-flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white ring-1 ring-white/10">
+                  <Icon name="school" filled size={22} />
+                </span>
+                <span>
+                  <span className="block text-sm font-extrabold tracking-tight text-white">
+                    CoE-NNECT
+                  </span>
+                  <span className="block text-[11px] text-white/60">
+                    WMSU · College of Engineering
+                  </span>
+                </span>
+              </Link>
+              <p className="mt-4 max-w-sm text-xs leading-relaxed text-white/65">
+                The public scheduling portal of the WMSU College of Engineering.
+                Browse officially published class schedules and see which
+                faculty records are connected to the Institutional Data
+                Platform.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+                  aria-hidden="true"
+                />
+                Public data only
+              </span>
+            </div>
+
+            <nav aria-label="Portal links">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Portal
+              </p>
+              <ul className="mt-4 space-y-2.5 text-sm">
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => goToTab('schedules')}
+                    className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                  >
+                    Published schedules
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => goToTab('faculty')}
+                    className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                  >
+                    Faculty &amp; IDP
+                  </button>
+                </li>
+                <li>
+                  <Link
+                    to={dashboardPath}
+                    className="text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                  >
+                    {user ? 'Open dashboard' : 'Sign in to manage'}
+                  </Link>
+                </li>
+                <li>
+                  <a
+                    href="#public-content"
+                    className="text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                  >
+                    Back to public data
+                  </a>
+                </li>
+              </ul>
+            </nav>
+
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/45">
+                About this portal
+              </p>
+              <p className="mt-4 text-xs leading-relaxed text-white/65">
+                Only published schedules are shown. Drafts, flagged entries,
+                and records awaiting approval stay internal. Contact details,
+                employee IDs, and integration credentials are never exposed.
+              </p>
+              <p className="mt-3 text-xs leading-relaxed text-white/45">
+                For corrections, contact your Department Head or the College
+                Dean.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-10 flex flex-col gap-3 border-t border-white/10 pt-5 text-[11px] text-white/45 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              © {new Date().getFullYear()} Western Mindanao State University ·
+              College of Engineering
+            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <p>Built by the Department of Computer Engineering</p>
+              <button
+                type="button"
+                onClick={scrollToTop}
+                className="inline-flex items-center gap-1.5 text-white/60 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+              >
+                <Icon name="arrow_upward" size={13} />
+                Back to top
+              </button>
+            </div>
+          </div>
         </div>
       </footer>
     </div>
