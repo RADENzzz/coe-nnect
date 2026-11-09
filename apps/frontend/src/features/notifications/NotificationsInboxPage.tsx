@@ -166,7 +166,10 @@ export default function NotificationsInboxPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div
+        className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+        data-tour="notifications-header"
+      >
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-primary flex items-center gap-2">
             <Icon name="notifications" size={28} />
@@ -205,7 +208,7 @@ export default function NotificationsInboxPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-4">
+      <div className="mb-4" data-tour="notifications-filters">
         <NotificationFilters
           value={filters}
           onChange={setFilters}
@@ -250,7 +253,10 @@ export default function NotificationsInboxPage() {
       )}
 
       {accumulated.length > 0 && (
-        <div className="border border-surface-variant rounded-xl overflow-hidden divide-y divide-surface-variant bg-white">
+        <div
+          className="border border-surface-variant rounded-xl overflow-hidden divide-y divide-surface-variant bg-white"
+          data-tour="notifications-list"
+        >
           {accumulated.map((n) => (
             <NotificationItem
               key={n.notificationId}

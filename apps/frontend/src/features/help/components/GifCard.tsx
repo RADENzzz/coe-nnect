@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Tilt3D } from './animations';
+import {
+  WalkthroughPreview,
+  type WalkthroughCategory,
+} from './WalkthroughPreview';
 
 interface Props {
   title: string;
   gif: string;
   steps: string[];
   duration?: string;
+  category: WalkthroughCategory;
 }
 
-export function GifCard({ title, gif, steps, duration }: Props) {
+export function GifCard({ title, gif, steps, duration, category }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -35,10 +40,13 @@ export function GifCard({ title, gif, steps, duration }: Props) {
 
   useEffect(() => {
     if (!lightbox) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setLightbox(false);
+    const onKey = (event: KeyboardEvent) =>
+      event.key === 'Escape' && setLightbox(false);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [lightbox]);
+
+  const showPreview = errored || !gif;
 
   return (
     <>
@@ -49,34 +57,44 @@ export function GifCard({ title, gif, steps, duration }: Props) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.5 }}
-          className="group flex h-full flex-col overflow-hidden border border-slate-200 bg-white transition-colors duration-300 hover:border-brand-300 hover:shadow-xl"
+          className="group flex h-full flex-col overflow-hidden border border-outline-variant bg-surface transition-colors duration-300 hover:border-primary/40 hover:shadow-xl"
         >
-          <div className="border-b border-slate-200 px-4 py-3">
+          <div className="border-b border-outline-variant px-4 py-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-              {duration && (
-                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-600 transition-colors group-hover:bg-brand-100 group-hover:text-brand-800">
-                  {duration}
+              <h3 className="text-sm font-semibold text-on-surface">{title}</h3>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {duration && (
+                  <span className="rounded-full bg-surface-container px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-on-surface-variant transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                    {duration}
+                  </span>
+                )}
+                <span className="rounded-full border border-outline-variant px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  {showPreview ? 'Preview' : 'GIF'}
                 </span>
-              )}
+              </div>
             </div>
           </div>
 
           <button
             type="button"
             onClick={() => loaded && !errored && setLightbox(true)}
-            className="relative aspect-video w-full overflow-hidden bg-slate-50"
-            aria-label={`View ${title} fullscreen`}
+            className={`relative aspect-video w-full overflow-hidden ${
+              loaded && !errored ? 'bg-slate-900' : 'bg-surface-container-low'
+            }`}
+            aria-label={
+              loaded && !errored
+                ? `View ${title} fullscreen`
+                : `${title} animated preview`
+            }
           >
             {!visible ? (
               <div className="animate-shimmer h-full w-full" />
-            ) : errored ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-xs text-slate-400">
-                <span className="material-symbols-outlined text-2xl">
-                  broken_image
-                </span>
-                <span>GIF not available yet</span>
-              </div>
+            ) : showPreview ? (
+              <WalkthroughPreview
+                title={title}
+                category={category}
+                steps={steps}
+              />
             ) : (
               <>
                 {!loaded && <div className="animate-shimmer absolute inset-0" />}
@@ -86,12 +104,11 @@ export function GifCard({ title, gif, steps, duration }: Props) {
                   loading="lazy"
                   onLoad={() => setLoaded(true)}
                   onError={() => setErrored(true)}
-                  className={
-                    'h-full w-full object-cover transition-all duration-500 ' +
-                    (loaded
+                  className={`h-full w-full object-cover transition-all duration-500 ${
+                    loaded
                       ? 'scale-100 opacity-100 group-hover:scale-105'
-                      : 'scale-105 opacity-0')
-                  }
+                      : 'scale-105 opacity-0'
+                  }`}
                 />
                 {loaded && (
                   <span className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-1 bg-black/60 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-white opacity-0 transition-opacity group-hover:opacity-100">
@@ -105,10 +122,10 @@ export function GifCard({ title, gif, steps, duration }: Props) {
             )}
           </button>
 
-          <ol className="space-y-2 px-4 py-4 text-sm text-slate-700">
+          <ol className="space-y-2 px-4 py-4 text-sm text-on-surface-variant">
             {steps.map((step, i) => (
-              <li key={i} className="flex gap-3">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[11px] font-semibold text-brand-800 transition-transform duration-200 group-hover:scale-110">
+              <li key={step} className="flex gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary transition-transform duration-200 group-hover:scale-110">
                   {i + 1}
                 </span>
                 <span className="leading-relaxed">{step}</span>
@@ -133,7 +150,7 @@ export function GifCard({ title, gif, steps, duration }: Props) {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
             >
               <img
                 src={gif}

@@ -11,7 +11,7 @@ import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import { useAuthStore } from '../../store/auth.store';
 import { useTutorialStore } from '../../store/tutorial.store';
-import { getTour, WELCOME_TOUR_ID, type TourPlacement } from './tours';
+import { getTour, getTourMeta, tourMatchesPath, TOUR_CATEGORY_LABELS, WELCOME_TOUR_ID, type TourPlacement } from './tours';
 
 const POPOVER_WIDTH = 360;
 const SPOTLIGHT_PADDING = 7;
@@ -256,10 +256,12 @@ export default function TutorialProvider() {
   const onboardedAt = useTutorialStore((s) => s.onboardedAt);
   const activeTourId = useTutorialStore((s) => s.activeTourId);
   const stepIndex = useTutorialStore((s) => s.stepIndex);
+  const pendingTourId = useTutorialStore((s) => s.pendingTourId);
   const openWelcome = useTutorialStore((s) => s.openWelcome);
 
   const tour = getTour(activeTourId);
   const step = tour?.steps[stepIndex];
+  const meta = tour ? getTourMeta(tour) : null;
 
   const [target, setTarget] = useState<Box | null>(null);
   const [popoverHeight, setPopoverHeight] = useState(260);
@@ -288,6 +290,21 @@ export default function TutorialProvider() {
       useTutorialStore.getState().closeTour();
     }
   }, [activeTourId, location.pathname]);
+
+  // A queued tour starts only after navigation reaches its page.
+  useEffect(() => {
+    if (!pendingTourId) return;
+    const queued = getTour(pendingTourId);
+    if (!queued) {
+      useTutorialStore.getState().consumePendingTour();
+      return;
+    }
+    if (!tourMatchesPath(queued, location.pathname)) return;
+    const timer = window.setTimeout(() => {
+      useTutorialStore.getState().startTour(pendingTourId);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [pendingTourId, location.pathname]);
 
   // First run in this browser: offer onboarding automatically. Hidden dev
   // accounts and legacy viewers never see it.
@@ -512,11 +529,15 @@ export default function TutorialProvider() {
                       <Icon name={step.icon ?? tour.icon} size={18} />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                      <p className="truncate text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
                         {tour.title}
                       </p>
                       <p className="text-[11px] text-on-surface-variant">
                         Step {stepIndex + 1} of {totalSteps}
+                        {meta ? ` · ${meta.minutes} min` : ''}
+                        {meta
+                          ? ` · ${TOUR_CATEGORY_LABELS[meta.category]}`
+                          : ''}
                       </p>
                     </div>
                   </div>
@@ -528,6 +549,22 @@ export default function TutorialProvider() {
                   >
                     <Icon name="close" size={17} />
                   </button>
+                </div>
+
+                <div
+                  className="h-1 w-full overflow-hidden bg-surface-container"
+                  role="progressbar"
+                  aria-valuenow={stepIndex + 1}
+                  aria-valuemin={1}
+                  aria-valuemax={totalSteps}
+                  aria-label="Tour progress"
+                >
+                  <div
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{
+                      width: `${((stepIndex + 1) / Math.max(1, totalSteps)) * 100}%`,
+                    }}
+                  />
                 </div>
 
                 <div className="px-4 py-4">
@@ -575,6 +612,17 @@ export default function TutorialProvider() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {!isLast && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          useTutorialStore.getState().closeTour()
+                        }
+                        className="hidden rounded-lg px-2 py-1.5 text-xs font-medium text-on-surface-variant/80 transition-colors hover:bg-surface-container hover:text-on-surface sm:inline-flex"
+                      >
+                        Skip
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => useTutorialStore.getState().prevStep()}

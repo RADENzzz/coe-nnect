@@ -33,7 +33,94 @@ export interface Tour {
   steps: TourStep[];
 }
 
-const USER_ROLES: Role[] = [ROLES.DEAN, ROLES.DEPT_HEAD];
+export type TourCategory =
+  | 'essentials'
+  | 'setup'
+  | 'scheduling'
+  | 'workflow'
+  | 'admin'
+  | 'reports'
+  | 'account';
+
+export const TOUR_CATEGORY_LABELS: Record<TourCategory, string> = {
+  essentials: 'Essentials',
+  setup: 'Setup',
+  scheduling: 'Scheduling',
+  workflow: 'Workflow',
+  admin: 'Administration',
+  reports: 'Reports',
+  account: 'Account',
+};
+
+interface TourMeta {
+  category: TourCategory;
+  /** Rough time to finish, in minutes. */
+  minutes: number;
+}
+
+const TOUR_META: Record<string, TourMeta> = {
+  welcome: { category: 'essentials', minutes: 1 },
+  dashboard: { category: 'essentials', minutes: 2 },
+  timetable: { category: 'scheduling', minutes: 3 },
+  faculty: { category: 'setup', minutes: 2 },
+  subjects: { category: 'setup', minutes: 2 },
+  sections: { category: 'setup', minutes: 2 },
+  rooms: { category: 'setup', minutes: 2 },
+  programs: { category: 'setup', minutes: 1 },
+  prospectus: { category: 'scheduling', minutes: 2 },
+  approvals: { category: 'workflow', minutes: 2 },
+  reports: { category: 'reports', minutes: 1 },
+  settings: { category: 'account', minutes: 2 },
+  help: { category: 'essentials', minutes: 1 },
+  notifications: { category: 'essentials', minutes: 1 },
+  'dean-dashboard': { category: 'essentials', minutes: 2 },
+  'dean-departments': { category: 'admin', minutes: 2 },
+  'dean-users': { category: 'admin', minutes: 2 },
+  'dean-approvals': { category: 'workflow', minutes: 3 },
+  'system-settings': { category: 'admin', minutes: 3 },
+  'audit-trail': { category: 'admin', minutes: 2 },
+  import: { category: 'admin', minutes: 2 },
+  'import-editor': { category: 'admin', minutes: 2 },
+  'dean-manage-departments': { category: 'admin', minutes: 2 },
+};
+
+export function getTourMeta(tour: Tour): TourMeta {
+  return (
+    TOUR_META[tour.id] ?? {
+      category: 'essentials',
+      minutes: Math.max(1, Math.ceil(tour.steps.length / 2)),
+    }
+  );
+}
+
+/** A concrete path for tours that belong to a page. */
+export function getTourPath(tour: Tour): string | undefined {
+  return tour.paths?.find((path) => !path.endsWith('*'));
+}
+
+/** Choose the version of a tour path that matches the current shell. */
+export function getTourStartPath(
+  tour: Tour,
+  pathname?: string,
+): string | undefined {
+  const concrete = tour.paths?.filter((path) => !path.endsWith('*')) ?? [];
+  if (concrete.length > 0) {
+    if (pathname?.startsWith('/dean')) {
+      const deanPath = concrete.find((path) => path.startsWith('/dean'));
+      if (deanPath) return deanPath;
+    }
+    return concrete[0];
+  }
+  const wildcard = tour.paths?.find((path) => path.endsWith('*'));
+  return wildcard ? wildcard.slice(0, -1) : undefined;
+}
+
+export function tourMatchesPath(tour: Tour, pathname: string): boolean {
+  if (!tour.paths) return true;
+  return tour.paths.some((pattern) => pathScore(pathname, pattern) >= 0);
+}
+
+const USER_ROLES: Role[] = [ROLES.DEAN, ROLES.SECRETARY, ROLES.DEPT_HEAD];
 
 /* ────────────────────────────────────────────
    Welcome / app basics
@@ -246,8 +333,8 @@ const SUBJECTS_TOUR: Tour = {
   title: 'Subject catalog',
   description: 'Create and tag the subjects that the prospectus and scheduler use.',
   icon: 'menu_book',
-  roles: [ROLES.DEPT_HEAD],
-  paths: ['/subjects'],
+  roles: [ROLES.DEPT_HEAD, ROLES.DEAN],
+  paths: ['/subjects', '/dean/subjects'],
   steps: [
     {
       title: 'The subject catalog',
@@ -284,8 +371,8 @@ const SECTIONS_TOUR: Tour = {
   title: 'Sections',
   description: 'Create the student cohorts that timetable entries are plotted for.',
   icon: 'view_module',
-  roles: [ROLES.DEPT_HEAD],
-  paths: ['/sections'],
+  roles: [ROLES.DEPT_HEAD, ROLES.DEAN],
+  paths: ['/sections', '/dean/sections'],
   steps: [
     {
       title: 'Sections are your class cohorts',
@@ -321,8 +408,8 @@ const ROOMS_TOUR: Tour = {
   title: 'Rooms',
   description: 'Maintain rooms, capacity, type, and scheduling preferences.',
   icon: 'meeting_room',
-  roles: [ROLES.DEPT_HEAD],
-  paths: ['/rooms'],
+  roles: [ROLES.DEPT_HEAD, ROLES.DEAN],
+  paths: ['/rooms', '/dean/rooms'],
   steps: [
     {
       title: 'Rooms used by the scheduler',
@@ -426,8 +513,8 @@ const APPROVALS_TOUR: Tour = {
   title: 'Faculty requests',
   description: 'Request faculty from other departments and track the response.',
   icon: 'swap_horiz',
-  roles: [ROLES.DEPT_HEAD],
-  paths: ['/approvals'],
+  roles: [ROLES.DEPT_HEAD, ROLES.DEAN],
+  paths: ['/approvals', '/dean/requests'],
   steps: [
     {
       title: 'Cross-department requests',
@@ -518,6 +605,38 @@ const SETTINGS_TOUR: Tour = {
   ],
 };
 
+const NOTIFICATIONS_TOUR: Tour = {
+  id: 'notifications',
+  title: 'Notifications inbox',
+  description: 'Read, filter, and clear the updates assigned to you.',
+  icon: 'notifications',
+  paths: ['/notifications', '/dean/notifications'],
+  steps: [
+    {
+      title: 'Your notification inbox',
+      body: 'Every approval, schedule change, and request assigned to you arrives here. Unread items are highlighted and counted in the bell menu.',
+      target: '[data-tour="notifications-header"]',
+      placement: 'bottom',
+      icon: 'notifications',
+    },
+    {
+      title: 'Cut through the noise',
+      body: 'Filter by category or read state, then search by subject. Filters apply instantly without reloading the page.',
+      target: '[data-tour="notifications-filters"]',
+      placement: 'bottom',
+      icon: 'filter_alt',
+    },
+    {
+      title: 'Act on an item',
+      body: 'Open a notification to jump to the record it references. Mark items read as you go, or clear the whole inbox from the header.',
+      tip: 'Clearing is permanent for your account only; it does not delete the underlying record.',
+      target: '[data-tour="notifications-list"]',
+      placement: 'top',
+      icon: 'mark_email_read',
+    },
+  ],
+};
+
 const HELP_TOUR: Tour = {
   id: 'help',
   title: 'Help center',
@@ -546,6 +665,20 @@ const HELP_TOUR: Tour = {
       placement: 'right',
       icon: 'toc',
     },
+    {
+      title: 'Start a guided tour',
+      body: 'Guided Tours lists every walkthrough for your role, with progress and estimated time. Opening one for another page takes you there automatically.',
+      target: '#guided-tours',
+      placement: 'top',
+      icon: 'flag',
+    },
+    {
+      title: 'Search everything',
+      body: 'The search box covers sections, FAQs, troubleshooting, walkthroughs, and tour steps. Press / to jump to it at any time.',
+      target: '[data-tour="help-search"]',
+      placement: 'bottom',
+      icon: 'manage_search',
+    },
   ],
 };
 
@@ -557,7 +690,7 @@ const DEAN_DASHBOARD_TOUR: Tour = {
   title: "Dean's overview",
   description: 'Term controls, college-wide numbers, and department status.',
   icon: 'dashboard',
-  roles: [ROLES.DEAN],
+  roles: [ROLES.DEAN, ROLES.SECRETARY],
   paths: ['/dean/dashboard'],
   steps: [
     {
@@ -854,6 +987,7 @@ export const TOURS: Tour[] = [
   APPROVALS_TOUR,
   REPORTS_TOUR,
   SETTINGS_TOUR,
+  NOTIFICATIONS_TOUR,
   HELP_TOUR,
   DEAN_DASHBOARD_TOUR,
   DEAN_DEPARTMENTS_TOUR,
@@ -898,4 +1032,65 @@ export function getTourForPath(pathname: string, role?: Role | null): Tour | und
 export function getAvailableTours(role?: Role | null): Tour[] {
   if (!role) return [];
   return TOURS.filter((tour) => !tour.roles || tour.roles.includes(role));
+}
+
+const RECOMMENDED_ORDER: Record<string, string[]> = {
+  department_head: [
+    'welcome',
+    'dashboard',
+    'faculty',
+    'rooms',
+    'subjects',
+    'programs',
+    'prospectus',
+    'sections',
+    'timetable',
+    'approvals',
+    'reports',
+    'notifications',
+    'settings',
+    'help',
+  ],
+  college_dean: [
+    'welcome',
+    'dean-dashboard',
+    'dean-departments',
+    'dean-users',
+    'dean-approvals',
+    'system-settings',
+    'timetable',
+    'faculty',
+    'reports',
+    'audit-trail',
+    'import',
+    'notifications',
+    'settings',
+    'help',
+  ],
+  college_secretary: [
+    'welcome',
+    'dean-dashboard',
+    'faculty',
+    'subjects',
+    'sections',
+    'rooms',
+    'timetable',
+    'reports',
+    'notifications',
+    'settings',
+    'help',
+  ],
+};
+
+/** Tours for a role, ordered as a practical learning path. */
+export function getRecommendedTours(role?: Role | null): Tour[] {
+  const available = getAvailableTours(role);
+  if (!role) return available;
+  const order = RECOMMENDED_ORDER[role] ?? [];
+  const rank = new Map(order.map((id, index) => [id, index]));
+  return [...available].sort((a, b) => {
+    const ar = rank.get(a.id) ?? order.length;
+    const br = rank.get(b.id) ?? order.length;
+    return ar - br;
+  });
 }

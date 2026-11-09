@@ -391,11 +391,15 @@ export function AccordionItem({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="group flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+        className="group flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-surface-container-low"
       >
         {header}
         <motion.span
-          className={`material-symbols-outlined text-[20px] text-slate-400 transition-colors group-hover:text-${accent}-700`}
+          className={`material-symbols-outlined text-[20px] text-on-surface-variant transition-colors ${
+            accent === 'amber'
+              ? 'group-hover:text-amber-600'
+              : 'group-hover:text-primary'
+          }`}
           animate={{ rotate: open ? 180 : 0 }}
           transition={{ duration: reduce ? 0 : 0.28, ease: [0.2, 0.9, 0.3, 1] }}
         >
@@ -410,7 +414,7 @@ export function AccordionItem({
             animate={{ height: 'auto', opacity: 1 }}
             exit={reduce ? undefined : { height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: [0.2, 0.9, 0.3, 1] }}
-            className="overflow-hidden border-t border-slate-100 bg-slate-50"
+            className="overflow-hidden border-t border-outline-variant/60 bg-surface-container-lowest"
           >
             <div className="px-4 py-3">{children}</div>
           </motion.div>
