@@ -3,6 +3,11 @@ import type { UserDirectoryRecord } from '../../../api/users.api';
 import type { Department } from '../../../api/departments.api';
 import { initials } from '../utils/dashboard.utils';
 
+/**
+ * Compact department-head presence list.
+ * Presence is the only signal here, so the rows carry a dot and a name,
+ * not a badge stack.
+ */
 export default function DepartmentHeadsSection({
   heads,
   onlineUserIds,
@@ -21,87 +26,88 @@ export default function DepartmentHeadsSection({
   const onlineCount = heads.filter((h) => onlineUserIds.has(h.user_id)).length;
 
   return (
-    <div className="mt-6 bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50/80 to-white">
-        <div className="flex items-center gap-3">
+    <div className="mt-4 overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/70 px-4 py-3">
+        <div className="flex items-center gap-2">
           <span
-            className={`inline-block w-2 h-2 rounded-full ${
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
               isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
             }`}
-            aria-hidden
+            aria-hidden="true"
           />
-          <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-            Other Department Heads
+          <h3 className="text-sm font-bold text-on-surface">
+            Department heads
           </h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+          <span className="text-[11px] text-on-surface-variant tabular-nums">
             {onlineCount} of {heads.length} online
           </span>
-          {heads.length > 0 && (
-            <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-slate-400">
-              <Icon name="touch_app" size={12} />
-              Click a card
-            </span>
-          )}
         </div>
+        {heads.length > 0 && (
+          <span className="hidden items-center gap-1 text-[10px] text-on-surface-variant sm:inline-flex">
+            <Icon name="touch_app" size={12} />
+            Select for details
+          </span>
+        )}
       </div>
 
       {dirLoading ? (
-        <div className="py-14 text-center text-sm text-slate-400 flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-2 py-10 text-sm text-on-surface-variant">
           <Icon name="progress_activity" size={14} className="animate-spin" />
           Loading department heads…
         </div>
       ) : heads.length === 0 ? (
-        <div className="py-14 text-center text-sm text-slate-400">
+        <div className="py-10 text-center text-sm text-on-surface-variant">
           No other department heads configured.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+        <div className="grid grid-cols-1 divide-y divide-outline-variant/50 md:grid-cols-2 md:divide-y-0 md:divide-x">
           {heads.map((head) => {
             const isOnline = onlineUserIds.has(head.user_id);
             const dept = departments.find(
               (d) => String(d.deptId) === String(head.dept_id),
             );
+
             return (
               <button
                 key={head.user_id}
                 onClick={() => onSelect(head)}
                 aria-label={`View details for ${head.username}`}
-                className="group px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors w-full text-left focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5c1219]/20"
+                className="group flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-container-low focus:outline-none focus-visible:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/20"
               >
                 <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-slate-700 text-xs font-bold flex items-center justify-center">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-container text-[11px] font-bold text-on-surface">
                     {initials(head.username)}
                   </div>
                   <span
-                    className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-white rounded-full ${
+                    className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface ${
                       isOnline ? 'bg-emerald-500' : 'bg-slate-300'
                     }`}
-                    aria-hidden
+                    aria-hidden="true"
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-900 truncate">
+                  <p className="truncate text-sm font-semibold text-on-surface">
                     {head.username}
                   </p>
-                  <p className="text-xs text-slate-500 truncate">
-                    {dept ? `[${dept.deptCode}] ${dept.deptName}` : 'No department'}
+                  <p className="truncate text-[11px] text-on-surface-variant">
+                    {dept
+                      ? `[${dept.deptCode}] ${dept.deptName}`
+                      : 'No department'}
                   </p>
                 </div>
                 <span
-                  className={`text-[9px] font-bold uppercase tracking-wider border px-2 py-1 shrink-0 rounded-md ${
+                  className={`shrink-0 text-[10px] font-semibold ${
                     isOnline
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-50 text-slate-500 border-slate-200'
+                      ? 'text-emerald-700'
+                      : 'text-on-surface-variant'
                   }`}
                 >
                   {isOnline ? 'Online' : 'Offline'}
                 </span>
                 <Icon
                   name="chevron_right"
-                  size={16}
-                  className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all duration-150 shrink-0"
+                  size={15}
+                  className="shrink-0 text-on-surface-variant/50 transition-transform group-hover:translate-x-0.5 group-hover:text-on-surface-variant"
                 />
               </button>
             );
