@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchSchedules, fetchActiveTerm } from '../../api/schedule.api';
 import { fetchUserDirectory } from '../../api/users.api';
+import { fetchStatsOverview } from '../../api/stats.api';
 import Icon from '../../components/ui/Icon';
 import { useAuthStore } from '../../store/auth.store';
 import { useOnlineUsers } from '../../hooks/use-online-users';
+import { greeting } from '../dashboard/utils/dashboard.utils';
 
 function StatCard({
   icon,
@@ -101,6 +103,11 @@ export default function DeanDashboardPage() {
     enabled: !!activeTerm?.termId,
   });
 
+  const { data: stats } = useQuery({
+    queryKey: ['stats', 'overview'],
+    queryFn: fetchStatsOverview,
+  });
+
   const { onlineUsers, isConnected } = useOnlineUsers();
 
   const activeDepts = departments.filter((d) => d.isActive);
@@ -109,6 +116,44 @@ export default function DeanDashboardPage() {
   const finalizedSchedules = schedules.filter(
     (s) => s.status === 'finalized' || s.status === 'published',
   );
+  const publishedSchedules = schedules.filter((s) => s.status === 'published');
+  const statusCounts = {
+    draft: schedules.filter((s) => s.status === 'draft').length,
+    review: reviewSchedules.length,
+    finalized: schedules.filter((s) => s.status === 'finalized').length,
+    published: publishedSchedules.length,
+  };
+  const completionRate =
+    schedules.length > 0
+      ? Math.round((finalizedSchedules.length / schedules.length) * 100)
+      : 0;
+
+  const deptScheduleStats = new Map<
+    string,
+    { total: number; completed: number }
+  >();
+  for (const row of schedules) {
+    const deptId = row.subject?.deptId;
+    if (!deptId) continue;
+    const key = String(deptId);
+    const current = deptScheduleStats.get(key) ?? { total: 0, completed: 0 };
+    current.total += 1;
+    if (row.status === 'finalized' || row.status === 'published') {
+      current.completed += 1;
+    }
+    deptScheduleStats.set(key, current);
+  }
+
+  const quickLinks = [
+    { to: '/dean/departments', label: 'Departments', icon: 'corporate_fare' },
+    { to: '/dean/faculty', label: 'Faculty', icon: 'groups' },
+    { to: '/dean/subjects', label: 'Subjects', icon: 'menu_book' },
+    { to: '/dean/sections', label: 'Sections', icon: 'grid_on' },
+    { to: '/dean/rooms', label: 'Rooms', icon: 'meeting_room' },
+    { to: '/dean/timetable', label: 'Timetable', icon: 'calendar_view_month' },
+    { to: '/dean/reports', label: 'Reports', icon: 'bar_chart' },
+    { to: '/dean/audit-trail', label: 'Audit trail', icon: 'history' },
+  ];
 
   const deptHeads = directory.filter(
     (u) => u.role === 'department_head' && u.is_active,
@@ -134,12 +179,15 @@ export default function DeanDashboardPage() {
       {/* Header */}
       <div className="border-b border-slate-200 pb-5 flex flex-wrap items-start justify-between gap-3" data-tour="dean-dash-header">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Dean's Overview
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            College overview
+          </p>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-0.5">
+            {greeting()}, {profile?.first_name || 'there'}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {activeTerm
-              ? `Active term: ${activeTerm.termName} — ${activeTerm.schoolYear}`
+              ? `${activeTerm.termName} · ${activeTerm.schoolYear} · ${schedules.length} class blocks`
               : 'No active term currently set.'}
           </p>
         </div>
@@ -192,7 +240,7 @@ export default function DeanDashboardPage() {
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dean-dash-stats">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4" data-tour="dean-dash-stats">
         <StatCard
           icon="corporate_fare"
           label="Active Departments"
@@ -222,12 +270,111 @@ export default function DeanDashboardPage() {
           to="/dean/reports/approvals"
         />
         <StatCard
-          icon="sensors"
-          label="Dept. Heads Online"
-          value={`${onlineDHs} / ${deptsWithHeads.filter((x) => x.head).length}`}
-          sub={isConnected ? 'Live' : 'Connecting…'}
-          color={onlineDHs > 0 ? 'green' : 'blue'}
+          icon="publish"
+          label="Published Schedules"
+          value={publishedSchedules.length}
+          sub="Visible to the public"
+          color="green"
+          to="/dean/timetable"
         />
+        <StatCard
+          icon="groups"
+          label="Active Faculty"
+          value={stats?.activeFaculty ?? '—'}
+          sub={`${stats?.activeDepartments ?? '—'} departments`}
+          color="blue"
+          to="/dean/faculty"
+        />
+        <StatCard
+          icon="menu_book"
+          label="Active Subjects"
+          value={stats?.activeSubjects ?? '—'}
+          sub={`${stats?.activeRooms ?? '—'} active rooms`}
+          color="blue"
+          to="/dean/subjects"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-tour="dean-dash-progress">
+        <div className="lg:col-span-2 bg-white border border-slate-200 shadow-sm">
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">
+                Schedule Progress
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Active term · {schedules.length} class blocks
+              </p>
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wide px-2.5 py-1 border border-emerald-200 bg-emerald-50 text-emerald-700">
+              {completionRate}% complete
+            </span>
+          </div>
+          <div className="p-5 space-y-4">
+            {[
+              { label: 'Published', count: statusCounts.published, tone: 'bg-emerald-500' },
+              { label: 'Finalized', count: statusCounts.finalized, tone: 'bg-blue-500' },
+              { label: 'In review', count: statusCounts.review, tone: 'bg-amber-500' },
+              { label: 'Draft', count: statusCounts.draft, tone: 'bg-slate-400' },
+            ].map((row) => {
+              const pct =
+                schedules.length > 0
+                  ? Math.round((row.count / schedules.length) * 100)
+                  : 0;
+              return (
+                <div key={row.label}>
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="font-semibold text-slate-700">
+                      {row.label}
+                    </span>
+                    <span className="text-slate-500 tabular-nums">
+                      {row.count} · {pct}%
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${row.tone}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
+              <span className="text-slate-500">Total class blocks</span>
+              <strong className="text-slate-900 tabular-nums">
+                {schedules.length}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 shadow-sm">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">
+              Quick Links
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Common college-level tasks
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 p-4">
+            {quickLinks.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="group flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/40 hover:text-primary"
+              >
+                <Icon
+                  name={item.icon}
+                  size={15}
+                  className="text-slate-400 transition-colors group-hover:text-primary"
+                />
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Main content grid */}
@@ -256,7 +403,7 @@ export default function DeanDashboardPage() {
               {inactiveDepts.length > 0 && (
                 <Link
                   to="/dean/departments"
-                  className="block mt-2 text-xs text-[#5c1219] hover:underline"
+                  className="block mt-2 text-xs text-primary hover:underline"
                 >
                   View {inactiveDepts.length} deactivated department
                   {inactiveDepts.length === 1 ? '' : 's'} →
@@ -265,43 +412,51 @@ export default function DeanDashboardPage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {deptsWithHeads.map(({ dept, head, isOnline }) => (
-                <div
-                  key={dept.deptId}
-                  className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${
-                        isOnline
-                          ? 'bg-emerald-500 animate-pulse'
-                          : 'bg-slate-300'
-                      }`}
-                      title={isOnline ? 'Online' : 'Offline'}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">
-                        {dept.deptName}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        {dept.deptCode}
-                        {head
-                          ? ` · Head: ${head.username}`
-                          : ' · No head assigned'}
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 border shrink-0 ${
-                      isOnline
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-slate-50 text-slate-500 border-slate-200'
-                    }`}
+              {deptsWithHeads.map(({ dept, head, isOnline }) => {
+                const workload = deptScheduleStats.get(String(dept.deptId));
+                return (
+                  <div
+                    key={dept.deptId}
+                    className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors"
                   >
-                    {isOnline ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${
+                          isOnline
+                            ? 'bg-emerald-500 animate-pulse'
+                            : 'bg-slate-300'
+                        }`}
+                        title={isOnline ? 'Online' : 'Offline'}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 truncate">
+                          {dept.deptName}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {dept.deptCode}
+                          {head
+                            ? ` · Head: ${head.username}`
+                            : ' · No head assigned'}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {workload
+                            ? `${workload.completed}/${workload.total} finalized or published`
+                            : 'No class blocks yet'}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 border shrink-0 ${
+                        isOnline
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-50 text-slate-500 border-slate-200'
+                      }`}
+                    >
+                      {isOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -312,11 +467,21 @@ export default function DeanDashboardPage() {
             <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">
               Pending Approvals
             </h2>
-            {reviewSchedules.length > 0 && (
-              <span className="text-[11px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wide">
-                {reviewSchedules.length} pending
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {reviewSchedules.length > 0 && (
+                <span className="text-[11px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 uppercase tracking-wide">
+                  {reviewSchedules.length} pending
+                </span>
+              )}
+              {reviewSchedules.length > 0 && (
+                <Link
+                  to="/dean/approvals"
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                >
+                  Review all
+                </Link>
+              )}
+            </div>
           </div>
           {reviewSchedules.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center py-12 text-center px-5">
@@ -332,23 +497,33 @@ export default function DeanDashboardPage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-100 overflow-y-auto max-h-80">
-              {reviewSchedules.slice(0, 10).map((s) => (
-                <div
-                  key={s.scheduleId}
-                  className="px-5 py-3 hover:bg-slate-50 transition-colors"
-                >
-                  <p className="text-sm font-medium text-slate-900 truncate">
-                    {s.subject?.subjectCode ?? 'Unknown Subject'}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">
-                    {s.faculty
-                      ? `${s.faculty.firstName} ${s.faculty.lastName}`
-                      : 'No faculty'}{' '}
-                    · {s.timeSlot?.dayOfWeek ?? s.dayOfWeek ?? '—'}{' '}
-                    {s.timeSlot?.startTime ?? s.startTime ?? ''}
-                  </p>
-                </div>
-              ))}
+              {reviewSchedules.slice(0, 10).map((s) => {
+                const dept = departments.find(
+                  (d) => String(d.deptId) === String(s.subject?.deptId),
+                );
+                return (
+                  <div
+                    key={s.scheduleId}
+                    className="px-5 py-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {s.subject?.subjectCode ?? 'Unknown Subject'}
+                      </p>
+                      <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                        {dept?.deptCode ?? '—'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5 truncate">
+                      {s.faculty
+                        ? `${s.faculty.firstName} ${s.faculty.lastName}`
+                        : 'No faculty'}{' '}
+                      · {s.timeSlot?.dayOfWeek ?? s.dayOfWeek ?? '—'}{' '}
+                      {s.timeSlot?.startTime ?? s.startTime ?? ''}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

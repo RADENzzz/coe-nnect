@@ -21,6 +21,7 @@ import {
   BreakdownEmpty,
   TodayScheduleStrip,
   TermStatusCard,
+  DepartmentSnapshot,
   DepartmentHeadsSection,
   UserDetailDrawer,
   SchedulesModal,
@@ -57,7 +58,7 @@ export default function DashboardPage() {
   }, []);
 
   // ── Queries ──
-  const { data: activeTerm, isLoading: termLoading } = useQuery({
+  const { data: activeTerm } = useQuery({
     queryKey: ['active-term'],
     queryFn: fetchActiveTerm,
   });
@@ -238,8 +239,6 @@ export default function DashboardPage() {
     ? `Updated ${relativeTime(new Date(lastUpdated).toISOString())}`
     : 'Ready';
 
-  const isLoadingAny = termLoading || isLoading || isFlaggedLoading;
-
   return (
     <>
       {/* ── Header ── */}
@@ -295,6 +294,50 @@ export default function DashboardPage() {
 
       <TermStatusCard term={activeTerm} scheduleStatusCounts={byStatus} />
 
+      {(pendingIncoming.length > 0 || flaggedCount > 0) && (
+        <div className="mt-4 flex flex-wrap items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <Icon name="warning" size={18} filled />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-amber-900">
+              Needs your attention
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800">
+              {pendingIncoming.length > 0 &&
+                `${pendingIncoming.length} cross-department request${
+                  pendingIncoming.length === 1 ? '' : 's'
+                } waiting for your review`}
+              {pendingIncoming.length > 0 && flaggedCount > 0 && ' · '}
+              {flaggedCount > 0 &&
+                `${flaggedCount} flagged entr${
+                  flaggedCount === 1 ? 'y' : 'ies'
+                } to check`}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {pendingIncoming.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setBreakdown('tasks')}
+                className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-800"
+              >
+                Review requests
+              </button>
+            )}
+            {flaggedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setBreakdown('flagged')}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
+              >
+                Review flagged
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Bento grid ── */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6 mt-4">
         <div
@@ -331,6 +374,18 @@ export default function DashboardPage() {
               label="Search Faculty"
               accent="blue"
               onClick={() => navigate('/faculty')}
+            />
+            <QuickAction
+              icon="calendar_view_month"
+              label="Timetable"
+              accent="emerald"
+              onClick={() => navigate('/timetable')}
+            />
+            <QuickAction
+              icon="bar_chart"
+              label="Reports"
+              accent="blue"
+              onClick={() => navigate('/reports')}
             />
           </div>
         </div>
@@ -468,6 +523,8 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+
+      <DepartmentSnapshot schedules={mySchedules} />
 
       {/* ── Today + Recent Activity ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-tour="dash-today">

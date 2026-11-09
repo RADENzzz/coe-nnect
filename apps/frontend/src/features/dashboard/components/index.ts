@@ -10,6 +10,7 @@ export { default as FlaggedRow } from './FlaggedRow';
 export { default as TodayScheduleStrip } from './TodayScheduleStrip';
 export { default as TermStatusCard } from './TermStatusCard';
 export { default as DepartmentHeadsSection } from './DepartmentHeadsSection';
+export { default as DepartmentSnapshot } from './DepartmentSnapshot';
 export { default as UserDetailDrawer } from './UserDetailDrawer';
 
 export { default as SchedulesModal } from './modals/SchedulesModal';
