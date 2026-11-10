@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import { useUiStore } from '../../store/ui.store';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import {
   filterNavByRole,
+  groupNav,
+  notificationsPath,
   type RoleNav,
 } from '../../lib/constants/nav-config';
+import { useNavAttention } from '../../hooks/use-nav-attention';
 import { useAuthStore } from '../../store/auth.store';
 import { useAppearanceStore } from '../../store/appearance.store';
 
@@ -33,6 +36,43 @@ interface MobileDrawerProps {
   nav: RoleNav;
 }
 
+interface DrawerNavLinkProps {
+  item: { label: string; path: string; icon: string; shortLabel?: string };
+  badge: number;
+  onNavigate: () => void;
+}
+
+function DrawerNavLink({ item, badge, onNavigate }: DrawerNavLinkProps) {
+  return (
+    <NavLink
+      to={item.path}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        isActive
+          ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+          : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon name={item.icon} filled={isActive} />
+          <span className="min-w-0 flex-1 truncate">
+            {item.shortLabel ?? item.label}
+          </span>
+          {badge > 0 && (
+            <span
+              className="nav-attention-pill flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none tabular-nums"
+              aria-label={`${badge} unread`}
+            >
+              {badge > 9 ? '9+' : badge}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -51,6 +91,9 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
   const brandLogo = useAppearanceStore((s) => s.logo);
   const visibleMain = filterNavByRole(nav.main, profile?.role);
   const visibleFooter = filterNavByRole(nav.footer, profile?.role);
+  const groups = useMemo(() => groupNav(visibleMain), [visibleMain]);
+  const attention = useNavAttention(nav, profile?.role);
+  const inboxPath = notificationsPath(nav);
 
   useEffect(() => {
     if (!isMobileDrawerOpen) return;
@@ -188,25 +231,42 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         </div>
 
         {/* Main Nav */}
-        <div className="flex-1 flex flex-col gap-px py-2 overflow-y-auto px-2 overscroll-contain">
-          {visibleMain.map((item) => (
+        <div className="flex-1 flex flex-col py-2 overflow-y-auto px-2 overscroll-contain">
+          {attention.totalUnread > 0 && inboxPath && (
             <NavLink
-              key={item.path}
-              to={item.path}
+              to={inboxPath}
               onClick={closeMobileDrawer}
-              className={({ isActive }) =>
-                isActive
-                  ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-                  : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
-              }
+              className="nav-attention-card mb-2 block rounded px-3 py-2.5 transition-colors"
             >
-              {({ isActive }) => (
-                <>
-                  <Icon name={item.icon} filled={isActive} />
-                  <span>{item.label}</span>
-                </>
+              <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+                <Icon name="notifications_active" size={14} />
+                {attention.totalUnread}{' '}
+                {attention.totalUnread === 1 ? 'needs' : 'need'} attention
+              </span>
+              {attention.latestTitle && (
+                <span className="mt-1 block truncate text-xs font-medium opacity-80">
+                  {attention.latestTitle}
+                </span>
               )}
             </NavLink>
+          )}
+
+          {groups.map((group, index) => (
+            <div key={group.label} className={index > 0 ? 'mt-1' : undefined}>
+              <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                {group.label}
+              </p>
+              <div className="flex flex-col gap-px">
+                {group.items.map((item) => (
+                  <DrawerNavLink
+                    key={item.path}
+                    item={item}
+                    badge={attention.badgeFor(item)}
+                    onNavigate={closeMobileDrawer}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -214,19 +274,12 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         {visibleFooter.length > 0 && (
           <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2 pb-safe">
             {visibleFooter.map((item) => (
-              <NavLink
+              <DrawerNavLink
                 key={item.path}
-                to={item.path}
-                onClick={closeMobileDrawer}
-                className={({ isActive }) =>
-                  isActive
-                    ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-                    : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
-                }
-              >
-                <Icon name={item.icon} />
-                <span>{item.label}</span>
-              </NavLink>
+                item={item}
+                badge={attention.badgeFor(item)}
+                onNavigate={closeMobileDrawer}
+              />
             ))}
           </div>
         )}

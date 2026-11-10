@@ -109,3 +109,42 @@ export interface IdpHealthStatus {
   lastSyncAt: string | null;
   timestamp: string;
 }
+
+/** Contract 4.4 — one published schedule row. */
+export interface IdpPublishedScheduleEntry {
+  coe_nnect_schedule_id: string;
+  department_code: string;
+  section_code: string | null;
+  subject_code: string;
+  faculty_wmsu_id: string | null;
+  external_faculty_name: string | null;
+  room_number: string | null;
+  external_room_name: string | null;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  load_type: string | null;
+}
+
+/** Contract 4.4 — term-wide published schedule push. */
+export interface IdpPublishedSchedulePayload {
+  coe_nnect_version_id: string;
+  version_number: number;
+  term_code: string;
+  published_at: string;
+  entries: IdpPublishedScheduleEntry[];
+}
+
+/** Result of a single publish attempt, surfaced to the caller. */
+export interface IdpSchedulePushResult {
+  termCode: string;
+  versionId: string;
+  versionNumber: number;
+  entryCount: number;
+  attempted: boolean;
+  delivered: boolean;
+  status: number | null;
+  attempts: number;
+  skipped?: 'disabled' | 'not_configured';
+  error?: string;
+}

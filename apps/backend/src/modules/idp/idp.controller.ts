@@ -4,6 +4,7 @@ import {
   HttpCode,
   Post,
   Body,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -12,7 +13,9 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PublishScheduleDto } from './dto/publish-schedule.dto';
 import { SyncFacultyDto } from './dto/sync-faculty.dto';
+import { IdpSchedulePublisherService } from './idp-schedule-publisher.service';
 import { IdpSignatureGuard } from './idp-signature.guard';
 import { IdpSyncService } from './idp-sync.service';
 import type { IdpFacultyChangeEvent } from './idp.types';
@@ -60,7 +63,10 @@ export class IdpController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('v1/idp')
 export class IdpSyncController {
-  constructor(private readonly sync: IdpSyncService) {}
+  constructor(
+    private readonly sync: IdpSyncService,
+    private readonly publisher: IdpSchedulePublisherService,
+  ) {}
 
   @Post('faculty/sync')
   @Roles('college_dean', 'college_secretary', 'department_head')
@@ -85,5 +91,36 @@ export class IdpSyncController {
     });
 
     return { data };
+  }
+
+  /**
+   * Preview exactly what a publish would send. Same builder as the push, so
+   * the review screen and the wire can never disagree (contract 4.4).
+   */
+  @Get('schedules/payload')
+  @Roles('college_dean', 'college_secretary', 'administrator')
+  @ApiOperation({
+    summary: 'Preview the published-schedule payload for a term',
+  })
+  async schedulePayload(@Query() dto: PublishScheduleDto) {
+    return { data: await this.publisher.buildPayload(dto.termCode) };
+  }
+
+  /**
+   * Milestone 2 — term-wide push to `POST {IDP_BASE}/schedules/published`.
+   *
+   * A delivery failure is reported in the body, not thrown: the local
+   * publish already happened and must not be presented as failed. The
+   * version row survives, so a replay reuses the same
+   * `coe_nnect_version_id` and IDP deduplicates it.
+   */
+  @Post('schedules/publish')
+  @Roles('college_dean', 'college_secretary', 'administrator')
+  @Auditable({ action: 'idp.schedule.publish', source: 'IDP' })
+  @ApiOperation({
+    summary: 'Push a term’s published schedule to IDP',
+  })
+  async publishSchedule(@Body() dto: PublishScheduleDto) {
+    return { data: await this.publisher.publishTerm(dto.termCode) };
   }
 }
