@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -10,6 +10,8 @@ import { useUiStore } from '../../store/ui.store';
 import { getNavForRole } from '../../lib/constants/nav-config';
 import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
+import { useNavAttention } from '../../hooks/use-nav-attention';
+import { useNavUsageRecorder } from '../../hooks/use-nav-usage';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
 import NotificationToaster from '../../features/notifications/NotificationToaster';
 import LiquidBackground from './LiquidBackground';
@@ -24,8 +26,21 @@ function ShellInner() {
   const mainRef = useRef<HTMLElement>(null);
 
   const nav = getNavForRole(profile?.role);
+  const attention = useNavAttention(nav, profile?.role);
 
   useNotificationSocketBridge();
+  useNavUsageRecorder();
+
+  // The bottom bar renders a subset of the rail; carry the same unread
+  // counts down so the two never disagree.
+  const bottomBadges = useMemo(() => {
+    const badges: Record<string, number> = {};
+    for (const item of nav.bottom) {
+      const count = attention.badgeFor(item);
+      if (count > 0) badges[item.path] = count;
+    }
+    return badges;
+  }, [attention, nav.bottom]);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)');
@@ -77,7 +92,7 @@ function ShellInner() {
         </main>
       </div>
 
-      <BottomNav items={nav.bottom} />
+      <BottomNav items={nav.bottom} badges={bottomBadges} />
       <NotificationToaster />
       <TutorialProvider />
     </div>

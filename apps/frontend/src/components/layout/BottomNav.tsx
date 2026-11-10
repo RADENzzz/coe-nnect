@@ -45,7 +45,10 @@ export default function BottomNav({ items, badges }: BottomNavProps) {
                 <div className="relative">
                   <Icon name={item.icon} filled={isActive} className="mb-1" size={22} />
                   {badge !== undefined && badge > 0 && (
-                    <span className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center">
+                    <span
+                      className="nav-attention-pill absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
+                      aria-hidden
+                    >
                       {badge > 9 ? '9+' : badge}
                     </span>
                   )}

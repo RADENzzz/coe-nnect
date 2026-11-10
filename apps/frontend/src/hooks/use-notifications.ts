@@ -32,23 +32,26 @@ export const qk = {
 // Queries
 // ────────────────────────────────────────────
 
-export function useUnreadCount() {
+export function useUnreadCount(enabled = true) {
   const user = useAuthStore((s) => s.user);
   return useQuery({
     queryKey: qk.unread(),
     queryFn: fetchUnreadCount,
-    enabled: !!user,
+    enabled: !!user && enabled,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
 }
 
-export function useNotificationsList(params: ListNotificationsParams = {}) {
+export function useNotificationsList(
+  params: ListNotificationsParams = {},
+  enabled = true,
+) {
   const user = useAuthStore((s) => s.user);
   return useQuery({
     queryKey: qk.list(params),
     queryFn: () => fetchNotifications(params),
-    enabled: !!user,
+    enabled: !!user && enabled,
     staleTime: 15 * 1000,
   });
 }

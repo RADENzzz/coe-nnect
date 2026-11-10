@@ -93,7 +93,8 @@ export interface PublicFaculty {
  * - published schedule rows (never drafts, review rows, flagged rows, or
  *   rows waiting on a cross-department faculty request),
  * - aggregate counts,
- * - a minimal faculty directory (name, department, designation, IDP badge).
+ * - a minimal faculty directory (name, department, designation,
+ *   IDP-linked flag derived from `faculty.last_synced_at`).
  *
  * It never returns contact details, employee/WMSU IDs, credentials, webhook
  * secrets, or internal integration URLs.
@@ -354,10 +355,15 @@ export class PublicService {
     );
   }
 
+  /**
+   * Contract 3.3 — "IDP-linked" has exactly one meaning: IDP has delivered
+   * this row at least once, so `last_synced_at` is set. A `wmsu_id` alone is
+   * not evidence: locally provisioned faculty carry one too. A row whose last
+   * sync failed keeps its `last_synced_at`, so it stays linked while the
+   * status shows `failed`.
+   */
   private isIdpLinked(row: Faculty): boolean {
-    return Boolean(
-      row.wmsuId || row.syncStatus === 'synced' || row.lastSyncedAt,
-    );
+    return row.lastSyncedAt !== null;
   }
 
   private termCode(term: Term): string | null {

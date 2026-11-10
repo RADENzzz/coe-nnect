@@ -2083,6 +2083,45 @@ html {
 }
 
 /* ============================================================
+   Navigation attention
+
+   The rail and the mobile nav share one visual language for
+   unread work: a gold pill carrying the count, a gold dot on the
+   collapsed rail, and a gold inset rule on the page the newest
+   notification points at. On the maroon rail the pill is gold on
+   maroon; on light surfaces it keeps the same gold with the
+   maroon label, so both read without a theme fork.
+   ============================================================ */
+
+.nav-attention-pill {
+  background-color: rgb(var(--accent-tint));
+  color: rgb(var(--sidebar-active-fg));
+}
+
+.nav-attention-dot {
+  background-color: rgb(var(--accent-tint));
+}
+
+/* Ring the collapsed-rail dot so it separates from the icon. */
+.nav-attention-dot--ringed {
+  box-shadow: 0 0 0 2px rgb(var(--primary));
+}
+
+.nav-attention-rule {
+  box-shadow: inset 2px 0 0 rgb(var(--accent-tint));
+}
+
+/* Summary card: soft gold wash, maroon ink, legible in either theme. */
+.nav-attention-card {
+  background-color: rgb(var(--accent-pale));
+  color: rgb(var(--sidebar-active-fg));
+}
+
+.nav-attention-card:hover {
+  background-color: rgb(var(--accent-tint));
+}
+
+/* ============================================================
    Experimental glass theme
    Enabled by `html.glass` (set by appearance.store.ts and by the
    pre-paint script in index.html). Large surfaces turn frosted and

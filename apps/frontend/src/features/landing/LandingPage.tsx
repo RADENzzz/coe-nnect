@@ -456,22 +456,20 @@ function FacultyPanel({
 }) {
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
-  const [idpOnly, setIdpOnly] = useState(false);
 
   const faculty = useMemo(() => data?.faculty ?? [], [data?.faculty]);
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return faculty.filter((member) => {
       if (department && member.departmentCode !== department) return false;
-      if (idpOnly && !member.idpLinked) return false;
       if (!needle) return true;
       return [member.fullName, member.departmentCode, member.designation]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [department, faculty, idpOnly, search]);
+  }, [department, faculty, search]);
 
-  const hasActiveFilters = Boolean(search.trim()) || Boolean(department) || idpOnly;
+  const hasActiveFilters = Boolean(search.trim()) || Boolean(department);
 
   return (
     <div>
@@ -483,10 +481,14 @@ function FacultyPanel({
           hint="Active faculty in the directory"
         />
         <StatCard
-          icon="link"
-          label="IDP-linked"
-          value={data?.idpLinked ?? '—'}
-          hint="Records connected to the IDP"
+          icon="badge"
+          label="Designations"
+          value={
+            new Set(
+              faculty.map((member) => member.designation).filter(Boolean),
+            ).size || '—'
+          }
+          hint="Distinct roles across the college"
         />
         <StatCard
           icon="school"
@@ -524,16 +526,6 @@ function FacultyPanel({
             </option>
           ))}
         </select>
-
-        <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface">
-          <input
-            type="checkbox"
-            checked={idpOnly}
-            onChange={(event) => setIdpOnly(event.target.checked)}
-            className="h-4 w-4 accent-primary"
-          />
-          IDP-linked only
-        </label>
       </div>
 
       <p className="mt-3 text-xs text-on-surface-variant" aria-live="polite">
@@ -551,7 +543,6 @@ function FacultyPanel({
             ? () => {
                 setSearch('');
                 setDepartment('');
-                setIdpOnly(false);
               }
             : undefined
         }
@@ -574,7 +565,6 @@ function FacultyPanel({
                   <th className="px-4 py-3">Faculty</th>
                   <th className="px-4 py-3">Department</th>
                   <th className="px-4 py-3">Designation</th>
-                  <th className="px-4 py-3">IDP connection</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/70">
@@ -597,21 +587,6 @@ function FacultyPanel({
                     <td className="px-4 py-3 text-on-surface">
                       {member.designation ?? '—'}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
-                          member.idpLinked
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-[#10b981]/30 dark:bg-[#10b981]/10 dark:text-[#6ee7b7]'
-                            : 'border-outline-variant bg-surface-container text-on-surface-variant'
-                        }`}
-                      >
-                        <Icon
-                          name={member.idpLinked ? 'check_circle' : 'link'}
-                          size={13}
-                        />
-                        {member.idpLinked ? 'IDP-linked' : 'Not linked'}
-                      </span>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -625,10 +600,9 @@ function FacultyPanel({
           About the public faculty directory
         </p>
         <p className="mt-1">
-          This view shows names, departments, designations, and whether a record
-          is connected to the university&apos;s Institutional Data Platform
-          (IDP). Contact details, employee IDs, API credentials, webhook
-          secrets, and internal integration endpoints are never exposed here.
+          This view shows active faculty names, departments, and designations.
+          Contact details, employee IDs, API credentials, webhook secrets, and
+          internal integration endpoints are never exposed here.
         </p>
       </div>
     </div>
@@ -731,7 +705,7 @@ export default function LandingPage() {
                 tab === 'faculty' ? 'text-primary' : 'text-on-surface-variant'
               }`}
             >
-              Faculty &amp; IDP
+              Faculty directory
             </button>
           </nav>
 
@@ -802,8 +776,8 @@ export default function LandingPage() {
             </h1>
             <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
               Browse officially published schedules, check room and instructor
-              assignments, and see which faculty records are connected to the
-              university&apos;s Institutional Data Platform.
+              assignments, and look up the college faculty directory by
+              department and designation.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button
@@ -842,8 +816,8 @@ export default function LandingPage() {
                 value={overview.data?.activeFaculty ?? '—'}
               />
               <HeroStat
-                label="IDP-linked faculty"
-                value={overview.data?.idpLinkedFaculty ?? '—'}
+                label="Active departments"
+                value={overview.data?.activeDepartments ?? '—'}
               />
             </dl>
             <p className="mt-4 text-[11px] leading-relaxed text-white/60">
@@ -889,8 +863,8 @@ export default function LandingPage() {
             <FeatureCard
               icon="groups"
               eyebrow="Directory"
-              title="Check faculty & IDP links"
-              body="See active faculty by department and which records are connected to the university IDP."
+              title="Look up faculty"
+              body="See active faculty by department, with their designation and department assignment."
               actionLabel="Open directory"
               onAction={() => goToTab('faculty')}
             />
@@ -958,7 +932,7 @@ export default function LandingPage() {
                 icon="groups"
                 onClick={() => setTab('faculty')}
               >
-                Faculty &amp; IDP
+                Faculty directory
               </TabButton>
             </div>
           </div>
@@ -1010,9 +984,8 @@ export default function LandingPage() {
               </Link>
               <p className="mt-4 max-w-sm text-xs leading-relaxed text-white/65">
                 The public scheduling portal of the WMSU College of Engineering.
-                Browse officially published class schedules and see which
-                faculty records are connected to the Institutional Data
-                Platform.
+                Browse officially published class schedules and the college
+                faculty directory.
               </p>
               <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
                 <span
@@ -1043,7 +1016,7 @@ export default function LandingPage() {
                     onClick={() => goToTab('faculty')}
                     className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
                   >
-                    Faculty &amp; IDP
+                    Faculty directory
                   </button>
                 </li>
                 <li>

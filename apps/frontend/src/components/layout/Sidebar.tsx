@@ -6,27 +6,32 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import clsx from 'clsx';
 import Icon from '../ui/Icon';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
 import { useAppearanceStore } from '../../store/appearance.store';
+import { useNavAttention, type NavAttention } from '../../hooks/use-nav-attention';
+import { useNavUsageShortcuts } from '../../hooks/use-nav-usage';
 import {
   filterNavByRole,
+  groupNav,
+  notificationsPath,
+  type NavItem,
   type RoleNav,
 } from '../../lib/constants/nav-config';
 
-type NavLinkItem = RoleNav['main'][number];
 type NavTone = 'primary' | 'footer';
 
 const FOCUS_RING =
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50';
-const ICON_BUTTON =
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50';const ICON_BUTTON =
   `flex items-center justify-center transition-colors rounded ${FOCUS_RING}`;
 const NAV_LINK_BASE =
   `flex items-center gap-3 font-semibold text-sm transition-colors rounded ${FOCUS_RING}`;
+const GROUP_LABEL =
+  'pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40';
 
 const NAV_TONES: Record<
   NavTone,
@@ -44,35 +49,75 @@ const NAV_TONES: Record<
   },
 };
 
-interface SidebarNavItemProps {
-  item: NavLinkItem;
-  collapsed: boolean;
-  tone: NavTone;
+function badgeLabel(count: number): string {
+  return count > 9 ? '9+' : String(count);
 }
 
-function SidebarNavItem({ item, collapsed, tone }: SidebarNavItemProps) {
+interface SidebarNavItemProps {
+  item: NavItem;
+  collapsed: boolean;
+  tone: NavTone;
+  badge: number;
+  /** The newest unread notification points at this page. */
+  highlight: boolean;
+}
+
+function SidebarNavItem({
+  item,
+  collapsed,
+  tone,
+  badge,
+  highlight,
+}: SidebarNavItemProps) {
   const t = NAV_TONES[tone];
+  const title = collapsed
+    ? `${item.label}${badge > 0 ? ` · ${badge} unread` : ''}`
+    : undefined;
 
   return (
     <NavLink
       to={item.path}
-      title={collapsed ? item.label : undefined}
+      title={title}
       className={({ isActive }) =>
         clsx(
           NAV_LINK_BASE,
           collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
           isActive ? t.active : t.idle,
+          !isActive && highlight && 'nav-attention-rule',
         )
       }
     >
       {({ isActive }) => (
         <>
-          <Icon
-            name={item.icon}
-            filled={isActive}
-            className={isActive ? undefined : t.iconIdleClass}
-          />
-          {!collapsed && <span className="truncate">{item.label}</span>}
+          <span className="relative shrink-0">
+            <Icon
+              name={item.icon}
+              filled={isActive}
+              className={isActive ? undefined : t.iconIdleClass}
+            />
+            {collapsed && badge > 0 && (
+              <span
+                aria-hidden
+                className="nav-attention-dot nav-attention-dot--ringed absolute -top-0.5 -right-1 h-2 w-2 rounded-full"
+              />
+            )}
+          </span>
+
+          {!collapsed && (
+            <>
+              <span className="min-w-0 flex-1 truncate">
+                {item.shortLabel ?? item.label}
+              </span>
+              {badge > 0 && (
+                <span
+                  className="nav-attention-pill flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none tabular-nums"
+                  aria-label={`${badge} unread`}
+                >
+                  {badgeLabel(badge)}
+                </span>
+              )}
+            </>
+          )}
         </>
       )}
     </NavLink>
@@ -80,9 +125,10 @@ function SidebarNavItem({ item, collapsed, tone }: SidebarNavItemProps) {
 }
 
 interface SidebarNavSectionProps {
-  items: NavLinkItem[];
+  items: NavItem[];
   collapsed: boolean;
   ariaLabel: string;
+  attention: NavAttention;
   tone?: NavTone;
   className?: string;
 }
@@ -91,6 +137,7 @@ function SidebarNavSection({
   items,
   collapsed,
   ariaLabel,
+  attention,
   tone = 'primary',
   className,
 }: SidebarNavSectionProps) {
@@ -107,6 +154,8 @@ function SidebarNavSection({
           item={item}
           collapsed={collapsed}
           tone={tone}
+          badge={attention.badgeFor(item)}
+          highlight={attention.latestPath === item.path}
         />
       ))}
     </div>
@@ -142,6 +191,28 @@ export default function Sidebar({ nav }: SidebarProps) {
     () => filterNavByRole(nav.footer, profile?.role),
     [nav.footer, profile?.role],
   );
+  const groups = useMemo(() => groupNav(visibleMain), [visibleMain]);
+
+  const attention = useNavAttention(nav, profile?.role);
+  const inboxPath = notificationsPath(nav);
+
+  // "Jump back" only ever points at a real page in this role's nav.
+  const shortcutCandidates = useMemo(
+    () =>
+      [...visibleMain, ...visibleFooter]
+        .map((item) => item.path)
+        .filter((path) => path !== inboxPath),
+    [visibleFooter, visibleMain, inboxPath],
+  );
+  const shortcutPaths = useNavUsageShortcuts(shortcutCandidates, 3);
+  const shortcutItems = useMemo(() => {
+    const byPath = new Map(
+      [...visibleMain, ...visibleFooter].map((item) => [item.path, item]),
+    );
+    return shortcutPaths
+      .map((path) => byPath.get(path))
+      .filter((item): item is NavItem => Boolean(item));
+  }, [shortcutPaths, visibleFooter, visibleMain]);
 
   const collapseTimerRef = useRef<number | null>(null);
   const hoveredRef = useRef(false);
@@ -249,7 +320,7 @@ export default function Sidebar({ nav }: SidebarProps) {
         )}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="relative w-9 h-9 bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
             {brandLogo ? (
               <img
                 src={brandLogo}
@@ -258,6 +329,12 @@ export default function Sidebar({ nav }: SidebarProps) {
               />
             ) : (
               <Icon name="school" filled className="text-white" size={20} />
+            )}
+            {collapsed && attention.totalUnread > 0 && (
+              <span
+                aria-hidden
+                className="nav-attention-dot nav-attention-dot--ringed absolute top-0.5 right-0.5 h-2 w-2 rounded-full"
+              />
             )}
           </div>
           {!collapsed && (
@@ -300,18 +377,78 @@ export default function Sidebar({ nav }: SidebarProps) {
       </div>
 
       {/* Main Nav */}
-      <SidebarNavSection
-        items={visibleMain}
-        collapsed={collapsed}
-        ariaLabel="Primary navigation"
-        className="flex-1 py-2 overflow-y-auto"
-      />
+      <div className="flex-1 overflow-y-auto py-2">
+        {!collapsed && attention.totalUnread > 0 && inboxPath && (
+          <Link
+            to={inboxPath}
+            className="nav-attention-card mx-2 mb-2 block rounded px-3 py-2.5 transition-colors"
+          >
+            <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
+              <Icon name="notifications_active" size={14} />
+              {attention.totalUnread}{' '}
+              {attention.totalUnread === 1 ? 'needs' : 'need'} attention
+            </span>
+            {attention.latestTitle && (
+              <span className="mt-1 block truncate text-xs font-medium opacity-80">
+                {attention.latestTitle}
+              </span>
+            )}
+          </Link>
+        )}
+
+        {!collapsed && shortcutItems.length > 0 && (
+          <div className="mb-2 px-2" aria-label="Frequently used">
+            <p className={clsx(GROUP_LABEL, 'px-2 pb-1 pt-0')}>Jump back</p>
+            {shortcutItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={clsx(
+                  'flex items-center gap-2 rounded px-2 py-1.5 text-xs font-semibold transition-colors',
+                  'text-white/70 hover:bg-white/10 hover:text-white',
+                  FOCUS_RING,
+                )}
+              >
+                <Icon name={item.icon} size={14} />
+                <span className="truncate">{item.shortLabel ?? item.label}</span>
+                <Icon
+                  name="chevron_right"
+                  size={12}
+                  className="ml-auto opacity-50"
+                />
+              </NavLink>
+            ))}
+          </div>
+        )}
+
+        {groups.map((group, index) => (
+          <div key={group.label} className={clsx(index > 0 && 'mt-1')}>
+            {!collapsed ? (
+              <p className={clsx(GROUP_LABEL, 'px-4')}>{group.label}</p>
+            ) : (
+              index > 0 && (
+                <div
+                  aria-hidden
+                  className="mx-3 my-2 border-t border-white/10"
+                />
+              )
+            )}
+            <SidebarNavSection
+              items={group.items}
+              collapsed={collapsed}
+              ariaLabel={`${group.label} navigation`}
+              attention={attention}
+            />
+          </div>
+        ))}
+      </div>
 
       {/* Footer Nav — secondary tone */}
       <SidebarNavSection
         items={visibleFooter}
         collapsed={collapsed}
         ariaLabel="Secondary navigation"
+        attention={attention}
         tone="footer"
         className="py-2 border-t border-white/10"
       />
