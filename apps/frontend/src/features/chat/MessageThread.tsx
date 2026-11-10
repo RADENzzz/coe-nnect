@@ -152,7 +152,7 @@ export default function MessageThread({
   if (isLoading && messages.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-slate-300 border-t-[#5c1219] animate-spin rounded-full" />
+        <div className="w-6 h-6 border-2 border-slate-300 border-t-primary animate-spin rounded-full" />
       </div>
     );
   }
@@ -215,7 +215,7 @@ export default function MessageThread({
                       title={fullTime || undefined}
                       className={`px-3.5 py-2 transition-colors rounded-2xl ${
                         isSelf
-                          ? 'bg-[#5c1219] text-white rounded-br-sm'
+                          ? 'bg-primary text-white rounded-br-sm'
                           : 'bg-white text-slate-900 border border-slate-200 rounded-bl-sm'
                       }`}
                     >
@@ -263,7 +263,7 @@ export default function MessageThread({
         <button
           type="button"
           onClick={jumpToLatest}
-          className="absolute bottom-4 right-4 px-3 py-1.5 bg-[#5c1219] text-white text-xs font-semibold rounded-full shadow-lg hover:bg-[#6b1620] transition flex items-center gap-1.5 animate-fade-in"
+          className="absolute bottom-4 right-4 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-full shadow-lg hover:bg-primary-container transition flex items-center gap-1.5 animate-fade-in"
         >
           <Icon name="arrow_downward" size={14} />
           Latest

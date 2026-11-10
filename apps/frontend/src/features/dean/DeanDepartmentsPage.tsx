@@ -242,7 +242,7 @@ export default function DeanDepartmentsPage() {
           </button>
           <Link
             to="/dean/departments/manage"
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition"
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white text-sm font-semibold hover:opacity-90 transition"
           >
             <Icon name="settings" size={18} />
             Manage Departments

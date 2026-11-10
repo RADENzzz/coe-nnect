@@ -16,7 +16,7 @@ export default function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+      className="tap-target hover:bg-slate-50 transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       aria-label={label}
       aria-pressed={isDark}
       title={label}

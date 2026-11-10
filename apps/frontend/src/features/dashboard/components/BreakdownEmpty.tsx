@@ -20,7 +20,7 @@ export default function BreakdownEmpty({
       {actionLabel && onAction && (
         <button
           onClick={onAction}
-          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#5c1219] hover:underline bg-[#5c1219]/5 px-3 py-1.5 rounded-md hover:bg-[#5c1219]/10 transition-colors"
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline bg-primary/5 px-3 py-1.5 rounded-md hover:bg-primary/10 transition-colors"
         >
           {actionLabel}
           <Icon name="arrow_forward" size={12} />

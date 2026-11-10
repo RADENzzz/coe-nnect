@@ -265,7 +265,7 @@ export default function ApprovalsExportToolbar({
           <span className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
             File name
           </span>
-          <div className="flex items-stretch border border-slate-300 focus-within:border-slate-500 focus-within:ring-1 focus-within:ring-[#5c1219] rounded-lg overflow-hidden">
+          <div className="flex items-stretch border border-slate-300 focus-within:border-slate-500 focus-within:ring-1 focus-within:ring-primary rounded-lg overflow-hidden">
             <input
               type="text"
               value={filename}

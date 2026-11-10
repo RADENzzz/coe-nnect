@@ -42,7 +42,7 @@ export default function TasksModal({
             <Link
               to="/approvals"
               onClick={onClose}
-              className="text-xs font-semibold text-[#5c1219] hover:underline flex items-center gap-1"
+              className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
             >
               Go to Approvals
               <Icon name="arrow_forward" size={14} />

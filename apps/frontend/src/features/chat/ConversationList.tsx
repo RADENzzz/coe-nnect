@@ -60,7 +60,7 @@ export default function ConversationList({
   if (isLoading && conversations.length === 0) {
     return (
       <div className="px-4 py-8 text-center">
-        <div className="w-5 h-5 border-2 border-slate-300 border-t-[#5c1219] animate-spin mx-auto rounded-full" />
+        <div className="w-5 h-5 border-2 border-slate-300 border-t-primary animate-spin mx-auto rounded-full" />
         <p className="text-[10px] text-slate-400 mt-3">Loading chats…</p>
       </div>
     );
@@ -106,17 +106,17 @@ export default function ConversationList({
             onClick={() => onPick(c.conversationId)}
             title={lastAt ? fullTime(lastAt) : undefined}
             className={`w-full px-3 ${rowPadY} flex items-start ${gap} text-left transition-colors relative rounded ${
-              active ? 'bg-[#5c1219]/5' : 'hover:bg-slate-50'
-            } focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#5c1219]/30`}
+              active ? 'bg-primary/5' : 'hover:bg-slate-50'
+            } focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary/30`}
           >
             {active && (
-              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-[#5c1219] rounded-r" />
+              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-primary rounded-r" />
             )}
             <div className="relative shrink-0 mt-0.5">
               <div
                 className={`${avatarSize} font-bold flex items-center justify-center transition-colors rounded-full ${
                   active
-                    ? 'bg-[#5c1219] text-white'
+                    ? 'bg-primary text-white'
                     : 'bg-slate-200 text-slate-700'
                 }`}
               >

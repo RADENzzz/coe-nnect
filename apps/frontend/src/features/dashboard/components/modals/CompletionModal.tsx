@@ -30,7 +30,7 @@ export default function CompletionModal({
       ) : (
         <div className="space-y-4">
           <div className="text-center py-4">
-            <div className="text-5xl font-extrabold text-[#5c1219] tabular-nums">
+            <div className="text-5xl font-extrabold text-primary tabular-nums">
               {completionRate}%
             </div>
             <p className="text-xs text-slate-500 mt-1">
@@ -40,7 +40,7 @@ export default function CompletionModal({
 
           <div className="w-full bg-slate-100 h-2.5 overflow-hidden rounded-full">
             <div
-              className="bg-gradient-to-r from-[#5c1219] to-[#8b1e2a] h-2.5 transition-all duration-500 rounded-full"
+              className="bg-gradient-to-r from-primary to-primary-container h-2.5 transition-all duration-500 rounded-full"
               style={{ width: `${completionRate}%` }}
             />
           </div>

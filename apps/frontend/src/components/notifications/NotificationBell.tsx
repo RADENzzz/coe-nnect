@@ -78,7 +78,7 @@ export default function NotificationBell() {
       <div className="flex items-center gap-2">
         <span className="text-sm font-bold text-slate-900">Notifications</span>
         {hasUnread && (
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#5c1219] bg-[#5c1219]/10 px-1.5 py-0.5 rounded">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
             {unread} new
           </span>
         )}
@@ -89,7 +89,7 @@ export default function NotificationBell() {
             type="button"
             onClick={() => markAllRead.mutate()}
             disabled={markAllRead.isPending}
-            className="text-[11px] font-semibold text-slate-500 hover:text-[#5c1219] disabled:opacity-50 px-2 py-1"
+            className="text-[11px] font-semibold text-slate-500 hover:text-primary disabled:opacity-50 px-2 py-1"
           >
             Mark all read
           </button>
@@ -111,7 +111,7 @@ export default function NotificationBell() {
     <div className="flex-1 overflow-y-auto overscroll-contain">
       {isLoading && (
         <div className="px-4 py-12 text-center text-sm text-slate-500">
-          <div className="w-6 h-6 border-2 border-slate-300 border-t-[#5c1219] animate-spin mx-auto mb-3 rounded-full" />
+          <div className="w-6 h-6 border-2 border-slate-300 border-t-primary animate-spin mx-auto mb-3 rounded-full" />
           Loading…
         </div>
       )}
@@ -148,7 +148,7 @@ export default function NotificationBell() {
     <button
       type="button"
       onClick={openInbox}
-      className="w-full px-4 py-3.5 text-sm font-semibold text-[#5c1219] hover:bg-[#5c1219]/5 transition-colors border-t border-slate-100 flex items-center justify-center gap-1.5 shrink-0 pb-safe"
+      className="w-full px-4 py-3.5 text-sm font-semibold text-primary hover:bg-primary/5 transition-colors border-t border-slate-100 flex items-center justify-center gap-1.5 shrink-0 pb-safe"
     >
       View all
       <Icon name="arrow_forward" size={14} />
@@ -162,7 +162,7 @@ export default function NotificationBell() {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="tap-target hover:bg-slate-50 transition-colors flex items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+          className="tap-target hover:bg-slate-50 transition-colors flex items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           aria-label={
             hasUnread ? `Notifications (${unread} unread)` : 'Notifications'
           }
@@ -173,7 +173,7 @@ export default function NotificationBell() {
           {hasUnread && (
             <span
               aria-hidden
-              className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-[#5c1219] text-white text-[10px] font-bold leading-none border border-white"
+              className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold leading-none border border-white"
             >
               {badgeLabel}
             </span>
@@ -203,7 +203,7 @@ export default function NotificationBell() {
                 Notifications
               </span>
               {hasUnread && (
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#5c1219] bg-[#5c1219]/10 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                   {unread} new
                 </span>
               )}
@@ -214,7 +214,7 @@ export default function NotificationBell() {
                   type="button"
                   onClick={() => markAllRead.mutate()}
                   disabled={markAllRead.isPending}
-                  className="text-xs font-semibold text-slate-600 hover:text-[#5c1219] disabled:opacity-50 px-2 py-1"
+                  className="text-xs font-semibold text-slate-600 hover:text-primary disabled:opacity-50 px-2 py-1"
                 >
                   Mark all read
                 </button>
@@ -241,7 +241,7 @@ export default function NotificationBell() {
           <div className="flex-1 overflow-y-auto overscroll-contain bg-slate-50/30">
             {isLoading && (
               <div className="px-4 py-16 text-center text-sm text-slate-500">
-                <div className="w-6 h-6 border-2 border-slate-300 border-t-[#5c1219] animate-spin mx-auto mb-3 rounded-full" />
+                <div className="w-6 h-6 border-2 border-slate-300 border-t-primary animate-spin mx-auto mb-3 rounded-full" />
                 Loading…
               </div>
             )}
@@ -281,7 +281,7 @@ export default function NotificationBell() {
             <button
               type="button"
               onClick={openInbox}
-              className="w-full px-4 py-4 text-sm font-semibold text-[#5c1219] hover:bg-[#5c1219]/5 transition-colors flex items-center justify-center gap-1.5"
+              className="w-full px-4 py-4 text-sm font-semibold text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5"
             >
               View all notifications
               <Icon name="arrow_forward" size={16} />

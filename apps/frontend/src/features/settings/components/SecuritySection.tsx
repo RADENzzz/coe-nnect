@@ -109,7 +109,7 @@ export default function SecuritySection() {
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             autoComplete="current-password"
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#5c1219]"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
             placeholder="Enter current password"
           />
         </div>
@@ -124,7 +124,7 @@ export default function SecuritySection() {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             autoComplete="new-password"
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#5c1219]"
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
             placeholder="At least 8 characters"
           />
 
@@ -183,7 +183,7 @@ export default function SecuritySection() {
             className={`w-full bg-slate-50 border rounded-lg px-3 py-2.5 text-sm focus:outline-none transition-colors ${
               passwordsMismatch
                 ? 'border-red-300 focus:border-red-500'
-                : 'border-slate-200 focus:border-[#5c1219]'
+                : 'border-slate-200 focus:border-primary'
             }`}
             placeholder="Re-enter new password"
           />
@@ -210,7 +210,7 @@ export default function SecuritySection() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="px-5 py-2.5 rounded-lg bg-[#5c1219] text-white text-sm font-semibold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {mutation.isPending ? 'Updating…' : 'Update Password'}
           </button>

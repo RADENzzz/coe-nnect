@@ -132,7 +132,7 @@ export default function TimeSlotSelect({
                   className={clsx(
                     'w-full text-left px-3 py-2 text-sm transition-colors',
                     isSelected
-                      ? 'bg-[#5c1219] text-white font-semibold'
+                      ? 'bg-primary text-white font-semibold'
                       : highlighted === t
                       ? 'bg-surface-container-low text-on-surface'
                       : 'text-on-surface hover:bg-surface-container-low',

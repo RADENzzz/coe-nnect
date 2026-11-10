@@ -294,7 +294,7 @@ export default function NotificationSettingsTab() {
                           })
                         }
                       />
-                      <div className="w-9 h-5 bg-slate-300 peer-checked:bg-[#5c1219] rounded-full transition-colors peer-disabled:opacity-50" />
+                      <div className="w-9 h-5 bg-slate-300 peer-checked:bg-primary rounded-full transition-colors peer-disabled:opacity-50" />
                       <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
                     </label>
                   </li>

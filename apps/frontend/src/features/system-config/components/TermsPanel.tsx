@@ -314,7 +314,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                     : ''
                 }${
                   t.isActive
-                    ? 'border-[#5c1219]/40 bg-red-50/30'
+                    ? 'border-primary/40 bg-red-50/30'
                     : 'border-surface-variant hover:bg-surface-container-low'
                 }`}
               >
@@ -520,7 +520,7 @@ export default function TermsPanel({ isAdmin }: Props) {
               onChange={(e) =>
                 setForm((p) => ({ ...p, setActive: e.target.checked }))
               }
-              className="accent-[#5c1219]"
+              className="accent-primary"
             />
             Set as active immediately
           </label>

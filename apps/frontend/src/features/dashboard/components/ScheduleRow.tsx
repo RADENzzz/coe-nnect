@@ -16,7 +16,7 @@ export default function ScheduleRow({ s }: { s: RawSchedule }) {
   return (
     <div className="flex items-start gap-3.5 py-3.5 border-b border-slate-100 last:border-b-0 group hover:bg-slate-50/50 px-2 rounded-lg transition-colors">
       <div className="w-16 shrink-0 text-center">
-        <div className="text-[11px] font-mono font-bold text-[#5c1219] bg-[#5c1219]/5 rounded-md py-1 px-1.5">
+        <div className="text-[11px] font-mono font-bold text-primary bg-primary/5 rounded-md py-1 px-1.5">
           {DAY_ABBR_TO_LABEL[day] ?? day}
         </div>
       </div>

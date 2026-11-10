@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
+import ThemeStyleMenu from '../../components/ui/ThemeStyleMenu';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchPublicFaculty,
@@ -738,6 +739,7 @@ export default function LandingPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-outline-variant bg-surface">
               <ThemeToggle />
             </div>
+            <ThemeStyleMenu />
             <Link
               to={dashboardPath}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90"

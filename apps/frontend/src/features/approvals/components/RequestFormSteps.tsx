@@ -81,7 +81,7 @@ export function WhoStep({
                 name="facultyMode"
                 checked={form.facultyMode === 'any'}
                 onChange={() => setField('facultyMode', 'any')}
-                className="accent-[#5c1219]"
+                className="accent-primary"
               />
               Any available faculty
             </label>
@@ -91,7 +91,7 @@ export function WhoStep({
                 name="facultyMode"
                 checked={form.facultyMode === 'specific'}
                 onChange={() => setField('facultyMode', 'specific')}
-                className="accent-[#5c1219]"
+                className="accent-primary"
               />
               Specific faculty member
             </label>
@@ -142,7 +142,7 @@ export function SubjectStep({
               name="subjectSource"
               checked={form.subjectSource === 'prospectus'}
               onChange={() => setField('subjectSource', 'prospectus')}
-              className="accent-[#5c1219]"
+              className="accent-primary"
             />
             From my department's curriculum
           </label>
@@ -152,7 +152,7 @@ export function SubjectStep({
               name="subjectSource"
               checked={form.subjectSource === 'all'}
               onChange={() => setField('subjectSource', 'all')}
-              className="accent-[#5c1219]"
+              className="accent-primary"
             />
             Search all active subjects
           </label>

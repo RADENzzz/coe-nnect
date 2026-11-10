@@ -269,7 +269,7 @@ export default function BbcodeEditor({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow focus-within:border-[#5c1219]/40 focus-within:shadow-md">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow focus-within:border-primary/40 focus-within:shadow-md">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/80 px-2 py-1.5">
         <div
           role="tablist"
@@ -398,7 +398,7 @@ export default function BbcodeEditor({
             {value.trim() ? (
               <Bbcode
                 text={value}
-                linkClassName="font-semibold text-[#5c1219] underline underline-offset-2 hover:opacity-80"
+                linkClassName="font-semibold text-primary underline underline-offset-2 hover:opacity-80"
               />
             ) : (
               <p className="text-slate-400">
@@ -433,7 +433,7 @@ function ToolbarButton({
       disabled={disabled}
       aria-label={tool.label}
       title={`${tool.label} — ${tool.hint}`}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-all duration-150 hover:bg-white hover:text-[#5c1219] hover:shadow-sm active:scale-90 disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-all duration-150 hover:bg-white hover:text-primary hover:shadow-sm active:scale-90 disabled:pointer-events-none disabled:opacity-40"
     >
       <Icon name={tool.icon} size={17} />
     </button>

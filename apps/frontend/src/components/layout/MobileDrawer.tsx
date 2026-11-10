@@ -155,7 +155,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         {/* Brand */}
         <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-2 pt-safe">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 bg-[#5c1219] flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="w-8 h-8 bg-primary flex items-center justify-center shrink-0 overflow-hidden">
               {brandLogo ? (
                 <img
                   src={brandLogo}
@@ -180,7 +180,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
           </div>
           <button
             onClick={closeMobileDrawer}
-            className="tap-target hover:bg-slate-50 flex items-center justify-center text-slate-500 -mr-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+            className="tap-target hover:bg-slate-50 flex items-center justify-center text-slate-500 -mr-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             aria-label="Close menu"
           >
             <Icon name="close" />
@@ -196,8 +196,8 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
               onClick={closeMobileDrawer}
               className={({ isActive }) =>
                 isActive
-                  ? 'flex items-center gap-3 px-3 py-3 bg-[#5c1219] text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/40'
-                  : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30'
+                  ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+                  : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
               }
             >
               {({ isActive }) => (
@@ -220,8 +220,8 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
                 onClick={closeMobileDrawer}
                 className={({ isActive }) =>
                   isActive
-                    ? 'flex items-center gap-3 px-3 py-3 bg-[#5c1219] text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/40'
-                    : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30'
+                    ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+                    : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
                 }
               >
                 <Icon name={item.icon} />
