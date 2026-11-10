@@ -75,8 +75,8 @@ export default {
           DEFAULT: token('on-surface'),
           variant: token('on-surface-variant'),
         },
-        'inverse-surface': '#1e293b',
-        'inverse-on-surface': '#f8fafc',
+        'inverse-surface': '#262626',
+        'inverse-on-surface': '#fafafa',
         'surface-tint': token('surface-tint'),
 
         primary: {
@@ -107,15 +107,15 @@ export default {
         },
 
         tertiary: {
-          DEFAULT: '#5c1219',
-          container: '#4a0e14',
-          fixed: '#fecdd3',
-          'fixed-dim': '#fda4af',
+          DEFAULT: token('primary'),
+          container: token('primary-container'),
+          fixed: '#fef08a',
+          'fixed-dim': '#fde047',
         },
         'on-tertiary': {
           DEFAULT: '#ffffff',
           container: '#fda4af',
-          fixed: '#3b0007',
+          fixed: '#422006',
           'fixed-variant': '#7f1d1d',
         },
 

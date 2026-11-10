@@ -225,7 +225,7 @@ export default function VersionHistoryDrawer({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleSelect(v.versionId)}
-                            className="mt-1 accent-[#5c1219]"
+                            className="mt-1 accent-primary"
                             aria-label={`Select version ${v.versionNumber}`}
                           />
                         )}

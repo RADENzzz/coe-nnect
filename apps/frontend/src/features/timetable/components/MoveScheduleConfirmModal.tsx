@@ -29,7 +29,7 @@ export default function MoveScheduleConfirmModal({ pending }: Props) {
           <button
             type="button"
             onClick={() => pending.resolve(true)}
-            className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+            className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition"
           >
             Move anyway
           </button>
@@ -60,7 +60,7 @@ export default function MoveScheduleConfirmModal({ pending }: Props) {
               key={`${w.ruleId}-${i}`}
               className="flex items-start gap-2 text-xs text-slate-700"
             >
-              <span className="font-mono font-bold text-[#5c1219] shrink-0">
+              <span className="font-mono font-bold text-primary shrink-0">
                 {w.ruleId}
               </span>
               <span className="text-slate-600">{w.reason}</span>

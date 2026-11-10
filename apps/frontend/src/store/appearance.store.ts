@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useThemeStore, type Theme } from './theme.store';
 
 export const APPEARANCE_STORAGE_KEY = 'coe-nnect:appearance';
-export const APPEARANCE_CSS_STORAGE_KEY = 'coe-nnect:appearance-css';
+export const APPEARANCE_CSS_STORAGE_KEY = 'coe-nnect:appearance-css:v2';
 export const LOGO_STORAGE_KEY = 'coe-nnect:brand-logo';
 
 export type SurfaceTint = 'default' | 'warm' | 'cool' | 'neutral';
@@ -29,12 +29,12 @@ export interface AccentPreset {
 
 export const ACCENT_PRESETS: AccentPreset[] = [
   { name: 'CoE Maroon', hex: '#5c1219' },
+  { name: 'CoE Gold', hex: '#a16207' },
   { name: 'Engineering Blue', hex: '#1d4ed8' },
   { name: 'Teal', hex: '#0f766e' },
   { name: 'Forest', hex: '#15803d' },
   { name: 'Violet', hex: '#6d28d9' },
-  { name: 'Crimson', hex: '#b91c1c' },
-  { name: 'Amber', hex: '#b45309' },
+  { name: 'Crimson', hex: '#be123c' },
   { name: 'Graphite', hex: '#334155' },
 ];
 
@@ -48,9 +48,9 @@ export const SURFACE_TINTS: {
   {
     key: 'default',
     label: 'Default',
-    description: 'Cool slate — the original look',
-    swatchLight: '#f8fafc',
-    swatchDark: '#020617',
+    description: 'CoE white on black',
+    swatchLight: '#f7f7f7',
+    swatchDark: '#0a0a0a',
   },
   {
     key: 'warm',
@@ -171,9 +171,9 @@ const DEFAULT_ACCENT_LIGHT: VarMap = {
   '--brand-100': '251 229 231',
   '--brand-200': '246 201 205',
   '--brand-700': '92 18 25',
-  '--accent-mid': '221 106 117',
-  '--accent-tint': '238 161 168',
-  '--accent-pale': '246 201 205',
+  '--accent-mid': '234 179 8',
+  '--accent-tint': '250 204 21',
+  '--accent-pale': '254 240 138',
   '--accent-deep': '61 11 16',
   '--sidebar-active-fg': '92 18 25',
 };
@@ -181,14 +181,14 @@ const DEFAULT_ACCENT_LIGHT: VarMap = {
 const DEFAULT_ACCENT_DARK: VarMap = {
   '--primary': '139 30 45',
   '--primary-container': '109 24 34',
-  '--surface-tint': '238 161 168',
+  '--surface-tint': '250 204 21',
   '--brand-50': '43 15 19',
   '--brand-100': '58 20 25',
   '--brand-200': '76 26 33',
   '--brand-700': '139 30 45',
-  '--accent-mid': '221 106 117',
-  '--accent-tint': '238 161 168',
-  '--accent-pale': '246 201 205',
+  '--accent-mid': '234 179 8',
+  '--accent-tint': '250 204 21',
+  '--accent-pale': '254 240 138',
   '--accent-deep': '61 11 16',
   '--sidebar-active-fg': '92 18 25',
 };
@@ -199,39 +199,39 @@ const DEFAULT_ACCENT_DARK: VarMap = {
  * light preview inside a dark page would inherit dark surfaces (and text).
  */
 const BASE_LIGHT: VarMap = {
-  '--background': '248 250 252',
-  '--workspace': '248 250 252',
+  '--background': '247 247 247',
+  '--workspace': '247 247 247',
   '--surface': '255 255 255',
-  '--surface-dim': '226 232 240',
-  '--surface-variant': '226 232 240',
+  '--surface-dim': '229 229 229',
+  '--surface-variant': '229 229 229',
   '--surface-container-lowest': '255 255 255',
-  '--surface-container-low': '248 250 252',
-  '--surface-container': '241 245 249',
-  '--surface-container-high': '226 232 240',
-  '--surface-container-highest': '203 213 225',
-  '--on-surface': '15 23 42',
-  '--on-background': '15 23 42',
-  '--on-surface-variant': '100 116 139',
-  '--outline': '203 213 225',
-  '--outline-variant': '226 232 240',
+  '--surface-container-low': '250 250 250',
+  '--surface-container': '245 245 245',
+  '--surface-container-high': '229 229 229',
+  '--surface-container-highest': '212 212 212',
+  '--on-surface': '23 23 23',
+  '--on-background': '23 23 23',
+  '--on-surface-variant': '115 115 115',
+  '--outline': '212 212 212',
+  '--outline-variant': '229 229 229',
 };
 
 const BASE_DARK: VarMap = {
-  '--background': '2 6 23',
-  '--workspace': '2 6 23',
-  '--surface': '15 23 42',
-  '--surface-dim': '2 6 23',
-  '--surface-variant': '30 41 59',
-  '--surface-container-lowest': '15 23 42',
-  '--surface-container-low': '11 21 38',
-  '--surface-container': '19 31 53',
-  '--surface-container-high': '30 41 59',
-  '--surface-container-highest': '51 65 85',
-  '--on-surface': '241 245 249',
-  '--on-background': '241 245 249',
-  '--on-surface-variant': '148 163 184',
-  '--outline': '51 65 85',
-  '--outline-variant': '30 41 59',
+  '--background': '10 10 10',
+  '--workspace': '10 10 10',
+  '--surface': '23 23 23',
+  '--surface-dim': '10 10 10',
+  '--surface-variant': '38 38 38',
+  '--surface-container-lowest': '17 17 17',
+  '--surface-container-low': '15 15 15',
+  '--surface-container': '26 26 26',
+  '--surface-container-high': '38 38 38',
+  '--surface-container-highest': '64 64 64',
+  '--on-surface': '245 245 245',
+  '--on-background': '245 245 245',
+  '--on-surface-variant': '163 163 163',
+  '--outline': '64 64 64',
+  '--outline-variant': '38 38 38',
 };
 
 function accentVars(accent: string, mode: Theme): VarMap {

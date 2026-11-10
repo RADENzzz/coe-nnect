@@ -559,7 +559,7 @@ export default function SubjectFormModal({
           type="checkbox"
           checked={form.isMinor}
           onChange={(e) => setField('isMinor', e.target.checked)}
-          className="accent-[#5c1219] w-4 h-4 mt-0.5"
+          className="accent-primary w-4 h-4 mt-0.5"
         />
         <div className="flex-1">
           <span className="text-sm font-semibold text-on-surface flex items-center gap-1.5">

@@ -118,7 +118,7 @@ export default function MessageComposer({
             type="button"
             onClick={() => setShowEmoji((v) => !v)}
             disabled={disabled}
-            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 disabled:opacity-40"
+            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-40"
             aria-label="Insert emoji"
             title="Emoji"
           >
@@ -166,7 +166,7 @@ export default function MessageComposer({
             bg-slate-50 border border-slate-200
             px-3 py-2 text-[13px] text-slate-900
             placeholder:text-slate-400
-            focus:outline-none focus:border-[#5c1219] focus:bg-white
+            focus:outline-none focus:border-primary focus:bg-white
             transition-colors
             max-h-[120px] overflow-y-auto
             disabled:opacity-60 disabled:cursor-not-allowed
@@ -181,14 +181,14 @@ export default function MessageComposer({
           onClick={submit}
           disabled={disabled || !value.trim() || overLimit}
           className="
-            w-9 h-9 bg-[#5c1219] text-white
+            w-9 h-9 bg-primary text-white
             flex items-center justify-center
-            hover:bg-[#6b1620] active:bg-[#4a0e14]
+            hover:bg-primary-container active:bg-primary-container
             transition-colors
-            disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#5c1219]
+            disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary
             shrink-0
             rounded
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219] focus-visible:ring-offset-1
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1
           "
           aria-label="Send"
           title="Send (Enter)"

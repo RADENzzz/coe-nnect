@@ -136,7 +136,7 @@ export default function ChatHeaderSwitcher({
                 {other.username}
               </p>
               <p className="text-[10px] text-slate-500 truncate leading-tight flex items-center gap-1.5">
-                <span className="font-semibold uppercase tracking-wider text-[9px] text-[#5c1219]">
+                <span className="font-semibold uppercase tracking-wider text-[9px] text-primary">
                   {ROLE_LABELS[other.role] ?? other.role}
                 </span>
                 <span>·</span>
@@ -227,7 +227,7 @@ export default function ChatHeaderSwitcher({
                 onClick={() => setTab('chats')}
                 className={`flex-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition ${
                   tab === 'chats'
-                    ? 'bg-[#5c1219] text-white'
+                    ? 'bg-primary text-white'
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
@@ -247,7 +247,7 @@ export default function ChatHeaderSwitcher({
                 onClick={() => setTab('online')}
                 className={`flex-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition ${
                   tab === 'online'
-                    ? 'bg-[#5c1219] text-white'
+                    ? 'bg-primary text-white'
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
@@ -289,7 +289,7 @@ export default function ChatHeaderSwitcher({
                         setTab('online');
                         setQuery('');
                       }}
-                      className="mt-3 text-[11px] font-semibold text-[#5c1219] hover:underline"
+                      className="mt-3 text-[11px] font-semibold text-primary hover:underline"
                     >
                       See who's online →
                     </button>

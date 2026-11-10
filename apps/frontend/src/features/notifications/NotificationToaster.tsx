@@ -108,10 +108,10 @@ export default function NotificationToaster() {
           >
             <span
               aria-hidden
-              className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#5c1219]"
+              className="absolute left-0 top-0 bottom-0 w-[3px] bg-primary"
             />
             <div className="flex gap-3 p-3 pl-4">
-              <div className="shrink-0 w-8 h-8 flex items-center justify-center rounded bg-[#5c1219]/10 text-[#5c1219]">
+              <div className="shrink-0 w-8 h-8 flex items-center justify-center rounded bg-primary/10 text-primary">
                 <Icon name={notificationIcon(item)} size={16} />
               </div>
 
@@ -149,7 +149,7 @@ export default function NotificationToaster() {
                   <button
                     type="button"
                     onClick={() => open(item)}
-                    className="inline-flex items-center gap-1 rounded bg-[#5c1219] px-2.5 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition"
+                    className="inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1.5 text-xs font-semibold text-white hover:opacity-90 transition"
                   >
                     Open
                     <Icon name="arrow_forward" size={12} />

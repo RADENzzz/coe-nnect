@@ -72,8 +72,8 @@ export default function OnlineUserList({
             key={u.user_id}
             onClick={() => onPick(u.user_id)}
             className={`w-full px-3 ${rowPadY} flex items-center ${gap} text-left transition-colors rounded ${
-              active ? 'bg-[#5c1219]/5' : 'hover:bg-slate-50'
-            } focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#5c1219]/30`}
+              active ? 'bg-primary/5' : 'hover:bg-slate-50'
+            } focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary/30`}
           >
             <div className="relative shrink-0">
               <div

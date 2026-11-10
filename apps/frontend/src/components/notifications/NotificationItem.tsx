@@ -65,7 +65,7 @@ export default function NotificationItem({
         href
           ? 'cursor-pointer hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40'
           : ''
-      } ${item.isRead ? '' : 'bg-[#5c1219]/[0.03]'}`}
+      } ${item.isRead ? '' : 'bg-primary/[0.03]'}`}
       role={href ? 'button' : undefined}
       tabIndex={href ? 0 : undefined}
       aria-label={href ? `Open notification: ${item.title}` : undefined}
@@ -82,7 +82,7 @@ export default function NotificationItem({
       {!item.isRead && (
         <span
           aria-hidden
-          className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#5c1219]"
+          className="absolute left-0 top-0 bottom-0 w-[3px] bg-primary"
         />
       )}
 
@@ -91,7 +91,7 @@ export default function NotificationItem({
         className={`shrink-0 w-8 h-8 flex items-center justify-center rounded ${
           item.isRead
             ? 'bg-slate-100 text-slate-500'
-            : 'bg-[#5c1219]/10 text-[#5c1219]'
+            : 'bg-primary/10 text-primary'
         }`}
       >
         <Icon name={notificationIcon(item)} size={16} />
@@ -138,7 +138,7 @@ export default function NotificationItem({
             {relativeTime(item.createdAt)}
           </span>
           {href && (
-            <span className="text-[11px] font-semibold text-[#5c1219] inline-flex items-center gap-0.5">
+            <span className="text-[11px] font-semibold text-primary inline-flex items-center gap-0.5">
               Open
               <Icon name="chevron_right" size={12} />
             </span>
@@ -155,7 +155,7 @@ export default function NotificationItem({
               e.stopPropagation();
               onMarkRead(item.notificationId);
             }}
-            className="text-[11px] font-semibold text-[#5c1219] hover:underline"
+            className="text-[11px] font-semibold text-primary hover:underline"
             title="Mark as read"
           >
             Mark read

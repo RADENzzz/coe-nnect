@@ -546,7 +546,7 @@ export default function TopBar({ label }: TopBarProps) {
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             onClick={openMobileDrawer}
-            className="md:hidden tap-target hover:bg-surface-container flex items-center justify-center text-slate-600 -ml-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30 shrink-0"
+            className="md:hidden tap-target hover:bg-surface-container flex items-center justify-center text-slate-600 -ml-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 shrink-0"
             aria-label="Open menu"
           >
             <Icon name="menu" />
@@ -641,7 +641,7 @@ export default function TopBar({ label }: TopBarProps) {
             <button
               type="button"
               onClick={() => setChatOpen(!chatOpen)}
-              className="hidden md:flex tap-target hover:bg-surface-container transition-colors items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="hidden md:flex tap-target hover:bg-surface-container transition-colors items-center justify-center text-slate-500 relative rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               aria-label={
                 totalUnread > 0
                   ? `Chat (${totalUnread} unread)`
@@ -660,7 +660,7 @@ export default function TopBar({ label }: TopBarProps) {
               {totalUnread > 0 && (
                 <span
                   aria-hidden
-                  className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-[#5c1219] text-white text-[10px] font-bold leading-none border border-white"
+                  className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold leading-none border border-white"
                 >
                   {totalUnread > 9 ? '9+' : totalUnread}
                 </span>
@@ -682,7 +682,7 @@ export default function TopBar({ label }: TopBarProps) {
             <button
               type="button"
               onClick={() => navigate(settingsPath)}
-              className="hidden md:flex tap-target hover:bg-surface-container transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="hidden md:flex tap-target hover:bg-surface-container transition-colors items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               aria-label="Settings"
             >
               <Icon name="settings" />
@@ -693,7 +693,7 @@ export default function TopBar({ label }: TopBarProps) {
           <div className="relative" ref={profileRef} data-tour="profile-menu">
             <button
               type="button"
-              className="w-9 h-9 rounded-full bg-[#5c1219] text-white overflow-hidden border border-outline-variant cursor-pointer flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+              className="w-9 h-9 rounded-full bg-primary text-white overflow-hidden border border-outline-variant cursor-pointer flex items-center justify-center font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               aria-label="Open profile menu"
               aria-expanded={isProfileOpen}
@@ -738,7 +738,7 @@ export default function TopBar({ label }: TopBarProps) {
                     <Icon name="forum" className="mr-3 text-base" />
                     Chat
                     {totalUnread > 0 && (
-                      <span className="ml-auto text-[10px] font-bold text-white bg-[#5c1219] px-1.5 py-0.5 rounded-full">
+                      <span className="ml-auto text-[10px] font-bold text-white bg-primary px-1.5 py-0.5 rounded-full">
                         {totalUnread > 9 ? '9+' : totalUnread}
                       </span>
                     )}

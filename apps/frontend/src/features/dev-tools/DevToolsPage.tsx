@@ -441,7 +441,7 @@ export default function DevToolsPage() {
         <section className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-4 sm:p-6 space-y-5">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-              <Icon name="rocket_launch" size={20} className="text-[#5c1219]" />
+              <Icon name="rocket_launch" size={20} className="text-primary" />
               Demo Control
             </h2>
             <p className="text-xs text-slate-500 mt-1">
@@ -488,7 +488,7 @@ export default function DevToolsPage() {
             type="button"
             onClick={() => openResetModal('reset-and-seed')}
             disabled={isBusy}
-            className="hidden sm:flex w-full items-center justify-between gap-3 rounded-xl border-2 border-[#5c1219] bg-gradient-to-r from-[#5c1219] to-[#7a1f28] p-5 text-left text-white hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+            className="hidden sm:flex w-full items-center justify-between gap-3 rounded-xl border-2 border-primary bg-gradient-to-r from-primary to-primary-container p-5 text-left text-white hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
           >
             <div className="flex items-center gap-3 min-w-0">
               <Icon name="restart_alt" size={28} className="shrink-0" />
@@ -634,7 +634,7 @@ export default function DevToolsPage() {
         <section className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-              <Icon name="monitoring" size={16} className="text-[#5c1219]" />
+              <Icon name="monitoring" size={16} className="text-primary" />
               Live Status
             </h2>
             <span
@@ -689,7 +689,7 @@ export default function DevToolsPage() {
           <button
             type="button"
             onClick={() => refetchState()}
-            className="w-full text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1 py-2 rounded border border-slate-200 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]"
+            className="w-full text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1 py-2 rounded border border-slate-200 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Icon name="refresh" size={12} />
             Refresh now
@@ -701,7 +701,7 @@ export default function DevToolsPage() {
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
           <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-2">
-            <Icon name="group" size={16} className="text-[#5c1219]" />
+            <Icon name="group" size={16} className="text-primary" />
             Users ({filteredUsers.length}
             {searchQuery && ` of ${users.length}`})
           </h2>
@@ -721,13 +721,13 @@ export default function DevToolsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search username, email, role…"
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
             />
           </div>
           <button
             type="button"
             onClick={() => refetchUsers()}
-            className="text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1 px-3 py-2 rounded border border-slate-200 min-h-[40px] shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]"
+            className="text-xs text-slate-500 hover:text-slate-900 flex items-center justify-center gap-1 px-3 py-2 rounded border border-slate-200 min-h-[40px] shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Icon name="refresh" size={12} />
             <span className="sm:hidden">Refresh</span>
@@ -755,7 +755,7 @@ export default function DevToolsPage() {
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="text-xs text-[#5c1219] hover:underline"
+                className="text-xs text-primary hover:underline"
               >
                 Clear search
               </button>
@@ -828,7 +828,7 @@ export default function DevToolsPage() {
                     <button
                       type="button"
                       onClick={() => openPasswordModal(u)}
-                      className="flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-white hover:border-[#5c1219] hover:text-[#5c1219] transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]"
+                      className="flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-white hover:border-primary hover:text-primary transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <Icon name="password" size={14} />
                       Password
@@ -836,7 +836,7 @@ export default function DevToolsPage() {
                     <button
                       type="button"
                       onClick={() => openRenameModal(u)}
-                      className="flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-white hover:border-[#5c1219] hover:text-[#5c1219] transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]"
+                      className="flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-white hover:border-primary hover:text-primary transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <Icon name="edit" size={14} />
                       Rename
@@ -854,7 +854,7 @@ export default function DevToolsPage() {
                           ? 'You cannot deactivate your own account'
                           : undefined
                       }
-                      className={`flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`flex-1 sm:flex-initial text-xs px-3 py-2 rounded-lg border transition flex items-center justify-center gap-1.5 min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${
                         u.isActive
                           ? 'border-rose-200 text-rose-700 hover:bg-rose-50'
                           : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
@@ -880,7 +880,7 @@ export default function DevToolsPage() {
           type="button"
           onClick={() => openResetModal('reset-and-seed')}
           disabled={isBusy}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#5c1219] to-[#7a1f28] py-3 text-white font-bold text-sm disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-primary-container py-3 text-white font-bold text-sm disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
         >
           <Icon name="restart_alt" size={20} />
           Reset + Reseed
@@ -1071,7 +1071,7 @@ export default function DevToolsPage() {
                   setNewPassword(e.target.value);
                   setPasswordCopied(false);
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 pr-24 text-sm font-mono focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 pr-24 text-sm font-mono focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
                 autoFocus
                 autoComplete="off"
                 spellCheck={false}
@@ -1082,7 +1082,7 @@ export default function DevToolsPage() {
                 aria-label={
                   passwordCopied ? 'Password copied' : 'Copy password'
                 }
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-2 py-1 rounded bg-white border border-slate-200 text-slate-600 hover:text-[#5c1219] hover:border-[#5c1219] transition flex items-center gap-1"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-2 py-1 rounded bg-white border border-slate-200 text-slate-600 hover:text-primary hover:border-primary transition flex items-center gap-1"
               >
                 <Icon
                   name={passwordCopied ? 'check' : 'content_copy'}
@@ -1142,7 +1142,7 @@ export default function DevToolsPage() {
                   });
                 }
               }}
-              className="px-5 py-2.5 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 text-sm font-semibold bg-primary text-white hover:opacity-90 transition rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {passwordMutation.isPending ? 'Updating…' : 'Set password'}
             </button>
@@ -1189,7 +1189,7 @@ export default function DevToolsPage() {
               className={`w-full bg-slate-50 border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 ${
                 newUsername && !USERNAME_RE.test(newUsername)
                   ? 'border-red-400 focus:border-red-500 focus:ring-red-500/10'
-                  : 'border-slate-200 focus:border-[#5c1219] focus:ring-[#5c1219]/10'
+                  : 'border-slate-200 focus:border-primary focus:ring-primary/10'
               }`}
               autoFocus
               autoComplete="off"
@@ -1235,7 +1235,7 @@ export default function DevToolsPage() {
                   });
                 }
               }}
-              className="px-5 py-2.5 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 text-sm font-semibold bg-primary text-white hover:opacity-90 transition rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {renameMutation.isPending ? 'Renaming…' : 'Rename'}
             </button>
@@ -1376,7 +1376,7 @@ function SystemStatusCard() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-            <Icon name="campaign" size={20} className="text-[#5c1219]" />
+            <Icon name="campaign" size={20} className="text-primary" />
             System Status Banner
           </h2>
           <p className="text-xs text-slate-500 mt-1 max-w-lg">
@@ -1389,7 +1389,7 @@ function SystemStatusCard() {
             type="checkbox"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
-            className="w-4 h-4 accent-[#5c1219]"
+            className="w-4 h-4 accent-primary"
             disabled={isLoading}
           />
           {enabled ? 'Visible' : 'Hidden'}
@@ -1463,7 +1463,7 @@ function SystemStatusCard() {
               <button
                 type="button"
                 onClick={() => navigate('/maintenance')}
-                className="text-[11px] font-semibold text-[#5c1219] underline underline-offset-2 hover:opacity-80"
+                className="text-[11px] font-semibold text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Open maintenance page
               </button>
@@ -1482,7 +1482,7 @@ function SystemStatusCard() {
               onClick={() => setSeverity(opt.value)}
               className={`rounded-lg border px-3 py-2 text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                 active
-                  ? 'border-[#5c1219] bg-[#5c1219]/5 text-[#5c1219]'
+                  ? 'border-primary bg-primary/5 text-primary'
                   : 'border-slate-200 text-slate-600 hover:border-slate-300'
               }`}
             >
@@ -1507,7 +1507,7 @@ function SystemStatusCard() {
           onChange={(e) => setTitle(e.target.value)}
           maxLength={120}
           placeholder="e.g. Scheduling solver is temporarily unavailable"
-          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#5c1219] focus:ring-2 focus:ring-[#5c1219]/10"
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
           disabled={isLoading}
         />
         <p className="text-[10px] text-slate-400 mt-1 text-right tabular-nums">
@@ -1571,7 +1571,7 @@ function SystemStatusCard() {
           onClick={() => saveMutation.mutate()}
           disabled={titleMissing || saveMutation.isPending || isLoading}
           title={titleMissing ? 'Add a title first' : undefined}
-          className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white rounded-lg hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+          className="px-4 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
         >
           {saveMutation.isPending ? (
             <>
@@ -1703,7 +1703,7 @@ function SystemStatusBannerPreview({
           <div className="mt-2.5 whitespace-pre-line text-xs leading-relaxed text-slate-700">
             <Bbcode
               text={message}
-              linkClassName="font-semibold text-[#5c1219] underline underline-offset-2"
+              linkClassName="font-semibold text-primary underline underline-offset-2"
             />
           </div>
         )}

@@ -173,7 +173,7 @@ export default function MaintenancePage() {
                 {data?.message?.trim() ? (
                   <Bbcode
                     text={data.message}
-                    linkClassName="font-semibold text-[#5c1219] underline underline-offset-2"
+                    linkClassName="font-semibold text-primary underline underline-offset-2"
                   />
                 ) : (
                   <p>
@@ -198,7 +198,7 @@ export default function MaintenancePage() {
                   type="button"
                   onClick={handleRefresh}
                   disabled={busy}
-                  className="flex-1 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 bg-[#5c1219] text-white text-sm font-semibold rounded-lg hover:opacity-90 active:opacity-80 transition disabled:opacity-50 touch-manipulation"
+                  className="flex-1 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:opacity-90 active:opacity-80 transition disabled:opacity-50 touch-manipulation"
                 >
                   {busy ? (
                     <>
@@ -316,12 +316,12 @@ export default function MaintenancePage() {
               type="button"
               onClick={handleRefresh}
               disabled={busy}
-              className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md text-slate-500 hover:text-[#5c1219] hover:bg-slate-100 active:bg-slate-200 transition disabled:opacity-50 touch-manipulation"
+              className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md text-slate-500 hover:text-primary hover:bg-slate-100 active:bg-slate-200 transition disabled:opacity-50 touch-manipulation"
               title="Check again"
               aria-label="Check again"
             >
               {busy ? (
-                <span className="block w-3.5 h-3.5 border-2 border-slate-300 border-t-[#5c1219] rounded-full animate-spin" />
+                <span className="block w-3.5 h-3.5 border-2 border-slate-300 border-t-primary rounded-full animate-spin" />
               ) : (
                 <Icon name="refresh" size={14} />
               )}

@@ -51,7 +51,7 @@ function ShellInner() {
       <LiquidBackground />
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[200] focus:px-3 focus:py-2 focus:bg-white focus:text-[#5c1219] focus:font-semibold focus:rounded focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#5c1219]"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[200] focus:px-3 focus:py-2 focus:bg-white focus:text-primary focus:font-semibold focus:rounded focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary"
       >
         Skip to content
       </a>

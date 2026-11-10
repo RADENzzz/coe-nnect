@@ -42,7 +42,7 @@ const TONE_CLASSES: Record<
   brand: {
     bg: 'bg-red-50',
     border: 'border-red-200',
-    icon: 'text-[#5c1219]',
+    icon: 'text-primary',
     hover: 'hover:border-red-300',
   },
   info: {

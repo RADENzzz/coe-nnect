@@ -212,7 +212,7 @@ export default function PlotScheduleFields({
                           type="checkbox"
                           checked={row.enabled}
                           onChange={() => toggleDay(row.day)}
-                          className="accent-[#5c1219] w-4 h-4"
+                          className="accent-primary w-4 h-4"
                         />
                         <span className="text-sm font-semibold text-on-surface">
                           {DAY_ABBR[row.day] ?? row.day}

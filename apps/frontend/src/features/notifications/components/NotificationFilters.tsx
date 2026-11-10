@@ -98,7 +98,7 @@ export default function NotificationFilters({
           >
             Unread
             {unreadCount != null && unreadCount > 0 && (
-              <span className="ml-1.5 text-[10px] font-bold text-[#5c1219] bg-[#5c1219]/10 px-1.5 py-0.5 rounded">
+              <span className="ml-1.5 text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}

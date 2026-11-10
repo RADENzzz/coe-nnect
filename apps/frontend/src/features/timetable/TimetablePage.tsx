@@ -1391,7 +1391,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 <button
                   type="button"
                   onClick={handleResumePendingPreview}
-                  className="px-4 py-2 text-xs font-semibold bg-[#5c1219] text-white rounded-lg hover:opacity-90 transition"
+                  className="px-4 py-2 text-xs font-semibold bg-primary text-white rounded-lg hover:opacity-90 transition"
                 >
                   Resume Preview
                 </button>
@@ -1653,7 +1653,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
             <button
               type="button"
               onClick={() => setAlertState(null)}
-              className="px-5 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg"
+              className="px-5 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition rounded-lg"
             >
               OK
             </button>
@@ -1765,7 +1765,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               <button
                 type="button"
                 onClick={handleConfirmOverwrite}
-                className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg"
+                className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition rounded-lg"
               >
                 Replace and Generate
               </button>
@@ -1825,7 +1825,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                     acknowledgeUnplottedMinors: true,
                   });
                 }}
-                className="px-4 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition rounded-lg"
+                className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition rounded-lg"
               >
                 Skip and generate anyway
               </button>

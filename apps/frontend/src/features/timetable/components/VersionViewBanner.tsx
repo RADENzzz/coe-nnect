@@ -68,7 +68,7 @@ export default function VersionViewBanner({
       <button
         type="button"
         onClick={onExit}
-        className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-[#5c1219] text-white rounded-lg hover:opacity-90 transition"
+        className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-primary text-white rounded-lg hover:opacity-90 transition"
       >
         <Icon name="arrow_back" size={14} />
         Back to live

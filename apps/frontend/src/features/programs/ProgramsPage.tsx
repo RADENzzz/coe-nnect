@@ -659,7 +659,7 @@ export default function ProgramsPage() {
                 name="isActive"
                 checked={form.isActive}
                 onChange={handleChange}
-                className="accent-[#5c1219] w-4 h-4 mt-0.5"
+                className="accent-primary w-4 h-4 mt-0.5"
               />
               <div className="flex-1">
                 <span className="text-sm font-semibold text-on-surface">

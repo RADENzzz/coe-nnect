@@ -328,7 +328,7 @@ export default function TimetableFilterBar({
                     type="checkbox"
                     checked={onlyConflicts}
                     onChange={(e) => setOnlyConflicts(e.target.checked)}
-                    className="accent-[#5c1219]"
+                    className="accent-primary"
                   />
                   <Icon name="warning" size={14} />
                   Only conflicts

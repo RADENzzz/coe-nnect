@@ -73,7 +73,7 @@ export default function VersionCompareModal({
         <button
           type="button"
           onClick={onClose}
-          className="px-5 py-2 text-sm font-semibold bg-[#5c1219] text-white hover:opacity-90 transition"
+          className="px-5 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition"
         >
           Close
         </button>

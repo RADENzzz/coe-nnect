@@ -86,7 +86,7 @@ export default function UserDetailDrawer({
         {user && (
           <>
             {/* Header */}
-            <div className="relative bg-gradient-to-br from-[#5c1219] to-[#3d0b10] px-5 pt-5 pb-6 text-white shrink-0">
+            <div className="relative bg-gradient-to-br from-primary to-[#3d0b10] px-5 pt-5 pb-6 text-white shrink-0">
               <button
                 onClick={onClose}
                 aria-label="Close"
@@ -100,7 +100,7 @@ export default function UserDetailDrawer({
                     {initials(user.username)}
                   </div>
                   <span
-                    className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-[#5c1219] ${
+                    className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-primary ${
                       isOnline ? 'bg-emerald-400' : 'bg-slate-400'
                     }`}
                     aria-hidden
@@ -149,8 +149,8 @@ export default function UserDetailDrawer({
                 </p>
                 {dept ? (
                   <div className="bg-white border border-slate-200 rounded-lg p-3.5 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#5c1219]/10 flex items-center justify-center shrink-0">
-                      <Icon name="apartment" size={18} className="text-[#5c1219]" />
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon name="apartment" size={18} className="text-primary" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate">
@@ -186,7 +186,7 @@ export default function UserDetailDrawer({
                         className="bg-slate-50 border border-slate-200 rounded-lg p-2.5"
                       >
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-[11px] font-bold text-[#5c1219]">
+                          <span className="font-mono text-[11px] font-bold text-primary">
                             {deptCode(r.requestingDeptId)}
                           </span>
                           <Icon name="arrow_forward" size={10} className="text-slate-400" />
@@ -215,7 +215,7 @@ export default function UserDetailDrawer({
                   onClose();
                   navigate('/approvals');
                 }}
-                className="flex-1 bg-[#5c1219] hover:bg-[#3d0b10] text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5c1219]/30"
+                className="flex-1 bg-primary hover:bg-[#3d0b10] text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               >
                 <Icon name="gavel" size={16} />
                 View Approvals

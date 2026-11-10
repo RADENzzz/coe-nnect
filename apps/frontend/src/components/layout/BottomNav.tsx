@@ -25,9 +25,9 @@ export default function BottomNav({ items, badges }: BottomNavProps) {
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
-              `relative flex flex-col items-center justify-center flex-1 h-14 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5c1219]/30 ${
+              `relative flex flex-col items-center justify-center flex-1 h-14 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 ${
                 isActive
-                  ? 'text-[#5c1219] font-bold'
+                  ? 'text-primary font-bold'
                   : 'text-slate-500 font-medium hover:text-slate-900'
               }`
             }
@@ -39,13 +39,13 @@ export default function BottomNav({ items, badges }: BottomNavProps) {
                 <span
                   aria-hidden
                   className={`absolute top-0 left-1/2 -translate-x-1/2 h-0.5 rounded-full transition-all ${
-                    isActive ? 'w-8 bg-[#5c1219]' : 'w-0 bg-transparent'
+                    isActive ? 'w-8 bg-primary' : 'w-0 bg-transparent'
                   }`}
                 />
                 <div className="relative">
                   <Icon name={item.icon} filled={isActive} className="mb-1" size={22} />
                   {badge !== undefined && badge > 0 && (
-                    <span className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#5c1219] text-white text-[9px] font-bold flex items-center justify-center">
+                    <span className="absolute -top-1 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center">
                       {badge > 9 ? '9+' : badge}
                     </span>
                   )}

@@ -17,7 +17,7 @@ export default function RequestRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs font-bold text-[#5c1219] bg-[#5c1219]/5 px-1.5 py-0.5 rounded">
+            <span className="font-mono text-xs font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded">
               {deptCode(r.requestingDeptId)}
             </span>
             <Icon name="arrow_forward" size={12} className="text-slate-300" />
@@ -37,7 +37,7 @@ export default function RequestRow({
         {onClick && (
           <button
             onClick={onClick}
-            className="text-[#5c1219] text-xs font-semibold hover:underline shrink-0 bg-[#5c1219]/5 px-2.5 py-1 rounded-md hover:bg-[#5c1219]/10 transition-colors"
+            className="text-primary text-xs font-semibold hover:underline shrink-0 bg-primary/5 px-2.5 py-1 rounded-md hover:bg-primary/10 transition-colors"
           >
             Review
           </button>

@@ -516,7 +516,7 @@ export default function DeanApprovalsPage() {
             onClick={() => setTab(t.id)}
             className={`px-4 py-2.5 text-xs font-semibold transition-all border-b-2 -mb-px ${
               tab === t.id
-                ? 'border-[#5c1219] text-[#5c1219]'
+                ? 'border-primary text-primary'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
@@ -768,7 +768,7 @@ export default function DeanApprovalsPage() {
               className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition ${
                 confirmCopy?.tone === 'danger'
                   ? 'bg-red-600 hover:bg-red-700'
-                  : 'bg-[#5c1219] hover:opacity-90'
+                  : 'bg-primary hover:opacity-90'
               }`}
             >
               {confirmCopy?.confirmLabel}

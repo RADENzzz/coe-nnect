@@ -211,7 +211,7 @@ export default function ChatDrawer({ onClose }: Props) {
         "
       >
         {/* Window chrome */}
-        <div className="bg-[#5c1219] text-white px-4 py-3 flex items-center gap-2.5 shrink-0">
+        <div className="bg-primary text-white px-4 py-3 flex items-center gap-2.5 shrink-0">
           <div className="w-7 h-7 bg-white/10 flex items-center justify-center shrink-0 rounded">
             <Icon name="forum" size={16} />
           </div>
@@ -271,7 +271,7 @@ export default function ChatDrawer({ onClose }: Props) {
             </>
           ) : conversationsLoading ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-slate-300 border-t-[#5c1219] animate-spin rounded-full" />
+              <div className="w-6 h-6 border-2 border-slate-300 border-t-primary animate-spin rounded-full" />
             </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
