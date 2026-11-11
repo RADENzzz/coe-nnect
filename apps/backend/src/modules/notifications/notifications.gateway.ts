@@ -81,20 +81,29 @@ export class NotificationsGateway
       }
 
       // Verify against Supabase auth
-      const { data, error } = await this.supabase
-        .getAdminClient()
-        .auth.getUser(token);
+      const verification = await this.supabase.verifyAccessToken(token);
 
-      if (error || !data?.user?.id) {
+      if (verification.status === 'unavailable') {
         this.logger.warn(
-          `WS connect rejected (invalid token) from ${socket.id}: ${error?.message}`,
+          `WS connect delayed (auth provider unreachable) from ${socket.id}: ${verification.message}`,
+        );
+        socket.emit('auth_unavailable', {
+          message: 'Authentication service is temporarily unreachable',
+        });
+        socket.disconnect(true);
+        return;
+      }
+
+      if (verification.status === 'invalid') {
+        this.logger.warn(
+          `WS connect rejected (invalid token) from ${socket.id}: ${verification.message}`,
         );
         socket.emit('auth_error', { message: 'Invalid auth token' });
         socket.disconnect(true);
         return;
       }
 
-      const userId = data.user.id;
+      const userId = verification.user.id;
 
       // Join the user's private room — the dispatcher pushes here
       await socket.join(`user:${userId}`);

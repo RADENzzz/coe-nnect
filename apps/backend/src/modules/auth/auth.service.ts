@@ -1,16 +1,22 @@
 import {
   Injectable,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SupabaseService } from '../../database/supabase.service';
+import {
+  isSupabaseAuthOutage,
+  SupabaseService,
+} from '../../database/supabase.service';
 import { SystemStatusService } from '../system-status/system-status.service';
 import { User } from '../users/entities/user.entity';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private supabase: SupabaseService,
     private systemStatus: SystemStatusService,
@@ -18,11 +24,20 @@ export class AuthService {
   ) {}
 
   async login(email: string, password: string) {
-    const { data, error } = await this.supabase
-      .getClient()
-      .auth.signInWithPassword({ email, password });
+    const auth = this.supabase.getClient().auth;
+    let result: Awaited<ReturnType<typeof auth.signInWithPassword>>;
+    try {
+      result = await auth.signInWithPassword({ email, password });
+    } catch (err) {
+      throw this.authProviderUnavailable(err);
+    }
+
+    const { data, error } = result;
 
     if (error || !data.session) {
+      if (isSupabaseAuthOutage(error)) {
+        throw this.authProviderUnavailable(error);
+      }
       throw new UnauthorizedException(error?.message ?? 'Invalid credentials');
     }
 
@@ -53,6 +68,26 @@ export class AuthService {
       refreshToken: data.session.refresh_token,
       user: this.serializeProfile(profile),
     };
+  }
+
+  /**
+   * A network/provider failure while talking to Supabase is not a bad
+   * password. Returning 401 for it would make the SPA treat the session as
+   * expired, so report a retryable 503 instead.
+   */
+  private authProviderUnavailable(error: unknown): ServiceUnavailableException {
+    const detail =
+      error instanceof Error
+        ? error.message
+        : error && typeof error === 'object' && 'message' in error
+          ? String((error as { message?: unknown }).message)
+          : String(error);
+    this.logger.warn(`Supabase auth unavailable during login: ${detail}`);
+    return new ServiceUnavailableException({
+      code: 'AUTH_PROVIDER_UNAVAILABLE',
+      message:
+        'Authentication service is temporarily unreachable. Please try again in a moment.',
+    });
   }
 
   async getProfile(userId: string) {

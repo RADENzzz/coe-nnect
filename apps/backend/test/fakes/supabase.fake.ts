@@ -1,3 +1,8 @@
+import {
+  isSupabaseAuthOutage,
+  VerifyAccessTokenResult,
+} from '../../src/database/supabase.service';
+
 type Row = Record<string, any>;
 
 export interface FakeSupabaseCall {
@@ -83,6 +88,22 @@ export function createFakeSupabase(options: FakeSupabaseOptions = {}) {
   return {
     getClient: () => client,
     getAdminClient: () => client,
+    /**
+     * Mirrors SupabaseService.verifyAccessToken so guards can be exercised
+     * without a network client. `authError` is classified the same way the
+     * real service does it: outages are retryable, bad tokens are not.
+     */
+    async verifyAccessToken(token: string): Promise<VerifyAccessTokenResult> {
+      if (options.authError) {
+        return isSupabaseAuthOutage(options.authError)
+          ? { status: 'unavailable', message: options.authError.message }
+          : { status: 'invalid', message: options.authError.message };
+      }
+      if (token === 'invalid-token') {
+        return { status: 'invalid', message: 'Invalid or expired token' };
+      }
+      return { status: 'valid', user: authUser as any };
+    },
     tables,
     calls,
   };
