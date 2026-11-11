@@ -25,6 +25,7 @@ import {
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
 import { UpdatePdfDto } from './dto/update-pdf.dto';
+import { DetectTablesDto } from './dto/detect-tables.dto';
 import { ImportConfirmDto } from './dto/extract.dto';
 
 import { Subject } from '../subjects/entities/subject.entity';
@@ -267,6 +268,7 @@ export class ProspectusPdfsService {
         row_id: r.row_id,
         y_top_pt: r.y_top_pt,
         y_bottom_pt: r.y_bottom_pt,
+        ...(r.cells ? { cells: r.cells } : {}),
       })) as RowSpec[],
       subjectCount: dto.rows.length,
       totalLecUnits: 0,
@@ -323,6 +325,7 @@ export class ProspectusPdfsService {
         row_id: r.row_id,
         y_top_pt: r.y_top_pt,
         y_bottom_pt: r.y_bottom_pt,
+        ...(r.cells ? { cells: r.cells } : {}),
       })) as RowSpec[];
       table.subjectCount = dto.rows.length;
     }
@@ -367,6 +370,119 @@ export class ProspectusPdfsService {
   // Extract
   // ============================================================
 
+  /**
+   * Ask the parser to find course tables on its own.
+   *
+   * Nothing is written here: proposals come back with a `status` so the
+   * editor can show conflicts before the user commits. `proposalId` is only
+   * stable within one response, which is all the dialog needs.
+   */
+  async detectTables(
+    pdfId: string,
+    user: UserProfile,
+    dto: DetectTablesDto,
+  ): Promise<{
+    pageCount: number;
+    proposals: {
+      proposalId: string;
+      pageIndex: number;
+      yearLevel: number | null;
+      semester: '1st' | '2nd' | 'summer' | null;
+      confidence: number;
+      label: string;
+      headerText: string;
+      signals: string[];
+      regionXStartPt: number;
+      regionXEndPt: number;
+      regionYStartPt: number;
+      regionYEndPt: number;
+      columns: ColumnSliceSpec[];
+      rows: RowSpec[];
+      status: 'new' | 'conflict';
+      existingTableId: string | null;
+    }[];
+    warnings: string[];
+  }> {
+    const pdf = await this.findOne(pdfId, user);
+    this.assertCanReadDepartment(user, pdf.departmentId);
+
+    const buffer = await this.storage.downloadPdf(pdf.storagePath);
+    const result = await this.parser.detect({
+      pdfBase64: buffer.toString('base64'),
+      pageIndices: dto.page_indices,
+      maxTables: dto.max_tables,
+    });
+
+    const existing = pdf.tables ?? [];
+    const claimed = new Map<string, string>();
+    const warnings = [...result.warnings];
+
+    const proposals = result.proposals.map((proposal, index) => {
+      const proposalId = `det-${proposal.page_index}-${index}`;
+      const yearLevel = proposal.year_level ?? null;
+      const semester = proposal.semester ?? null;
+      const key =
+        yearLevel != null && semester != null
+          ? `${yearLevel}:${semester}`
+          : null;
+
+      const existingTable = key
+        ? existing.find(
+            (table) =>
+              table.yearLevel === yearLevel &&
+              table.semester === semester,
+          )
+        : undefined;
+      const earlierProposal = key ? claimed.get(key) : undefined;
+      if (key && !earlierProposal && !existingTable) {
+        claimed.set(key, proposalId);
+      }
+
+      const conflict = !!(existingTable || earlierProposal);
+      if (existingTable) {
+        warnings.push(
+          `Detected Year ${yearLevel} ${semester} on page ${
+            proposal.page_index + 1
+          }, but that table is already mapped.`,
+        );
+      } else if (earlierProposal) {
+        warnings.push(
+          `Detected Year ${yearLevel} ${semester} more than once; only the ` +
+            'first proposal can be created without editing it.',
+        );
+      }
+
+      return {
+        proposalId,
+        pageIndex: proposal.page_index,
+        yearLevel,
+        semester,
+        confidence: proposal.confidence,
+        label: proposal.label,
+        headerText: proposal.header_text,
+        signals: proposal.signals ?? [],
+        regionXStartPt: proposal.region_x_start_pt,
+        regionXEndPt: proposal.region_x_end_pt,
+        regionYStartPt: proposal.region_y_start_pt,
+        regionYEndPt: proposal.region_y_end_pt,
+        columns: proposal.columns as ColumnSliceSpec[],
+        rows: proposal.rows.map((row) => ({
+          row_id: row.row_id,
+          y_top_pt: row.y_top_pt,
+          y_bottom_pt: row.y_bottom_pt,
+        })),
+        status: conflict ? ('conflict' as const) : ('new' as const),
+        existingTableId: existingTable?.tableId ?? null,
+      };
+    });
+
+    return {
+      pageCount: result.page_count || pdf.pageCount,
+      proposals,
+      warnings,
+    };
+  }
+
   async extract(
     pdfId: string,
     tableIds: string[] | undefined,
@@ -405,6 +521,7 @@ export class ProspectusPdfsService {
         row_id: r.row_id,
         y_top_pt: r.y_top_pt,
         y_bottom_pt: r.y_bottom_pt,
+        ...(r.cells ? { cells: r.cells } : {}),
       })),
     }));
 

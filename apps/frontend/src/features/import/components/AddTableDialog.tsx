@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import type { ProspectusPdfTable, SemesterType } from '../types';
+import {
+  MAX_TABLES,
+  nextFreeCombination,
+  SEMESTERS,
+  YEAR_LEVELS,
+} from '../constants';
 
 interface AddTableDialogProps {
   open: boolean;
@@ -9,13 +15,6 @@ interface AddTableDialogProps {
   /** Tables already present for this PDF — disables taken (year, sem) pairs. */
   existingTables: ProspectusPdfTable[];
 }
-
-const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
-const SEMESTERS: { value: SemesterType; label: string }[] = [
-  { value: '1st', label: '1st Semester' },
-  { value: '2nd', label: '2nd Semester' },
-  { value: 'summer', label: 'Summer' },
-];
 
 export default function AddTableDialog({
   open,
@@ -26,18 +25,23 @@ export default function AddTableDialog({
   const [year, setYear] = useState(1);
   const [semester, setSemester] = useState<SemesterType>('1st');
 
+  const free = useMemo(
+    () => nextFreeCombination(existingTables),
+    [existingTables],
+  );
+  const maxTablesReached = existingTables.length >= MAX_TABLES;
+
   useEffect(() => {
-    if (open) {
-      setYear(1);
-      setSemester('1st');
-    }
-  }, [open]);
+    if (!open) return;
+    const start = nextFreeCombination(existingTables);
+    setYear(start?.yearLevel ?? 1);
+    setSemester(start?.semester ?? '1st');
+  }, [open, existingTables]);
 
   const taken = (y: number, s: SemesterType) =>
     existingTables.some((t) => t.yearLevel === y && t.semester === s);
 
   const conflict = taken(year, semester);
-  const maxTablesReached = existingTables.length >= 12;
 
   const handleConfirm = () => {
     if (conflict || maxTablesReached) return;
@@ -76,23 +80,38 @@ export default function AddTableDialog({
             Year Level
           </label>
           <div className="grid grid-cols-6 gap-2">
-            {YEAR_LEVELS.map((y) => (
-              <button
-                key={y}
-                type="button"
-                onClick={() => setYear(y)}
-                className={`
-                  py-2 rounded-lg text-sm font-semibold transition
-                  ${
-                    year === y
-                      ? 'bg-primary text-on-primary'
-                      : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'
-                  }
-                `}
-              >
-                {y}
-              </button>
-            ))}
+            {YEAR_LEVELS.map((y) => {
+              const allTaken = SEMESTERS.every((s) => taken(y, s.value));
+              return (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => {
+                    setYear(y);
+                    const firstFree = SEMESTERS.find(
+                      (s) => !taken(y, s.value),
+                    );
+                    if (firstFree) setSemester(firstFree.value);
+                  }}
+                  disabled={maxTablesReached || allTaken}
+                  title={allTaken ? `Year ${y} is fully mapped` : `Year ${y}`}
+                  className={`
+                    relative py-2 rounded-lg text-sm font-semibold transition
+                    disabled:opacity-40 disabled:cursor-not-allowed
+                    ${
+                      year === y
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'
+                    }
+                  `}
+                >
+                  {y}
+                  {allTaken && (
+                    <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -101,23 +120,38 @@ export default function AddTableDialog({
             Semester
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {SEMESTERS.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => setSemester(s.value)}
-                className={`
-                  py-2 rounded-lg text-sm font-semibold transition
-                  ${
-                    semester === s.value
-                      ? 'bg-primary text-on-primary'
-                      : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'
+            {SEMESTERS.map((s) => {
+              const isTaken = taken(year, s.value);
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setSemester(s.value)}
+                  disabled={maxTablesReached || isTaken}
+                  title={
+                    isTaken
+                      ? `Year ${year} ${s.label} is already mapped`
+                      : s.label
                   }
-                `}
-              >
-                {s.label}
-              </button>
-            ))}
+                  className={`
+                    py-2 rounded-lg text-sm font-semibold transition
+                    disabled:opacity-40 disabled:cursor-not-allowed
+                    ${
+                      semester === s.value
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'
+                    }
+                  `}
+                >
+                  {s.label}
+                  {isTaken && (
+                    <span className="ml-1 text-[10px] font-normal opacity-70">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -130,12 +164,17 @@ export default function AddTableDialog({
 
         {maxTablesReached && (
           <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-800 text-xs">
-            Maximum 12 tables reached for this PDF (4 years × 3 semesters).
+            All {MAX_TABLES} combinations are already mapped for this PDF (
+            {YEAR_LEVELS.length} years × {SEMESTERS.length} semesters). Delete a
+            table before adding another.
           </div>
         )}
 
         {!conflict && !maxTablesReached && (
           <p className="text-xs text-on-surface-variant">
+            {free
+              ? `Next free combination: Year ${free.yearLevel} ${free.semester}. `
+              : ''}
             After clicking next, drag a rectangle on the PDF to mark the Year{' '}
             {year} {semester} table.
           </p>

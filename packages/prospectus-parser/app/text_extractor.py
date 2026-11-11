@@ -48,6 +48,11 @@ def extract_region(
     for row in region.rows:
         subject = ExtractedSubject()
         for col in cols_sorted:
+            override = row.cells.get(col.role) if row.cells else None
+            if isinstance(override, str):
+                setattr(subject, col.role, override)
+                continue
+
             rect = (
                 col.x_start_pt,
                 row.y_bottom_pt,

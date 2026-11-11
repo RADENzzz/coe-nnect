@@ -14,8 +14,7 @@ import {
 } from '@/api/prospectus-pdfs.api';
 import type { ProspectusPdf } from './types';
 import UploadDropzone from './components/UploadDropzone';
-
-const MAX_TABLES = 12;
+import { MAX_TABLES } from './constants';
 
 export default function ProspectusPdfListPage() {
   const qc = useQueryClient();

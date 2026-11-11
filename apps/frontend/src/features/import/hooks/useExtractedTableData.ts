@@ -7,6 +7,8 @@ import type { TextItem } from './usePdfTextLayer';
 export interface ExtractedCell {
   role: ColumnRole;
   text: string;
+  /** True when the value comes from a saved row override, not the PDF. */
+  overridden: boolean;
 }
 
 export interface ExtractedRow {
@@ -46,8 +48,12 @@ export function useExtractedTableData(
         row_id: row.row_id,
         index: index + 1,
         cells: COLUMN_ORDER.map((role) => {
+          const override = row.cells?.[role];
+          if (typeof override === 'string') {
+            return { role, text: override, overridden: true };
+          }
           const col = table.columns.find((c) => c.role === role);
-          if (!col) return { role, text: '' };
+          if (!col) return { role, text: '', overridden: false };
           return {
             role,
             text: extractTextInRect(
@@ -57,6 +63,7 @@ export function useExtractedTableData(
               col.x_end_pt,
               row.y_top_pt,
             ),
+            overridden: false,
           };
         }),
       }));
