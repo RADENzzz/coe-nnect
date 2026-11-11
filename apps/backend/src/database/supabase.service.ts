@@ -59,7 +59,10 @@ export function isSupabaseAuthOutage(
   if (error.name === 'AuthRetryableFetchError') return true;
   if (
     typeof error.status === 'number' &&
-    (error.status === 0 || error.status >= 500)
+    (error.status === 0 ||
+      error.status === 408 ||
+      error.status === 429 ||
+      error.status >= 500)
   ) {
     return true;
   }

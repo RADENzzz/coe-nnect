@@ -1,12 +1,12 @@
 import {
   ServiceUnavailableException,
   UnauthorizedException,
-} from "@nestjs/common";
-import { JwtAuthGuard } from "../src/common/guards/jwt-auth.guard";
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
 
 function createContext(authorization?: string) {
   const req: any = {
-    method: "GET",
+    method: 'GET',
     headers: authorization ? { authorization } : {},
   };
   const ctx: any = {
@@ -32,30 +32,30 @@ function createGuard(
   };
 }
 
-describe("JwtAuthGuard", () => {
-  it("rejects a request without a bearer token", async () => {
-    const { guard } = createGuard({ status: "invalid", message: "n/a" });
+describe('JwtAuthGuard', () => {
+  it('rejects a request without a bearer token', async () => {
+    const { guard } = createGuard({ status: 'invalid', message: 'n/a' });
     const { ctx } = createContext();
 
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it("returns 401 when the token itself is invalid", async () => {
+  it('returns 401 when the token itself is invalid', async () => {
     const { guard } = createGuard({
-      status: "invalid",
-      message: "invalid JWT",
+      status: 'invalid',
+      message: 'invalid JWT',
     });
-    const { ctx } = createContext("Bearer bad-token");
+    const { ctx } = createContext('Bearer bad-token');
 
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it("returns a retryable 503 when the auth provider is unavailable", async () => {
+  it('returns a retryable 503 when the auth provider is unavailable', async () => {
     const { guard } = createGuard({
-      status: "unavailable",
-      message: "fetch failed",
+      status: 'unavailable',
+      message: 'fetch failed',
     });
-    const { ctx } = createContext("Bearer token");
+    const { ctx } = createContext('Bearer token');
 
     expect.assertions(2);
     try {
@@ -63,17 +63,17 @@ describe("JwtAuthGuard", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(ServiceUnavailableException);
       expect((err as ServiceUnavailableException).getResponse()).toMatchObject({
-        code: "AUTH_PROVIDER_UNAVAILABLE",
+        code: 'AUTH_PROVIDER_UNAVAILABLE',
       });
     }
   });
 
-  it("does not attach a user when the provider is unavailable", async () => {
+  it('does not attach a user when the provider is unavailable', async () => {
     const { guard } = createGuard({
-      status: "unavailable",
-      message: "fetch failed",
+      status: 'unavailable',
+      message: 'fetch failed',
     });
-    const { ctx, req } = createContext("Bearer token");
+    const { ctx, req } = createContext('Bearer token');
 
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
@@ -81,26 +81,26 @@ describe("JwtAuthGuard", () => {
     expect(req.user).toBeUndefined();
   });
 
-  it("accepts a valid token and attaches the user", async () => {
-    const user = { id: "user-1" };
-    const { guard } = createGuard({ status: "valid", user });
-    const { ctx, req } = createContext("Bearer token");
+  it('accepts a valid token and attaches the user', async () => {
+    const user = { id: 'user-1' };
+    const { guard } = createGuard({ status: 'valid', user });
+    const { ctx, req } = createContext('Bearer token');
 
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
     expect(req.user).toBe(user);
   });
 
-  it("still blocks non-admins while maintenance mode is on", async () => {
+  it('still blocks non-admins while maintenance mode is on', async () => {
     const supabase = {
       verifyAccessToken: jest
         .fn()
-        .mockResolvedValue({ status: "valid", user: { id: "user-1" } }),
+        .mockResolvedValue({ status: 'valid', user: { id: 'user-1' } }),
       getAdminClient: () => ({
         from: () => ({
           select: () => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: { role: "department_head" },
+                data: { role: 'department_head' },
               }),
             }),
           }),
@@ -110,12 +110,12 @@ describe("JwtAuthGuard", () => {
     const systemStatus = {
       getMaintenanceNotice: jest.fn().mockResolvedValue({
         active: true,
-        title: "Maintenance",
-        message: "Down for upgrades",
+        title: 'Maintenance',
+        message: 'Down for upgrades',
       }),
     };
     const guard = new JwtAuthGuard(supabase as any, systemStatus as any);
-    const { ctx } = createContext("Bearer token");
+    const { ctx } = createContext('Bearer token');
 
     expect.assertions(2);
     try {
@@ -123,7 +123,7 @@ describe("JwtAuthGuard", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(ServiceUnavailableException);
       expect((err as ServiceUnavailableException).getResponse()).toMatchObject({
-        code: "MAINTENANCE_MODE",
+        code: 'MAINTENANCE_MODE',
       });
     }
   });
