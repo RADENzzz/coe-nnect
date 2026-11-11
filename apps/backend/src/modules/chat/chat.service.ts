@@ -14,6 +14,7 @@ import { Message } from './entities/message.entity';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { User } from '../users/entities/user.entity';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 /** Roles allowed to participate in chat. Viewers are excluded (CH-1.9). */
 const CHAT_ELIGIBLE_ROLES = [
@@ -36,6 +37,7 @@ export class ChatService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly supabase: SupabaseService,
+    private readonly notifications: NotificationsGateway,
   ) {}
 
   // ────────────────────────────────────────────
@@ -299,6 +301,23 @@ export class ChatService {
       { conversationId, userId: profile.userId },
       { lastReadAt: new Date() },
     );
+
+    // Notify the other participant(s) in real time so clients can play the
+    // chat sound and refresh the conversation list even when the drawer is
+    // closed. The REST reply already covers the sender's own UI.
+    const recipientMembers = await this.members.find({
+      where: { conversationId },
+    });
+    for (const member of recipientMembers) {
+      if (member.userId === profile.userId) continue;
+      this.notifications.pushToUser(member.userId, 'chat:new', {
+        conversationId,
+        messageId: saved.messageId,
+        senderId: saved.senderId,
+        body: saved.body,
+        createdAt: saved.createdAt,
+      });
+    }
 
     return {
       messageId: saved.messageId,

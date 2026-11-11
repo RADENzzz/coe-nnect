@@ -26,6 +26,7 @@ import { User } from '../users/entities/user.entity';
     NotificationDispatcherService,
     RecipientsService,
     NotificationsService,
+    NotificationsGateway,
   ],
 })
 export class NotificationsModule {}

@@ -24,6 +24,13 @@ export type {
 } from './types/rule-context.type';
 export type { ConstraintRule } from './types/rule.interface';
 
+// Canonical setting defaults shared with the backend and System Config UI
+export {
+  SCHEDULING_SETTING_DEFAULTS,
+  DEFAULT_SCHEDULING_CONFIG,
+} from './defaults/scheduling-defaults';
+export type { SchedulingSettingKey } from './defaults/scheduling-defaults';
+
 // Engine + registry
 export {
   runRules,

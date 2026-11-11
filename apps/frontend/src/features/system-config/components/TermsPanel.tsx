@@ -13,6 +13,7 @@ import {
 } from '../../../api/terms.api';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 
 interface Props {
   isAdmin: boolean;
@@ -56,8 +57,19 @@ const EMPTY_FORM: CreateTermInput = {
   setActive: false,
 };
 
+function apiErrorMessage(err: any, fallback: string): string {
+  const message = err?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(' ');
+  if (typeof message === 'string' && message.trim()) return message;
+  if (typeof err?.message === 'string' && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
+
 export default function TermsPanel({ isAdmin }: Props) {
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const newTermRequested = searchParams.get('newTerm') === '1';
@@ -70,8 +82,6 @@ export default function TermsPanel({ isAdmin }: Props) {
 
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<CreateTermInput>(EMPTY_FORM);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Term | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<Term | null>(null);
 
@@ -82,8 +92,6 @@ export default function TermsPanel({ isAdmin }: Props) {
   };
 
   const openForm = useCallback(() => {
-    setError(null);
-    setSuccess(null);
     const latest = [...terms].sort((a, b) =>
       b.startDate.localeCompare(a.startDate),
     )[0];
@@ -160,70 +168,84 @@ export default function TermsPanel({ isAdmin }: Props) {
     mutationFn: createTerm,
     onSuccess: (t) => {
       setFormOpen(false);
-      setSuccess(`Term "${t.termName}" created.`);
+      feedback.success(`Term "${t.termName}" was created.`, {
+        title: 'Term created',
+      });
       invalidate();
-      setTimeout(() => setSuccess(null), 3000);
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to create term',
-      ),
+      feedback.failed(apiErrorMessage(err, 'Failed to create term'), {
+        title: 'Could not create term',
+      }),
   });
 
   const activateMutation = useMutation({
     mutationFn: activateTerm,
     onSuccess: (t) => {
-      setSuccess(`Term "${t.termName}" is now active.`);
+      feedback.success(`Term "${t.termName}" is now active.`, {
+        title: 'Term activated',
+      });
       invalidate();
-      setTimeout(() => setSuccess(null), 3000);
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to activate',
-      ),
+      feedback.failed(apiErrorMessage(err, 'Failed to activate term'), {
+        title: 'Could not activate term',
+      }),
   });
 
   const deactivateMutation = useMutation({
     mutationFn: deactivateTerm,
     onSuccess: (t) => {
       setDeactivateTarget(null);
-      setSuccess(
-        `Term "${t.termName}" deactivated. No term is currently active.`,
+      feedback.success(
+        `Term "${t.termName}" was deactivated. No term is currently active.`,
+        { title: 'Term deactivated' },
       );
       invalidate();
-      setTimeout(() => setSuccess(null), 3000);
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to deactivate',
-      ),
+      feedback.failed(apiErrorMessage(err, 'Failed to deactivate term'), {
+        title: 'Could not deactivate term',
+      }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteTerm,
     onSuccess: () => {
       setDeleteTarget(null);
-      setSuccess('Term deleted.');
+      feedback.success('The term was deleted.', { title: 'Term deleted' });
       invalidate();
-      setTimeout(() => setSuccess(null), 3000);
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to delete',
-      ),
+      feedback.failed(apiErrorMessage(err, 'Failed to delete term'), {
+        title: 'Could not delete term',
+      }),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    if (!form.termName.trim() || !form.schoolYear.trim()) return;
-    if (!form.startDate || !form.endDate) return;
+    if (!form.termName.trim() || !form.schoolYear.trim()) {
+      feedback.error('Enter a term name and school year.', {
+        title: 'Missing details',
+      });
+      return;
+    }
+    if (!form.startDate || !form.endDate) {
+      feedback.error('Choose both a start date and an end date.', {
+        title: 'Missing dates',
+      });
+      return;
+    }
     if (form.endDate <= form.startDate) {
-      setError('End date must be after start date.');
+      feedback.error('End date must be after the start date.', {
+        title: 'Invalid date range',
+      });
       return;
     }
     if (!form.semester) {
-      setError('Please select a semester.');
+      feedback.error('Please select a semester.', {
+        title: 'Missing semester',
+      });
       return;
     }
     createMutation.mutate({
@@ -271,17 +293,6 @@ export default function TermsPanel({ isAdmin }: Props) {
       </header>
 
       <div className="p-5 space-y-4">
-        {error && (
-          <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-green-700 text-sm">
-            {success}
-          </div>
-        )}
-
         {isLoading ? (
           <div className="py-8 text-center text-sm text-on-surface-variant">
             Loading terms…
@@ -414,12 +425,6 @@ export default function TermsPanel({ isAdmin }: Props) {
         }
       >
         <div className="space-y-4">
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm">
-              {error}
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">

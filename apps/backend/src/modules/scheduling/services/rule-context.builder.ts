@@ -1,17 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../../database/supabase.service';
-import type {
-  RuleContext,
-  SubjectContext,
-  SectionContext,
-  FacultyContext,
-  RoomContext,
-  TimeSlotContext,
-  ScheduleEntryContext,
-  FacultyCommitmentContext,
-  MinorBlockContext,
-  SchedulingConfig,
-  FacultyUnavailabilityContext,
+import {
+  DEFAULT_SCHEDULING_CONFIG,
+  type RuleContext,
+  type SubjectContext,
+  type SectionContext,
+  type FacultyContext,
+  type RoomContext,
+  type TimeSlotContext,
+  type ScheduleEntryContext,
+  type FacultyCommitmentContext,
+  type MinorBlockContext,
+  type SchedulingConfig,
+  type FacultyUnavailabilityContext,
 } from '@coe-nnect/constraint-rules';
 
 export interface BuildContextInput {
@@ -373,21 +374,50 @@ export class RuleContextBuilder {
       return typeof v === 'string' && v.trim() !== '' ? v : fallback;
     };
 
+    const defaults = DEFAULT_SCHEDULING_CONFIG;
+
     return {
-      operatingHoursStart: str('operating_hours_start', '07:00'),
-      operatingHoursEnd: str('operating_hours_end', '19:00'),
-      maxConsecutiveHours: num('max_consecutive_hours', 3),
-      minBreakMinutes: num('min_break_minutes', 30),
-      lunchStart: str('lunch_start', '12:00'),
-      lunchEnd: str('lunch_end', '13:00'),
-      lunchBreakMinutes: num('lunch_break_minutes', 60),
-      lunchBreakOverlapMinutes: num('lunch_break_overlap_minutes', 30),
-      visitingLecturerMaxHours: num('visiting_lecturer_max_hours', 24),
-      defaultRequiredHours: num('default_required_hours', 18),
-      releaseHoursGranularity: num('release_hours_granularity', 3),
-      labSplitHours: num('lab_split_hours', 3),
-      lectureBlockMinutes: num('lecture_block_minutes', 90),
-      daytimePriorityEndHour: str('daytime_priority_end_hour', '17:30'),
+      operatingHoursStart: str(
+        'operating_hours_start',
+        defaults.operatingHoursStart,
+      ),
+      operatingHoursEnd: str('operating_hours_end', defaults.operatingHoursEnd),
+      maxConsecutiveHours: num(
+        'max_consecutive_hours',
+        defaults.maxConsecutiveHours,
+      ),
+      minBreakMinutes: num('min_break_minutes', defaults.minBreakMinutes),
+      lunchStart: str('lunch_start', defaults.lunchStart),
+      lunchEnd: str('lunch_end', defaults.lunchEnd),
+      lunchBreakMinutes: num(
+        'lunch_break_minutes',
+        defaults.lunchBreakMinutes,
+      ),
+      lunchBreakOverlapMinutes: num(
+        'lunch_break_overlap_minutes',
+        defaults.lunchBreakOverlapMinutes,
+      ),
+      visitingLecturerMaxHours: num(
+        'visiting_lecturer_max_hours',
+        defaults.visitingLecturerMaxHours,
+      ),
+      defaultRequiredHours: num(
+        'default_required_hours',
+        defaults.defaultRequiredHours,
+      ),
+      releaseHoursGranularity: num(
+        'release_hours_granularity',
+        defaults.releaseHoursGranularity,
+      ),
+      labSplitHours: num('lab_split_hours', defaults.labSplitHours),
+      lectureBlockMinutes: num(
+        'lecture_block_minutes',
+        defaults.lectureBlockMinutes,
+      ),
+      daytimePriorityEndHour: str(
+        'daytime_priority_end_hour',
+        defaults.daytimePriorityEndHour,
+      ),
     };
   }
 

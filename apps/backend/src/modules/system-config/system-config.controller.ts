@@ -32,7 +32,10 @@ export class SystemConfigController {
   // Any authenticated user can read settings (dean oversight)
   @Get()
   async getSettings() {
-    return { data: await this.config.findAllSettings() };
+    return {
+      data: await this.config.findAllSettings(),
+      defaults: this.config.getSettingDefaults(),
+    };
   }
 
   // Only the College Dean can write
