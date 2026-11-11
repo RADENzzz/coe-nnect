@@ -22,22 +22,31 @@ The queries exclude drafts, flagged rows, rows with a pending cross-department f
 
 ## IDP integration
 
-The `IdpModule` under `src/modules/idp` implements Milestone 1 of the CoE-NNECT ↔ IDP v2.0 contract using Pattern A (REST + webhooks).
+The `IdpModule` under `src/modules/idp` implements the CoE-NNECT ↔ IDP v2.0 contract. Pattern C is primary because the IDP deployment is an offline-capable desktop app; Pattern A (REST + webhooks) remains as a fallback.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/idp/v1/health` | Public | Integration and configuration health |
 | `POST` | `/api/idp/v1/webhooks/faculty-changed` | HMAC-SHA256 | Faculty change event from IDP |
-| `POST` | `/api/v1/idp/faculty/sync` | Bearer JWT + role guard | User-triggered roster refresh |
+| `POST` | `/api/idp/v1/inbox/faculty` | Device bearer key | Faculty snapshot pushed by the IDP desktop |
+| `GET` | `/api/idp/v1/outbox/schedules` | Device bearer key | Published schedules polled by the IDP desktop |
+| `POST` | `/api/v1/idp/faculty/sync` | Bearer JWT + role guard | User-triggered roster refresh (Pattern A) |
+| `POST` | `/api/v1/idp/schedules/publish` | Bearer JWT + role guard | Queue and optionally push a published schedule |
 
-The sync pulls faculty identity, qualifications, and unavailability from IDP, matches records by `wmsu_id` then `employee_id`, and maintains `faculty.sync_status` / `last_synced_at`. Local identity edits mark a row pending and block incoming IDP updates with `409 local_edit_pending`. Webhooks are signed with HMAC-SHA256 over the raw request body; `main.ts` enables `rawBody: true` for this reason.
+The sync applies faculty identity, qualifications, and unavailability, matches records by `wmsu_id` then `employee_id`, and maintains `faculty.sync_status` / `last_synced_at`. Local identity edits mark a row pending and block incoming IDP updates with `409 local_edit_pending`. Webhooks are signed with HMAC-SHA256 over the raw request body; `main.ts` enables `rawBody: true` for this reason. Webhook idempotency and published schedules are stored in `idp_processed_event` and `idp_outbox` so an offline desktop client can catch up safely.
 
 Configure the integration in `apps/backend/.env`:
 
 ```dotenv
+# Pattern A fallback
 IDP_ENABLED=false
 IDP_BASE_URL=
 IDP_API_KEY=
+
+# Pattern C desktop access
+IDP_DEVICE_API_KEY=
+
+# Webhooks
 IDP_WEBHOOK_SECRET=
 IDP_REQUEST_TIMEOUT_MS=15000
 IDP_WEBHOOK_TOLERANCE_MS=300000

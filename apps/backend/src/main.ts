@@ -56,6 +56,18 @@ function setupSwagger(app: any, apiPrefix: string) {
       },
       'supabase-jwt',
     )
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'API key',
+        name: 'Authorization',
+        in: 'header',
+        description:
+          'IDP desktop device key (IDP_DEVICE_API_KEY). Used only by the Pattern C inbox/outbox routes.',
+      },
+      'idp-device-key',
+    )
     // ── Tag registry (order matches the left sidebar) ──
     .addTag('Auth', 'Login, session, current user')
     .addTag('Users', 'User directory + role management')

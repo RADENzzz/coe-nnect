@@ -110,6 +110,7 @@ export interface PublicIntegrationStatus {
     enabled: boolean;
     baseUrlConfigured: boolean;
     apiKeyConfigured: boolean;
+    deviceApiKeyConfigured: boolean;
     webhookSecretConfigured: boolean;
   };
   faculty: {
@@ -141,20 +142,27 @@ const MILESTONES: PublicIntegrationMilestone[] = [
   },
   {
     key: 'm2',
-    title: 'Published schedule push',
+    title: 'Published schedule delivery',
     status: 'done',
     summary:
-      'Term preview, push to the published-schedules endpoint, bounded retry, replay-safe version id.',
+      'Term preview, Pattern A push, and a durable Pattern C outbox the desktop polls; replay-safe version id.',
   },
   {
     key: 'm3',
-    title: 'Change requests and durable outbox',
-    status: 'in_progress',
+    title: 'IDP desktop sync (Pattern C)',
+    status: 'done',
     summary:
-      'Change-request webhook and ack, faculty-request status push, durable outbox replacing the in-memory dedupe map.',
+      'Per-device bearer auth, faculty inbox with per-record errors, outbox polling, and 30-day durable webhook idempotency.',
   },
   {
     key: 'm4',
+    title: 'Change requests and acks',
+    status: 'in_progress',
+    summary:
+      'Change-request webhook, acknowledgement exactly once, and faculty-request status delivery.',
+  },
+  {
+    key: 'm5',
     title: 'Operations and hardening',
     status: 'planned',
     summary:
@@ -418,6 +426,9 @@ export class PublicService {
     const webhookSecretConfigured = hasValue(
       this.config.get<string>('IDP_WEBHOOK_SECRET'),
     );
+    const deviceApiKeyConfigured = hasValue(
+      this.config.get<string>('IDP_DEVICE_API_KEY'),
+    );
 
     return {
       service: 'coe-nnect-idp-integration',
@@ -426,11 +437,14 @@ export class PublicService {
         enabled,
         baseUrlConfigured,
         apiKeyConfigured,
+        deviceApiKeyConfigured,
+        webhookSecretConfigured,
       ),
       connection: {
         enabled,
         baseUrlConfigured,
         apiKeyConfigured,
+        deviceApiKeyConfigured,
         webhookSecretConfigured,
       },
       faculty: {
@@ -554,7 +568,12 @@ function integrationState(
   enabled: boolean,
   baseUrlConfigured: boolean,
   apiKeyConfigured: boolean,
+  deviceApiKeyConfigured: boolean,
+  webhookSecretConfigured: boolean,
 ): IntegrationState {
+  // Pattern C is inbound-only, so it is live whenever the desktop key and
+  // webhook secret are present; IDP_ENABLED only controls Pattern A outbound.
+  if (deviceApiKeyConfigured && webhookSecretConfigured) return 'live';
   if (!enabled) {
     return baseUrlConfigured && apiKeyConfigured
       ? 'configured_disabled'
