@@ -80,6 +80,7 @@ flowchart LR
         direction TB
         idp_processed_event[idp_processed_event]
         idp_outbox[idp_outbox]
+        idp_change_request[idp_change_request]
     end
 
     identity --> catalog
@@ -713,13 +714,15 @@ Key constraints and behavior:
 
 ## 8. IDP integration state
 
-Two narrow tables back the CoE-NNECT ↔ IDP connection. They hold integration
-plumbing only, never credentials. Both are written by the NestJS API through
+Three narrow tables back the CoE-NNECT ↔ IDP connection. They hold integration
+plumbing only, never credentials. All are written by the NestJS API through
 `DATABASE_URL`; direct Supabase clients have no access.
 
 ```mermaid
 erDiagram
     FACULTY |o--o{ IDP_PROCESSED_EVENT : "referenced by"
+    FACULTY |o--o{ IDP_CHANGE_REQUEST : "referenced by"
+    USERS |o--o{ IDP_CHANGE_REQUEST : "acknowledged by"
     IDP_OUTBOX {
         bigint outbox_id PK
         text kind
@@ -734,6 +737,23 @@ erDiagram
         bigint faculty_id FK
         timestamptz processed_at
     }
+    IDP_CHANGE_REQUEST {
+        text idp_request_id PK
+        text body_hash
+        text type
+        bigint faculty_id FK
+        text severity
+        boolean requires_ack
+        text status
+        jsonb payload
+        jsonb affected_dates
+        timestamptz requested_at
+        timestamptz received_at
+        text ack_action
+        text ack_notes
+        uuid acknowledged_by FK
+        timestamptz acknowledged_at
+    }
 ```
 
 Key constraints and behavior:
@@ -744,11 +764,20 @@ Key constraints and behavior:
 - `idp_processed_event.faculty_id` references `faculty(faculty_id)` with
   `ON DELETE SET NULL`; the event record survives faculty deletion.
 - `processed_at` has a supporting index for the 30-day nightly retention sweep.
-- `idp_outbox` is append-only. `(kind, idempotency_key)` is unique; schedule
-  items use `kind='schedule.published'` and `coe_nnect_version_id` as the key.
-- `idp_outbox.payload` is frozen at first insert, so a desktop client that was
-  offline receives exactly what was published.
+- `idp_outbox` uses a unique `(kind, idempotency_key)` pair. Schedule items
+  (`kind='schedule.published'`) are append-only and frozen at first insert;
+  faculty-request items (`kind='faculty_request.status'`) are refreshed in
+  place; change-request acks (`kind='change_request.ack'`) are written once.
 - `(kind, created_at)` has a supporting index for the inclusive `since` poll.
+- `idp_change_request.idp_request_id` is the contract idempotency key and the
+  primary key. `body_hash` distinguishes a retry from a conflicting reuse of
+  the same id. `faculty_id` and `acknowledged_by` reference `faculty` and
+  `users` with `ON DELETE SET NULL`, so a review record survives either row's
+  deletion.
+- `idp_change_request.status` is checked against `pending`, `acknowledged`,
+  and `rejected`; `ack_action` is `accepted`, `rejected`, or `modified` when
+  present. The first decision wins, and a retry with the same decision is
+  idempotent.
 
 ## Table inventory
 
@@ -767,7 +796,8 @@ Key constraints and behavior:
 | `faculty_qualification`     | `qual_id`                    | Faculty-to-subject qualification mapping.                                      |
 | `faculty_request`           | `request_id`                 | Typed cross-department faculty request and approval workflow.                  |
 | `faculty_unavailability`    | `unavailability_id`          | Local or IDP-sourced unavailable time blocks.                                  |
-| `idp_outbox`                | `outbox_id`                  | Frozen outbound payloads polled by the IDP desktop client.                     |
+| `idp_change_request`        | `idp_request_id`             | Inbound IDP change requests and their one reviewer acknowledgement.            |
+| `idp_outbox`                | `outbox_id`                  | Outbound schedule, faculty-request, and ack payloads polled by IDP.            |
 | `idp_processed_event`       | `event_id`                   | Durable inbound webhook idempotency with 30-day retention.                     |
 | `message`                   | `message_id`                 | Chat message body and sender.                                                  |
 | `minor_subject_schedule`    | `minor_id`                   | Auxiliary timetable for minor subjects.                                        |
@@ -844,14 +874,15 @@ Key constraints and behavior:
 
 ### JSONB fields
 
-| Table                  | Columns           |
-| ---------------------- | ----------------- |
-| `audit_trail`          | `affected_data`   |
-| `idp_outbox`           | `payload`         |
-| `notification`         | `payload`         |
-| `prospectus_pdf_table` | `columns`, `rows` |
-| `schedule_version`     | `snapshot`        |
-| `scheduling_setting`   | `value`           |
+| Table                  | Columns                     |
+| ---------------------- | --------------------------- |
+| `audit_trail`          | `affected_data`             |
+| `idp_change_request`   | `payload`, `affected_dates` |
+| `idp_outbox`           | `payload`                   |
+| `notification`         | `payload`                   |
+| `prospectus_pdf_table` | `columns`, `rows`           |
+| `schedule_version`     | `snapshot`                  |
+| `scheduling_setting`   | `value`                     |
 
 ### Schema workflow
 
