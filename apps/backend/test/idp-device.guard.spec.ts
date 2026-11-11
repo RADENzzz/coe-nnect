@@ -75,6 +75,19 @@ describe('IdpDeviceGuard', () => {
     );
   });
 
+  it('handles pathological whitespace in the Authorization header', () => {
+    const started = Date.now();
+    expectIdpError(
+      () =>
+        guard.canActivate(
+          buildContext({ authorization: `Bearer ${' '.repeat(100_000)}` }),
+        ),
+      'unauthorized',
+      /Missing Authorization/,
+    );
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   it('fails closed when the device key is not configured', () => {
     config.get = jest.fn(() => undefined);
 

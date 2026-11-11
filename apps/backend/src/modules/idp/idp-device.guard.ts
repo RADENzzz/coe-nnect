@@ -42,15 +42,15 @@ export class IdpDeviceGuard implements CanActivate {
       );
     }
 
-    const header = firstHeader(req.headers.authorization);
-    const match = /^Bearer\s+(.+)$/i.exec(header ?? '');
-    if (!match) {
+    const provided = readBearerToken(
+      firstHeader(req.headers.authorization),
+    );
+    if (!provided) {
       throw idpErrors.unauthorized(
         'Missing Authorization: Bearer <IDP device key>.',
       );
     }
 
-    const provided = match[1].trim();
     if (!isEqualSecret(expected, provided)) {
       this.logger.warn(
         'Rejected an IDP desktop request with an invalid device key.',
@@ -64,6 +64,20 @@ export class IdpDeviceGuard implements CanActivate {
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Parse `Bearer <token>` without a regex. The Authorization header is
+ * attacker-controlled, so this stays linear even for pathological whitespace
+ * (CodeQL js/polynomial-redos).
+ */
+function readBearerToken(header: string | undefined): string | null {
+  if (!header) return null;
+  const prefix = 'bearer ';
+  if (header.length < prefix.length) return null;
+  if (header.slice(0, prefix.length).toLowerCase() !== prefix) return null;
+  const token = header.slice(prefix.length).trim();
+  return token.length > 0 ? token : null;
 }
 
 function isEqualSecret(expected: string, provided: string): boolean {
