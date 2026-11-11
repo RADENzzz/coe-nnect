@@ -27,6 +27,7 @@ import {
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
 import { UpdatePdfDto } from './dto/update-pdf.dto';
+import { DetectTablesDto } from './dto/detect-tables.dto';
 import { ExtractRequestDto, ImportConfirmDto } from './dto/extract.dto';
 
 import type { User } from '../users/entities/user.entity';
@@ -163,6 +164,15 @@ export class ProspectusPdfsController {
   // -----------------------------------------------------------
   // Extract + Import
   // -----------------------------------------------------------
+
+  @Post(':id/tables/detect')
+  async detectTables(
+    @Param('id') id: string,
+    @Body() dto: DetectTablesDto,
+    @Req() req: RequestWithProfile,
+  ) {
+    return this.service.detectTables(id, req.profile, dto);
+  }
 
   @Post(':id/extract')
   async extract(

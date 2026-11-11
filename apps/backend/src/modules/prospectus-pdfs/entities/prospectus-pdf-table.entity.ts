@@ -29,6 +29,12 @@ export interface RowSpec {
   row_id: string;
   y_top_pt: number;
   y_bottom_pt: number;
+  /**
+   * Optional per-cell text overrides. Rows live in a JSONB column, so this
+   * needs no migration. When set, these values win over PDF extraction —
+   * used by the editor's duplicate-row and direct cell editing.
+   */
+  cells?: Partial<Record<ColumnRole, string>>;
 }
 
 @Entity({ name: 'prospectus_pdf_table' })

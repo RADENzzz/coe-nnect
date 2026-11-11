@@ -18,6 +18,40 @@ export interface RowBox {
   row_id: string;
   y_top_pt: number;
   y_bottom_pt: number;
+  /**
+   * Optional per-cell overrides. When a role is present its text wins over
+   * whatever the PDF text layer contains at that geometry. This is what makes
+   * "duplicate row" and direct cell editing possible without a migration:
+   * rows are stored as JSONB, so the extra key rides along.
+   */
+  cells?: Partial<Record<ColumnRole, string>>;
+}
+
+/** A table the parser found on its own, before it is committed. */
+export interface DetectedTableProposal {
+  proposalId: string;
+  pageIndex: number;
+  yearLevel: number | null;
+  semester: SemesterType | null;
+  confidence: number;
+  label: string;
+  headerText: string;
+  signals: string[];
+  regionXStartPt: number;
+  regionXEndPt: number;
+  regionYStartPt: number;
+  regionYEndPt: number;
+  columns: ColumnSlice[];
+  rows: RowBox[];
+  /** `new` can be created; `conflict` collides with a mapped (year, sem). */
+  status: 'new' | 'conflict';
+  existingTableId: string | null;
+}
+
+export interface DetectTablesResponse {
+  pageCount: number;
+  proposals: DetectedTableProposal[];
+  warnings: string[];
 }
 
 export interface ProspectusPdfTable {

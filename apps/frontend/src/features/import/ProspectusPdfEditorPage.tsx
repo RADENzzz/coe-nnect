@@ -10,7 +10,12 @@ import {
   updateProspectusPdfTable,
   deleteProspectusPdfTable,
 } from '@/api/prospectus-pdfs.api';
-import type { ColumnSlice, ProspectusPdfTable, RowBox } from './types';
+import type {
+  ColumnRole,
+  ColumnSlice,
+  ProspectusPdfTable,
+  RowBox,
+} from './types';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import { usePdfTextLayer } from './hooks/usePdfTextLayer';
 import {
@@ -23,13 +28,23 @@ import AddTableDialog from './components/AddTableDialog';
 import LiveExtractionPreview from './components/LiveExtractionPreview';
 import ExtractedTableModal from './components/ExtractedTableModal';
 import ImportProspectusDialog from './components/ImportProspectusDialog';
+import TableRowsEditor from './components/TableRowsEditor';
+import AutoDetectDialog from './components/AutoDetectDialog';
+import { useExtractedTableData } from './hooks/useExtractedTableData';
+import {
+  insertRow,
+  moveRow,
+  rowHeight,
+  snapshotRowCells,
+  sortRowsTopDown,
+} from './utils/rows';
 import { fetchPrograms } from '@/api/programs.api';
 import { useUiStore } from '@/store/ui.store';
+import { MAX_TABLES, SEMESTER_ORDER } from './constants';
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.0;
 const PAGE_PADDING_PX = 24;
-const MAX_TABLES = 12;
 
 export default function ProspectusPdfEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -45,6 +60,7 @@ export default function ProspectusPdfEditorPage() {
     height: number;
   } | null>(null);
   const [addTableOpen, setAddTableOpen] = useState(false);
+  const [autoDetectOpen, setAutoDetectOpen] = useState(false);
   const [deleteTableId, setDeleteTableId] = useState<string | null>(null);
   const [deleteRowTarget, setDeleteRowTarget] = useState<{
     tableId: string;
@@ -59,6 +75,7 @@ export default function ProspectusPdfEditorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const [tableError, setTableError] = useState<string | null>(null);
 
   const { data: pdfRecord, isLoading: metaLoading } = useQuery({
     queryKey: ['prospectus-pdf', id],
@@ -423,8 +440,16 @@ export default function ProspectusPdfEditorPage() {
         setSelection({ kind: 'table', tableId: created.tableId });
         setEditing({ kind: 'none' });
         setDrawingMode({ kind: 'idle' });
+        setTableError(null);
         qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
       } catch (err) {
+        const message =
+          (err as { response?: { data?: { message?: string | string[] } } })
+            ?.response?.data?.message ?? 'Failed to create the table';
+        setTableError(
+          Array.isArray(message) ? message.join(', ') : String(message),
+        );
+        setDrawingMode({ kind: 'idle' });
         console.error('Failed to create table', err);
       }
     },
@@ -436,6 +461,7 @@ export default function ProspectusPdfEditorPage() {
       pdfRecord,
       qc,
       setDrawingMode,
+      setEditing,
       setSelection,
       upsertTable,
     ],
@@ -454,57 +480,157 @@ export default function ProspectusPdfEditorPage() {
     [focusOnRect, setDrawingMode],
   );
 
-  const handleAddRow = useCallback(
-    (tableId: string) => {
+  /**
+   * Shared insert path: keep the row array, region bottom, and dirty flag in
+   * sync no matter whether the user adds at the end, above, below, or copies.
+   */
+  const applyRowInsert = useCallback(
+    (
+      tableId: string,
+      sortedIndex: number,
+      options: {
+        height?: number;
+        cells?: Partial<Record<ColumnRole, string>>;
+        blank?: boolean;
+      } = {},
+    ) => {
       const table = tables.find((t) => t.tableId === tableId);
-      if (!table) return;
+      if (!table) return null;
 
-      const regionYStart = Number(table.regionYStartPt);
-      const regionYEnd = Number(table.regionYEndPt);
-      const regionHeight = regionYEnd - regionYStart;
-
-      const sorted = [...table.rows].sort((a, b) => b.y_top_pt - a.y_top_pt);
-      const lastRow =
-        sorted.length > 0 ? sorted[sorted.length - 1] : null;
-
-      const newHeight = computeNewRowHeight(regionHeight, table.rows.length);
-      const newTop = lastRow ? lastRow.y_bottom_pt : regionYEnd;
-      let newBottom = newTop - newHeight;
-
-      let newRegionYStart = regionYStart;
-
-      if (newBottom < regionYStart) {
-        const needed = regionYStart - newBottom;
-        newRegionYStart = Math.max(0, regionYStart - needed);
-        newBottom = newTop - newHeight;
-        if (newBottom < newRegionYStart) {
-          newBottom = newRegionYStart;
-        }
+      // Rows below the insertion point move down, so their PDF bands change.
+      // Pin what they currently show before shifting them.
+      const sorted = sortRowsTopDown(table.rows);
+      const pinCells: Record<
+        string,
+        Partial<Record<ColumnRole, string>>
+      > = {};
+      for (const row of sorted.slice(sortedIndex)) {
+        pinCells[row.row_id] = snapshotRowCells(
+          table,
+          row,
+          textLayer?.items ?? null,
+        );
       }
 
-      const row: RowBox = {
-        row_id: `r_${Date.now().toString(36)}_${Math.random()
-          .toString(36)
-          .slice(2, 8)}`,
-        y_top_pt: newTop,
-        y_bottom_pt: newBottom,
-      };
+      const result = insertRow(table, sortedIndex, { ...options, pinCells });
+      setRows(tableId, result.rows);
 
-      const nextRows = [...table.rows, row];
-      setRows(tableId, nextRows);
-
-      if (newRegionYStart !== regionYStart) {
+      if (result.regionYStart !== Number(table.regionYStartPt)) {
         setRegion(tableId, {
           pageIndex: table.regionPageIndex,
           xStart: Number(table.regionXStartPt),
           xEnd: Number(table.regionXEndPt),
-          yStart: newRegionYStart,
-          yEnd: regionYEnd,
+          yStart: result.regionYStart,
+          yEnd: Number(table.regionYEndPt),
         });
       }
       markDirty(tableId);
+      return result.insertedRowId;
     },
-    [tables, computeNewRowHeight, setRows, setRegion],
+    [tables, setRows, setRegion, textLayer?.items],
+  );
+
+  const handleAddRow = useCallback(
+    (tableId: string) => {
+      const table = tables.find((t) => t.tableId === tableId);
+      if (!table) return;
+      const inserted = applyRowInsert(tableId, table.rows.length, {
+        blank: true,
+      });
+      if (inserted) {
+        setSelection({ kind: 'row', tableId, rowId: inserted });
+      }
+    },
+    [tables, applyRowInsert, setSelection],
+  );
+
+  const handleAddRowAt = useCallback(
+    (tableId: string, rowId: string, where: 'above' | 'below') => {
+      const table = tables.find((t) => t.tableId === tableId);
+      if (!table) return;
+      const sorted = sortRowsTopDown(table.rows);
+      const index = sorted.findIndex((row) => row.row_id === rowId);
+      if (index === -1) return;
+      const inserted = applyRowInsert(
+        tableId,
+        where === 'above' ? index : index + 1,
+        { blank: true },
+      );
+      if (inserted) {
+        setSelection({ kind: 'row', tableId, rowId: inserted });
+      }
+    },
+    [tables, applyRowInsert, setSelection],
+  );
+
+  const handleDuplicateRow = useCallback(
+    (tableId: string, rowId: string) => {
+      const table = tables.find((t) => t.tableId === tableId);
+      if (!table) return;
+      const sorted = sortRowsTopDown(table.rows);
+      const index = sorted.findIndex((row) => row.row_id === rowId);
+      if (index === -1) return;
+      const source = sorted[index];
+      const cells = snapshotRowCells(
+        table,
+        source,
+        textLayer?.items ?? null,
+      );
+      const inserted = applyRowInsert(tableId, index + 1, {
+        height: rowHeight(source),
+        cells,
+      });
+      if (inserted) {
+        setSelection({ kind: 'row', tableId, rowId: inserted });
+      }
+    },
+    [tables, applyRowInsert, textLayer?.items, setSelection],
+  );
+
+  const handleMoveRow = useCallback(
+    (tableId: string, rowId: string, direction: 'up' | 'down') => {
+      const table = tables.find((t) => t.tableId === tableId);
+      if (!table) return;
+      const next = moveRow(table, rowId, direction);
+      if (!next) return;
+      setRows(tableId, next);
+      markDirty(tableId);
+    },
+    [tables, setRows],
+  );
+
+  /**
+   * Editing a cell snapshots the whole row first. That keeps the other five
+   * cells stable if the row is later moved or nudged, instead of mixing
+   * frozen overrides with live PDF extraction.
+   */
+  const handleRowCellChange = useCallback(
+    (
+      tableId: string,
+      rowId: string,
+      role: ColumnRole,
+      value: string,
+    ) => {
+      const table = tables.find((t) => t.tableId === tableId);
+      const row = table?.rows.find((r) => r.row_id === rowId);
+      if (!table || !row) return;
+
+      const snapshot = snapshotRowCells(
+        table,
+        row,
+        textLayer?.items ?? null,
+      );
+      const nextRow: RowBox = {
+        ...row,
+        cells: { ...snapshot, ...(row.cells ?? {}), [role]: value },
+      };
+      setRows(
+        tableId,
+        table.rows.map((r) => (r.row_id === rowId ? nextRow : r)),
+      );
+      markDirty(tableId);
+    },
+    [tables, setRows, textLayer?.items],
   );
 
   const handleRowSelectAndFocus = useCallback(
@@ -520,7 +646,7 @@ export default function ProspectusPdfEditorPage() {
         y_end_pt: row.y_top_pt,
       });
     },
-    [tables, focusOnRect],
+    [tables, focusOnRect, setSelection],
   );
 
   const handleColumnsChange = useCallback(
@@ -529,6 +655,28 @@ export default function ProspectusPdfEditorPage() {
       markDirty(tableId);
     },
     [setColumns],
+  );
+
+  const handleAutoDetected = useCallback(
+    (created: ProspectusPdfTable[]) => {
+      created.forEach(upsertTable);
+      setTableError(null);
+      void qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
+
+      const first = created[0];
+      if (!first) return;
+      setPageIndex(first.regionPageIndex);
+      setSelection({ kind: 'table', tableId: first.tableId });
+      setEditing({ kind: 'none' });
+      const rect = {
+        x_start_pt: Number(first.regionXStartPt),
+        x_end_pt: Number(first.regionXEndPt),
+        y_start_pt: Number(first.regionYStartPt),
+        y_end_pt: Number(first.regionYEndPt),
+      };
+      setTimeout(() => focusOnRect(rect), 120);
+    },
+    [upsertTable, qc, id, focusOnRect, setEditing, setSelection],
   );
 
   const handleRegionChange = useCallback(
@@ -636,17 +784,20 @@ export default function ProspectusPdfEditorPage() {
     return tables.find((t) => t.tableId === selection.tableId) ?? null;
   }, [selection, tables]);
 
+  const { rows: selectedExtractedRows } = useExtractedTableData(
+    selectedTable,
+    textLayer?.items ?? null,
+  );
+
   // ── Sorted tables for quick-nav ──
   const sortedTablesForNav = useMemo(
     () =>
       [...tables].sort((a, b) => {
         if (a.yearLevel !== b.yearLevel) return a.yearLevel - b.yearLevel;
-        const order: Record<string, number> = {
-          '1st': 1,
-          '2nd': 2,
-          summer: 3,
-        };
-        return (order[a.semester] ?? 9) - (order[b.semester] ?? 9);
+        return (
+          (SEMESTER_ORDER[a.semester] ?? 9) -
+          (SEMESTER_ORDER[b.semester] ?? 9)
+        );
       }),
     [tables],
   );
@@ -722,6 +873,16 @@ export default function ProspectusPdfEditorPage() {
           </button>
 
           <button
+            onClick={() => setAutoDetectOpen(true)}
+            disabled={drawingMode.kind !== 'idle'}
+            className="px-3 py-2 rounded-lg border border-primary/40 bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 transition disabled:opacity-50 flex items-center gap-1.5"
+            title="Let the parser find tables, columns, and rows automatically"
+          >
+            <Icon name="auto_awesome" size={16} />
+            Auto-detect
+          </button>
+
+          <button
             onClick={() => setAddTableOpen(true)}
             disabled={drawingMode.kind !== 'idle'}
             className="px-3 py-2 rounded-lg border border-surface-variant text-sm font-semibold hover:bg-surface-container-low transition disabled:opacity-50 flex items-center gap-1.5"
@@ -741,6 +902,22 @@ export default function ProspectusPdfEditorPage() {
           </button>
         </div>
       </div>
+
+      {/* Create/update errors — these used to only reach the console, so a
+          blocked "Add Table" looked like nothing happened. */}
+      {tableError && (
+        <div className="p-3 rounded-lg border border-red-300 bg-red-50 text-red-900 text-sm flex items-start gap-2">
+          <Icon name="error" size={18} className="shrink-0 mt-0.5" />
+          <div className="flex-1">{tableError}</div>
+          <button
+            type="button"
+            onClick={() => setTableError(null)}
+            className="px-2 py-0.5 rounded text-xs font-semibold bg-white/70 hover:bg-white transition"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Drawing mode banner */}
       {drawingMode.kind !== 'idle' && (
@@ -1021,6 +1198,47 @@ export default function ProspectusPdfEditorPage() {
               selectedTable ? () => setTableModalOpen(true) : undefined
             }
           />
+
+          {selectedTable && (
+            <TableRowsEditor
+              table={selectedTable}
+              extractedRows={selectedExtractedRows}
+              selectedRowId={
+                selection.kind === 'row' ? selection.rowId : null
+              }
+              disabled={isSaving}
+              onSelectRow={(rowId) =>
+                handleRowSelectAndFocus(selectedTable.tableId, rowId)
+              }
+              onAddRow={() => handleAddRow(selectedTable.tableId)}
+              onAddAbove={(rowId) =>
+                handleAddRowAt(selectedTable.tableId, rowId, 'above')
+              }
+              onAddBelow={(rowId) =>
+                handleAddRowAt(selectedTable.tableId, rowId, 'below')
+              }
+              onDuplicate={(rowId) =>
+                handleDuplicateRow(selectedTable.tableId, rowId)
+              }
+              onMove={(rowId, direction) =>
+                handleMoveRow(selectedTable.tableId, rowId, direction)
+              }
+              onDelete={(rowId) =>
+                setDeleteRowTarget({
+                  tableId: selectedTable.tableId,
+                  rowId,
+                })
+              }
+              onCellChange={(rowId, role, value) =>
+                handleRowCellChange(
+                  selectedTable.tableId,
+                  rowId,
+                  role,
+                  value,
+                )
+              }
+            />
+          )}
         </div>
       </div>
 
@@ -1049,29 +1267,34 @@ export default function ProspectusPdfEditorPage() {
       >
         <ol className="list-decimal list-inside space-y-2 text-sm text-on-surface-variant">
           <li>
-            Click <strong className="text-on-surface">Add Table</strong> →
-            pick Year + Semester.
+            Click <strong className="text-on-surface">Auto-detect</strong> to
+            let the parser find every course table. Review the year/semester it
+            inferred, untick anything wrong, then create.
           </li>
           <li>
-            Drag a rectangle over that semester's table in the PDF.
-          </li>
-          <li>Row 1 is created automatically.</li>
-          <li>
-            Click <strong className="text-on-surface">+ Add row</strong>{' '}
-            inside the region to add more rows.
+            Or click <strong className="text-on-surface">Add Table</strong> →
+            pick Year + Semester, then drag a rectangle over that table in the
+            PDF. One table is allowed per combination, up to 18.
           </li>
           <li>
-            Click a row's <strong className="text-on-surface">number badge</strong>{' '}
-            to unlock edit mode for moving/resizing.
+            Select a table to open its{' '}
+            <strong className="text-on-surface">Rows</strong> panel in the
+            sidebar.
+          </li>
+          <li>
+            In that panel you can add a row, insert <strong>+ Above</strong> /{' '}
+            <strong>+ Below</strong>, <strong>Copy row</strong> (keeps the
+            extracted text), move a row up/down, or delete it.
+          </li>
+          <li>
+            Click a row to edit its cells directly. Edited cells show a small
+            pencil and override the PDF text until you clear them.
           </li>
           <li>
             Click the region's{' '}
             <strong className="text-on-surface">label chip</strong> ("Year X ·
-            Sem") to edit the region bounds.
-          </li>
-          <li>
-            Drag the color-coded column handles to align with the PDF
-            columns.
+            Sem") to edit the region bounds, and drag the color-coded column
+            handles to align the columns.
           </li>
           <li>
             Click <strong className="text-on-surface">Focus</strong> and drag
@@ -1082,11 +1305,19 @@ export default function ProspectusPdfEditorPage() {
             at any time to cancel a draw in progress.
           </li>
           <li>
-            When you're done editing a table's region/rows/columns, click{' '}
+            When you're done editing a table, click{' '}
             <strong className="text-on-surface">Save</strong> below the table.
           </li>
         </ol>
       </Modal>
+
+      <AutoDetectDialog
+        open={autoDetectOpen}
+        onClose={() => setAutoDetectOpen(false)}
+        pdfId={id!}
+        existingTables={tables}
+        onCreated={handleAutoDetected}
+      />
 
       <AddTableDialog
         open={addTableOpen}

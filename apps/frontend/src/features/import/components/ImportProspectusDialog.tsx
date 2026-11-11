@@ -143,13 +143,17 @@ export default function ImportProspectusDialog({
         };
 
         for (const col of table.columns) {
-          cells[col.role] = extractTextInRect(
-            textItems,
-            col.x_start_pt,
-            row.y_bottom_pt,
-            col.x_end_pt,
-            row.y_top_pt
-          );
+          const override = row.cells?.[col.role];
+          cells[col.role] =
+            typeof override === 'string'
+              ? override
+              : extractTextInRect(
+                  textItems,
+                  col.x_start_pt,
+                  row.y_bottom_pt,
+                  col.x_end_pt,
+                  row.y_top_pt
+                );
         }
 
         const code = cells.code.trim();

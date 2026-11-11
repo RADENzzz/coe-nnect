@@ -20,6 +20,7 @@ export interface ParserRowSpec {
   row_id: string;
   y_top_pt: number;
   y_bottom_pt: number;
+  cells?: Record<string, string>;
 }
 
 export interface ParserRegionInput {
@@ -62,6 +63,28 @@ export interface ParserPageInfo {
   page_sizes_pt: PageSizePt[];
 }
 
+export interface ParserDetectedTable {
+  page_index: number;
+  year_level: number | null;
+  semester: '1st' | '2nd' | 'summer' | null;
+  confidence: number;
+  label: string;
+  header_text: string;
+  signals: string[];
+  region_x_start_pt: number;
+  region_x_end_pt: number;
+  region_y_start_pt: number;
+  region_y_end_pt: number;
+  columns: ParserColumnSpec[];
+  rows: ParserRowSpec[];
+}
+
+export interface ParserDetectResponse {
+  page_count: number;
+  proposals: ParserDetectedTable[];
+  warnings: string[];
+}
+
 interface RetryConfig extends AxiosRequestConfig {
   _retryCount?: number;
 }
@@ -82,6 +105,8 @@ export class ProspectusParserClient implements OnModuleInit {
   private static readonly REQUEST_TIMEOUT_MS = 60_000;
   /** OCR is CPU-bound and runs over every page in the request. */
   private static readonly OCR_TIMEOUT_MS = 240_000;
+  /** Detection walks every glyph on every requested page. */
+  private static readonly DETECT_TIMEOUT_MS = 180_000;
   private static readonly MAX_ATTEMPTS = 3;
 
   constructor(private readonly config: ConfigService) {
@@ -259,6 +284,32 @@ export class ProspectusParserClient implements OnModuleInit {
       this.logger.error(`Parser /info failed: ${msg}`);
       throw new InternalServerErrorException(
         `Prospectus parser /info failed: ${msg}`,
+      );
+    }
+  }
+
+  async detect(params: {
+    pdfBase64: string;
+    pageIndices?: number[];
+    maxTables?: number;
+  }): Promise<ParserDetectResponse> {
+    try {
+      return await this.postWithRetry<ParserDetectResponse>(
+        '/detect',
+        {
+          pdf_base64: params.pdfBase64,
+          ...(params.pageIndices ? { page_indices: params.pageIndices } : {}),
+          ...(params.maxTables ? { max_tables: params.maxTables } : {}),
+        },
+        ProspectusParserClient.DETECT_TIMEOUT_MS,
+      );
+    } catch (err) {
+      const msg = axios.isAxiosError(err)
+        ? `${err.response?.status ?? 'network'} ${err.message}`
+        : String(err);
+      this.logger.error(`Parser /detect failed: ${msg}`);
+      throw new InternalServerErrorException(
+        `Prospectus parser /detect failed: ${msg}`,
       );
     }
   }

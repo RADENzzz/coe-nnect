@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   ColumnSlice,
+  DetectTablesResponse,
   ExtractResponse,
   ProspectusPdf,
   ProspectusPdfTable,
@@ -111,6 +112,22 @@ export async function deleteProspectusPdfTable(
   tableId: string,
 ): Promise<void> {
   await api.delete(`/v1/prospectus-pdfs/${pdfId}/tables/${tableId}`);
+}
+
+/** Ask the parser to propose tables. Nothing is written by this call. */
+export async function detectProspectusPdfTables(
+  pdfId: string,
+  options: { pageIndices?: number[]; maxTables?: number } = {},
+): Promise<DetectTablesResponse> {
+  const { data } = await api.post(
+    `/v1/prospectus-pdfs/${pdfId}/tables/detect`,
+    {
+      ...(options.pageIndices ? { page_indices: options.pageIndices } : {}),
+      ...(options.maxTables ? { max_tables: options.maxTables } : {}),
+    },
+    { timeout: 180_000 },
+  );
+  return data;
 }
 
 // ─────────────── Extract + import ───────────────

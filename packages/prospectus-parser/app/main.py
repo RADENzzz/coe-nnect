@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import __version__
 from .config import settings
 from .models import (
+    DetectRequest,
+    DetectResponse,
     ExtractRequest,
     ExtractResponse,
     ExtractedRegion,
@@ -23,6 +25,7 @@ from .models import (
 )
 from .pdf_renderer import PdfDocument
 from .ocr import OcrUnavailable, ocr_available, ocr_page
+from .table_detector import detect_tables
 from .text_extractor import extract_region
 
 logging.basicConfig(
@@ -187,6 +190,66 @@ def extract(req: ExtractRequest) -> ExtractResponse:
         for page in page_refs:
             try: page.close()
             except Exception: pass
+        doc.close()
+        _safe_unlink(pdf_path)
+
+
+@app.post("/detect", response_model=DetectResponse)
+def detect(req: DetectRequest) -> DetectResponse:
+    """Find course tables automatically and return editable geometry."""
+    pdf_path = _decode_pdf_to_tempfile(req.pdf_base64)
+    try:
+        doc = PdfDocument(pdf_path)
+    except Exception as e:
+        _safe_unlink(pdf_path)
+        raise HTTPException(status_code=400, detail=f"Cannot open PDF: {e}")
+
+    textpage_cache: dict[int, object] = {}
+    page_refs: list = []
+    warnings: list[str] = []
+    try:
+        page_count = doc.page_count
+        requested = (
+            req.page_indices
+            if req.page_indices is not None
+            else list(range(page_count))
+        )
+        requested = sorted({p for p in requested if 0 <= p < page_count})
+        if len(requested) > 40:
+            warnings.append(
+                f"Only the first 40 of {len(requested)} requested pages were "
+                "scanned."
+            )
+            requested = requested[:40]
+
+        for page_index in requested:
+            textpage, page = doc.textpage(page_index)
+            textpage_cache[page_index] = textpage
+            page_refs.append(page)
+
+        proposals, detect_warnings = detect_tables(
+            textpages=textpage_cache,
+            page_sizes={},
+            page_indices=requested,
+            max_tables=req.max_tables,
+        )
+        warnings.extend(detect_warnings)
+        return DetectResponse(
+            page_count=page_count,
+            proposals=proposals,
+            warnings=warnings,
+        )
+    finally:
+        for textpage in textpage_cache.values():
+            try:
+                textpage.close()
+            except Exception:
+                pass
+        for page in page_refs:
+            try:
+                page.close()
+            except Exception:
+                pass
         doc.close()
         _safe_unlink(pdf_path)
 

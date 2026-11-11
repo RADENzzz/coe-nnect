@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -47,6 +48,14 @@ export class RowDto {
   @IsNumber()
   @Min(0)
   y_bottom_pt!: number;
+
+  /**
+   * Optional per-cell text overrides (column role → text). Lets the editor
+   * keep a duplicated/edited row's content independent of PDF geometry.
+   */
+  @IsOptional()
+  @IsObject()
+  cells?: Record<string, string>;
 }
 
 export class CreateTableDto {

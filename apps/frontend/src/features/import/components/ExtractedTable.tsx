@@ -100,10 +100,23 @@ export default function ExtractedTable({
                     key={cell.role}
                     className={`${cellPadding} align-top font-mono ${fontSize} ${
                       full ? 'max-w-[22rem]' : 'max-w-[260px]'
-                    } group ${isEmpty && required ? 'bg-amber-50' : ''}`}
-                    title={cell.text || undefined}
+                    } group ${isEmpty && required ? 'bg-amber-50' : ''} ${
+                      cell.overridden ? 'bg-amber-50/50' : ''
+                    }`}
+                    title={
+                      cell.overridden
+                        ? `${cell.text || '(blank)'} — edited manually`
+                        : cell.text || undefined
+                    }
                   >
                     <div className="flex items-start gap-1">
+                      {cell.overridden && (
+                        <Icon
+                          name="edit"
+                          size={full ? 12 : 10}
+                          className="shrink-0 mt-0.5 text-amber-600"
+                        />
+                      )}
                       <span
                         className={`flex-1 ${
                           full ? 'whitespace-pre-wrap break-words' : 'truncate'
