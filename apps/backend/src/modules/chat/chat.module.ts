@@ -7,6 +7,7 @@ import { User } from '../users/entities/user.entity';
 import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
       Message,
       User,
     ]),
+    NotificationsModule,
   ],
   controllers: [ChatController],
   providers: [ChatService, RolesGuard],

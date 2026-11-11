@@ -11,9 +11,18 @@ export interface SchedulingSetting {
   updatedAt: string;
 }
 
-export async function fetchSettings(): Promise<SchedulingSetting[]> {
+export interface SystemSettingsResponse {
+  settings: SchedulingSetting[];
+  /** Canonical engine fallbacks, keyed by setting name. */
+  defaults: Record<string, string | number>;
+}
+
+export async function fetchSettings(): Promise<SystemSettingsResponse> {
   const { data } = await api.get('/v1/system-config');
-  return data.data;
+  return {
+    settings: data.data ?? [],
+    defaults: data.defaults ?? {},
+  };
 }
 
 export async function updateSettings(

@@ -14,6 +14,9 @@ import { useNavAttention } from '../../hooks/use-nav-attention';
 import { useNavUsageRecorder } from '../../hooks/use-nav-usage';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
 import NotificationToaster from '../../features/notifications/NotificationToaster';
+import ChatSoundListener from '../../features/chat/ChatSoundListener';
+import { FeedbackProvider } from '../../components/ui/FeedbackToast';
+import { installSoundUnlock } from '../../lib/sound';
 import LiquidBackground from './LiquidBackground';
 import TutorialProvider from '../../features/tutorial/TutorialProvider';
 
@@ -30,6 +33,10 @@ function ShellInner() {
 
   useNotificationSocketBridge();
   useNavUsageRecorder();
+
+  // Browsers require a gesture before Web Audio can start; arm the context
+  // on the first click or keypress and keep it ready for socket events.
+  useEffect(() => installSoundUnlock(), []);
 
   // The bottom bar renders a subset of the rail; carry the same unread
   // counts down so the two never disagree.
@@ -94,6 +101,7 @@ function ShellInner() {
 
       <BottomNav items={nav.bottom} badges={bottomBadges} />
       <NotificationToaster />
+      <ChatSoundListener />
       <TutorialProvider />
     </div>
   );
@@ -102,9 +110,11 @@ function ShellInner() {
 export default function AppShell() {
   return (
     <NotificationSocketProvider>
-      <ChatProvider>
-        <ShellInner />
-      </ChatProvider>
+      <FeedbackProvider>
+        <ChatProvider>
+          <ShellInner />
+        </ChatProvider>
+      </FeedbackProvider>
     </NotificationSocketProvider>
   );
 }

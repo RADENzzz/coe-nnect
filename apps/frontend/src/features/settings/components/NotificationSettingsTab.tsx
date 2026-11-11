@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import {
@@ -6,6 +6,12 @@ import {
   updateNotificationSetting,
   type NotificationSettingsItem,
 } from '../../../api/notifications.api';
+import {
+  getSoundPreferences,
+  previewSound,
+  setSoundPreferences,
+  type SoundPreferences,
+} from '../../../lib/sound';
 
 const CATEGORY_META: Record<
   string,
@@ -80,6 +86,18 @@ function SkeletonRows() {
 
 export default function NotificationSettingsTab() {
   const queryClient = useQueryClient();
+  const [sound, setSound] = useState<SoundPreferences>(() =>
+    getSoundPreferences(),
+  );
+
+  const updateSound = (patch: Partial<SoundPreferences>) => {
+    const next = { ...sound, ...patch };
+    setSound(next);
+    setSoundPreferences(next);
+  };
+
+  const volumePercent = Math.round(sound.volume * 100);
+  const soundsOff = !sound.notifications && !sound.chat;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['notification-settings'],
@@ -215,6 +233,119 @@ export default function NotificationSettingsTab() {
           </div>
         </div>
       </div>
+
+      <section className="border border-surface-variant rounded-xl overflow-hidden bg-white">
+        <header className="px-4 py-3 bg-surface-container-lowest border-b border-surface-variant flex items-center gap-3">
+          <div className="w-8 h-8 rounded flex items-center justify-center bg-primary/10 shrink-0">
+            <Icon name="volume_up" size={16} className="text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900">
+              Notification & chat sounds
+            </p>
+            <p className="text-xs text-slate-500">
+              Play a short tone when notifications or chat messages arrive.
+            </p>
+          </div>
+        </header>
+
+        <div className="p-4 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-900">
+                Notification sound
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Schedule changes, approvals, and other alerts.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={sound.notifications}
+                aria-label="Notification sounds"
+                onChange={(e) =>
+                  updateSound({ notifications: e.target.checked })
+                }
+              />
+              <div className="w-9 h-5 bg-slate-300 peer-checked:bg-primary rounded-full transition-colors" />
+              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+            </label>
+          </div>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-900">
+                Chat sound
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Incoming messages, even when the chat drawer is closed.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={sound.chat}
+                aria-label="Chat sounds"
+                onChange={(e) => updateSound({ chat: e.target.checked })}
+              />
+              <div className="w-9 h-5 bg-slate-300 peer-checked:bg-primary rounded-full transition-colors" />
+              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+            </label>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <label
+                htmlFor="sound-volume"
+                className="text-sm font-medium text-slate-900"
+              >
+                Volume
+              </label>
+              <span className="text-xs font-semibold tabular-nums text-slate-500">
+                {volumePercent}%
+              </span>
+            </div>
+            <input
+              id="sound-volume"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={volumePercent}
+              disabled={soundsOff}
+              onChange={(e) =>
+                updateSound({ volume: Number(e.target.value) / 100 })
+              }
+              className="mt-2 w-full accent-primary disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => previewSound('notification')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-variant px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition"
+            >
+              <Icon name="notifications" size={14} />
+              Test notification
+            </button>
+            <button
+              type="button"
+              onClick={() => previewSound('chat')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-variant px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition"
+            >
+              <Icon name="chat_bubble" size={14} />
+              Test chat
+            </button>
+            <span className="text-[11px] text-slate-400">
+              Browsers may need one click on the page before audio can play.
+            </span>
+          </div>
+        </div>
+      </section>
 
       {CATEGORY_ORDER.map((cat) => {
         const list = grouped.get(cat);

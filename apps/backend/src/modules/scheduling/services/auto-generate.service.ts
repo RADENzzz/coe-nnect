@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { SupabaseService } from '../../../database/supabase.service';
+import { SCHEDULING_SETTING_DEFAULTS } from '@coe-nnect/constraint-rules';
 import { ConstraintsService } from '../../constraints/constraints.service';
 import { NotificationDispatcherService } from '../../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../../notifications/recipients.service';
@@ -678,8 +679,14 @@ export class AutoGenerateService {
     };
 
     const timeSlots = this.generateTimeSlotGrid(
-      str('operating_hours_start', '07:00'),
-      str('operating_hours_end', '19:00'),
+      str(
+        'operating_hours_start',
+        SCHEDULING_SETTING_DEFAULTS.operating_hours_start,
+      ),
+      str(
+        'operating_hours_end',
+        SCHEDULING_SETTING_DEFAULTS.operating_hours_end,
+      ),
     );
 
     return {
@@ -748,15 +755,39 @@ export class AutoGenerateService {
       })),
       timeSlots,
       config: {
-        operatingHoursStart: str('operating_hours_start', '07:00'),
-        operatingHoursEnd: str('operating_hours_end', '19:00'),
-        maxConsecutiveHours: num('max_consecutive_hours', 3),
-        lunchStart: str('lunch_start', '12:00'),
-        lunchEnd: str('lunch_end', '13:00'),
-        lectureBlockMinutes: num('lecture_block_minutes', 90),
-        labSplitHours: num('lab_split_hours', 3),
-        visitingLecturerMaxHours: num('visiting_lecturer_max_hours', 24),
-        defaultRequiredHours: num('default_required_hours', 18),
+        operatingHoursStart: str(
+          'operating_hours_start',
+          SCHEDULING_SETTING_DEFAULTS.operating_hours_start,
+        ),
+        operatingHoursEnd: str(
+          'operating_hours_end',
+          SCHEDULING_SETTING_DEFAULTS.operating_hours_end,
+        ),
+        maxConsecutiveHours: num(
+          'max_consecutive_hours',
+          SCHEDULING_SETTING_DEFAULTS.max_consecutive_hours,
+        ),
+        lunchStart: str(
+          'lunch_start',
+          SCHEDULING_SETTING_DEFAULTS.lunch_start,
+        ),
+        lunchEnd: str('lunch_end', SCHEDULING_SETTING_DEFAULTS.lunch_end),
+        lectureBlockMinutes: num(
+          'lecture_block_minutes',
+          SCHEDULING_SETTING_DEFAULTS.lecture_block_minutes,
+        ),
+        labSplitHours: num(
+          'lab_split_hours',
+          SCHEDULING_SETTING_DEFAULTS.lab_split_hours,
+        ),
+        visitingLecturerMaxHours: num(
+          'visiting_lecturer_max_hours',
+          SCHEDULING_SETTING_DEFAULTS.visiting_lecturer_max_hours,
+        ),
+        defaultRequiredHours: num(
+          'default_required_hours',
+          SCHEDULING_SETTING_DEFAULTS.default_required_hours,
+        ),
         lectureMinutesPerUnit: num('lecture_minutes_per_unit', 30),
         lectureMinimumMinutes: num('lecture_minimum_minutes', 60),
         labMinutesPerUnit: num('lab_minutes_per_unit', 180),
@@ -772,7 +803,10 @@ export class AutoGenerateService {
         // Soft: blocks prefer ending on the hour (12:30→12:00-style nudge).
         // 0 = off. Head/dean can set it in scheduling_setting
         // ('end_hour_alignment_weight', suggested 3-5).
-        endHourAlignmentWeight: num('end_hour_alignment_weight', 0),
+        endHourAlignmentWeight: num(
+          'end_hour_alignment_weight',
+          SCHEDULING_SETTING_DEFAULTS.end_hour_alignment_weight,
+        ),
       },
       existingSchedule: (existingScheduleRows ?? []).map((row) => ({
         scheduleId: String(row.schedule_id),

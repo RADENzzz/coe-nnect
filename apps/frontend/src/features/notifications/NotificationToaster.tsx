@@ -10,6 +10,7 @@ import {
   notificationIcon,
   shellForPath,
 } from '../../lib/notification-target';
+import { playNotificationSound } from '../../lib/sound';
 
 const MAX_TOASTS = 3;
 const TOAST_TTL_MS = 7000;
@@ -48,6 +49,8 @@ export default function NotificationToaster() {
   const pushToast = useCallback(
     (item: NotificationItem) => {
       if (!item?.notificationId) return;
+
+      playNotificationSound();
 
       setToasts((prev) => {
         if (prev.some((t) => t.item.notificationId === item.notificationId)) {

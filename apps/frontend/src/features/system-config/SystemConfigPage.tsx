@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import {
@@ -6,14 +6,13 @@ import {
   updateSettings,
   fetchDesignations,
   createDesignation,
-  updateDesignation,
   deleteDesignation,
-  type SchedulingSetting,
   type Designation,
 } from '../../api/system-config.api';
 import Icon from '../../components/ui/Icon';
 import TermsPanel from './components/TermsPanel';
 import Modal from '../../components/ui/Modal';
+import { useFeedback } from '../../components/ui/FeedbackToast';
 
 // ────────────────────────────────────────────
 // Field metadata — how each setting is grouped and rendered
@@ -26,6 +25,8 @@ interface FieldDef {
   label: string;
   type: FieldType;
   hint?: string;
+  /** Suffix shown beside numeric defaults, e.g. "minutes". */
+  unit?: string;
 }
 
 interface FieldGroup {
@@ -70,12 +71,14 @@ const GROUPS: FieldGroup[] = [
         key: 'max_consecutive_hours',
         label: 'Max consecutive hours',
         type: 'number',
+        unit: 'hours',
         hint: 'Students and faculty cannot exceed this many hours without a break.',
       },
       {
         key: 'min_break_minutes',
         label: 'Min break between classes',
         type: 'number',
+        unit: 'minutes',
         hint: 'Break duration (in minutes) required after consecutive blocks.',
       },
       {
@@ -92,12 +95,14 @@ const GROUPS: FieldGroup[] = [
         key: 'lunch_break_minutes',
         label: 'Standard lunch duration',
         type: 'number',
+        unit: 'minutes',
         hint: 'Length of the standard lunch break, in minutes.',
       },
       {
         key: 'lunch_break_overlap_minutes',
         label: 'Overlap threshold',
         type: 'number',
+        unit: 'minutes',
         hint:
           'If a class overlaps lunch by at least this many minutes, the shortened break applies.',
       },
@@ -113,6 +118,7 @@ const GROUPS: FieldGroup[] = [
         key: 'default_required_hours',
         label: 'Default required hours',
         type: 'number',
+        unit: 'hours/week',
         hint:
           'Baseline weekly teaching hours for a full-time faculty member (typically 18).',
       },
@@ -120,12 +126,14 @@ const GROUPS: FieldGroup[] = [
         key: 'visiting_lecturer_max_hours',
         label: 'Visiting lecturer cap',
         type: 'number',
+        unit: 'hours/week',
         hint: 'Maximum weekly hours for visiting lecturers.',
       },
       {
         key: 'release_hours_granularity',
         label: 'Release time granularity',
         type: 'number',
+        unit: 'hours',
         hint:
           'Release time must be a multiple of this value (typically 3 hours).',
       },
@@ -141,12 +149,14 @@ const GROUPS: FieldGroup[] = [
         key: 'lab_split_hours',
         label: 'Lab split hours',
         type: 'number',
+        unit: 'hours',
         hint: 'Duration (in hours) each lab session occupies when a lab is split.',
       },
       {
         key: 'lecture_block_minutes',
         label: 'Standard lecture block (min)',
         type: 'number',
+        unit: 'minutes',
         hint: 'Ideal lecture duration, in minutes (typically 90).',
       },
       {
@@ -163,11 +173,47 @@ const GROUPS: FieldGroup[] = [
 ];
 
 // ────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────
+
+const ALL_FIELDS = GROUPS.flatMap((group) => group.fields);
+
+function formatTimeLabel(value: string): string {
+  const match = /^(\d{1,2}):(\d{2})/.exec(value);
+  if (!match) return value;
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${minutes} ${suffix}`;
+}
+
+function formatDefaultValue(
+  field: FieldDef,
+  value: string | number | undefined,
+): string {
+  if (value === undefined || value === null || value === '') return '—';
+  if (field.type === 'time') return formatTimeLabel(String(value));
+  return `${value}${field.unit ? ` ${field.unit}` : ''}`;
+}
+
+function apiErrorMessage(err: any, fallback: string): string {
+  const message = err?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(' ');
+  if (typeof message === 'string' && message.trim()) return message;
+  if (typeof err?.message === 'string' && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
+
+// ────────────────────────────────────────────
 // Page
 // ────────────────────────────────────────────
 
 export default function SystemConfigPage() {
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   // After the Admin→Dean consolidation, both the dev account and the
@@ -176,14 +222,15 @@ export default function SystemConfigPage() {
     profile?.role === 'administrator' || profile?.role === 'college_dean';
 
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
-  const { data: settings = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['system-settings'],
     queryFn: fetchSettings,
     enabled: !!user,
   });
+
+  const settings = useMemo(() => data?.settings ?? [], [data]);
+  const defaults = useMemo(() => data?.defaults ?? {}, [data]);
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations'],
@@ -191,70 +238,118 @@ export default function SystemConfigPage() {
     enabled: !!user,
   });
 
-  // Seed the draft from the fetched settings once
-  useEffect(() => {
-    if (!settings || settings.length === 0) return;
+  const persistedByKey = useMemo(
+    () => new Map(settings.map((setting) => [setting.settingKey, setting])),
+    [settings],
+  );
+
+  const savedValue = useCallback(
+    (key: string): string => {
+      const persisted = persistedByKey.get(key);
+      if (persisted) return String(persisted.value ?? '');
+      const fallback = defaults[key];
+      return fallback === undefined || fallback === null
+        ? ''
+        : String(fallback);
+    },
+    [persistedByKey, defaults],
+  );
+
+  // Build a draft from persisted values, falling back to engine defaults for
+  // keys that have never been saved. Every field is therefore populated.
+  const seedDraft = useCallback(() => {
     const next: Record<string, string> = {};
-    for (const s of settings) {
-      next[s.settingKey] = String(s.value ?? '');
+    for (const field of ALL_FIELDS) {
+      next[field.key] = savedValue(field.key);
     }
-    setDraft(next);
-  }, [settings]);
+    return next;
+  }, [savedValue]);
+
+  // Seed once per mount. Reseeding on every background refetch would throw
+  // away edits the user has not saved yet. "Discard changes" reseeds
+  // explicitly from the latest server snapshot.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !data) return;
+    setDraft(seedDraft());
+    seededRef.current = true;
+  }, [data, seedDraft]);
 
   const updateMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => updateSettings(payload),
-    onSuccess: () => {
-      setSuccess('Settings saved.');
+    onSuccess: (_data, variables) => {
+      const count = Object.keys(variables).length;
+      feedback.success(
+        `${count} setting${count === 1 ? '' : 's'} saved.`,
+        { title: 'Settings saved' },
+      );
       qc.invalidateQueries({ queryKey: ['system-settings'] });
-      setTimeout(() => setSuccess(null), 2500);
     },
     onError: (err: any) =>
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to save',
-      ),
+      feedback.failed(apiErrorMessage(err, 'The server rejected the update.'), {
+        title: 'Could not save settings',
+      }),
   });
 
   const handleChange = (key: string, value: string) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
-    setError(null);
   };
 
-  // Determine what actually changed
+  // Determine what actually changed, including fields that were previously
+  // absent and are now being set to something other than their default.
   const changed = useMemo(() => {
     const out: Record<string, unknown> = {};
-    for (const s of settings) {
-      const incoming = draft[s.settingKey];
+    for (const field of ALL_FIELDS) {
+      const incoming = draft[field.key];
       if (incoming === undefined) continue;
-      const original = String(s.value ?? '');
-      if (incoming === original) continue;
-      // Coerce numbers
-      const def = GROUPS.flatMap((g) => g.fields).find(
-        (f) => f.key === s.settingKey,
-      );
-      if (def?.type === 'number') {
+      if (incoming === savedValue(field.key)) continue;
+
+      if (field.type === 'number') {
         const n = Number(incoming);
-        if (Number.isFinite(n)) out[s.settingKey] = n;
-      } else {
-        out[s.settingKey] = incoming;
+        if (incoming.trim() !== '' && Number.isFinite(n)) {
+          out[field.key] = n;
+        }
+      } else if (incoming.trim() !== '') {
+        out[field.key] = incoming;
       }
     }
     return out;
-  }, [draft, settings]);
+  }, [draft, savedValue]);
 
   const hasChanges = Object.keys(changed).length > 0;
 
   const handleSave = () => {
-    if (!hasChanges) return;
+    if (!hasChanges || updateMutation.isPending) return;
     updateMutation.mutate(changed);
   };
 
-  const handleReset = () => {
-    const next: Record<string, string> = {};
-    for (const s of settings) next[s.settingKey] = String(s.value ?? '');
-    setDraft(next);
-    setError(null);
-    setSuccess(null);
+  const handleDiscard = () => {
+    setDraft(seedDraft());
   };
+
+  const handleResetField = (field: FieldDef) => {
+    const fallback = defaults[field.key];
+    if (fallback === undefined || fallback === null) return;
+    setDraft((prev) => ({ ...prev, [field.key]: String(fallback) }));
+  };
+
+  const handleResetAll = () => {
+    const next = { ...draft };
+    for (const field of ALL_FIELDS) {
+      const fallback = defaults[field.key];
+      if (fallback !== undefined && fallback !== null) {
+        next[field.key] = String(fallback);
+      }
+    }
+    setDraft(next);
+  };
+
+  const baselineHours = useMemo(() => {
+    const value = Number(
+      draft.default_required_hours ?? defaults.default_required_hours ?? 18,
+    );
+    return Number.isFinite(value) && value > 0 ? value : 18;
+  }, [draft.default_required_hours, defaults.default_required_hours]);
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -268,13 +363,21 @@ export default function SystemConfigPage() {
           </p>
         </div>
         {isAdmin && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleResetAll}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition"
+              title="Set every field to its engine default, then review and save"
+            >
+              <Icon name="restart_alt" size={16} />
+              Reset all to defaults
+            </button>
             {hasChanges && (
               <button
-                onClick={handleReset}
+                onClick={handleDiscard}
                 className="px-4 py-2.5 rounded-lg text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition"
               >
-                Reset
+                Discard changes
               </button>
             )}
             <button
@@ -300,17 +403,6 @@ export default function SystemConfigPage() {
           <span>
             Read-only view. Only the College Dean can change system settings.
           </span>
-        </div>
-      )}
-
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-green-700 text-sm">
-          {success}
         </div>
       )}
 
@@ -351,16 +443,44 @@ export default function SystemConfigPage() {
               <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                 {group.fields.map((field) => {
                   const value = draft[field.key] ?? '';
-                  const missing =
-                    !settings.some((s) => s.settingKey === field.key);
+                  const persisted = persistedByKey.get(field.key);
+                  const defaultValue = defaults[field.key];
+                  const defaultString =
+                    defaultValue === undefined || defaultValue === null
+                      ? ''
+                      : String(defaultValue);
+                  const usingDefault =
+                    defaultString !== '' && value === defaultString;
                   return (
                     <div key={field.key}>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        {field.label}
-                      </label>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                          {field.label}
+                        </label>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleResetField(field)}
+                            disabled={usingDefault || defaultString === ''}
+                            title={
+                              usingDefault
+                                ? 'Already using the default'
+                                : `Reset to ${formatDefaultValue(
+                                    field,
+                                    defaultValue,
+                                  )}`
+                            }
+                            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary transition hover:bg-primary/10 disabled:cursor-default disabled:text-on-surface-variant/40 disabled:hover:bg-transparent"
+                          >
+                            <Icon name="restart_alt" size={12} />
+                            Reset
+                          </button>
+                        )}
+                      </div>
                       <input
                         type={field.type === 'time' ? 'time' : 'number'}
                         min={field.type === 'number' ? 0 : undefined}
+                        step={field.type === 'number' ? 1 : undefined}
                         value={value}
                         disabled={!isAdmin}
                         onChange={(e) =>
@@ -368,14 +488,27 @@ export default function SystemConfigPage() {
                         }
                         className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                       />
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <p className="text-[11px] text-on-surface-variant">
+                          Default:{' '}
+                          <span className="font-semibold text-on-surface">
+                            {formatDefaultValue(field, defaultValue)}
+                          </span>
+                        </p>
+                        {!persisted && (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            Not yet saved
+                          </span>
+                        )}
+                        {persisted && !usingDefault && (
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                            Custom
+                          </span>
+                        )}
+                      </div>
                       {field.hint && (
                         <p className="text-[11px] text-on-surface-variant mt-1">
                           {field.hint}
-                        </p>
-                      )}
-                      {missing && (
-                        <p className="text-[11px] text-amber-700 mt-1">
-                          Not yet configured — a default is used by the engine.
                         </p>
                       )}
                     </div>
@@ -385,21 +518,16 @@ export default function SystemConfigPage() {
             </section>
           ))}
         </div>
-        
       )}
-
-      
 
       <DesignationsPanel
         designations={designations}
         isAdmin={isAdmin}
+        baselineHours={baselineHours}
         onChanged={() => qc.invalidateQueries({ queryKey: ['designations'] })}
       />
-      
     </div>
-    
   );
-  
 }
 
 // ────────────────────────────────────────────
@@ -409,41 +537,68 @@ export default function SystemConfigPage() {
 function DesignationsPanel({
   designations,
   isAdmin,
+  baselineHours,
   onChanged,
 }: {
   designations: Designation[];
   isAdmin: boolean;
+  baselineHours: number;
   onChanged: () => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const feedback = useFeedback();
   const [form, setForm] = useState({ name: '', hours: '' });
   const [deleteTarget, setDeleteTarget] = useState<Designation | null>(null);
 
   const createMutation = useMutation({
     mutationFn: createDesignation,
-    onSuccess: () => {
+    onSuccess: (created) => {
+      feedback.success(
+        `${created.designationName} now grants ${Number(
+          created.releaseHours,
+        )} hours of release time.`,
+        { title: 'Designation added' },
+      );
       setForm({ name: '', hours: '' });
       onChanged();
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Failed to create'),
+      feedback.failed(apiErrorMessage(err, 'The designation was not created.'), {
+        title: 'Could not add designation',
+      }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteDesignation,
-    onSuccess: onChanged,
+    onSuccess: (_data, id) => {
+      const removed = designations.find((d) => d.designationId === id);
+      feedback.success(
+        removed
+          ? `"${removed.designationName}" was removed.`
+          : 'The designation was removed.',
+        { title: 'Designation deleted' },
+      );
+      onChanged();
+    },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Failed to delete'),
+      feedback.failed(apiErrorMessage(err, 'The designation was not deleted.'), {
+        title: 'Could not delete designation',
+      }),
   });
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     const name = form.name.trim();
     const hours = Number(form.hours);
-    if (!name || !Number.isFinite(hours)) return;
-    if (hours % 3 !== 0) {
-      setError('Release time must be a multiple of 3 hours.');
+    if (!name || form.hours.trim() === '' || !Number.isFinite(hours)) {
+      feedback.error('Enter a designation name and release hours.', {
+        title: 'Missing details',
+      });
+      return;
+    }
+    if (hours < 0 || hours % 3 !== 0) {
+      feedback.error('Release time must be a non-negative multiple of 3 hours.', {
+        title: 'Invalid release time',
+      });
       return;
     }
     createMutation.mutate({ designationName: name, releaseHours: hours });
@@ -467,12 +622,6 @@ function DesignationsPanel({
         </header>
 
         <div className="p-5 space-y-4">
-          {error && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-              {error}
-            </div>
-          )}
-
           {isAdmin && (
             <form
               onSubmit={handleAdd}
@@ -543,7 +692,10 @@ function DesignationsPanel({
                   </tr>
                 ) : (
                   designations.map((d) => {
-                    const required = 18 - Number(d.releaseHours);
+                    const required = Math.max(
+                      0,
+                      baselineHours - Number(d.releaseHours),
+                    );
                     return (
                       <tr
                         key={d.designationId}
@@ -577,7 +729,7 @@ function DesignationsPanel({
             </table>
           </div>
           <p className="text-[11px] text-on-surface-variant">
-            Required weekly hours = 18 baseline − release time. Faculty with
+            Required weekly hours = {baselineHours} baseline − release time. Faculty with
             designations are flagged as overloaded once they exceed this figure.
           </p>
         </div>

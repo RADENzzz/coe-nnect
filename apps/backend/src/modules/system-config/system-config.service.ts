@@ -10,6 +10,7 @@ import { SchedulingSetting } from './entities/scheduling-setting.entity';
 import { Designation } from './entities/designation.entity';
 import { CreateDesignationDto } from './dto/create-designation.dto';
 import { UpdateDesignationDto } from './dto/update-designation.dto';
+import { SCHEDULING_SETTING_DEFAULTS } from '@coe-nnect/constraint-rules';
 
 /**
  * Setting keys the engine reads. Any key NOT in this list is still
@@ -53,6 +54,14 @@ export class SystemConfigService {
 
   async findAllSettings(): Promise<SchedulingSetting[]> {
     return this.settings.find({ order: { settingKey: 'ASC' } });
+  }
+
+  /**
+   * Canonical engine fallbacks for keys that have not been persisted yet.
+   * The UI uses these to show and restore defaults per field.
+   */
+  getSettingDefaults(): Record<string, string | number> {
+    return { ...SCHEDULING_SETTING_DEFAULTS };
   }
 
   async updateSettings(
