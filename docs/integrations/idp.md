@@ -683,6 +683,7 @@ Still to confirm with the IDP team before a live sync:
 
 - [Milestone 1 checkpoint](idp-milestone-1-checkpoint.md)
 - [Milestone 3 checkpoint](idp-milestone-3-checkpoint.md)
+- [Integration handoff and test plan](idp-handoff.md)
 - [Backend guide](../apps/backend.md)
 - [Frontend guide](../apps/frontend.md)
 - [System architecture](../architecture/README.md)
