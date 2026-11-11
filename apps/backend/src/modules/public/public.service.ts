@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 
@@ -86,6 +87,82 @@ export interface PublicFaculty {
   faculty: PublicFacultyMember[];
 }
 
+export type IntegrationState =
+  | 'live'
+  | 'configured_disabled'
+  | 'incomplete'
+  | 'not_configured';
+
+export type MilestoneStatus = 'done' | 'in_progress' | 'planned';
+
+export interface PublicIntegrationMilestone {
+  key: string;
+  title: string;
+  status: MilestoneStatus;
+  summary: string;
+}
+
+export interface PublicIntegrationStatus {
+  service: string;
+  generatedAt: string;
+  state: IntegrationState;
+  connection: {
+    enabled: boolean;
+    baseUrlConfigured: boolean;
+    apiKeyConfigured: boolean;
+    webhookSecretConfigured: boolean;
+  };
+  faculty: {
+    total: number;
+    linked: number;
+    pending: number;
+    failed: number;
+    lastSyncedAt: string | null;
+  };
+  published: {
+    terms: number;
+    entries: number;
+    latestTermCode: string | null;
+  };
+  milestones: PublicIntegrationMilestone[];
+}
+
+/**
+ * Integration state as this build actually ships it. Kept in the backend so
+ * the public status page cannot drift from the code without a deploy.
+ */
+const MILESTONES: PublicIntegrationMilestone[] = [
+  {
+    key: 'm1',
+    title: 'Faculty roster and records',
+    status: 'done',
+    summary:
+      'Signed webhook, roster pull with incremental cursor, qualifications, and unavailability.',
+  },
+  {
+    key: 'm2',
+    title: 'Published schedule push',
+    status: 'done',
+    summary:
+      'Term preview, push to the published-schedules endpoint, bounded retry, replay-safe version id.',
+  },
+  {
+    key: 'm3',
+    title: 'Change requests and durable outbox',
+    status: 'in_progress',
+    summary:
+      'Change-request webhook and ack, faculty-request status push, durable outbox replacing the in-memory dedupe map.',
+  },
+  {
+    key: 'm4',
+    title: 'Operations and hardening',
+    status: 'planned',
+    summary:
+      'Secret rotation in the settings UI, load test, failure injection, final documentation pass.',
+  },
+];
+
+
 /**
  * Read-only data for the public landing page.
  *
@@ -116,6 +193,7 @@ export class PublicService {
     private readonly terms: Repository<Term>,
     @InjectRepository(Designation)
     private readonly designations: Repository<Designation>,
+    private readonly config: ConfigService,
   ) {}
 
   async getOverview(): Promise<PublicOverview> {
@@ -286,8 +364,94 @@ export class PublicService {
     };
   }
 
-  private findPublishedSchedules(): Promise<Schedule[]> {
-    return this.schedules.find({
+  /**
+   * Integration status for the IDP team's view on the public landing page.
+   *
+   * Shape only, never values: the three credential booleans say whether
+   * something is configured, and no base URL, key, secret, or internal
+   * endpoint is ever returned. Counts come from live rows, so the page can
+   * never claim progress the database does not have.
+   */
+  async getIntegrationStatus(): Promise<PublicIntegrationStatus> {
+    const [published, departments, faculty, terms] = await Promise.all([
+      this.findPublishedSchedules(),
+      this.departments.find(),
+      this.faculty.find({ where: { isActive: true } }),
+      this.terms.find(),
+    ]);
+
+    const activeDeptIds = new Set(
+      departments
+        .filter((department) => department.isActive)
+        .map((department) => String(department.deptId)),
+    );
+    const visibleFaculty = faculty.filter(
+      (row) => row.deptId != null && activeDeptIds.has(String(row.deptId)),
+    );
+    const visiblePublished = published.filter((row) =>
+      this.isUsablePublishedRow(row, activeDeptIds),
+    );
+
+    const linked = visibleFaculty.filter((row) => this.isIdpLinked(row));
+    const lastSyncedAt = linked.reduce<Date | null>((latest, row) => {
+      if (!row.lastSyncedAt) return latest;
+      if (!latest || row.lastSyncedAt > latest) return row.lastSyncedAt;
+      return latest;
+    }, null);
+
+    const countByTerm = new Map<string, number>();
+    for (const row of visiblePublished) {
+      const key = String(row.termId);
+      countByTerm.set(key, (countByTerm.get(key) ?? 0) + 1);
+    }
+    const latestTerm = terms
+      .filter((term) => countByTerm.has(String(term.termId)))
+      .sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)))[0];
+
+    const enabled =
+      String(this.config.get<string>('IDP_ENABLED') ?? '').toLowerCase() ===
+      'true';
+    const baseUrlConfigured = hasValue(this.config.get<string>('IDP_BASE_URL'));
+    const apiKeyConfigured = hasValue(
+      this.config.get<string>('IDP_API_KEY'),
+    );
+    const webhookSecretConfigured = hasValue(
+      this.config.get<string>('IDP_WEBHOOK_SECRET'),
+    );
+
+    return {
+      service: 'coe-nnect-idp-integration',
+      generatedAt: new Date().toISOString(),
+      state: integrationState(
+        enabled,
+        baseUrlConfigured,
+        apiKeyConfigured,
+      ),
+      connection: {
+        enabled,
+        baseUrlConfigured,
+        apiKeyConfigured,
+        webhookSecretConfigured,
+      },
+      faculty: {
+        total: visibleFaculty.length,
+        linked: linked.length,
+        pending: visibleFaculty.filter((row) => row.syncStatus === 'pending')
+          .length,
+        failed: visibleFaculty.filter((row) => row.syncStatus === 'failed')
+          .length,
+        lastSyncedAt: lastSyncedAt ? lastSyncedAt.toISOString() : null,
+      },
+      published: {
+        terms: countByTerm.size,
+        entries: visiblePublished.length,
+        latestTermCode: latestTerm ? this.termCode(latestTerm) : null,
+      },
+      milestones: MILESTONES.map((milestone) => ({ ...milestone })),
+    };
+  }
+
+  private findPublishedSchedules(): Promise<Schedule[]> {    return this.schedules.find({
       where: {
         status: 'published',
         flagged: false,
@@ -373,4 +537,28 @@ export class PublicService {
   private formatTime(value: string): string {
     return value.slice(0, 5);
   }
+}
+
+function hasValue(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * `live`     — enabled with both halves of the outbound credential present.
+ * `configured_disabled` — fully configured but the kill switch is off.
+ * `incomplete` — turned on, but the base URL or API key is missing, so no
+ *                call can be made; mirrors the `degraded` health answer.
+ * `not_configured` — neither the switch nor the credentials are set.
+ */
+function integrationState(
+  enabled: boolean,
+  baseUrlConfigured: boolean,
+  apiKeyConfigured: boolean,
+): IntegrationState {
+  if (!enabled) {
+    return baseUrlConfigured && apiKeyConfigured
+      ? 'configured_disabled'
+      : 'not_configured';
+  }
+  return baseUrlConfigured && apiKeyConfigured ? 'live' : 'incomplete';
 }
