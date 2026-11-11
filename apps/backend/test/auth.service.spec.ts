@@ -1,4 +1,7 @@
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { createFakeRepository } from './fakes/repository.fake';
 
@@ -10,7 +13,11 @@ function createService(
   const supabase = {
     getClient: () => ({
       auth: {
-        signInWithPassword: jest.fn().mockResolvedValue(signInResult),
+        signInWithPassword: jest.fn(() =>
+          signInResult instanceof Error
+            ? Promise.reject(signInResult)
+            : Promise.resolve(signInResult),
+        ),
       },
     }),
   };
@@ -38,6 +45,46 @@ describe('AuthService', () => {
     await expect(
       service.login('missing@wmsu.edu.ph', 'wrong-password'),
     ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('returns 503 instead of 401 when Supabase auth is unreachable', async () => {
+    const { service } = createService({
+      data: { session: null, user: null },
+      error: {
+        name: 'AuthRetryableFetchError',
+        status: 0,
+        message: 'fetch failed',
+      },
+    });
+
+    expect.assertions(2);
+    try {
+      await service.login('head@wmsu.edu.ph', 'correct-password');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ServiceUnavailableException);
+      expect((err as ServiceUnavailableException).getResponse()).toMatchObject({
+        code: 'AUTH_PROVIDER_UNAVAILABLE',
+      });
+    }
+  });
+
+  it('returns 503 when the Supabase client throws a network error', async () => {
+    const { service } = createService(new TypeError('fetch failed'));
+
+    await expect(
+      service.login('head@wmsu.edu.ph', 'correct-password'),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('still returns 401 for genuinely invalid credentials', async () => {
+    const { service } = createService({
+      data: { session: null, user: null },
+      error: { status: 400, message: 'Invalid login credentials' },
+    });
+
+    await expect(
+      service.login('head@wmsu.edu.ph', 'wrong-password'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('rejects a deactivated profile after a valid password', async () => {

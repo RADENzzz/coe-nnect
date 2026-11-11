@@ -29,15 +29,25 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const token = authHeader.slice(7);
-    const { data, error } = await this.supabase.getClient().auth.getUser(token);
+    const verification = await this.supabase.verifyAccessToken(token);
 
-    if (error || !data.user) {
+    if (verification.status === 'unavailable') {
+      // The auth provider is down or unreachable. This is NOT a bad session:
+      // returning 401 here would make the SPA sign the user out.
+      throw new ServiceUnavailableException({
+        code: 'AUTH_PROVIDER_UNAVAILABLE',
+        message:
+          'Authentication service is temporarily unreachable. Please try again in a moment.',
+      });
+    }
+
+    if (verification.status === 'invalid') {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
-    await this.assertNotUnderMaintenance(data.user.id);
+    await this.assertNotUnderMaintenance(verification.user.id);
 
-    req.user = data.user;
+    req.user = verification.user;
     return true;
   }
 
