@@ -6,6 +6,8 @@ import type { UserDirectoryRecord } from '../../../api/users.api';
 import type { Department } from '../../../api/departments.api';
 import type { FacultyRequest } from '../../../api/faculty-requests.api';
 import { humanizeRole, initials, relativeTime } from '../utils/dashboard.utils';
+import { useNow } from '../../../hooks/use-now';
+import { formatLastSeen } from '../../../lib/utils/format.util';
 
 export default function UserDetailDrawer({
   open,
@@ -25,6 +27,7 @@ export default function UserDetailDrawer({
   requests: FacultyRequest[];
 }) {
   const navigate = useNavigate();
+  const now = useNow();
 
   useEffect(() => {
     if (!open) return;
@@ -131,6 +134,11 @@ export default function UserDetailDrawer({
                     />
                     {isOnline ? 'Online' : 'Offline'}
                   </p>
+                  {!isOnline && user && (
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      {formatLastSeen(user.last_seen_at, now)}
+                    </p>
+                  )}
                 </div>
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">

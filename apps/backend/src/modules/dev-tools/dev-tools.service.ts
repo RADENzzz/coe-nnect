@@ -5,12 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import * as path from 'path';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
+import { UserPresence } from '../users/entities/user-presence.entity';
 
 type DevJobKind = 'seed' | 'reset' | 'reset-and-seed' | 'seed-demo-full';
 
@@ -38,6 +39,8 @@ export class DevToolsService {
   constructor(
     private readonly supabase: SupabaseService,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(UserPresence)
+    private readonly presenceRepo: Repository<UserPresence>,
   ) {}
 
   // ════════════════════════════════════════════
@@ -287,9 +290,19 @@ export class DevToolsService {
       role: string;
       isActive: boolean;
       deptId: string | null;
+      lastSeenAt: string | null;
     }>
   > {
     const users = await this.userRepo.find({ order: { username: 'ASC' } });
+    const presence = users.length
+      ? await this.presenceRepo.find({
+          where: { userId: In(users.map((u) => u.userId)) },
+        })
+      : [];
+    const lastSeenByUser = new Map(
+      presence.map((p) => [p.userId, p.lastSeenAt]),
+    );
+
     return users.map((u) => ({
       userId: u.userId,
       username: u.username,
@@ -297,6 +310,7 @@ export class DevToolsService {
       role: u.role,
       isActive: u.isActive,
       deptId: u.deptId,
+      lastSeenAt: lastSeenByUser.get(u.userId)?.toISOString() ?? null,
     }));
   }
 

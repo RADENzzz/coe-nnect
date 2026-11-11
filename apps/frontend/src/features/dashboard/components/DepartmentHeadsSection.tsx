@@ -2,6 +2,8 @@ import Icon from '../../../components/ui/Icon';
 import type { UserDirectoryRecord } from '../../../api/users.api';
 import type { Department } from '../../../api/departments.api';
 import { initials } from '../utils/dashboard.utils';
+import { useNow } from '../../../hooks/use-now';
+import { formatLastSeen } from '../../../lib/utils/format.util';
 
 /**
  * Compact department-head presence list.
@@ -23,6 +25,7 @@ export default function DepartmentHeadsSection({
   dirLoading: boolean;
   onSelect: (u: UserDirectoryRecord) => void;
 }) {
+  const now = useNow();
   const onlineCount = heads.filter((h) => onlineUserIds.has(h.user_id)).length;
 
   return (
@@ -95,15 +98,22 @@ export default function DepartmentHeadsSection({
                       : 'No department'}
                   </p>
                 </div>
-                <span
-                  className={`shrink-0 text-[10px] font-semibold ${
-                    isOnline
-                      ? 'text-emerald-700'
-                      : 'text-on-surface-variant'
-                  }`}
-                >
-                  {isOnline ? 'Online' : 'Offline'}
-                </span>
+                <div className="shrink-0 text-right">
+                  <span
+                    className={`block text-[10px] font-semibold ${
+                      isOnline
+                        ? 'text-emerald-700'
+                        : 'text-on-surface-variant'
+                    }`}
+                  >
+                    {isOnline ? 'Online' : 'Offline'}
+                  </span>
+                  {!isOnline && (
+                    <span className="block text-[10px] leading-tight text-on-surface-variant/80">
+                      {formatLastSeen(head.last_seen_at, now)}
+                    </span>
+                  )}
+                </div>
                 <Icon
                   name="chevron_right"
                   size={15}

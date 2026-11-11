@@ -13,6 +13,8 @@ import { fetchFacultyRequests } from '../../api/faculty-requests.api';
 import Icon from '../../components/ui/Icon';
 import { useAuthStore } from '../../store/auth.store';
 import { useOnlineUsers } from '../../hooks/use-online-users';
+import { useNow } from '../../hooks/use-now';
+import { formatLastSeen } from '../../lib/utils/format.util';
 import { DashboardHeader } from '../dashboard/components';
 import {
   DAY_FULL_NAMES,
@@ -136,6 +138,7 @@ export default function DeanDashboardPage() {
   const { data: directory = [] } = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: fetchUserDirectory,
+    refetchInterval: 60_000,
   });
 
   const { data: activeTerm } = useQuery({
@@ -160,6 +163,7 @@ export default function DeanDashboardPage() {
   });
 
   const { onlineUsers, isConnected } = useOnlineUsers();
+  const now = useNow();
 
   const isFetchingAny =
     useIsFetching({
@@ -967,17 +971,24 @@ export default function DeanDashboardPage() {
                       )}
                     </p>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                      isInactive
-                        ? 'border-rose-200 bg-rose-50 text-rose-700'
-                        : isOnline
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                          : 'border-outline-variant bg-surface-container-low text-on-surface-variant'
-                    }`}
-                  >
-                    {isInactive ? 'Walled' : isOnline ? 'Online' : 'Offline'}
-                  </span>
+                  <div className="shrink-0 text-right">
+                    <span
+                      className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        isInactive
+                          ? 'border-rose-200 bg-rose-50 text-rose-700'
+                          : isOnline
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-outline-variant bg-surface-container-low text-on-surface-variant'
+                      }`}
+                    >
+                      {isInactive ? 'Walled' : isOnline ? 'Online' : 'Offline'}
+                    </span>
+                    {!isOnline && (
+                      <p className="mt-0.5 text-[10px] font-medium text-on-surface-variant">
+                        {formatLastSeen(head.last_seen_at, now)}
+                      </p>
+                    )}
+                  </div>
                 </div>
               );
             })}

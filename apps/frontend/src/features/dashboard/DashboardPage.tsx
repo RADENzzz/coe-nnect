@@ -106,6 +106,9 @@ export default function DashboardPage() {
   const { data: directory = [], isLoading: dirLoading } = useQuery({
     queryKey: ['users', 'directory'],
     queryFn: fetchUserDirectory,
+    // Presence is live via Realtime; last_seen_at is refreshed once a minute
+    // so an offline row ages from "Just now" to "2 mins ago" without a reload.
+    refetchInterval: 60_000,
   });
 
   const { onlineUsers, isConnected } = useOnlineUsers();
