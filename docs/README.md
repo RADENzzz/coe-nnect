@@ -15,8 +15,9 @@ Use these guides to set up the applications, understand workspace packages, and 
 
 ## Integrations
 
-- [IDP integration](integrations/idp.md) — faculty roster, qualifications, and unavailability sync with the Institutional Data Platform.
+- [IDP integration](integrations/idp.md) — faculty roster, qualifications, and unavailability sync, plus schedule, faculty-request, and change-request exchange with the Institutional Data Platform.
 - [IDP Milestone 1 checkpoint](integrations/idp-milestone-1-checkpoint.md) — implementation record, verification, and handoff notes.
+- [IDP Milestone 3 checkpoint](integrations/idp-milestone-3-checkpoint.md) — change requests, acknowledgements, and faculty-request status publishing.
 
 ## Operations
 

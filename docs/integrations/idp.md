@@ -7,7 +7,8 @@ The IDP deployment is a **desktop application that can work offline**. The
 integration therefore treats **Pattern C** as the primary transport:
 
 - the IDP desktop pushes faculty snapshots to CoE-NNECT when it is online;
-- the IDP desktop polls a durable CoE-NNECT outbox for published schedules;
+- the IDP desktop polls a durable CoE-NNECT outbox for published schedules,
+  faculty-request statuses, and change-request acknowledgements;
 - CoE-NNECT keeps every payload and idempotency key until the client has had a
   chance to collect it.
 
@@ -25,20 +26,24 @@ CoE-NNECT can call directly.
 | -------------------------------- | ----------------------- | ---------------------- |
 | Faculty inbox push (Pattern C)   | IDP desktop → CoE-NNECT | Implemented            |
 | Schedule outbox poll (Pattern C) | CoE-NNECT → IDP desktop | Implemented            |
+| Faculty-request status outbox    | CoE-NNECT → IDP desktop | Implemented            |
+| Change-request ack outbox        | CoE-NNECT → IDP desktop | Implemented            |
 | Durable webhook idempotency      | Local                   | Implemented            |
 | Faculty roster sync (Pattern A)  | IDP → CoE-NNECT         | Implemented (fallback) |
 | Qualification sync (Pattern A)   | IDP → CoE-NNECT         | Implemented (fallback) |
 | Unavailability sync (Pattern A)  | IDP → CoE-NNECT         | Implemented (fallback) |
 | Faculty change webhook           | IDP → CoE-NNECT         | Implemented            |
+| Change-request webhook           | IDP → CoE-NNECT         | Implemented            |
+| Change-request review + ack      | User → CoE-NNECT → IDP  | Implemented            |
 | Integration health check         | Local                   | Implemented            |
 | "Refresh from IDP" action        | User → CoE-NNECT → IDP  | Implemented (fallback) |
 | Schedule publishing              | CoE-NNECT → IDP         | Implemented            |
-| Change requests and acks         | Bidirectional           | Milestone 3            |
 | Admin settings UI                | Local                   | Milestone 4            |
 
 For the session-level record of the first implementation, see the
 [Milestone 1 checkpoint](idp-milestone-1-checkpoint.md). Its notes about the
-in-memory dedupe map are superseded by this document.
+in-memory dedupe map are superseded by this document. Milestone 3 is recorded
+in the [Milestone 3 checkpoint](idp-milestone-3-checkpoint.md).
 
 ## Architecture
 
@@ -51,7 +56,10 @@ flowchart LR
 
     Desktop -->|POST /api/idp/v1/inbox/faculty| API
     Desktop -->|GET /api/idp/v1/outbox/schedules| API
+    Desktop -->|GET /api/idp/v1/outbox/faculty-requests| API
+    Desktop -->|GET /api/idp/v1/outbox/change-request-acks| API
     API -->|idp_outbox / idp_processed_event| DB
+    API -->|idp_change_request| DB
     API -->|Pattern A pull / push| IDP
     IDP -->|signed webhook| API
     API -->|upsert faculty, qualifications, unavailability| DB
@@ -62,7 +70,14 @@ The module has these responsibilities:
 - `IdpClientService` — outbound Pattern A HTTP client, timeout and error mapping.
 - `IdpSyncService` — faculty inbox, roster / qualification / unavailability
   sync, webhook application, and the 30-day idempotency sweep.
-- `IdpOutboxService` — durable queue of frozen published-schedule payloads.
+- `IdpOutboxService` — durable queue for published schedules, faculty-request
+  statuses, and change-request acknowledgements.
+- `IdpSchedulePublisherService` — maps a schedule version to the contract 4.4
+  payload, queues it, and optionally pushes it.
+- `IdpFacultyRequestPublisherService` — maps a faculty request to the contract
+  4.5 payload and refreshes its status in the outbox.
+- `IdpChangeRequestService` — validates and stores inbound change requests and
+  records exactly one reviewer acknowledgement per `idp_request_id`.
 - `IdpDeviceGuard` — per-device bearer authentication for Pattern C routes.
 - `IdpSignatureGuard` — HMAC-SHA256 verification for inbound webhooks.
 - `IdpController` / `IdpSyncController` — the public IDP namespace and the
@@ -76,8 +91,11 @@ The module has these responsibilities:
 | ------ | -------------------------------------------- | ----------------- | -------------------------------- |
 | `GET`  | `/api/idp/v1/health`                         | Public            | Integration/configuration health |
 | `POST` | `/api/idp/v1/webhooks/faculty-changed`       | HMAC-SHA256       | Faculty change event             |
+| `POST` | `/api/idp/v1/webhooks/change-request`        | HMAC-SHA256       | Change request (contract 4.7)    |
 | `POST` | `/api/idp/v1/inbox/faculty`                  | Device bearer key | Pattern C faculty snapshot       |
 | `GET`  | `/api/idp/v1/outbox/schedules?since=&limit=` | Device bearer key | Pattern C schedule poll          |
+| `GET`  | `/api/idp/v1/outbox/faculty-requests?since=&limit=` | Device bearer key | Pattern C faculty-request poll |
+| `GET`  | `/api/idp/v1/outbox/change-request-acks?since=&limit=` | Device bearer key | Pattern C change-request-ack poll |
 
 Pattern C calls send:
 
@@ -188,6 +206,128 @@ Outbox items are append-only and frozen at first publish. Re-publishing the same
 if live schedule rows changed afterwards. This guarantees that an offline
 client receives exactly what the Dean published.
 
+### Pattern C faculty-request status outbox
+
+`GET /api/idp/v1/outbox/faculty-requests?since=<iso>&limit=<n>` returns the
+current status of every faculty request CoE-NNECT has published (contract 4.5 /
+5.5).
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "outbox_id": "58",
+        "kind": "faculty_request.status",
+        "idempotency_key": "42",
+        "created_at": "2026-11-11T10:05:00.000Z",
+        "payload": {
+          "coe_nnect_request_id": "42",
+          "requesting_dept": "CPE",
+          "target_dept": "EE",
+          "faculty_wmsu_id": "2019-00123",
+          "subject_code": "CPE 131",
+          "term_code": "2026-2027-1st",
+          "status": "approved",
+          "reason": "Needs to teach CPE 131 for the first semester.",
+          "created_at": "2026-10-23T09:40:00.000Z"
+        }
+      }
+    ],
+    "next_since": "2026-11-11T10:05:00.000Z",
+    "server_time": "2026-11-11T10:05:02.000Z"
+  }
+}
+```
+
+Unlike schedule items, faculty-request items are **refreshed in place**:
+`coe_nnect_request_id` is the idempotency key, and a new status overwrites the
+existing row and moves its `created_at` cursor forward. A client that polls
+after being offline therefore receives the latest status once, not a history of
+every transition. Dedupe on `payload.coe_nnect_request_id` plus `status`.
+
+Every create, approve, reject, and cancel transition queues a status. The local
+approval transaction is never rolled back if IDP is unreachable: the outbox row
+survives and is delivered on the next poll or replay.
+
+### Change requests and acknowledgements
+
+Change requests implement contract 4.7, 4.7.1, 4.8, and 5.7.
+
+**Inbound webhook.** `POST /api/idp/v1/webhooks/change-request` accepts the
+signed change-request body. `idp_request_id` is the idempotency key:
+
+- same `idp_request_id` and same body → `200` with `status: "duplicate"`;
+- same `idp_request_id` and different body → `409 duplicate_key`;
+- new id → `200` with `status: "pending"`.
+
+The request is stored in `public.idp_change_request` and is not applied
+automatically. The eight contract types are validated against local reference
+data: `faculty_create`, `faculty_update`, `faculty_deactivate`,
+`faculty_transfer`, `qualification_add`, `qualification_remove`,
+`unavailability_change`, and `schedule_override`. Unknown faculty, department,
+subject, term, or section references fail with the matching `422` code.
+
+**Review API.** Dean, college secretary, and administrator roles can list,
+read, and acknowledge requests:
+
+| Method | Path                                    | Purpose                     |
+| ------ | --------------------------------------- | --------------------------- |
+| `GET`  | `/api/v1/idp/change-requests`           | List, filter by status/type |
+| `GET`  | `/api/v1/idp/change-requests/:id`       | Read one request            |
+| `POST` | `/api/v1/idp/change-requests/:id/ack`   | Record the reviewer decision |
+
+```json
+{
+  "action": "accepted",
+  "notes": "Applied to the 2026-2027 first semester timetable."
+}
+```
+
+`action` is `accepted`, `rejected`, or `modified`. Acknowledging records the
+decision; the reviewer still applies the underlying schedule or faculty change
+through the existing screens. Keeping the proposal separate from the
+authoritative schedule prevents an IDP message from mutating live data without
+review.
+
+**Exactly-once ack.** Each `idp_request_id` accepts one decision. Repeating the
+same action and notes returns the stored ack with `duplicate: true`. A
+different decision returns `409 duplicate_key`. The ack is written to the
+durable outbox under `kind='change_request.ack'` and, when Pattern A is
+configured, pushed to `POST {IDP_BASE}/change-requests/{id}/ack`.
+
+### Pattern C change-request ack outbox
+
+`GET /api/idp/v1/outbox/change-request-acks?since=<iso>&limit=<n>` returns the
+acks CoE-NNECT has issued:
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "outbox_id": "61",
+        "kind": "change_request.ack",
+        "idempotency_key": "IDP-REQ-0001",
+        "created_at": "2026-11-11T10:10:00.000Z",
+        "payload": {
+          "idp_request_id": "IDP-REQ-0001",
+          "acknowledged_by_coe_nnect_user_id": "8f14e45f-ea2b-4b6e-9f3a-1c2d3e4f5a6b",
+          "action": "accepted",
+          "notes": "Applied to the 2026-2027 first semester timetable.",
+          "acknowledged_at": "2026-11-11T10:10:00.000Z"
+        }
+      }
+    ],
+    "next_since": "2026-11-11T10:10:00.000Z",
+    "server_time": "2026-11-11T10:10:02.000Z"
+  }
+}
+```
+
+Ack items are written once per `idp_request_id`. Dedupe on
+`payload.idp_request_id`; the IDP desktop should treat the ack as final.
+
 ### Outbound (CoE-NNECT → IDP, Pattern A fallback)
 
 | Method | Path                                                     | Purpose                 |
@@ -196,6 +336,8 @@ client receives exactly what the Dean published.
 | `GET`  | `{IDP_BASE_URL}/faculty/{key}/qualifications`            | Qualification pull      |
 | `GET`  | `{IDP_BASE_URL}/faculty/{key}/unavailability?term_code=` | Unavailability pull     |
 | `POST` | `{IDP_BASE_URL}/schedules/published`                     | Published-schedule push |
+| `POST` | `{IDP_BASE_URL}/faculty-requests`                        | Faculty-request status  |
+| `POST` | `{IDP_BASE_URL}/change-requests/{id}/ack`                | Change-request ack      |
 
 `{key}` is `wmsu_id` when present, otherwise `employee_id`. The path names are
 the indicative ones from the contract; confirm them with the IDP team before
@@ -206,6 +348,9 @@ first. When Pattern A is configured, it also pushes immediately. A push failure
 does not roll back the local publish or remove the queued item; the result
 reports `queued: true`, `delivered: false`, and the upstream error.
 
+Faculty-request statuses and change-request acks follow the same
+queue-first rule. Approval responses are never blocked by an IDP outage.
+
 ### User trigger (application API)
 
 | Method | Path                                      | Roles                                                  |
@@ -213,6 +358,9 @@ reports `queued: true`, `delivered: false`, and the upstream error.
 | `POST` | `/api/v1/idp/faculty/sync`                | `college_dean`, `college_secretary`, `department_head` |
 | `GET`  | `/api/v1/idp/schedules/payload?termCode=` | `college_dean`, `college_secretary`, `administrator`   |
 | `POST` | `/api/v1/idp/schedules/publish`           | `college_dean`, `college_secretary`, `administrator`   |
+| `GET`  | `/api/v1/idp/change-requests`             | `college_dean`, `college_secretary`, `administrator`   |
+| `GET`  | `/api/v1/idp/change-requests/:id`         | `college_dean`, `college_secretary`, `administrator`   |
+| `POST` | `/api/v1/idp/change-requests/:id/ack`     | `college_dean`, `college_secretary`, `administrator`   |
 
 All sync body fields are optional:
 
@@ -362,11 +510,16 @@ Schedule idempotency uses a separate table, `public.idp_outbox`, with a unique
 | Table                        | Purpose                                      | Retention                        |
 | ---------------------------- | -------------------------------------------- | -------------------------------- |
 | `public.idp_processed_event` | Inbound webhook/event idempotency            | 30 days, nightly sweep           |
-| `public.idp_outbox`          | Frozen outbound payloads for polling clients | Append-only; no automatic expiry |
+| `public.idp_outbox`          | Outbound payloads for polling clients        | No automatic expiry              |
+| `public.idp_change_request`  | Inbound change requests and their one ack    | Retained for review/audit        |
 
-Both tables have RLS enabled with no client policies and no anon/authenticated
-grants. Only the NestJS API connects through `DATABASE_URL`, so direct Supabase
-clients cannot read or tamper with integration state.
+`public.idp_outbox` holds three kinds: `schedule.published` (frozen,
+append-only), `faculty_request.status` (one row per request, refreshed in
+place), and `change_request.ack` (one row per `idp_request_id`).
+
+All three tables have RLS enabled with no client policies and no
+anon/authenticated grants. Only the NestJS API connects through `DATABASE_URL`,
+so direct Supabase clients cannot read or tamper with integration state.
 
 ## Public-page exposure
 
@@ -396,7 +549,7 @@ IDP-namespace failures use the contract envelope:
 ```
 
 Codes currently emitted: `validation_error`, `unknown_department`,
-`unknown_subject`, `unknown_term`, `unknown_faculty`,
+`unknown_subject`, `unknown_section`, `unknown_term`, `unknown_faculty`,
 `faculty_key_conflict`, `local_edit_pending`, `duplicate_key`,
 `unauthorized`, and `internal_error`.
 
@@ -426,14 +579,15 @@ Targeted IDP tests:
 
 ```powershell
 cd apps/backend
-npx jest --runInBand test/idp.service.spec.ts test/idp-outbox.service.spec.ts test/idp-schedule-publisher.service.spec.ts test/idp-device.guard.spec.ts test/idp-signature.guard.spec.ts
+npx jest --runInBand test/idp.service.spec.ts test/idp-outbox.service.spec.ts test/idp-schedule-publisher.service.spec.ts test/idp-faculty-request-publisher.service.spec.ts test/idp-change-request.service.spec.ts test/idp-device.guard.spec.ts test/idp-signature.guard.spec.ts
 ```
 
 The tests cover HMAC acceptance/rejection, the timestamp window, device-key
 auth, roster creation, idempotent second pulls, unknown department codes,
 `local_edit_pending`, durable webhook dedupe / `duplicate_key`, the 30-day
 sweep, faculty inbox per-record failures, outbox enqueue/freeze/poll
-semantics, and Pattern A push fallback.
+semantics, in-place faculty-request status refresh, change-request validation,
+exactly-once acks, and Pattern A push fallback.
 
 ### Manual Pattern C smoke test
 
@@ -477,6 +631,33 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/idp/v1/webhooks/fa
   -Headers @{ 'X-IDP-Signature' = "sha256=$sig"; 'X-IDP-Timestamp' = $ts }
 ```
 
+### Manual change-request smoke test
+
+```powershell
+$body = '{"idp_request_id":"IDP-REQ-0001","type":"unavailability_change","faculty_wmsu_id":"2019-00123","faculty_employee_id":null,"affected_dates":["2026-11-18"],"details":{"term_code":"2026-2027-1st","day_of_week":"Monday","start_time":"13:00","end_time":"15:00","reason":"External load"},"severity":"warning","requires_ack":true,"created_at":"2026-11-11T10:00:00Z"}'
+$ts = (Get-Date).ToUniversalTime().ToString("o")
+$secret = "your-secret"
+$hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($secret))
+$sig = ([BitConverter]::ToString($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($body))) -replace '-','').ToLower()
+
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/idp/v1/webhooks/change-request `
+  -ContentType 'application/json' -Body $body `
+  -Headers @{ 'X-IDP-Signature' = "sha256=$sig"; 'X-IDP-Timestamp' = $ts }
+
+# Review and acknowledge as a Dean/secretary/administrator (JWT required)
+Invoke-RestMethod -Method Get -Uri 'http://localhost:3000/api/v1/idp/change-requests?status=pending' `
+  -Headers @{ Authorization = "Bearer $env:COE_NNECT_JWT" }
+
+Invoke-RestMethod -Method Post -Uri 'http://localhost:3000/api/v1/idp/change-requests/IDP-REQ-0001/ack' `
+  -ContentType 'application/json' `
+  -Headers @{ Authorization = "Bearer $env:COE_NNECT_JWT" } `
+  -Body '{"action":"accepted","notes":"Applied to the timetable."}'
+
+# Poll the ack outbox as the IDP desktop
+Invoke-RestMethod -Uri 'http://localhost:3000/api/idp/v1/outbox/change-request-acks' `
+  -Headers @{ Authorization = "Bearer $env:IDP_DEVICE_API_KEY" }
+```
+
 ## Open items
 
 Still to confirm with the IDP team before a live sync:
@@ -490,16 +671,18 @@ Still to confirm with the IDP team before a live sync:
 7. Term code format (`YYYY-YYYY-semester`).
 8. Whether IDP tracks qualifications and their shape.
 9. Whether IDP tracks unavailability and whether it is weekly recurring.
-10. Change-request types IDP will send.
+10. Which change-request types IDP will actually send (all eight are accepted).
 11. Retry/ack expectations and the offline timestamp tolerance (contract allows
     up to 24 hours).
-12. Whether IDP can force schedule changes.
+12. Whether IDP expects CoE-NNECT to apply a change automatically or only
+    acknowledge it (current behaviour: reviewer decision, manual application).
 13. PII retention requirements.
 14. Sandbox/staging URL and test credentials.
 
 ## Related documentation
 
 - [Milestone 1 checkpoint](idp-milestone-1-checkpoint.md)
+- [Milestone 3 checkpoint](idp-milestone-3-checkpoint.md)
 - [Backend guide](../apps/backend.md)
 - [Frontend guide](../apps/frontend.md)
 - [System architecture](../architecture/README.md)

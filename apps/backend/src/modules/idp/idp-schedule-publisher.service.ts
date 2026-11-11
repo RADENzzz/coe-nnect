@@ -190,7 +190,7 @@ export class IdpSchedulePublisherService {
   private async deliverQueued(
     item: IdpOutboxItem,
   ): Promise<IdpSchedulePushResult> {
-    const payload = item.payload;
+    const payload = item.payload as unknown as IdpPublishedSchedulePayload;
     const base = {
       termCode: payload.term_code,
       versionId: payload.coe_nnect_version_id,

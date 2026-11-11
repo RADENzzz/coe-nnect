@@ -4,6 +4,7 @@ import {
   HttpCode,
   Post,
   Body,
+  Param,
   Query,
   Req,
   UseGuards,
@@ -13,6 +14,7 @@ import {
   ApiBody,
   ApiHeader,
   ApiOperation,
+  ApiParam,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
@@ -20,14 +22,21 @@ import { Auditable } from '../../common/decorators/auditable.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { AckChangeRequestDto } from './dto/ack-change-request.dto';
+import { ListChangeRequestsDto } from './dto/list-change-requests.dto';
 import { PublishScheduleDto } from './dto/publish-schedule.dto';
 import { SyncFacultyDto } from './dto/sync-faculty.dto';
+import { IdpChangeRequestService } from './idp-change-request.service';
 import { IdpDeviceGuard } from './idp-device.guard';
 import { IdpOutboxService } from './idp-outbox.service';
 import { IdpSchedulePublisherService } from './idp-schedule-publisher.service';
 import { IdpSignatureGuard } from './idp-signature.guard';
 import { IdpSyncService } from './idp-sync.service';
-import type { IdpFacultyChangeEvent, IdpFacultyInboxBody } from './idp.types';
+import type {
+  IdpChangeRequestPayload,
+  IdpFacultyChangeEvent,
+  IdpFacultyInboxBody,
+} from './idp.types';
 
 /**
  * Public IDP namespace (contract 9.2).
@@ -48,6 +57,7 @@ export class IdpController {
   constructor(
     private readonly sync: IdpSyncService,
     private readonly outbox: IdpOutboxService,
+    private readonly changeRequests: IdpChangeRequestService,
   ) {}
 
   @Get('health')
@@ -65,6 +75,28 @@ export class IdpController {
   async facultyChanged(@Body() event: IdpFacultyChangeEvent, @Req() req: any) {
     return {
       data: await this.sync.handleFacultyChange(event, req.idpRequestId),
+    };
+  }
+
+  /**
+   * Milestone 3 — signed change request (contract 4.7 / 5.7).
+   *
+   * `idp_request_id` is the idempotency key. The request is persisted and
+   * surfaced to Dean/secretary reviewers; the acknowledgement is returned
+   * through the change-request ack outbox.
+   */
+  @Post('webhooks/change-request')
+  @HttpCode(200)
+  @UseGuards(IdpSignatureGuard)
+  @ApiOperation({
+    summary: 'Receive a signed change request from IDP (HMAC-SHA256)',
+  })
+  async changeRequest(
+    @Body() body: IdpChangeRequestPayload,
+    @Req() req: any,
+  ) {
+    return {
+      data: await this.changeRequests.receive(body, req.idpRequestId),
     };
   }
 
@@ -142,6 +174,56 @@ export class IdpController {
   ) {
     return { data: await this.outbox.listSchedules({ since, limit }) };
   }
+
+  /** Pattern C — latest status for every faculty request (contract 4.5). */
+  @Get('outbox/faculty-requests')
+  @UseGuards(IdpDeviceGuard)
+  @ApiBearerAuth('idp-device-key')
+  @ApiQuery({
+    name: 'since',
+    required: false,
+    description: 'Inclusive ISO 8601 cursor, e.g. 2026-11-11T00:00:00Z.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Page size, 1-200. Defaults to 50.',
+  })
+  @ApiOperation({
+    summary: 'Poll faculty-request statuses for the IDP desktop client',
+  })
+  async outboxFacultyRequests(
+    @Query('since') since?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return { data: await this.outbox.listFacultyRequests({ since, limit }) };
+  }
+
+  /** Pattern C — acknowledgements CoE-NNECT has issued (contract 4.8). */
+  @Get('outbox/change-request-acks')
+  @UseGuards(IdpDeviceGuard)
+  @ApiBearerAuth('idp-device-key')
+  @ApiQuery({
+    name: 'since',
+    required: false,
+    description: 'Inclusive ISO 8601 cursor, e.g. 2026-11-11T00:00:00Z.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Page size, 1-200. Defaults to 50.',
+  })
+  @ApiOperation({
+    summary: 'Poll change-request acknowledgements for the IDP desktop client',
+  })
+  async outboxChangeRequestAcks(
+    @Query('since') since?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return {
+      data: await this.outbox.listChangeRequestAcks({ since, limit }),
+    };
+  }
 }
 
 /**
@@ -158,6 +240,7 @@ export class IdpSyncController {
   constructor(
     private readonly sync: IdpSyncService,
     private readonly publisher: IdpSchedulePublisherService,
+    private readonly changeRequests: IdpChangeRequestService,
   ) {}
 
   @Post('faculty/sync')
@@ -214,5 +297,48 @@ export class IdpSyncController {
   })
   async publishSchedule(@Body() dto: PublishScheduleDto) {
     return { data: await this.publisher.publishTerm(dto.termCode) };
+  }
+
+  /**
+   * Milestone 3 — review queue for change requests raised by IDP.
+   *
+   * Acknowledging records the Dean/secretary decision and queues the ack for
+   * the offline IDP desktop. Applying the underlying schedule/faculty change
+   * remains an explicit action in the existing screens.
+   */
+  @Get('change-requests')
+  @Roles('college_dean', 'college_secretary', 'administrator')
+  @ApiOperation({
+    summary: 'List change requests received from IDP',
+  })
+  async listChangeRequests(@Query() dto: ListChangeRequestsDto) {
+    return { data: await this.changeRequests.list(dto) };
+  }
+
+  @Get('change-requests/:id')
+  @Roles('college_dean', 'college_secretary', 'administrator')
+  @ApiParam({ name: 'id', description: 'IDP request id, e.g. IDP-REQ-0001.' })
+  @ApiOperation({
+    summary: 'Read one change request received from IDP',
+  })
+  async getChangeRequest(@Param('id') id: string) {
+    return { data: await this.changeRequests.findOne(id) };
+  }
+
+  @Post('change-requests/:id/ack')
+  @Roles('college_dean', 'college_secretary', 'administrator')
+  @Auditable({ action: 'idp.change_request.ack', source: 'IDP' })
+  @ApiParam({ name: 'id', description: 'IDP request id, e.g. IDP-REQ-0001.' })
+  @ApiOperation({
+    summary: 'Acknowledge a change request and queue the ack for IDP',
+  })
+  async ackChangeRequest(
+    @Param('id') id: string,
+    @Body() dto: AckChangeRequestDto,
+    @Req() req: any,
+  ) {
+    return {
+      data: await this.changeRequests.acknowledge(id, dto, req.user.id),
+    };
   }
 }

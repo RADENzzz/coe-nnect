@@ -37,23 +37,33 @@ application with the same validation pipe used by production, without importing
 
 ### IDP integration tests
 
-The IDP Milestone 1 tests use in-memory fake repositories and a mocked IDP
-client, so they need no database or network access:
+The IDP tests use in-memory fake repositories and a mocked IDP client, so they
+need no database or network access:
 
 - `apps/backend/test/idp.service.spec.ts`
 - `apps/backend/test/idp-signature.guard.spec.ts`
+- `apps/backend/test/idp-device.guard.spec.ts`
+- `apps/backend/test/idp-outbox.service.spec.ts`
+- `apps/backend/test/idp-schedule-publisher.service.spec.ts`
+- `apps/backend/test/idp-faculty-request-publisher.service.spec.ts`
+- `apps/backend/test/idp-change-request.service.spec.ts`
+- `apps/backend/test/approvals.service.spec.ts`
 
 Run only those files:
 
 ```powershell
 cd apps/backend
-npx jest --runInBand test/idp.service.spec.ts test/idp-signature.guard.spec.ts
+npx jest --runInBand test/idp.service.spec.ts test/idp-signature.guard.spec.ts test/idp-device.guard.spec.ts test/idp-outbox.service.spec.ts test/idp-schedule-publisher.service.spec.ts test/idp-faculty-request-publisher.service.spec.ts test/idp-change-request.service.spec.ts test/approvals.service.spec.ts
 ```
 
 Coverage includes HMAC acceptance/rejection, the timestamp tolerance window,
-roster creation, idempotent second pulls, unknown department codes,
-`409 local_edit_pending`, webhook dedupe / `409 duplicate_key`, and
-`faculty.created`. See the [IDP integration guide](integrations/idp.md).
+device-key auth, roster creation, idempotent second pulls, unknown department
+codes, `409 local_edit_pending`, webhook dedupe / `409 duplicate_key`,
+`faculty.created`, outbox enqueue/freeze/poll semantics, in-place
+faculty-request status refresh, change-request validation and exactly-once
+acks, and the non-blocking approvals hook. See the
+[IDP integration guide](integrations/idp.md) and the
+[Milestone 3 checkpoint](integrations/idp-milestone-3-checkpoint.md).
 
 ## Browser end-to-end tests
 

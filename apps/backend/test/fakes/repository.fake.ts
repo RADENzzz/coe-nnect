@@ -97,6 +97,17 @@ export function createFakeRepository<T extends Row = Row>(
     return entity;
   });
 
+  const update = jest.fn(async (criteria: any, partial: Partial<T>) => {
+    let affected = 0;
+    for (const row of rows) {
+      if (matchesWhere(row, criteria)) {
+        Object.assign(row, partial);
+        affected += 1;
+      }
+    }
+    return { affected };
+  });
+
   const deleteFn = jest.fn(async (idOrCriteria: any) => {
     const isIdLookup =
       !idOrCriteria ||
@@ -135,6 +146,7 @@ export function createFakeRepository<T extends Row = Row>(
     findOne,
     create,
     save,
+    update,
     remove,
     delete: deleteFn,
     createQueryBuilder,
