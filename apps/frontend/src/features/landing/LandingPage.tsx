@@ -20,6 +20,28 @@ import {
 
 type LandingTab = 'schedules' | 'faculty' | 'integration';
 
+/**
+ * The IDP app promo is deployment-configurable. Only http(s) links are
+ * rendered so a malformed value can never inject a `javascript:` URL.
+ */
+function readExternalUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+const IDP_APP_URL = readExternalUrl(import.meta.env.VITE_IDP_APP_URL);
+const IDP_APP_NAME =
+  import.meta.env.VITE_IDP_APP_NAME?.trim() ||
+  'Institutional Data Platform (IDP)';
+
 const DAY_TONE: Record<string, string> = {
   Monday:
     'bg-rose-50 text-rose-700 border-rose-200 dark:bg-[#f43f5e]/10 dark:text-[#fda4af] dark:border-[#f43f5e]/30',
@@ -122,6 +144,57 @@ function HeroStat({ label, value }: { label: string; value: number | string }) {
       </dt>
       <dd className="mt-1 text-2xl font-extrabold text-white">{value}</dd>
     </div>
+  );
+}
+
+/**
+ * Faculty-facing advertisement for the IDP desktop/web application.
+ *
+ * The IDP team owns that app, so the link is supplied by the deployment
+ * (`VITE_IDP_APP_URL`) rather than hard-coded. When it is not set the promo is
+ * not rendered at all.
+ */
+function IdpAppPromo() {
+  if (!IDP_APP_URL) return null;
+
+  return (
+    <section aria-labelledby="idp-app-promo-title" className="mb-12">
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-surface to-surface p-6 shadow-sm sm:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
+              <Icon name="apps" size={22} />
+            </span>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
+                Faculty resource
+              </p>
+              <h2
+                id="idp-app-promo-title"
+                className="mt-1 text-xl font-semibold text-on-surface"
+              >
+                {IDP_APP_NAME}
+              </h2>
+              <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-on-surface-variant">
+                Manage your faculty profile, qualifications, and availability in
+                the university's Institutional Data Platform. The app is provided
+                by the IDP team and opens in a new tab.
+              </p>
+            </div>
+          </div>
+          <a
+            href={IDP_APP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90"
+          >
+            Open IDP app
+            <Icon name="open_in_new" size={16} />
+          </a>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -802,25 +875,30 @@ function IntegrationPanel({
           </h3>
           <ul className="mt-2 divide-y divide-outline-variant">
             <ConnectionRow
-              label="Outbound base URL"
+              label="Pattern A base URL"
               configured={data.connection.baseUrlConfigured}
             />
             <ConnectionRow
-              label="Outbound API key"
+              label="Pattern A API key"
               configured={data.connection.apiKeyConfigured}
+            />
+            <ConnectionRow
+              label="Pattern C device key"
+              configured={data.connection.deviceApiKeyConfigured}
             />
             <ConnectionRow
               label="Webhook signing secret"
               configured={data.connection.webhookSecretConfigured}
             />
             <ConnectionRow
-              label="Integration enabled"
+              label="Pattern A outbound enabled"
               configured={data.connection.enabled}
             />
           </ul>
           <p className="mt-3 text-xs leading-relaxed text-on-surface-variant">
-            Only whether each item is set is published. Values, hosts, keys, and
-            secrets are never returned by this page.
+            Pattern C is the primary transport for the offline-capable IDP
+            desktop app. Only whether each item is set is published. Values,
+            hosts, keys, and secrets are never returned by this page.
           </p>
         </div>
 
@@ -1105,6 +1183,8 @@ export default function LandingPage() {
         id="public-content"
         className="mx-auto w-full max-w-7xl scroll-mt-24 px-4 pb-16 pt-10 sm:px-6 lg:px-8"
       >
+        <IdpAppPromo />
+
         <section aria-labelledby="portal-highlights" className="mb-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -1307,6 +1387,18 @@ export default function LandingPage() {
                     Faculty directory
                   </button>
                 </li>
+                {IDP_APP_URL && (
+                  <li>
+                    <a
+                      href={IDP_APP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                    >
+                      {IDP_APP_NAME}
+                    </a>
+                  </li>
+                )}
                 <li>
                   <Link
                     to={dashboardPath}

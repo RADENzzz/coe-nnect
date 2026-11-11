@@ -97,6 +97,23 @@ export interface IdpFacultySyncSummary {
   finishedAt: string;
 }
 
+/** Pattern C faculty snapshot pushed by the IDP desktop client. */
+export type IdpFacultyInboxBody =
+  | IdpFacultyRecord[]
+  | { faculty: IdpFacultyRecord[] };
+
+export interface IdpFacultyInboxSummary {
+  received: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  errors: IdpSyncError[];
+  startedAt: string;
+  finishedAt: string;
+}
+
 export interface IdpHealthStatus {
   status: 'ok' | 'degraded' | 'disabled';
   service: 'coe-nnect-idp-integration';
@@ -105,7 +122,12 @@ export interface IdpHealthStatus {
     baseUrl: boolean;
     apiKey: boolean;
     webhookSecret: boolean;
+    deviceApiKey: boolean;
   };
+  /** Pattern C: IDP desktop pushes faculty and polls the outbox. */
+  inboundReady: boolean;
+  /** Pattern A: CoE-NNECT can call IDP's REST API. */
+  outboundReady: boolean;
   lastSyncAt: string | null;
   timestamp: string;
 }
@@ -141,6 +163,143 @@ export interface IdpSchedulePushResult {
   versionId: string;
   versionNumber: number;
   entryCount: number;
+  /** True once the payload is durably stored for Pattern C polling. */
+  queued: boolean;
+  outboxId: string | null;
+  queuedAt: string | null;
+  attempted: boolean;
+  delivered: boolean;
+  status: number | null;
+  attempts: number;
+  skipped?: 'disabled' | 'not_configured';
+  error?: string;
+}
+
+/** One durable outbox row returned to the polling IDP desktop client. */
+export interface IdpOutboxItem<T = unknown> {
+  outbox_id: string;
+  kind: string;
+  idempotency_key: string;
+  created_at: string;
+  payload: T;
+}
+
+export interface IdpOutboxPage<T = unknown> {
+  items: Array<IdpOutboxItem<T>>;
+  next_since: string | null;
+  server_time: string;
+}
+
+export type IdpOutboxScheduleItem = IdpOutboxItem<IdpPublishedSchedulePayload>;
+export type IdpOutboxSchedulePage = IdpOutboxPage<IdpPublishedSchedulePayload>;
+
+/** Contract 4.5 — faculty request status pushed to IDP. */
+export interface IdpFacultyRequestPayload {
+  coe_nnect_request_id: string;
+  requesting_dept: string;
+  target_dept: string;
+  faculty_wmsu_id: string | null;
+  subject_code: string;
+  term_code: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reason: string;
+  created_at: string;
+}
+
+/** Result of a faculty-request status publish attempt. */
+export interface IdpFacultyRequestPushResult {
+  requestId: string;
+  status: string;
+  queued: boolean;
+  outboxId: string | null;
+  queuedAt: string | null;
+  attempted: boolean;
+  delivered: boolean;
+  statusCode: number | null;
+  attempts: number;
+  skipped?: 'disabled' | 'not_configured';
+  error?: string;
+}
+
+/** Contract 4.7 — the eight change-request types. */
+export type IdpChangeRequestType =
+  | 'faculty_create'
+  | 'faculty_update'
+  | 'faculty_deactivate'
+  | 'faculty_transfer'
+  | 'qualification_add'
+  | 'qualification_remove'
+  | 'unavailability_change'
+  | 'schedule_override';
+
+export type IdpChangeRequestSeverity = 'info' | 'warning' | 'critical';
+
+export type IdpChangeRequestAckAction = 'accepted' | 'rejected' | 'modified';
+
+export type IdpChangeRequestStatus = 'pending' | 'acknowledged' | 'rejected';
+
+/** Contract 4.7 — Change Request (IDP -> CoE-NNECT). */
+export interface IdpChangeRequestPayload {
+  idp_request_id: string;
+  type: IdpChangeRequestType | string;
+  faculty_wmsu_id?: string | null;
+  faculty_employee_id?: string | null;
+  affected_dates?: string[] | null;
+  details: Record<string, unknown>;
+  severity: IdpChangeRequestSeverity | string;
+  requires_ack: boolean;
+  created_at: string;
+}
+
+/** Contract 4.8 — Change Request Ack (CoE-NNECT -> IDP). */
+export interface IdpChangeRequestAckPayload {
+  idp_request_id: string;
+  acknowledged_by_coe_nnect_user_id: string;
+  action: IdpChangeRequestAckAction;
+  notes: string | null;
+  acknowledged_at: string;
+}
+
+export interface IdpChangeRequestReceipt {
+  idp_request_id: string;
+  status: 'pending' | 'duplicate';
+  requires_ack: boolean;
+  faculty_id: string | null;
+}
+
+export interface IdpChangeRequestAckView {
+  action: IdpChangeRequestAckAction;
+  notes: string | null;
+  acknowledged_by: string | null;
+  acknowledged_at: string;
+}
+
+/** Change request as exposed to the authenticated review UI. */
+export interface IdpChangeRequestView {
+  idp_request_id: string;
+  type: string;
+  status: IdpChangeRequestStatus;
+  severity: string;
+  requires_ack: boolean;
+  faculty_id: string | null;
+  faculty_wmsu_id: string | null;
+  faculty_employee_id: string | null;
+  affected_dates: string[];
+  details: Record<string, unknown>;
+  created_at: string;
+  received_at: string;
+  ack: IdpChangeRequestAckView | null;
+}
+
+/** Result of acknowledging a change request and queueing/pushing the ack. */
+export interface IdpChangeRequestAckResult {
+  idp_request_id: string;
+  action: IdpChangeRequestAckAction;
+  acknowledged_at: string;
+  duplicate: boolean;
+  queued: boolean;
+  outbox_id: string | null;
+  queued_at: string | null;
   attempted: boolean;
   delivered: boolean;
   status: number | null;

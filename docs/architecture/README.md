@@ -134,7 +134,7 @@ Notifications are persisted for inbox/history access. The notifications module d
 
 ### IDP faculty sync
 
-The IDP integration implements Milestone 1 of the CoE-NNECT ↔ IDP v2.0 contract. The `IdpModule` exposes a public `/api/idp/v1/*` namespace for health and signed faculty-change webhooks, and an authenticated `POST /api/v1/idp/faculty/sync` trigger used by the Faculty page's **Refresh from IDP** button. It pulls the roster, qualifications, and unavailability from IDP, matches faculty by `wmsu_id` then `employee_id`, applies IDP-owned identity fields, and maintains `faculty.sync_status` / `last_synced_at`. Inbound webhooks are verified with HMAC-SHA256 over the raw body and a timestamp tolerance. Local identity edits mark a row pending, which blocks incoming IDP updates with `409 local_edit_pending` until reconciled. See the [IDP integration guide](../integrations/idp.md).
+The IDP integration implements Milestones 1 and 3 of the CoE-NNECT ↔ IDP v2.0 contract. The `IdpModule` exposes a public `/api/idp/v1/*` namespace for health, signed faculty-change and change-request webhooks, the Pattern C faculty inbox, and the schedule / faculty-request / change-request-ack outboxes. It also exposes authenticated `POST /api/v1/idp/faculty/sync`, `POST /api/v1/idp/schedules/publish`, and the change-request review/ack routes. Pattern A pulls the roster, qualifications, and unavailability from IDP, matches faculty by `wmsu_id` then `employee_id`, applies IDP-owned identity fields, and maintains `faculty.sync_status` / `last_synced_at`. Inbound webhooks are verified with HMAC-SHA256 over the raw body and a timestamp tolerance. Local identity edits mark a row pending, which blocks incoming IDP updates with `409 local_edit_pending` until reconciled. Pattern C is primary because the IDP desktop can be offline: schedules, faculty-request statuses, and change-request acks are kept in a durable outbox until the client polls. See the [IDP integration guide](../integrations/idp.md).
 
 ## Deployment and local development
 
@@ -156,7 +156,7 @@ Local defaults used by the development script are:
 - **Active synchronous paths:** Browser → NestJS API; backend → PostgreSQL/Supabase; backend → parser for PDF extraction; backend → solver for auto-generation; backend → IDP for faculty pulls; IDP → backend for signed webhooks.
 - **Validation source:** TypeScript constraints are used by API schedule validation and as a post-solve validation gate. The solver's optimization constraints and objectives are implemented separately in Python.
 - **No shared TS contract package:** The `shared-types` workspace package is not currently the source of frontend/backend API contracts.
-- **IDP integration:** Milestone 1 (faculty roster, qualifications, unavailability, signed faculty webhooks, and the user-triggered refresh) is implemented in `apps/backend/src/modules/idp`. Schedule publishing, change requests, and the settings UI are later milestones. The `packages/idp-client` package remains a placeholder.
+- **IDP integration:** Milestones 1 and 3 (faculty roster, qualifications, unavailability, signed faculty webhooks, the user-triggered refresh, schedule publishing, faculty-request status publishing, change requests, and change-request acknowledgements) are implemented in `apps/backend/src/modules/idp`. The admin settings UI remains Milestone 4. The `packages/idp-client` package remains a placeholder.
 - **Schema ownership:** SQL/Supabase workflows own the database schema; TypeORM synchronization must remain disabled.
 
 ## Further documentation

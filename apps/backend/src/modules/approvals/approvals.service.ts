@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -15,6 +16,7 @@ import { NotificationDispatcherService } from '../notifications/notification-dis
 import { RecipientsService } from '../notifications/recipients.service';
 import { loadRequestContext } from '../notifications/notification-context';
 import { SupabaseService } from '../../database/supabase.service';
+import { IdpFacultyRequestPublisherService } from '../idp/idp-faculty-request-publisher.service';
 
 @Injectable()
 export class ApprovalsService {
@@ -28,6 +30,8 @@ export class ApprovalsService {
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
     private readonly supabase: SupabaseService,
+    @Optional()
+    private readonly idpFacultyRequests?: IdpFacultyRequestPublisherService,
   ) {}
 
   async findAllForCurrentUser(userId: string): Promise<FacultyRequest[]> {
@@ -84,6 +88,7 @@ export class ApprovalsService {
       createdBy: userId,
     });
     const saved = await this.repo.save(entity);
+    await this.publishIdpStatus(saved);
 
     // ═══ Notification: request submitted ═══
     const targetDHs = await this.recipients.departmentHeadsOf(
@@ -172,6 +177,7 @@ export class ApprovalsService {
     found.respondedBy = userId;
     found.respondedAt = new Date();
     const saved = await this.repo.save(found);
+    await this.publishIdpStatus(saved);
 
     // ── F1b: also unblock any gated schedule rows ──
     await this.resolvePendingScheduleRows(String(saved.requestId));
@@ -262,6 +268,7 @@ export class ApprovalsService {
     found.respondedAt = new Date();
     found.responseRemarks = remarks ?? null;
     const saved = await this.repo.save(found);
+    await this.publishIdpStatus(saved);
 
     // ── F1b: unblock any schedule rows gated by this request ──
     await this.resolvePendingScheduleRows(String(saved.requestId));
@@ -324,6 +331,33 @@ export class ApprovalsService {
     });
 
     return saved;
+  }
+
+  /**
+   * Milestone 3 — queue the new status for the IDP desktop and, when Pattern A
+   * is configured, deliver it without blocking the local approval response.
+   *
+   * A queue failure is logged, never thrown: the request transition already
+   * succeeded and must not be rolled back because IDP is unreachable.
+   */
+  private async publishIdpStatus(request: FacultyRequest): Promise<void> {
+    if (!this.idpFacultyRequests) return;
+    try {
+      const { item, payload } = await this.idpFacultyRequests.queue(request);
+      void this.idpFacultyRequests
+        .deliverQueued(item, payload)
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `IDP faculty-request push failed for ${request.requestId}: ` +
+              `${(err as Error)?.message ?? 'unknown error'}`,
+          );
+        });
+    } catch (err) {
+      this.logger.warn(
+        `IDP faculty-request queue failed for ${request.requestId}: ` +
+          `${(err as Error)?.message ?? 'unknown error'}`,
+      );
+    }
   }
 
   /**

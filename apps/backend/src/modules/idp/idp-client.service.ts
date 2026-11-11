@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
+  IdpChangeRequestAckPayload,
   IdpFacultyQualification,
   IdpFacultyQuery,
   IdpFacultyRecord,
+  IdpFacultyRequestPayload,
   IdpFacultyUnavailability,
   IdpPublishedSchedulePayload,
 } from './idp.types';
@@ -51,6 +53,11 @@ export class IdpClientService {
 
   get hasWebhookSecret(): boolean {
     return Boolean(this.config.get<string>('IDP_WEBHOOK_SECRET'));
+  }
+
+  /** Pattern C: bearer key the IDP desktop uses to call CoE-NNECT. */
+  get hasDeviceApiKey(): boolean {
+    return Boolean(this.config.get<string>('IDP_DEVICE_API_KEY')?.trim());
   }
 
   get isConfigured(): boolean {
@@ -101,6 +108,26 @@ export class IdpClientService {
     payload: IdpPublishedSchedulePayload,
   ): Promise<{ status: number; attempts: number }> {
     const response = await this.send('/schedules/published', payload);
+    return { status: response.status, attempts: response.attempts };
+  }
+
+  /** Contract 5.5 — `POST {IDP_BASE}/faculty-requests`. */
+  async pushFacultyRequest(
+    payload: IdpFacultyRequestPayload,
+  ): Promise<{ status: number; attempts: number }> {
+    const response = await this.send('/faculty-requests', payload);
+    return { status: response.status, attempts: response.attempts };
+  }
+
+  /** Contract 5.7 / 4.8 — `POST {IDP_BASE}/change-requests/{id}/ack`. */
+  async pushChangeRequestAck(
+    idpRequestId: string,
+    payload: IdpChangeRequestAckPayload,
+  ): Promise<{ status: number; attempts: number }> {
+    const response = await this.send(
+      `/change-requests/${encodeURIComponent(idpRequestId)}/ack`,
+      payload,
+    );
     return { status: response.status, attempts: response.attempts };
   }
 

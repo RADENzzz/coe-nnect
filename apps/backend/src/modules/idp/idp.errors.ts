@@ -57,12 +57,26 @@ export const idpErrors = {
       `Subject code '${String(value)}' is not configured in CoE-NNECT.`,
       { field: 'subject_code', value },
     ),
+  unknownSection: (value: unknown) =>
+    new IdpError(
+      422,
+      'unknown_section',
+      `Section code '${String(value)}' is not configured in CoE-NNECT.`,
+      { field: 'section_code', value },
+    ),
   unknownTerm: (value: unknown) =>
     new IdpError(
       422,
       'unknown_term',
       `Term code '${String(value)}' does not resolve to a CoE-NNECT term.`,
       { field: 'term_code', value },
+    ),
+  unknownDesignation: (value: unknown) =>
+    new IdpError(
+      422,
+      'unknown_designation',
+      `Designation id '${String(value)}' is not configured in CoE-NNECT.`,
+      { field: 'designation_id', value },
     ),
   unknownFaculty: (details?: Record<string, unknown>) =>
     new IdpError(

@@ -33,6 +33,7 @@ describe('IdpSyncService — Milestone 1', () => {
   let departmentRepo: ReturnType<typeof createFakeRepository>;
   let subjectRepo: ReturnType<typeof createFakeRepository>;
   let termRepo: ReturnType<typeof createFakeRepository>;
+  let processedEventRepo: ReturnType<typeof createFakeRepository>;
   let client: any;
 
   beforeEach(() => {
@@ -44,6 +45,7 @@ describe('IdpSyncService — Milestone 1', () => {
     departmentRepo = createFakeRepository([departmentRow], { idKey: 'deptId' });
     subjectRepo = createFakeRepository([subjectRow], { idKey: 'subjectId' });
     termRepo = createFakeRepository([termRow], { idKey: 'termId' });
+    processedEventRepo = createFakeRepository([], { idKey: 'eventId' });
 
     let nextFacultyId = 1;
     facultyRepo.create.mockImplementation(
@@ -65,21 +67,27 @@ describe('IdpSyncService — Milestone 1', () => {
       baseUrl: 'https://idp.example.test',
       hasApiKey: true,
       hasWebhookSecret: true,
+      hasDeviceApiKey: true,
       listFaculty: jest.fn(async () => []),
       listQualifications: jest.fn(async () => []),
       listUnavailability: jest.fn(async () => []),
     };
 
-    service = new IdpSyncService(
+    service = createService();
+  });
+
+  function createService(): IdpSyncService {
+    return new IdpSyncService(
       facultyRepo as any,
       qualRepo as any,
       unavailabilityRepo as any,
       departmentRepo as any,
       subjectRepo as any,
       termRepo as any,
+      processedEventRepo as any,
       client,
     );
-  });
+  }
 
   it('creates a faculty row and tags IDP qualifications', async () => {
     client.listFaculty.mockResolvedValue([
@@ -260,5 +268,135 @@ describe('IdpSyncService — Milestone 1', () => {
       deptId: '1',
       syncStatus: 'synced',
     });
+  });
+
+  it('keeps webhook dedupe across a service restart (durable table)', async () => {
+    facultyRepo.rows.push(baseFaculty());
+
+    const event = {
+      event_id: 'evt-restart',
+      event: 'faculty.updated',
+      faculty_wmsu_id: '2019-00123',
+      change_summary: { email: 'restart@wmsu.edu.ph' },
+      changed_at: '2026-11-08T10:00:00Z',
+    };
+
+    await service.handleFacultyChange(event as any);
+
+    // A fresh instance shares only the database, not the old process Map.
+    const restarted = createService();
+    const replay = await restarted.handleFacultyChange(event as any);
+
+    expect(replay.status).toBe('duplicate');
+    expect(replay.faculty_id).toBe('1');
+    expect(processedEventRepo.rows).toHaveLength(1);
+    expect(processedEventRepo.rows[0]).toMatchObject({
+      eventId: 'evt-restart',
+      eventType: 'faculty.updated',
+      facultyId: '1',
+    });
+  });
+
+  it('sweeps processed events older than 30 days', async () => {
+    const now = new Date('2026-11-11T03:00:00Z');
+    processedEventRepo.rows.push(
+      {
+        eventId: 'evt-old',
+        bodyHash: 'a',
+        eventType: 'faculty.updated',
+        facultyId: '1',
+        processedAt: new Date('2026-10-01T03:00:00Z'),
+      },
+      {
+        eventId: 'evt-new',
+        bodyHash: 'b',
+        eventType: 'faculty.updated',
+        facultyId: '1',
+        processedAt: new Date('2026-11-01T03:00:00Z'),
+      },
+    );
+
+    const result = await service.cleanupProcessedEvents(now);
+
+    expect(result.deleted).toBe(1);
+    expect(processedEventRepo.rows.map((row: any) => row.eventId)).toEqual([
+      'evt-new',
+    ]);
+  });
+
+  it('applies a faculty snapshot pushed to the Pattern C inbox', async () => {
+    const summary = await service.applyFacultySnapshot({
+      faculty: [
+        {
+          wmsu_id: '2019-00123',
+          employee_id: null,
+          first_name: 'Juan',
+          last_name: 'Dela Cruz',
+          email: 'juan@wmsu.edu.ph',
+          department_code: 'CPE',
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(summary.received).toBe(1);
+    expect(summary.created).toBe(1);
+    expect(summary.failed).toBe(0);
+    expect(summary.errors).toEqual([]);
+    expect(facultyRepo.rows[0]).toMatchObject({
+      wmsuId: '2019-00123',
+      syncStatus: 'synced',
+    });
+  });
+
+  it('reports per-record inbox failures without aborting the snapshot', async () => {
+    const summary = await service.applyFacultySnapshot([
+      {
+        wmsu_id: '2019-00123',
+        first_name: 'Juan',
+        last_name: 'Dela Cruz',
+        department_code: 'CPE',
+        is_active: true,
+      },
+      {
+        wmsu_id: '2020-99999',
+        first_name: 'Unknown',
+        last_name: 'Dept',
+        department_code: 'NOPE',
+        is_active: true,
+      },
+    ]);
+
+    expect(summary.received).toBe(2);
+    expect(summary.created).toBe(1);
+    expect(summary.failed).toBe(1);
+    expect(summary.errors[0]).toMatchObject({
+      code: 'unknown_department',
+      wmsu_id: '2020-99999',
+    });
+    expect(facultyRepo.rows).toHaveLength(1);
+  });
+
+  it('rejects an inbox body that is not a faculty array', async () => {
+    await expect(
+      service.applyFacultySnapshot({ nope: true } as any),
+    ).rejects.toMatchObject({
+      response: { error: { code: 'validation_error' } },
+      status: 422,
+    });
+  });
+
+  it('reports Pattern C readiness separately from Pattern A', async () => {
+    const status = await service.health();
+
+    expect(status.configured).toMatchObject({
+      baseUrl: true,
+      apiKey: true,
+      webhookSecret: true,
+      deviceApiKey: true,
+    });
+    expect(status.inboundReady).toBe(true);
+    expect(status.outboundReady).toBe(true);
+    expect(status.status).toBe('ok');
   });
 });

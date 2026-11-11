@@ -58,6 +58,7 @@ describe('ApprovalsService', () => {
     departmentHeadsOfSchedule: jest.Mock;
   };
   let scheduleGateUpdate: jest.Mock;
+  let idpPublisher: { queue: jest.Mock; deliverQueued: jest.Mock };
 
   beforeEach(() => {
     requestRepo = createFakeRepository([pendingRequest()], {
@@ -74,6 +75,13 @@ describe('ApprovalsService', () => {
       departmentHeadsOfSchedule: jest.fn(async () => []),
     };
     scheduleGateUpdate = jest.fn().mockResolvedValue({ data: null, error: null });
+    idpPublisher = {
+      queue: jest.fn(async (request: any) => ({
+        item: { outboxId: '1', createdAt: new Date() },
+        payload: { coe_nnect_request_id: request.requestId },
+      })),
+      deliverQueued: jest.fn().mockResolvedValue({ delivered: true }),
+    };
     const supabase = {
       getAdminClient: () => ({
         from: () => ({
@@ -88,6 +96,7 @@ describe('ApprovalsService', () => {
       dispatcher as any,
       recipients as any,
       supabase as any,
+      idpPublisher as any,
     );
   });
 
@@ -118,6 +127,13 @@ describe('ApprovalsService', () => {
       'request.submitted',
       expect.objectContaining({ entityId: 'req-new' }),
     );
+    expect(idpPublisher.queue).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: 'req-new', status: 'pending' }),
+    );
+    expect(idpPublisher.deliverQueued).toHaveBeenCalledWith(
+      expect.objectContaining({ outboxId: '1' }),
+      expect.objectContaining({ coe_nnect_request_id: 'req-new' }),
+    );
   });
 
   it('lets the target department head approve and clears the schedule gate', async () => {
@@ -136,6 +152,25 @@ describe('ApprovalsService', () => {
       'pending_faculty_request_id',
       'req-1',
     );
+    expect(dispatcher.dispatch).toHaveBeenCalledWith(
+      'request.approved',
+      expect.objectContaining({ entityId: 'req-1' }),
+    );
+    expect(idpPublisher.queue).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: 'req-1', status: 'approved' }),
+    );
+  });
+
+  it('does not roll back an approval when the IDP queue fails', async () => {
+    idpPublisher.queue.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const result = await service.approve(
+      'req-1',
+      { remarks: 'Approved despite IDP being down' },
+      'user-target',
+    );
+
+    expect(result).toMatchObject({ status: 'approved' });
     expect(dispatcher.dispatch).toHaveBeenCalledWith(
       'request.approved',
       expect.objectContaining({ entityId: 'req-1' }),

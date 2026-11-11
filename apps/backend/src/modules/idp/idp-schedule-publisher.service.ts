@@ -10,7 +10,9 @@ import { Department } from '../departments/entities/department.entity';
 import { Term } from '../terms/entities/term.entity';
 import { Schedule } from '../scheduling/entities/schedule.entity';
 import { ScheduleVersion } from '../scheduling/entities/schedule-version.entity';
+import { IdpOutboxItem } from './entities/idp-outbox.entity';
 import { IdpClientService, IdpUpstreamError } from './idp-client.service';
+import { IdpOutboxService } from './idp-outbox.service';
 import type {
   IdpPublishedScheduleEntry,
   IdpPublishedSchedulePayload,
@@ -43,27 +45,25 @@ export class IdpSchedulePublisherService {
     private readonly termRepo: Repository<Term>,
     @InjectRepository(Department)
     private readonly departmentRepo: Repository<Department>,
+    private readonly outbox: IdpOutboxService,
     private readonly client: IdpClientService,
   ) {}
 
   /**
-   * Build the payload without sending it. Used by the review screen and by
-   * `publishTerm`, so the two can never disagree about what will be sent.
+   * Build the payload from live rows without sending or queueing it. Used by
+   * the review screen so the preview and the wire never disagree.
    */
   async buildPayload(termCode: string): Promise<IdpPublishedSchedulePayload> {
     const term = await this.resolveTerm(termCode);
-    const termId = String(term.termId);
+    const version = await this.resolveVersion(String(term.termId), term);
+    return this.buildPayloadFor(term, version);
+  }
 
-    const version = await this.versionRepo.findOne({
-      where: { termId, facultyId: IsNull() },
-      order: { versionNumber: 'DESC' },
-    });
-    if (!version) {
-      throw new NotFoundException(
-        `No published schedule version exists for ${this.termCode(term)}. ` +
-          'Finalize the term schedule first.',
-      );
-    }
+  private async buildPayloadFor(
+    term: Term,
+    version: ScheduleVersion,
+  ): Promise<IdpPublishedSchedulePayload> {
+    const termId = String(term.termId);
 
     const [rows, departments] = await Promise.all([
       this.scheduleRepo.find({
@@ -102,7 +102,13 @@ export class IdpSchedulePublisherService {
       const startTime = toHHMM(row.startTime);
       const endTime = toHHMM(row.endTime);
 
-      if (!departmentCode || !subjectCode || !dayOfWeek || !startTime || !endTime) {
+      if (
+        !departmentCode ||
+        !subjectCode ||
+        !dayOfWeek ||
+        !startTime ||
+        !endTime
+      ) {
         excluded += 1;
         continue;
       }
@@ -157,17 +163,42 @@ export class IdpSchedulePublisherService {
   }
 
   /**
-   * Build and send. Returns a result object rather than throwing on upstream
-   * failure so the caller can report what happened without a 5xx that would
-   * imply the local publish failed too.
+   * Queue the term-wide payload for the IDP desktop poller and, when a
+   * Pattern A endpoint is configured, also push it immediately.
+   *
+   * Queueing is the durable part. A push failure is reported in the result,
+   * not thrown: the local publish already happened and the outbox item
+   * survives for the next poll or replay.
    */
   async publishTerm(termCode: string): Promise<IdpSchedulePushResult> {
-    const payload = await this.buildPayload(termCode);
+    const term = await this.resolveTerm(termCode);
+    const version = await this.resolveVersion(String(term.termId), term);
+
+    // Reuse the frozen payload for this version. This keeps
+    // `coe_nnect_version_id` idempotent even if live schedule rows changed
+    // after the first publish.
+    const existing = await this.outbox.findSchedule(String(version.versionId));
+    const queued =
+      existing ??
+      (await this.outbox.enqueueSchedule(
+        await this.buildPayloadFor(term, version),
+      ));
+
+    return this.deliverQueued(queued);
+  }
+
+  private async deliverQueued(
+    item: IdpOutboxItem,
+  ): Promise<IdpSchedulePushResult> {
+    const payload = item.payload as unknown as IdpPublishedSchedulePayload;
     const base = {
       termCode: payload.term_code,
       versionId: payload.coe_nnect_version_id,
       versionNumber: payload.version_number,
       entryCount: payload.entries.length,
+      queued: true,
+      outboxId: item.outboxId != null ? String(item.outboxId) : null,
+      queuedAt: item.createdAt ? new Date(item.createdAt).toISOString() : null,
     };
 
     if (!this.client.enabled || !this.client.baseUrl) {
@@ -182,9 +213,8 @@ export class IdpSchedulePublisherService {
     }
 
     try {
-      const { status, attempts } = await this.client.pushPublishedSchedule(
-        payload,
-      );
+      const { status, attempts } =
+        await this.client.pushPublishedSchedule(payload);
       this.logger.log(
         `IDP publish ${payload.term_code} v${payload.version_number} ` +
           `-> ${status} (${payload.entries.length} entries, ${attempts} attempt(s))`,
@@ -202,7 +232,7 @@ export class IdpSchedulePublisherService {
       const message = err instanceof Error ? err.message : 'IDP push failed.';
       this.logger.error(
         `IDP publish ${payload.term_code} v${payload.version_number} failed ` +
-          `after ${attempts} attempt(s): ${message}`,
+          `after ${attempts} attempt(s); item remains queued: ${message}`,
       );
       return {
         ...base,
@@ -213,6 +243,23 @@ export class IdpSchedulePublisherService {
         error: message,
       };
     }
+  }
+
+  private async resolveVersion(
+    termId: string,
+    term: Term,
+  ): Promise<ScheduleVersion> {
+    const version = await this.versionRepo.findOne({
+      where: { termId, facultyId: IsNull() },
+      order: { versionNumber: 'DESC' },
+    });
+    if (!version) {
+      throw new NotFoundException(
+        `No published schedule version exists for ${this.termCode(term)}. ` +
+          'Finalize the term schedule first.',
+      );
+    }
+    return version;
   }
 
   private async resolveTerm(termCode: string): Promise<Term> {
