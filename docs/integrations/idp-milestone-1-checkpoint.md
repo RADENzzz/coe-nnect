@@ -5,6 +5,15 @@
 > Contract: `Documents/CoE-NNECT-IDP API Contract v2.txt` (v2.0, 2026-10-23)
 > Pattern: **A — server-to-server REST + signed webhooks**
 > Feature guide: [IDP integration](idp.md)
+>
+> **Update 2026-11-11 — Pattern C is now primary.** The IDP deployment is a
+> desktop app that may be offline, so the canonical guide now describes the
+> faculty inbox (`POST /api/idp/v1/inbox/faculty`) and the durable schedule
+> outbox (`GET /api/idp/v1/outbox/schedules`). Pattern A remains as a fallback.
+> The in-memory dedupe map and missing outbox described below are superseded:
+> `idp_processed_event` and `idp_outbox` now make both durable. Read
+> [`idp.md`](idp.md) for current behaviour; this page stays as the Milestone 1
+> implementation record.
 
 This file is the continuation point for the IDP integration. It records what
 Milestone 1 does, where the code lives, how to configure it, and what remains
@@ -25,7 +34,7 @@ history, file inventory, and handoff notes.
 | Signed faculty-change webhook | 4.6 / 5.6 | Done |
 | IDP health endpoint | 9.2 | Done |
 | "Refresh from IDP" user action | FR 3.1.11 | Done |
-| Durable webhook idempotency table | 7.4 | **Not done** (in-memory, see §6) |
+| Durable webhook idempotency table | 7.4 | **Done** (was in-memory; see §6) |
 | Schedule publishing | 5.4 / Milestone 2 | Out of scope |
 | Change requests + acks | 5.7 / Milestone 3 | Out of scope |
 | Admin settings UI | Milestone 4 | Out of scope |
@@ -203,14 +212,15 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/idp/v1/webhooks/fa
 
 ## 6. Known limitations / follow-ups
 
-1. **Webhook idempotency is in-memory.** `IdpSyncService.seenEvents` keeps
-   `event_id → body hash` for 30 days, but only inside one process. A restart,
-   a second instance, or Vercel cold start loses it. Add a durable table
-   (e.g. `idp_processed_event(event_id text primary key, body_hash text,
-   processed_at timestamptz)`) when the Supabase SQL migration workflow is
-   agreed. Same body → `200 duplicate`; different body → `409 duplicate_key`.
-2. **No outbox / retry queue yet.** Outbound pulls are synchronous and rely on
-   the caller (or the user) to retry. Milestone 2/3 introduces the outbox.
+1. **Webhook idempotency is now durable.** `public.idp_processed_event` stores
+   `event_id → body hash` for 30 days and is shared by every instance. A
+   nightly 03:00 sweep deletes expired rows. Same body → `200 duplicate`;
+   different body → `409 duplicate_key`. (The original in-memory `seenEvents`
+   map described in earlier revisions has been removed.)
+2. **The outbox is implemented.** `public.idp_outbox` stores frozen
+   published-schedule payloads with a unique `(kind, idempotency_key)` pair.
+   Publishing always queues; a Pattern A push is an optional immediate
+   delivery. The IDP desktop polls `GET /api/idp/v1/outbox/schedules`.
 3. **No `idp_id` / `updated_at` storage.** Incremental pulls use the max
    `faculty.last_synced_at` as `updated_since`, per the contract. If IDP's
    clock or semantics differ, switch to a dedicated watermark.
@@ -252,8 +262,10 @@ IDP work.
 
 Still unconfirmed and required before production:
 
-1. Deployment model (server / desktop / offline).
-2. Auth mechanism (API key vs OAuth2 client credentials).
+1. ~~Deployment model (server / desktop / offline).~~ Resolved: IDP is an
+   offline-capable desktop app; Pattern C is primary.
+2. ~~Auth mechanism (API key vs OAuth2 client credentials).~~ Resolved for the
+   first cut: per-device bearer key (`IDP_DEVICE_API_KEY`).
 3. HMAC-SHA256 support and header format.
 4. Faculty key coverage (does every record have `wmsu_id` or `employee_id`?).
 5. Department code mapping (CPE/EE/GE/ENVE vs IDP codes).
@@ -272,10 +284,10 @@ Still unconfirmed and required before production:
 
 ## 9. Suggested next steps
 
-1. Run a manual sync against an IDP sandbox once §8 items 1–8 are answered.
-2. Add the durable idempotency table (§6.1) with the Supabase SQL workflow.
-3. Milestone 2: build the published-schedule payload from live `schedule` rows
-   and push `POST {IDP_BASE}/schedules/published`.
-4. Milestone 3: change-request webhook + acks + outbox.
-5. Milestone 4: IDP settings UI (enable flag, base URL, rotation dates).
-6. Merge `idp/integration` into `main` after review (PR opened, not merged).
+1. Run a manual sync against an IDP sandbox once §8 items 3–8 are answered.
+2. Milestone 2 is implemented: schedule publishing queues to the outbox and can
+   also push `POST {IDP_BASE}/schedules/published`.
+3. Milestone 3: change-request webhook, acks, and the remaining Pattern C
+   inbox/outbox types (faculty requests, change-request acks).
+4. Milestone 4: IDP settings UI (enable flag, base URL, rotation dates).
+5. Merge `idp/integration` into `main` after review (PR opened, not merged).

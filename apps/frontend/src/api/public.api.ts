@@ -127,6 +127,7 @@ export interface PublicIntegrationStatus {
     enabled: boolean;
     baseUrlConfigured: boolean;
     apiKeyConfigured: boolean;
+    deviceApiKeyConfigured: boolean;
     webhookSecretConfigured: boolean;
   };
   faculty: {

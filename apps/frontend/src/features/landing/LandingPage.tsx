@@ -802,25 +802,30 @@ function IntegrationPanel({
           </h3>
           <ul className="mt-2 divide-y divide-outline-variant">
             <ConnectionRow
-              label="Outbound base URL"
+              label="Pattern A base URL"
               configured={data.connection.baseUrlConfigured}
             />
             <ConnectionRow
-              label="Outbound API key"
+              label="Pattern A API key"
               configured={data.connection.apiKeyConfigured}
+            />
+            <ConnectionRow
+              label="Pattern C device key"
+              configured={data.connection.deviceApiKeyConfigured}
             />
             <ConnectionRow
               label="Webhook signing secret"
               configured={data.connection.webhookSecretConfigured}
             />
             <ConnectionRow
-              label="Integration enabled"
+              label="Pattern A outbound enabled"
               configured={data.connection.enabled}
             />
           </ul>
           <p className="mt-3 text-xs leading-relaxed text-on-surface-variant">
-            Only whether each item is set is published. Values, hosts, keys, and
-            secrets are never returned by this page.
+            Pattern C is the primary transport for the offline-capable IDP
+            desktop app. Only whether each item is set is published. Values,
+            hosts, keys, and secrets are never returned by this page.
           </p>
         </div>
 

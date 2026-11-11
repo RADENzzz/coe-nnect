@@ -53,6 +53,11 @@ export class IdpClientService {
     return Boolean(this.config.get<string>('IDP_WEBHOOK_SECRET'));
   }
 
+  /** Pattern C: bearer key the IDP desktop uses to call CoE-NNECT. */
+  get hasDeviceApiKey(): boolean {
+    return Boolean(this.config.get<string>('IDP_DEVICE_API_KEY')?.trim());
+  }
+
   get isConfigured(): boolean {
     return Boolean(this.baseUrl);
   }

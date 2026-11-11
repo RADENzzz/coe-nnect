@@ -97,6 +97,23 @@ export interface IdpFacultySyncSummary {
   finishedAt: string;
 }
 
+/** Pattern C faculty snapshot pushed by the IDP desktop client. */
+export type IdpFacultyInboxBody =
+  | IdpFacultyRecord[]
+  | { faculty: IdpFacultyRecord[] };
+
+export interface IdpFacultyInboxSummary {
+  received: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  errors: IdpSyncError[];
+  startedAt: string;
+  finishedAt: string;
+}
+
 export interface IdpHealthStatus {
   status: 'ok' | 'degraded' | 'disabled';
   service: 'coe-nnect-idp-integration';
@@ -105,7 +122,12 @@ export interface IdpHealthStatus {
     baseUrl: boolean;
     apiKey: boolean;
     webhookSecret: boolean;
+    deviceApiKey: boolean;
   };
+  /** Pattern C: IDP desktop pushes faculty and polls the outbox. */
+  inboundReady: boolean;
+  /** Pattern A: CoE-NNECT can call IDP's REST API. */
+  outboundReady: boolean;
   lastSyncAt: string | null;
   timestamp: string;
 }
@@ -141,10 +163,29 @@ export interface IdpSchedulePushResult {
   versionId: string;
   versionNumber: number;
   entryCount: number;
+  /** True once the payload is durably stored for Pattern C polling. */
+  queued: boolean;
+  outboxId: string | null;
+  queuedAt: string | null;
   attempted: boolean;
   delivered: boolean;
   status: number | null;
   attempts: number;
   skipped?: 'disabled' | 'not_configured';
   error?: string;
+}
+
+/** One durable outbox row returned to the polling IDP desktop client. */
+export interface IdpOutboxScheduleItem {
+  outbox_id: string;
+  kind: string;
+  idempotency_key: string;
+  created_at: string;
+  payload: IdpPublishedSchedulePayload;
+}
+
+export interface IdpOutboxSchedulePage {
+  items: IdpOutboxScheduleItem[];
+  next_since: string | null;
+  server_time: string;
 }

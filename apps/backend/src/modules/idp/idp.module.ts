@@ -12,16 +12,26 @@ import { User } from '../users/entities/user.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { IdpClientService } from './idp-client.service';
 import { IdpController, IdpSyncController } from './idp.controller';
+import { IdpDeviceGuard } from './idp-device.guard';
+import { IdpOutboxService } from './idp-outbox.service';
 import { IdpSchedulePublisherService } from './idp-schedule-publisher.service';
 import { IdpSignatureGuard } from './idp-signature.guard';
 import { IdpSyncService } from './idp-sync.service';
+import { IdpOutboxItem } from './entities/idp-outbox.entity';
+import { IdpProcessedEvent } from './entities/idp-processed-event.entity';
 
 /**
  * IDP integration.
  *
- * Inbound : signed webhooks + public health check under /api/idp/v1/*
- * Outbound: REST pulls to IDP for faculty, qualifications, unavailability
- *           and the Milestone 2 published-schedule push
+ * Pattern C (primary): the offline-capable IDP desktop app pushes faculty
+ * snapshots to `/api/idp/v1/inbox/faculty` and polls
+ * `/api/idp/v1/outbox/schedules` for published schedules, authenticated with
+ * `IDP_DEVICE_API_KEY`.
+ *
+ * Pattern A (fallback): outbound REST pulls to IDP for faculty,
+ * qualifications, unavailability, and the published-schedule push, plus
+ * signed inbound webhooks.
+ *
  * Trigger : POST /api/v1/idp/faculty/sync ("Refresh from IDP")
  *           POST /api/v1/idp/schedules/publish ("Send schedule to IDP")
  */
@@ -37,16 +47,20 @@ import { IdpSyncService } from './idp-sync.service';
       User,
       Schedule,
       ScheduleVersion,
+      IdpProcessedEvent,
+      IdpOutboxItem,
     ]),
   ],
   controllers: [IdpController, IdpSyncController],
   providers: [
     IdpClientService,
     IdpSyncService,
+    IdpOutboxService,
     IdpSchedulePublisherService,
+    IdpDeviceGuard,
     IdpSignatureGuard,
     RolesGuard,
   ],
-  exports: [IdpSyncService, IdpSchedulePublisherService],
+  exports: [IdpSyncService, IdpOutboxService, IdpSchedulePublisherService],
 })
 export class IdpModule {}

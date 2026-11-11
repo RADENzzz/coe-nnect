@@ -94,7 +94,10 @@ function buildService(rows: {
       get: (key: string) =>
         key === 'IDP_ENABLED'
           ? 'true'
-          : key === 'IDP_BASE_URL' || key === 'IDP_API_KEY'
+          : key === 'IDP_BASE_URL' ||
+              key === 'IDP_API_KEY' ||
+              key === 'IDP_DEVICE_API_KEY' ||
+              key === 'IDP_WEBHOOK_SECRET'
             ? 'configured-for-test'
             : undefined,
     } as any,
@@ -261,6 +264,13 @@ describe('PublicService', () => {
     const result = await service.getIntegrationStatus();
 
     expect(result.state).toBe('live');
+    expect(result.connection).toEqual({
+      enabled: true,
+      baseUrlConfigured: true,
+      apiKeyConfigured: true,
+      deviceApiKeyConfigured: true,
+      webhookSecretConfigured: true,
+    });
     expect(result.faculty).toMatchObject({
       total: 3,
       linked: 1,

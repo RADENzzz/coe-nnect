@@ -76,6 +76,12 @@ flowchart LR
         system_status[system_status]
     end
 
+    subgraph integration["IDP integration state"]
+        direction TB
+        idp_processed_event[idp_processed_event]
+        idp_outbox[idp_outbox]
+    end
+
     identity --> catalog
     identity --> requests
     catalog --> scheduling
@@ -83,6 +89,7 @@ flowchart LR
     catalog --> pdf
     scheduling --> collaboration
     identity --> platform
+    identity --> integration
 ```
 
 ## 1. Identity, organization, and academic catalog
@@ -704,6 +711,45 @@ Key constraints and behavior:
 - `suppress_until` mutes the banner without deleting it; the API reports the banner as disabled while `suppress_until` is in the future.
 - RLS exposes the row as read-only to `anon` and `authenticated`. Writes are administrator-only and go through the NestJS `PATCH /v1/system-status` endpoint, which also writes an `audit_trail` entry.
 
+## 8. IDP integration state
+
+Two narrow tables back the CoE-NNECT ↔ IDP connection. They hold integration
+plumbing only, never credentials. Both are written by the NestJS API through
+`DATABASE_URL`; direct Supabase clients have no access.
+
+```mermaid
+erDiagram
+    FACULTY |o--o{ IDP_PROCESSED_EVENT : "referenced by"
+    IDP_OUTBOX {
+        bigint outbox_id PK
+        text kind
+        text idempotency_key
+        jsonb payload
+        timestamptz created_at
+    }
+    IDP_PROCESSED_EVENT {
+        text event_id PK
+        text body_hash
+        text event_type
+        bigint faculty_id FK
+        timestamptz processed_at
+    }
+```
+
+Key constraints and behavior:
+
+- `idp_processed_event.event_id` is the contract idempotency key. `body_hash`
+  is the SHA-256 of the canonical JSON body, so the same key with a different
+  body is rejected as `409 duplicate_key`.
+- `idp_processed_event.faculty_id` references `faculty(faculty_id)` with
+  `ON DELETE SET NULL`; the event record survives faculty deletion.
+- `processed_at` has a supporting index for the 30-day nightly retention sweep.
+- `idp_outbox` is append-only. `(kind, idempotency_key)` is unique; schedule
+  items use `kind='schedule.published'` and `coe_nnect_version_id` as the key.
+- `idp_outbox.payload` is frozen at first insert, so a desktop client that was
+  offline receives exactly what was published.
+- `(kind, created_at)` has a supporting index for the inclusive `since` poll.
+
 ## Table inventory
 
 | Table                       | Primary key                  | Purpose                                                                        |
@@ -721,6 +767,8 @@ Key constraints and behavior:
 | `faculty_qualification`     | `qual_id`                    | Faculty-to-subject qualification mapping.                                      |
 | `faculty_request`           | `request_id`                 | Typed cross-department faculty request and approval workflow.                  |
 | `faculty_unavailability`    | `unavailability_id`          | Local or IDP-sourced unavailable time blocks.                                  |
+| `idp_outbox`                | `outbox_id`                  | Frozen outbound payloads polled by the IDP desktop client.                     |
+| `idp_processed_event`       | `event_id`                   | Durable inbound webhook idempotency with 30-day retention.                     |
 | `message`                   | `message_id`                 | Chat message body and sender.                                                  |
 | `minor_subject_schedule`    | `minor_id`                   | Auxiliary timetable for minor subjects.                                        |
 | `notification`              | `notification_id`            | Per-user notification with read state and JSON payload.                        |
@@ -766,7 +814,7 @@ Key constraints and behavior:
 
 ### Row-level security
 
-- RLS is enabled on all 34 tables.
+- RLS is enabled on every public table.
 - There are 51 policies. They use `auth.uid()`, `public.current_user_role()`, and `public.current_user_dept()` for ownership and role checks.
 - `system_status` is the one table with intentionally public read access: `system_status_public_read` (anon) and `system_status_authenticated_read` (authenticated) both allow `SELECT` for everyone, because the banner is shown before sign-in. No write policy exists, so direct writes are impossible even for authenticated users.
 - `REVOKE USAGE ON SCHEMA public FROM PUBLIC` keeps the schema reachable only through the `anon`, `authenticated`, and `service_role` roles.
@@ -799,6 +847,7 @@ Key constraints and behavior:
 | Table                  | Columns           |
 | ---------------------- | ----------------- |
 | `audit_trail`          | `affected_data`   |
+| `idp_outbox`           | `payload`         |
 | `notification`         | `payload`         |
 | `prospectus_pdf_table` | `columns`, `rows` |
 | `schedule_version`     | `snapshot`        |

@@ -4,19 +4,24 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { Department } from '../departments/entities/department.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { FacultyQualification } from '../faculty/entities/faculty-qualification.entity';
 import { FacultyUnavailability } from '../faculty/entities/faculty-unavailability.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { Term } from '../terms/entities/term.entity';
+import { IdpProcessedEvent } from './entities/idp-processed-event.entity';
 import { IdpClientService, IdpUpstreamError } from './idp-client.service';
 import { IdpError, idpErrors } from './idp.errors';
+import { isUniqueViolation } from './idp-persistence.util';
 import type {
   IdpFacultyChangeEvent,
+  IdpFacultyInboxBody,
+  IdpFacultyInboxSummary,
   IdpFacultyQualification,
   IdpFacultyRecord,
   IdpFacultySyncSummary,
@@ -37,6 +42,15 @@ const DAYS = new Set([
 
 const EVENT_KEY_TTL_MS = 30 * 24 * 60 * 60 * 1000; // contract 7.4: 30 days
 
+type RosterCounters = {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  errors: IdpSyncError[];
+};
+
 /**
  * Milestone 1 — faculty roster, qualifications, and unavailability sync.
  *
@@ -48,19 +62,6 @@ const EVENT_KEY_TTL_MS = 30 * 24 * 60 * 60 * 1000; // contract 7.4: 30 days
 @Injectable()
 export class IdpSyncService {
   private readonly logger = new Logger(IdpSyncService.name);
-
-  /**
-   * Best-effort idempotency for webhook events.
-   *
-   * The current schema has no idempotency/outbox table, so this map is
-   * process-local. It is enough for single-instance deployments and for
-   * retries within the same process. A durable `idp_processed_event` table
-   * should replace it when a migration pipeline exists.
-   */
-  private readonly seenEvents = new Map<
-    string,
-    { hash: string; facultyId: string | null; seenAt: number }
-  >();
 
   constructor(
     @InjectRepository(Faculty)
@@ -75,6 +76,8 @@ export class IdpSyncService {
     private readonly subjectRepo: Repository<Subject>,
     @InjectRepository(Term)
     private readonly termRepo: Repository<Term>,
+    @InjectRepository(IdpProcessedEvent)
+    private readonly processedEventRepo: Repository<IdpProcessedEvent>,
     private readonly client: IdpClientService,
   ) {}
 
@@ -97,13 +100,29 @@ export class IdpSyncService {
       baseUrl: this.client.baseUrl.length > 0,
       apiKey: this.client.hasApiKey,
       webhookSecret: this.client.hasWebhookSecret,
+      deviceApiKey: this.client.hasDeviceApiKey,
     };
+    const inboundReady = configured.deviceApiKey && configured.webhookSecret;
+    const outboundReady = enabled && configured.baseUrl;
+    const anyConfigured =
+      enabled ||
+      configured.baseUrl ||
+      configured.apiKey ||
+      configured.webhookSecret ||
+      configured.deviceApiKey;
 
     return {
-      status: !enabled ? 'disabled' : configured.baseUrl ? 'ok' : 'degraded',
+      status:
+        inboundReady || outboundReady
+          ? 'ok'
+          : anyConfigured
+            ? 'degraded'
+            : 'disabled',
       service: 'coe-nnect-idp-integration',
       enabled,
       configured,
+      inboundReady,
+      outboundReady,
       lastSyncAt,
       timestamp: new Date().toISOString(),
     };
@@ -199,30 +218,7 @@ export class IdpSyncService {
 
     summary.fetched = records.length;
 
-    const eligible: Faculty[] = [];
-    for (const record of records) {
-      const keys = {
-        wmsu_id: normalizeKey(record.wmsu_id),
-        employee_id: normalizeKey(record.employee_id),
-      };
-
-      try {
-        const result = await this.applyFacultyRecord(record, departmentMap);
-        summary[result.outcome] += 1;
-        eligible.push(result.faculty);
-      } catch (err) {
-        const error = this.toSyncError(err, keys);
-        if (err instanceof IdpError && err.getStatus() === 409) {
-          summary.skipped += 1;
-        } else {
-          summary.failed += 1;
-        }
-        summary.errors.push(error);
-        this.logger.warn(
-          `IDP roster sync skipped ${keys.wmsu_id ?? keys.employee_id ?? '<unknown>'}: ${error.code} ${error.message}`,
-        );
-      }
-    }
+    const eligible = await this.applyRoster(records, departmentMap, summary);
 
     // Qualifications (contract 5.2) and unavailability (5.3) are per-faculty
     // IDP calls. Sync them for every eligible faculty; a failure in one
@@ -260,10 +256,93 @@ export class IdpSyncService {
     return summary;
   }
 
+  /**
+   * Pattern C — the IDP desktop app pushes its faculty snapshot when online.
+   *
+   * The body is either a bare array of Faculty Record (contract 4.1) or an
+   * envelope `{ "faculty": [...] }`. Each record is applied with the same
+   * matching, ownership, and `local_edit_pending` rules as the Pattern A pull.
+   * A bad record is reported in `errors[]` without aborting the snapshot.
+   */
+  async applyFacultySnapshot(
+    body: unknown,
+    requestId?: string,
+  ): Promise<IdpFacultyInboxSummary> {
+    const records = normalizeInboxRecords(body);
+    const startedAt = new Date();
+    const summary: IdpFacultyInboxSummary = {
+      received: records.length,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [],
+      startedAt: startedAt.toISOString(),
+      finishedAt: startedAt.toISOString(),
+    };
+
+    const departmentMap = await this.loadDepartmentMap();
+    await this.applyRoster(records, departmentMap, summary);
+
+    summary.finishedAt = new Date().toISOString();
+    this.logger.log(
+      `IDP faculty inbox: received=${summary.received} created=${summary.created} ` +
+        `updated=${summary.updated} unchanged=${summary.unchanged} ` +
+        `skipped=${summary.skipped} failed=${summary.failed}` +
+        (requestId ? ` [request ${requestId}]` : ''),
+    );
+
+    return summary;
+  }
+
+  private async applyRoster(
+    records: IdpFacultyRecord[],
+    departmentMap: Map<string, string>,
+    summary: RosterCounters,
+  ): Promise<Faculty[]> {
+    const eligible: Faculty[] = [];
+
+    for (const record of records) {
+      const keys = {
+        wmsu_id: normalizeKey(record?.wmsu_id),
+        employee_id: normalizeKey(record?.employee_id),
+      };
+
+      try {
+        if (!record || typeof record !== 'object' || Array.isArray(record)) {
+          throw idpErrors.validation(
+            'Each faculty record must be a JSON object.',
+          );
+        }
+
+        const result = await this.applyFacultyRecord(record, departmentMap);
+        summary[result.outcome] += 1;
+        eligible.push(result.faculty);
+      } catch (err) {
+        const error = this.toSyncError(err, keys);
+        if (err instanceof IdpError && err.getStatus() === 409) {
+          summary.skipped += 1;
+        } else {
+          summary.failed += 1;
+        }
+        summary.errors.push(error);
+        this.logger.warn(
+          `IDP apply skipped ${keys.wmsu_id ?? keys.employee_id ?? '<unknown>'}: ${error.code} ${error.message}`,
+        );
+      }
+    }
+
+    return eligible;
+  }
+
   private async applyFacultyRecord(
     record: IdpFacultyRecord,
     departmentMap: Map<string, string>,
-  ): Promise<{ outcome: 'created' | 'updated' | 'unchanged'; faculty: Faculty }> {
+  ): Promise<{
+    outcome: 'created' | 'updated' | 'unchanged';
+    faculty: Faculty;
+  }> {
     const wmsuId = normalizeKey(record.wmsu_id);
     const employeeId = normalizeKey(record.employee_id);
 
@@ -321,7 +400,10 @@ export class IdpSyncService {
         lastSyncedAt: new Date(),
         isActive: record.is_active,
       });
-      return { outcome: 'created', faculty: await this.facultyRepo.save(entity) };
+      return {
+        outcome: 'created',
+        faculty: await this.facultyRepo.save(entity),
+      };
     }
 
     this.assertNotLocallyPending(existing);
@@ -356,7 +438,10 @@ export class IdpSyncService {
       syncStatus: 'synced',
       lastSyncedAt: new Date(),
     });
-    return { outcome: 'updated', faculty: await this.facultyRepo.save(existing) };
+    return {
+      outcome: 'updated',
+      faculty: await this.facultyRepo.save(existing),
+    };
   }
 
   // ────────────────────────────────────────────────────────────
@@ -504,7 +589,8 @@ export class IdpSyncService {
             err instanceof IdpError
               ? ((err.getResponse() as any)?.error?.code ?? 'validation_error')
               : 'validation_error',
-          message: err instanceof Error ? err.message : 'Invalid unavailability row.',
+          message:
+            err instanceof Error ? err.message : 'Invalid unavailability row.',
           wmsu_id: faculty.wmsuId,
           employee_id: faculty.employeeId,
           external_id: row.external_id ?? null,
@@ -525,29 +611,57 @@ export class IdpSyncService {
   ): Promise<{ event_id: string; status: string; faculty_id: string | null }> {
     this.validateChangeEvent(event);
 
+    const eventId = normalizeKey(event.event_id) as string;
     const hash = createHash('sha256')
       .update(JSON.stringify(event))
       .digest('hex');
-    const previous = this.seenEvents.get(event.event_id);
+    const previous = await this.findProcessedEvent(eventId);
     if (previous) {
-      if (previous.hash !== hash) throw idpErrors.duplicateKey(event.event_id);
+      if (previous.bodyHash !== hash) throw idpErrors.duplicateKey(eventId);
       return {
-        event_id: event.event_id,
+        event_id: eventId,
         status: 'duplicate',
         faculty_id: previous.facultyId,
       };
     }
 
     const faculty = await this.applyChangeEvent(event);
-    this.rememberEvent(event.event_id, hash, faculty.facultyId);
+
+    try {
+      await this.processedEventRepo.save(
+        this.processedEventRepo.create({
+          eventId,
+          bodyHash: hash,
+          eventType: event.event,
+          facultyId: faculty.facultyId,
+          processedAt: new Date(),
+        }),
+      );
+    } catch (err) {
+      // A concurrent delivery of the same event won the insert race. If it
+      // carried a different body, this request is a conflict; otherwise the
+      // event is already applied and the caller can retry safely.
+      if (isUniqueViolation(err)) {
+        const raced = await this.findProcessedEvent(eventId);
+        if (raced && raced.bodyHash !== hash) {
+          throw idpErrors.duplicateKey(eventId);
+        }
+        return {
+          event_id: eventId,
+          status: 'duplicate',
+          faculty_id: raced?.facultyId ?? faculty.facultyId,
+        };
+      }
+      throw err;
+    }
 
     this.logger.log(
-      `Applied IDP webhook ${event.event_id} (${event.event}) to faculty ${faculty.facultyId}` +
+      `Applied IDP webhook ${eventId} (${event.event}) to faculty ${faculty.facultyId}` +
         (requestId ? ` [request ${requestId}]` : ''),
     );
 
     return {
-      event_id: event.event_id,
+      event_id: eventId,
       status: 'applied',
       faculty_id: faculty.facultyId,
     };
@@ -650,12 +764,17 @@ export class IdpSyncService {
       throw idpErrors.validation('Request body must be a JSON object.');
     }
     if (!normalizeKey(event.event_id)) {
-      throw idpErrors.validation('event_id is required.', { field: 'event_id' });
+      throw idpErrors.validation('event_id is required.', {
+        field: 'event_id',
+      });
     }
     if (!normalizeKey(event.event)) {
       throw idpErrors.validation('event is required.', { field: 'event' });
     }
-    if (!normalizeKey(event.faculty_wmsu_id) && !normalizeKey(event.faculty_employee_id)) {
+    if (
+      !normalizeKey(event.faculty_wmsu_id) &&
+      !normalizeKey(event.faculty_employee_id)
+    ) {
       throw idpErrors.validation(
         'At least one of faculty_wmsu_id or faculty_employee_id is required.',
       );
@@ -738,16 +857,39 @@ export class IdpSyncService {
     return new Date(row.lastSyncedAt).toISOString();
   }
 
-  private rememberEvent(
+  private async findProcessedEvent(
     eventId: string,
-    hash: string,
-    facultyId: string,
-  ): void {
-    const cutoff = Date.now() - EVENT_KEY_TTL_MS;
-    for (const [key, value] of this.seenEvents) {
-      if (value.seenAt < cutoff) this.seenEvents.delete(key);
+  ): Promise<IdpProcessedEvent | null> {
+    return this.processedEventRepo.findOne({ where: { eventId } });
+  }
+
+  /**
+   * Contract 7.4: idempotency keys are kept for at least 30 days. The
+   * processed-event table is append-only until this nightly sweep.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async cleanupProcessedEvents(
+    now: Date = new Date(),
+  ): Promise<{ deleted: number }> {
+    const cutoff = new Date(now.getTime() - EVENT_KEY_TTL_MS);
+    try {
+      const result = await this.processedEventRepo.delete({
+        processedAt: LessThan(cutoff),
+      });
+      const deleted = result.affected ?? 0;
+      if (deleted > 0) {
+        this.logger.log(
+          `IDP idempotency sweep: deleted ${deleted} processed event(s) older than 30 days.`,
+        );
+      }
+      return { deleted };
+    } catch (err) {
+      this.logger.error(
+        `IDP idempotency sweep failed: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      return { deleted: 0 };
     }
-    this.seenEvents.set(eventId, { hash, facultyId, seenAt: Date.now() });
   }
 
   private toSyncError(
@@ -782,6 +924,18 @@ export class IdpSyncService {
       ? err
       : new ServiceUnavailableException('IDP faculty pull failed.');
   }
+}
+
+/** Accept the contract's bare array plus a `{ "faculty": [...] }` envelope. */
+function normalizeInboxRecords(body: unknown): IdpFacultyRecord[] {
+  if (Array.isArray(body)) return body as IdpFacultyRecord[];
+  if (body && typeof body === 'object') {
+    const faculty = (body as { faculty?: unknown }).faculty;
+    if (Array.isArray(faculty)) return faculty as IdpFacultyRecord[];
+  }
+  throw idpErrors.validation(
+    'Request body must be an array of faculty records or { "faculty": [...] }.',
+  );
 }
 
 /** Trim strings; treat empty strings as null. */
