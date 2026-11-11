@@ -90,6 +90,14 @@ function buildService(rows: {
         { designationId: '2', designationName: 'Instructor I' },
       ],
     ) as any,
+    {
+      get: (key: string) =>
+        key === 'IDP_ENABLED'
+          ? 'true'
+          : key === 'IDP_BASE_URL' || key === 'IDP_API_KEY'
+            ? 'configured-for-test'
+            : undefined,
+    } as any,
   );
 
   return service;
@@ -237,5 +245,37 @@ describe('PublicService', () => {
       activeSubjects: 1,
       activeRooms: 1,
     });
+  });
+
+  it('reports integration status from live rows without leaking config values', async () => {
+    const service = buildService({
+      faculty: [
+        faculty(),
+        faculty({ facultyId: '2', syncStatus: 'pending', lastSyncedAt: null }),
+        faculty({ facultyId: '3', syncStatus: 'failed', lastSyncedAt: null }),
+        faculty({ facultyId: '4', deptId: '2' }),
+      ],
+      schedules: [schedule({ scheduleId: '1' })],
+    });
+
+    const result = await service.getIntegrationStatus();
+
+    expect(result.state).toBe('live');
+    expect(result.faculty).toMatchObject({
+      total: 3,
+      linked: 1,
+      pending: 1,
+      failed: 1,
+      lastSyncedAt: '2026-10-01T00:00:00.000Z',
+    });
+    expect(result.published).toMatchObject({
+      terms: 1,
+      entries: 1,
+      latestTermCode: '2026-2027-1st',
+    });
+    expect(result.milestones.map((item) => item.status)).toContain('done');
+
+    const serialised = JSON.stringify(result);
+    expect(serialised).not.toContain('configured-for-test');
   });
 });

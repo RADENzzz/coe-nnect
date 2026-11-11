@@ -50,4 +50,14 @@ export class PublicController {
       }),
     };
   }
+
+  @Get('integration')
+  @Header('Cache-Control', 'public, max-age=30, stale-while-revalidate=120')
+  @ApiOperation({
+    summary:
+      'Integration status for the IDP team — shape only, no credential values',
+  })
+  async integration() {
+    return { data: await this.publicService.getIntegrationStatus() };
+  }
 }

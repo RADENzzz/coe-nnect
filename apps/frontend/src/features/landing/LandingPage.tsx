@@ -8,13 +8,17 @@ import ThemeStyleMenu from '../../components/ui/ThemeStyleMenu';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchPublicFaculty,
+  fetchPublicIntegration,
   fetchPublicOverview,
   fetchPublicSchedules,
+  type IntegrationMilestoneStatus,
+  type IntegrationState,
   type PublicFaculty,
+  type PublicIntegrationStatus,
   type PublicSchedules,
 } from '../../api/public.api';
 
-type LandingTab = 'schedules' | 'faculty';
+type LandingTab = 'schedules' | 'faculty' | 'integration';
 
 const DAY_TONE: Record<string, string> = {
   Monday:
@@ -142,7 +146,7 @@ function TabButton({
       aria-selected={active}
       aria-controls="public-panel"
       onClick={onClick}
-      className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+      className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
         active
           ? 'border-primary text-primary'
           : 'border-transparent text-on-surface-variant hover:text-on-surface'
@@ -609,6 +613,269 @@ function FacultyPanel({
   );
 }
 
+const INTEGRATION_STATE: Record<
+  IntegrationState,
+  { label: string; body: string; icon: string; tone: string; dot: string }
+> = {
+  live: {
+    label: 'Integration is live',
+    body: 'Outbound calls and signed webhooks are configured for this environment.',
+    icon: 'task_alt',
+    tone: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200',
+    dot: 'bg-emerald-500',
+  },
+  configured_disabled: {
+    label: 'Configured, currently switched off',
+    body: 'Credentials are present, but the integration kill switch is off. No outbound calls are made.',
+    icon: 'warning',
+    tone: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200',
+    dot: 'bg-amber-500',
+  },
+  incomplete: {
+    label: 'Switched on, configuration incomplete',
+    body: 'The integration is enabled but a base URL or API key is missing, so no outbound call can succeed.',
+    icon: 'warning',
+    tone: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200',
+    dot: 'bg-amber-500',
+  },
+  not_configured: {
+    label: 'Not configured yet',
+    body: 'No base URL or API key is set for this environment. Faculty sync and schedule pushes are inactive.',
+    icon: 'radio_button_unchecked',
+    tone: 'border-outline-variant bg-surface-container-low text-on-surface',
+    dot: 'bg-slate-400',
+  },
+};
+
+const MILESTONE_BADGE: Record<
+  IntegrationMilestoneStatus,
+  { label: string; className: string; icon: string }
+> = {
+  done: {
+    label: 'Shipped',
+    className:
+      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+    icon: 'check_circle',
+  },
+  in_progress: {
+    label: 'In progress',
+    className:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+    icon: 'pending_actions',
+  },
+  planned: {
+    label: 'Planned',
+    className:
+      'border-outline-variant bg-surface-container text-on-surface-variant',
+    icon: 'radio_button_unchecked',
+  },
+};
+
+function ConnectionRow({
+  label,
+  configured,
+}: {
+  label: string;
+  configured: boolean;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-2">
+      <span className="text-sm text-on-surface">{label}</span>
+      <span
+        className={`inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${
+          configured
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : 'text-on-surface-variant'
+        }`}
+      >
+        <Icon
+          name={configured ? 'check_circle' : 'radio_button_unchecked'}
+          size={14}
+        />
+        {configured ? 'Configured' : 'Not set'}
+      </span>
+    </li>
+  );
+}
+
+function IntegrationPanel({
+  data,
+  isLoading,
+  isError,
+  onRetry,
+}: {
+  data: PublicIntegrationStatus | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  if (isLoading || isError || !data) {
+    return (
+      <PanelState
+        loading={isLoading}
+        error={isError}
+        empty={false}
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  const state = INTEGRATION_STATE[data.state];
+  const linkedShare =
+    data.faculty.total > 0
+      ? Math.round((data.faculty.linked / data.faculty.total) * 100)
+      : 0;
+
+  return (
+    <div className="mt-5">
+      <div
+        className={`flex flex-wrap items-start gap-3 rounded-2xl border p-4 ${state.tone}`}
+      >
+        <Icon name={state.icon} size={20} className="mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold">{state.label}</p>
+          <p className="mt-0.5 text-xs leading-relaxed opacity-90">
+            {state.body}
+          </p>
+          <p className="mt-1 text-[11px] opacity-70">
+            Checked{' '}
+            {new Date(data.generatedAt).toLocaleString(undefined, {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })}
+            {data.faculty.lastSyncedAt
+              ? ` · last successful faculty sync ${new Date(
+                  data.faculty.lastSyncedAt,
+                ).toLocaleString(undefined, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}`
+              : ' · no faculty has been synced from IDP yet'}
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider dark:border-white/15 dark:bg-white/5">
+          <span className={`h-1.5 w-1.5 rounded-full ${state.dot}`} />
+          {data.service}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard
+          icon="link"
+          label="Faculty linked"
+          value={`${data.faculty.linked} / ${data.faculty.total}`}
+          hint={`${linkedShare}% delivered by IDP at least once`}
+        />
+        <StatCard
+          icon="pending_actions"
+          label="Awaiting first sync"
+          value={data.faculty.pending}
+          hint="Never delivered by IDP"
+        />
+        <StatCard
+          icon="warning"
+          label="Sync failures"
+          value={data.faculty.failed}
+          hint="Last attempt failed"
+        />
+        <StatCard
+          icon="event_available"
+          label="Published entries"
+          value={data.published.entries}
+          hint={
+            data.published.latestTermCode
+              ? `Latest term ${data.published.latestTermCode} · ${data.published.terms} term${
+                  data.published.terms === 1 ? '' : 's'
+                }`
+              : 'Nothing published yet'
+          }
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr,1.15fr]">
+        <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+            Connection
+          </p>
+          <h3 className="mt-1 text-base font-semibold text-on-surface">
+            What this deployment has configured
+          </h3>
+          <ul className="mt-2 divide-y divide-outline-variant">
+            <ConnectionRow
+              label="Outbound base URL"
+              configured={data.connection.baseUrlConfigured}
+            />
+            <ConnectionRow
+              label="Outbound API key"
+              configured={data.connection.apiKeyConfigured}
+            />
+            <ConnectionRow
+              label="Webhook signing secret"
+              configured={data.connection.webhookSecretConfigured}
+            />
+            <ConnectionRow
+              label="Integration enabled"
+              configured={data.connection.enabled}
+            />
+          </ul>
+          <p className="mt-3 text-xs leading-relaxed text-on-surface-variant">
+            Only whether each item is set is published. Values, hosts, keys, and
+            secrets are never returned by this page.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+            Delivery plan
+          </p>
+          <h3 className="mt-1 text-base font-semibold text-on-surface">
+            What is working for you today
+          </h3>
+          <ol className="mt-3 space-y-3">
+            {data.milestones.map((milestone) => {
+              const badge = MILESTONE_BADGE[milestone.status];
+              return (
+                <li
+                  key={milestone.key}
+                  className="rounded-xl border border-outline-variant bg-surface-container-low/60 p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-on-surface">
+                      {milestone.title}
+                    </p>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${badge.className}`}
+                    >
+                      <Icon name={badge.icon} size={12} />
+                      {badge.label}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
+                    {milestone.summary}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-4 text-xs leading-relaxed text-on-surface-variant">
+        <p className="font-semibold text-on-surface">
+          About this status view
+        </p>
+        <p className="mt-1">
+          Every number here is read from live records, not typed in by hand.
+          “Linked” means IDP has delivered that faculty row at least once, so
+          the record carries a last-synced timestamp. Drafts, internal review
+          rows, and records awaiting approval are excluded from the published
+          counts.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const user = useAuthStore((state) => state.user);
   const profile = useAuthStore((state) => state.profile);
@@ -631,6 +898,12 @@ export default function LandingPage() {
     queryKey: ['public-faculty'],
     queryFn: () => fetchPublicFaculty(),
     staleTime: 5 * 60_000,
+  });
+
+  const integration = useQuery({
+    queryKey: ['public-integration'],
+    queryFn: fetchPublicIntegration,
+    staleTime: 30_000,
   });
 
   const dashboardPath = !user
@@ -916,7 +1189,7 @@ export default function LandingPage() {
             <div
               role="tablist"
               aria-label="Public data views"
-              className="flex gap-5"
+              className="flex max-w-full gap-5 overflow-x-auto [scrollbar-width:thin]"
             >
               <TabButton
                 id="tab-schedules"
@@ -934,17 +1207,23 @@ export default function LandingPage() {
               >
                 Faculty directory
               </TabButton>
+              <TabButton
+                id="tab-integration"
+                active={tab === 'integration'}
+                icon="link"
+                onClick={() => setTab('integration')}
+              >
+                IDP integration
+              </TabButton>
             </div>
           </div>
 
           <div
             role="tabpanel"
             id="public-panel"
-            aria-labelledby={
-              tab === 'schedules' ? 'tab-schedules' : 'tab-faculty'
-            }
+            aria-labelledby={`tab-${tab}`}
           >
-            {tab === 'schedules' ? (
+            {tab === 'schedules' && (
               <SchedulesPanel
                 data={schedules.data}
                 isLoading={schedules.isLoading}
@@ -953,12 +1232,21 @@ export default function LandingPage() {
                 selectedTermId={selectedTermId}
                 onTermChange={(next) => setTermId(next)}
               />
-            ) : (
+            )}
+            {tab === 'faculty' && (
               <FacultyPanel
                 data={faculty.data}
                 isLoading={faculty.isLoading}
                 isError={faculty.isError}
                 onRetry={() => void faculty.refetch()}
+              />
+            )}
+            {tab === 'integration' && (
+              <IntegrationPanel
+                data={integration.data}
+                isLoading={integration.isLoading}
+                isError={integration.isError}
+                onRetry={() => void integration.refetch()}
               />
             )}
           </div>
