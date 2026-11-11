@@ -47,6 +47,11 @@ only enabled when `IDP_ENABLED=true` and `IDP_BASE_URL` is set on CoE-NNECT.
    re-serialization.
 4. **Poll state** — persist the last `next_since` value per outbox endpoint and
    send it back on the next poll.
+5. **Public app link (optional)** — if the IDP team wants the faculty-facing
+   app advertised on the CoE-NNECT landing page, provide the public `http(s)`
+   URL. The CoE-NNECT deployment sets it as `VITE_IDP_APP_URL`; the landing
+   page then shows an "Open IDP app" promo card and a footer link. Leave it
+   empty to hide the promo.
 
 ### For Pattern A (optional fallback)
 
