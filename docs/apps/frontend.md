@@ -25,6 +25,8 @@ pnpm --filter @coe-nnect/frontend dev
 
 Vite normally serves the application at `http://localhost:5173`. Configure `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY` in `.env.local`; variable names and any optional development login settings are listed in the [frontend environment template](../../apps/frontend/.env.example).
 
+The public landing page can advertise the IDP faculty application. Set `VITE_IDP_APP_URL` to the IDP app's `http(s)` URL to show the promo card and footer link; set `VITE_IDP_APP_NAME` to override the display name. Leave both empty to hide the promo. The URL is deployment configuration, not a secret, and only `http`/`https` values are rendered.
+
 Anything prefixed with `VITE_` is bundled for the browser. Never place service-role keys, passwords, or other secrets in frontend environment variables.
 
 ## Build and checks
