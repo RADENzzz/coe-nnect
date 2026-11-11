@@ -18,6 +18,7 @@ export interface DevUserRecord {
   role: string;
   isActive: boolean;
   deptId: string | null;
+  lastSeenAt: string | null;
 }
 
 export type DevJobKind = 'seed' | 'reset' | 'reset-and-seed' | 'seed-demo-full';

@@ -35,6 +35,7 @@ import NotificationsInboxPage from './features/notifications/NotificationsInboxP
 import SettingsPage from './features/settings/SettingsPage';
 import HelpPage from './features/help/HelpPage';
 import DevToolsPage from './features/dev-tools/DevToolsPage';
+import PresenceProvider from './components/presence/PresenceProvider';
 import { useAuthStore } from './store/auth.store';
 
 function DeanRouteGuard() {
@@ -54,6 +55,9 @@ function DeanRouteGuard() {
 function App() {
   return (
     <MaintenanceGate>
+      {/* Session-scoped Realtime presence + last-seen heartbeat. Sits above
+          the router so changing pages never untracks the signed-in user. */}
+      <PresenceProvider />
       <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />

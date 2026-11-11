@@ -25,6 +25,7 @@ import {
   type SystemStatusSeverity,
 } from '../../api/system-status.api';
 import { useOnlineUsers } from '../../hooks/use-online-users';
+import { formatLastSeen } from '../../lib/utils/format.util';
 import {
   isLocalMaintenanceBypassEnabled,
   isMaintenancePreviewEnabled,
@@ -821,6 +822,12 @@ export default function DevToolsPage() {
                       </div>
                       <p className="text-xs text-slate-500 truncate mt-0.5">
                         {u.email}
+                        {!isOnline && u.lastSeenAt && (
+                          <span className="text-slate-400">
+                            {' '}
+                            · Last seen {formatLastSeen(u.lastSeenAt, now)}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>

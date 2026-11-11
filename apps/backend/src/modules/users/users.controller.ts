@@ -80,6 +80,30 @@ export class UsersController {
     );
   }
 
+  /**
+   * Presence heartbeat.
+   *
+   * Deliberately available to every authenticated role (the class-level
+   * decorator only allows Dean/Secretary) so the hidden administrator
+   * account and DHs also record a last-seen timestamp.
+   *
+   * Route ordering: declared before @Get(':id') — otherwise Nest matches
+   * 'me' as a user ID.
+   */
+  @Post('me/heartbeat')
+  @Roles(
+    'college_dean',
+    'college_secretary',
+    'department_head',
+    'administrator',
+    'viewer',
+  )
+  @HttpCode(200)
+  async heartbeat(@Req() req: any) {
+    const data = await this.service.heartbeat(req.user.id);
+    return { data };
+  }
+
   // ── Collection routes ──
 
   @Get()

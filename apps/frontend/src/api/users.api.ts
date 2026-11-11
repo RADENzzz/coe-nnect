@@ -32,6 +32,8 @@ export interface UserDirectoryRecord {
   role: UserRole;
   dept_id: number | null;
   is_active: boolean;
+  /** Last heartbeat from the user's browser; null if they never checked in. */
+  last_seen_at: string | null;
 }
 
 export interface CreateUserInput {
@@ -51,6 +53,16 @@ export async function fetchUsers(): Promise<UserRecord[]> {
 export async function fetchUserDirectory(): Promise<UserDirectoryRecord[]> {
   const { data } = await api.get('/v1/users/directory');
   return data.data;
+}
+
+/**
+ * Record that this browser is still signed in. Called once a minute by the
+ * session-scoped presence provider and once more just before logout.
+ */
+export async function heartbeatPresence(timeoutMs = 10_000): Promise<void> {
+  await api.post('/v1/users/me/heartbeat', undefined, {
+    timeout: timeoutMs,
+  });
 }
 
 export async function fetchUser(id: string): Promise<UserRecord> {

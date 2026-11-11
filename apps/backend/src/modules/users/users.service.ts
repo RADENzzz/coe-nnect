@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { SupabaseService } from '../../database/supabase.service';
 import { Department } from '../departments/entities/department.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
@@ -16,6 +16,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
 import { User, UserRole } from './entities/user.entity';
+import { UserPresence } from './entities/user-presence.entity';
 
 @Injectable()
 export class UsersService {
@@ -29,6 +30,8 @@ export class UsersService {
   constructor(
     private supabase: SupabaseService,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(UserPresence)
+    private presenceRepo: Repository<UserPresence>,
     @InjectRepository(Department) private deptRepo: Repository<Department>,
     @InjectRepository(Faculty) private facultyRepo: Repository<Faculty>,
     private readonly dispatcher: NotificationDispatcherService,
@@ -46,13 +49,39 @@ export class UsersService {
       order: { username: 'ASC' },
     });
 
+    const presence = users.length
+      ? await this.presenceRepo.find({
+          where: { userId: In(users.map((u) => u.userId)) },
+        })
+      : [];
+    const lastSeenByUser = new Map(
+      presence.map((p) => [p.userId, p.lastSeenAt]),
+    );
+
     return users.map((u) => ({
       user_id: u.userId,
       username: u.username,
       role: u.role,
       dept_id: u.deptId,
       is_active: true,
+      last_seen_at: lastSeenByUser.get(u.userId)?.toISOString() ?? null,
     }));
+  }
+
+  /**
+   * Record that the signed-in user's browser is still around.
+   *
+   * Upsert keeps this to one row per user. The write is deliberately cheap:
+   * the frontend calls it once a minute, and it must never touch `users` or
+   * its `updated_at` trigger.
+   */
+  async heartbeat(userId: string): Promise<{ last_seen_at: string }> {
+    const now = new Date();
+    await this.presenceRepo.upsert(
+      { userId, lastSeenAt: now },
+      { conflictPaths: ['userId'] },
+    );
+    return { last_seen_at: now.toISOString() };
   }
 
   async findOne(userId: string): Promise<User> {
