@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import TimetableGrid from './components/TimetableGrid';
 import AgendaView from './views/AgendaView';
 import type {
@@ -382,6 +382,30 @@ export default function TimetablePage({ readOnly = false }: Props) {
     enabled: !!user && !readOnly && !activeVersion,
     staleTime: 5 * 60 * 1000,
   });
+
+  /**
+   * Electives with a deterministic temporary code cannot be plotted yet.
+   * Hide them from the plot modal instead of letting the backend reject the
+   * submission, and surface a banner so the omission is never silent.
+   */
+  const unresolvedElectives = useMemo(
+    () =>
+      subjects.filter(
+        (s) =>
+          s.isElective === true &&
+          (s.isPlaceholder === true ||
+            /^(ELEC|SLOT)-/i.test(String(s.subjectCode ?? ''))),
+      ),
+    [subjects],
+  );
+
+  const plottableSubjects = useMemo(() => {
+    if (unresolvedElectives.length === 0) return subjects;
+    const blocked = new Set(
+      unresolvedElectives.map((s) => String(s.subjectId)),
+    );
+    return subjects.filter((s) => !blocked.has(String(s.subjectId)));
+  }, [subjects, unresolvedElectives]);
 
   const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =
     useQuery({
@@ -1271,6 +1295,48 @@ export default function TimetablePage({ readOnly = false }: Props) {
           />
         )}
 
+        {/* ── Unresolved electives ── */}
+        {!activeVersion && unresolvedElectives.length > 0 && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3">
+            <Icon
+              name="warning"
+              filled
+              size={20}
+              className="text-amber-600 shrink-0 mt-0.5"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-900">
+                {unresolvedElectives.length} elective
+                {unresolvedElectives.length === 1 ? '' : 's'} hidden from
+                plotting
+              </p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                These subjects still have a temporary code. Auto-generate
+                excludes them too. Resolve the code on the Subjects page, then
+                plot them here.
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {unresolvedElectives.map((s) => (
+                  <span
+                    key={s.subjectId}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-200/70 text-[11px] font-mono font-semibold text-amber-900"
+                    title={s.title}
+                  >
+                    {s.subjectCode}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <Link
+              to="/subjects?kind=elective"
+              className="text-xs font-semibold text-amber-800 hover:text-amber-950 whitespace-nowrap flex items-center gap-1 shrink-0"
+            >
+              Resolve
+              <Icon name="arrow_forward" size={14} />
+            </Link>
+          </div>
+        )}
+
         {/* ── Coverage banner ── */}
         {showCoverageBanner && coverage && (
           <div
@@ -1552,7 +1618,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               deptCode: d.deptCode,
               deptName: d.deptName,
             }))}
-            subjects={subjects.map((s) => {
+            subjects={plottableSubjects.map((s) => {
               const entries = prospectus.filter(
                 (p) => p.subjectId === s.subjectId,
               );

@@ -8,6 +8,12 @@ export type ColumnRole =
 
 export type SemesterType = '1st' | '2nd' | 'summer';
 
+/** Regular curriculum tables are unique per year/semester; electives may repeat. */
+export type TableKind = 'regular' | 'elective';
+
+/** Electives may store only a total, with no lecture/lab split. */
+export type UnitsMode = 'lec_lab' | 'total_only';
+
 export interface ColumnSlice {
   role: ColumnRole;
   x_start_pt: number;
@@ -60,6 +66,7 @@ export interface ProspectusPdfTable {
   yearLevel: number;
   semester: SemesterType;
   label: string | null;
+  tableKind: TableKind;
   regionPageIndex: number;
   regionXStartPt: string;
   regionXEndPt: string;
@@ -115,7 +122,12 @@ export interface SignedUrlResponse {
 /** What mode the mapping overlay is in. */
 export type DrawingMode =
   | { kind: 'idle' }
-  | { kind: 'drawing-region'; yearLevel: number; semester: SemesterType }
+  | {
+      kind: 'drawing-region';
+      yearLevel: number;
+      semester: SemesterType;
+      tableKind: TableKind;
+    }
   | { kind: 'focusing' };
 
 /**
@@ -198,13 +210,32 @@ export interface SkippedRow {
   rowIndex: number;
   code: string;
   title: string;
-  reason: 'no_code' | 'no_title' | 'unit_mismatch' | 'user_skip' | 'pattern_mismatch';
+  reason:
+    | 'no_code'
+    | 'no_title'
+    | 'unit_mismatch'
+    | 'user_skip'
+    | 'pattern_mismatch'
+    | 'not_elective'
+    | 'unknown_subject';
 }
 
 export interface SlotCreated {
   subjectId: string;
   subjectCode: string;
   slotLabel: string;
+  title: string;
+  yearLevel: number;
+  semester: string;
+  isElective: boolean;
+  isPlaceholder: boolean;
+  unitsMode: UnitsMode;
+}
+
+/** Elective rows imported with a deterministic, unresolved temporary code. */
+export interface TemporaryCode {
+  subjectId: string;
+  subjectCode: string;
   title: string;
   yearLevel: number;
   semester: string;
@@ -228,6 +259,7 @@ export interface ImportResult {
   warnings: string[];
   skippedRows: SkippedRow[];
   slots: SlotCreated[];
+  temporaryCodes: TemporaryCode[];
 }
 
 export interface ProgramOption {

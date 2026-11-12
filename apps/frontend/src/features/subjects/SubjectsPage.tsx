@@ -45,6 +45,7 @@ const ROOM_TYPE_ICON: Record<SubjectRoomType, string> = {
 type Mode = 'create' | 'edit';
 type RoomTypeFilter = '' | SubjectRoomType | 'none';
 type MinorFilter = 'all' | 'minor' | 'regular';
+type SubjectKindFilter = 'all' | 'regular' | 'minor' | 'elective';
 type ComponentFilter = 'all' | 'lecture_only' | 'lab_only' | 'mixed';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
@@ -121,6 +122,7 @@ export default function SubjectsPage() {
   const deptFilter = searchParams.get('dept') ?? '';
   const roomFilter = (searchParams.get('room') ?? '') as RoomTypeFilter;
   const minorFilter = (searchParams.get('minor') ?? 'all') as MinorFilter;
+  const kindFilter = (searchParams.get('kind') ?? 'all') as SubjectKindFilter;
   const compFilter = (searchParams.get('comp') ?? 'all') as ComponentFilter;
   const statusFilter = (searchParams.get('status') ?? 'all') as StatusFilter;
   const sortKey = (searchParams.get('sort') ?? 'code') as SortKey;
@@ -167,6 +169,7 @@ export default function SubjectsPage() {
     next.delete('dept');
     next.delete('room');
     next.delete('minor');
+    next.delete('kind');
     next.delete('comp');
     next.delete('status');
     next.delete('sort');
@@ -179,6 +182,7 @@ export default function SubjectsPage() {
     !!deptFilter ||
     !!roomFilter ||
     minorFilter !== 'all' ||
+    kindFilter !== 'all' ||
     compFilter !== 'all' ||
     statusFilter !== 'all';
 
@@ -187,6 +191,7 @@ export default function SubjectsPage() {
     (deptFilter ? 1 : 0) +
     (roomFilter ? 1 : 0) +
     (minorFilter !== 'all' ? 1 : 0) +
+    (kindFilter !== 'all' ? 1 : 0) +
     (compFilter !== 'all' ? 1 : 0) +
     (statusFilter !== 'all' ? 1 : 0);
 
@@ -275,6 +280,8 @@ export default function SubjectsPage() {
     let labOnly = 0;
     let mixed = 0;
     let minor = 0;
+    let elective = 0;
+    let totalOnly = 0;
     let inactive = 0;
     for (const s of scopedSubjects) {
       const lec = Number(s.lectureUnits ?? 0);
@@ -283,6 +290,8 @@ export default function SubjectsPage() {
       else if (lec > 0) lectureOnly++;
       else if (lab > 0) labOnly++;
       if (s.isMinor) minor++;
+      if (s.isElective) elective++;
+      if (s.unitsMode === 'total_only') totalOnly++;
       if (!s.isActive) inactive++;
     }
     return {
@@ -291,9 +300,24 @@ export default function SubjectsPage() {
       labOnly,
       mixed,
       minor,
+      elective,
+      totalOnly,
       inactive,
     };
   }, [scopedSubjects]);
+
+  // Counts for the classification tabs (whole catalog, matching the table).
+  const kindCounts = useMemo(() => {
+    let regular = 0;
+    let minor = 0;
+    let elective = 0;
+    for (const s of subjects) {
+      if (s.isElective) elective++;
+      else if (s.isMinor) minor++;
+      else regular++;
+    }
+    return { all: subjects.length, regular, minor, elective };
+  }, [subjects]);
 
   // ── Filtered + sorted ──
   const filtered = useMemo(() => {
@@ -317,6 +341,10 @@ export default function SubjectsPage() {
 
       if (minorFilter === 'minor' && !s.isMinor) return false;
       if (minorFilter === 'regular' && s.isMinor) return false;
+
+      if (kindFilter === 'elective' && !s.isElective) return false;
+      if (kindFilter === 'regular' && (s.isElective || s.isMinor)) return false;
+      if (kindFilter === 'minor' && (s.isElective || !s.isMinor)) return false;
 
       const lec = Number(s.lectureUnits ?? 0);
       const lab = Number(s.labUnits ?? 0);
@@ -366,6 +394,7 @@ export default function SubjectsPage() {
     deptFilter,
     roomFilter,
     minorFilter,
+    kindFilter,
     compFilter,
     statusFilter,
     sortKey,
@@ -841,6 +870,16 @@ export default function SubjectsPage() {
     const lec = Number(s.lectureUnits ?? 0);
     const lab = Number(s.labUnits ?? 0);
     const total = Number(s.totalUnits ?? 0);
+    if (s.unitsMode === 'total_only' || (lec === 0 && lab === 0 && total > 0)) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-mono">
+          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
+            {total} Total
+          </span>
+          <span className="text-[10px] text-slate-500">no split</span>
+        </span>
+      );
+    }
     return (
       <div className="inline-flex items-center gap-1 text-xs font-mono">
         {lec > 0 && (
@@ -872,6 +911,15 @@ export default function SubjectsPage() {
       cellClassName: 'font-bold font-mono text-primary',
       render: (s) => (
         <span className="inline-flex items-center gap-1.5">
+          {s.isElective && (
+            <span
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800"
+              title="Elective subject — plotted first, may have no fixed code"
+            >
+              <Icon name="stars" size={9} />
+              Elective
+            </span>
+          )}
           {s.isMinor && (
             <span
               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800"
@@ -1009,6 +1057,72 @@ export default function SubjectsPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* ── Classification tabs ── */}
+      <div className="border-b border-surface-variant" data-tour="subjects-tabs">
+        <nav
+          className="-mb-px flex gap-4 overflow-x-auto"
+          aria-label="Subject classification tabs"
+          role="tablist"
+        >
+          {(
+            [
+              {
+                key: 'all' as const,
+                label: 'All Subjects',
+                icon: 'menu_book',
+                count: kindCounts.all,
+              },
+              {
+                key: 'regular' as const,
+                label: 'Regular',
+                icon: 'check_circle',
+                count: kindCounts.regular,
+              },
+              {
+                key: 'minor' as const,
+                label: 'Minor',
+                icon: 'school',
+                count: kindCounts.minor,
+              },
+              {
+                key: 'elective' as const,
+                label: 'Elective Subjects',
+                icon: 'stars',
+                count: kindCounts.elective,
+              },
+            ]
+          ).map((t) => {
+            const isActive = kindFilter === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setFilter('kind', t.key === 'all' ? '' : t.key)}
+                className={`flex items-center gap-2 whitespace-nowrap px-1 py-3 text-sm font-semibold border-b-2 transition ${
+                  isActive
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Icon name={t.icon} size={16} />
+                {t.label}
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    isActive
+                      ? 'bg-primary/15 text-primary'
+                      : 'bg-surface-container-high text-on-surface-variant'
+                  }`}
+                >
+                  {t.count}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* ── Workflow hint ── */}
@@ -1362,6 +1476,7 @@ export default function SubjectsPage() {
         departments={departments}
         isDH={isDH}
         myDeptId={myDeptId}
+        defaultElective={kindFilter === 'elective'}
         onClose={handleFormClose}
         onSuccess={(message) => setSuccess(message)}
       />

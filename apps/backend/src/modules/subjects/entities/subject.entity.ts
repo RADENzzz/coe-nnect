@@ -38,6 +38,20 @@ export class Subject {
   isMinor: boolean;
 
   /**
+   * True when this catalog entry is an elective subject. Electives may use a
+   * total-only units mode and are plotted before regular subjects.
+   */
+  @Column({ name: 'is_elective', type: 'boolean', default: false })
+  isElective!: boolean;
+
+  /**
+   * `lec_lab` stores a lecture/lab split. `total_only` stores only the total
+   * and keeps both component columns at zero; it is valid for electives only.
+   */
+  @Column({ name: 'units_mode', type: 'text', default: 'lec_lab' })
+  unitsMode!: 'lec_lab' | 'total_only';
+
+  /**
    * Room type constraint for the subject.
    *
    * - 'lecture_room' / 'laboratory' / 'computer_lab' / 'drafting_room' / 'other'

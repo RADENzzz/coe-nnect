@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { SubjectsService } from '../src/modules/subjects/subjects.service';
 import { createFakeRepository } from './fakes/repository.fake';
 
@@ -108,5 +109,115 @@ describe('SubjectsService.toggleActive prospectus cascade', () => {
 
     // Another subject is still untouched.
     expect(rowById('p3').isActive).toBe(true);
+  });
+});
+
+describe('SubjectsService elective units', () => {
+  function createService(initialRows: Record<string, any>[] = []) {
+    const subjectRepo = createFakeRepository(initialRows, {
+      idKey: 'subjectId',
+    });
+    const emptyRepo = createFakeRepository([]);
+    const departments = {
+      assertDepartmentActive: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new SubjectsService(
+      subjectRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      departments as any,
+    );
+    return { service, subjectRepo };
+  }
+
+  const electiveDto = (overrides: Record<string, any> = {}) => ({
+    subjectCode: 'GEC 101',
+    title: 'Gender and Society',
+    totalUnits: 3,
+    lectureUnits: 3,
+    labUnits: 0,
+    isElective: true,
+    unitsMode: 'lec_lab',
+    deptId: '7',
+    ...overrides,
+  });
+
+  it('creates a total-only elective with zero lecture and lab units', async () => {
+    const { service, subjectRepo } = createService();
+
+    const saved = await service.create(
+      electiveDto({
+        totalUnits: 3,
+        lectureUnits: 0,
+        labUnits: 0,
+        unitsMode: 'total_only',
+      }) as any,
+      admin,
+    );
+
+    expect(saved).toMatchObject({
+      subjectCode: 'GEC 101',
+      isElective: true,
+      unitsMode: 'total_only',
+      totalUnits: 3,
+      lectureUnits: 0,
+      labUnits: 0,
+    });
+    expect(subjectRepo.rows).toHaveLength(1);
+  });
+
+  it('rejects total-only units for a regular subject', async () => {
+    const { service } = createService();
+
+    await expect(
+      service.create(
+        electiveDto({
+          isElective: false,
+          totalUnits: 3,
+          lectureUnits: 0,
+          labUnits: 0,
+          unitsMode: 'total_only',
+        }) as any,
+        admin,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects a total-only elective that still has a breakdown', async () => {
+    const { service } = createService();
+
+    await expect(
+      service.create(
+        electiveDto({
+          totalUnits: 3,
+          lectureUnits: 2,
+          labUnits: 1,
+          unitsMode: 'total_only',
+        }) as any,
+        admin,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('clears the placeholder flag when a temporary elective gets a real code', async () => {
+    const { service, subjectRepo } = createService([
+      subjectRow({
+        subjectId: 'e1',
+        subjectCode: 'ELEC-Y1S1-ABC123',
+        title: 'Free Elective',
+        totalUnits: 3,
+        lectureUnits: 0,
+        labUnits: 0,
+        isElective: true,
+        isPlaceholder: true,
+        unitsMode: 'total_only',
+      }),
+    ]);
+
+    await service.update('e1', { subjectCode: 'GEC 101' } as any, admin);
+
+    expect(subjectRepo.rows[0].subjectCode).toBe('GEC 101');
+    expect(subjectRepo.rows[0].isPlaceholder).toBe(false);
   });
 });

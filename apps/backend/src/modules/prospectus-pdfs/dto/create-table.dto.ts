@@ -67,6 +67,15 @@ export class CreateTableDto {
   @IsIn(['1st', '2nd', 'summer'])
   semester!: '1st' | '2nd' | 'summer';
 
+  /**
+   * `regular` (default) is the curriculum table for a year/semester.
+   * `elective` marks an elective table; multiple elective tables may share the
+   * same year/semester in one PDF.
+   */
+  @IsOptional()
+  @IsIn(['regular', 'elective'])
+  table_kind?: 'regular' | 'elective';
+
   @IsOptional()
   @IsString()
   @MaxLength(200)

@@ -6,7 +6,6 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { ProspectusPdf } from './prospectus-pdf.entity';
@@ -38,7 +37,6 @@ export interface RowSpec {
 }
 
 @Entity({ name: 'prospectus_pdf_table' })
-@Unique('uq_prospectus_pdf_table_ys', ['pdfId', 'yearLevel', 'semester'])
 @Index('idx_prospectus_pdf_table_pdf', ['pdfId'])
 export class ProspectusPdfTable {
   @PrimaryGeneratedColumn({ name: 'table_id', type: 'bigint' })
@@ -55,6 +53,14 @@ export class ProspectusPdfTable {
 
   @Column({ name: 'label', type: 'text', nullable: true })
   label!: string | null;
+
+  /**
+   * `regular` tables hold the curriculum subjects for a year/semester and are
+   * unique per PDF + year + semester. `elective` tables hold elective rows and
+   * may repeat for the same combination.
+   */
+  @Column({ name: 'table_kind', type: 'text', default: 'regular' })
+  tableKind!: 'regular' | 'elective';
 
   @Column({ name: 'region_page_index', type: 'int' })
   regionPageIndex!: number;

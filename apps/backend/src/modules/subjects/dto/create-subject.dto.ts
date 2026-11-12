@@ -49,6 +49,19 @@ export class CreateSubjectDto {
   @IsBoolean()
   isMinor?: boolean;
 
+  /** Elective subjects may use total-only units and are plotted first. */
+  @IsOptional()
+  @IsBoolean()
+  isElective?: boolean;
+
+  /**
+   * `lec_lab` (default) requires total = lecture + lab.
+   * `total_only` stores only totalUnits and is valid for electives only.
+   */
+  @IsOptional()
+  @IsIn(['lec_lab', 'total_only'])
+  unitsMode?: 'lec_lab' | 'total_only';
+
   @IsNumberString()
   deptId: string;
 }

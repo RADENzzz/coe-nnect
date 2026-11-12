@@ -185,13 +185,51 @@ export default function ProspectusPage() {
 
   const filteredEntries = useMemo(() => {
     if (!effectiveProgramId) return [];
-    return allEntries.filter(
-      (e) =>
-        String(e.programId) === String(effectiveProgramId) &&
-        e.yearLevel === selectedYearLevel &&
-        e.semester === selectedSemester,
-    );
-  }, [allEntries, effectiveProgramId, selectedYearLevel, selectedSemester]);
+    const isElectiveEntry = (e: ProspectusRecord) =>
+      subjectById.get(String(e.subjectId))?.isElective ?? false;
+
+    return allEntries
+      .filter(
+        (e) =>
+          String(e.programId) === String(effectiveProgramId) &&
+          e.yearLevel === selectedYearLevel &&
+          e.semester === selectedSemester,
+      )
+      // Electives are plotted first; keep the rest alphabetical by code so
+      // the table is stable between renders.
+      .sort((a, b) => {
+        const aElective = isElectiveEntry(a);
+        const bElective = isElectiveEntry(b);
+        if (aElective !== bElective) return aElective ? -1 : 1;
+        return String(a.subject?.subjectCode ?? '').localeCompare(
+          String(b.subject?.subjectCode ?? ''),
+        );
+      });
+  }, [
+    allEntries,
+    effectiveProgramId,
+    selectedYearLevel,
+    selectedSemester,
+    subjectById,
+  ]);
+
+  /**
+   * Electives imported without a real code carry a deterministic temporary
+   * code. They may exist in the prospectus, but scheduling cannot use them
+   * until someone resolves them on the Subjects page.
+   */
+  const unresolvedElectives = useMemo(
+    () =>
+      filteredEntries.filter((e) => {
+        const full = subjectById.get(String(e.subjectId));
+        if (!full?.isElective) return false;
+        return (
+          full.isPlaceholder === true ||
+          /^(ELEC|SLOT)-/i.test(String(full.subjectCode ?? ''))
+        );
+      }),
+    [filteredEntries, subjectById],
+  );
 
   // ── Selection-derived values ──
   const allVisibleSelected =
@@ -568,22 +606,31 @@ export default function ProspectusPage() {
     const lec = Number(s.lectureUnits ?? 0);
     const lab = Number(s.labUnits ?? 0);
     const total = Number(s.totalUnits ?? 0);
+    const isTotalOnly = lec === 0 && lab === 0 && total > 0;
     return (
       <div className="inline-flex items-center gap-1 text-xs font-mono">
-        {lec > 0 && (
-          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
-            {lec}L
+        {isTotalOnly ? (
+          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
+            {total} Total
           </span>
-        )}
-        {lab > 0 && (
-          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
-            {lab}Lab
-          </span>
-        )}
-        {lec > 0 && lab > 0 && (
-          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
-            = {total}
-          </span>
+        ) : (
+          <>
+            {lec > 0 && (
+              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+                {lec}L
+              </span>
+            )}
+            {lab > 0 && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
+                {lab}Lab
+              </span>
+            )}
+            {lec > 0 && lab > 0 && (
+              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
+                = {total}
+              </span>
+            )}
+          </>
         )}
       </div>
     );
@@ -594,6 +641,15 @@ export default function ProspectusPage() {
     if (!s) return '—';
     const lec = Number(s.lectureUnits ?? 0);
     const lab = Number(s.labUnits ?? 0);
+    const total = Number(s.totalUnits ?? 0);
+    if (lec === 0 && lab === 0 && total > 0) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
+          <Icon name="functions" size={10} />
+          Total only
+        </span>
+      );
+    }
     if (lec > 0 && lab > 0) {
       return (
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 uppercase">
@@ -654,6 +710,7 @@ export default function ProspectusPage() {
           ? subjectById.get(String(e.subjectId))
           : undefined;
         const isMinor = full?.isMinor ?? false;
+        const isElective = full?.isElective ?? false;
         const isPlaceholder = full?.isPlaceholder ?? false;
         const isSelected = selectedIds.has(e.prospectusId);
         return (
@@ -675,6 +732,15 @@ export default function ProspectusPage() {
             )}
             <div className="flex flex-col gap-1">
               <span className="inline-flex items-center gap-1.5">
+                {isElective && (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800"
+                    title="Elective subject — plotted first"
+                  >
+                    <Icon name="stars" size={9} />
+                    Elective
+                  </span>
+                )}
                 {isMinor && (
                   <span
                     className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800"
@@ -689,10 +755,14 @@ export default function ProspectusPage() {
               {isPlaceholder && (
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 w-fit"
-                  title="This is an elective placeholder — fill it with a real course"
+                  title={
+                    isElective
+                      ? 'Temporary elective code — resolve it before plotting'
+                      : 'This is an elective placeholder — fill it with a real course'
+                  }
                 >
                   <Icon name="warning" size={10} />
-                  Needs Course
+                  {isElective ? 'Temporary code' : 'Needs Course'}
                 </span>
               )}
             </div>
@@ -916,6 +986,41 @@ export default function ProspectusPage() {
           >
             <Icon name="close" size={14} />
           </button>
+        </div>
+      )}
+
+      {unresolvedElectives.length > 0 && (
+        <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-2">
+          <Icon name="warning" size={18} className="shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">
+              {unresolvedElectives.length} unresolved elective
+              {unresolvedElectives.length === 1 ? '' : 's'} in this view
+            </p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              These entries carry a temporary code and are excluded from
+              auto-generate and plotting. Resolve them on the Subjects page
+              first.
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {unresolvedElectives.map((e) => (
+                <span
+                  key={e.prospectusId}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-200/70 text-[10px] font-mono font-semibold"
+                  title={e.subject?.title ?? undefined}
+                >
+                  {e.subject?.subjectCode ?? '—'}
+                </span>
+              ))}
+            </div>
+          </div>
+          <Link
+            to="/subjects?kind=elective"
+            className="text-xs font-semibold text-amber-800 hover:text-amber-950 whitespace-nowrap flex items-center gap-1"
+          >
+            Resolve
+            <Icon name="arrow_forward" size={14} />
+          </Link>
         </div>
       )}
 

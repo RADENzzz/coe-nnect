@@ -8,6 +8,9 @@ import type {
   RowBox,
   SemesterType,
   SignedUrlResponse,
+  TableKind,
+  TemporaryCode,
+  UnitsMode,
 } from '../features/import/types';
 
 // ─────────────── Upload ───────────────
@@ -75,6 +78,7 @@ export interface CreateTableInput {
   year_level: number;
   semester: SemesterType;
   label?: string;
+  table_kind?: TableKind;
   region_page_index: number;
   region_x_start_pt: number;
   region_x_end_pt: number;
@@ -158,7 +162,11 @@ export interface ImportConfirmInput {
       lec?: string;
       lab?: string;
       total?: string;
-      action?: 'subject' | 'slot' | 'skip';
+      action?: 'subject' | 'elective' | 'slot' | 'skip';
+      /** Existing elective subject chosen in the review UI. */
+      subject_id?: number;
+      /** `total_only` keeps lecture/lab at zero (electives only). */
+      units_mode?: UnitsMode;
     }[];
   }[];
 }
@@ -168,7 +176,14 @@ export interface SkippedRow {
   rowIndex: number;
   code: string;
   title: string;
-  reason: 'no_code' | 'no_title' | 'unit_mismatch' | 'user_skip' | 'pattern_mismatch';
+  reason:
+    | 'no_code'
+    | 'no_title'
+    | 'unit_mismatch'
+    | 'user_skip'
+    | 'pattern_mismatch'
+    | 'not_elective'
+    | 'unknown_subject';
 }
 
 export interface SlotCreated {
@@ -178,6 +193,9 @@ export interface SlotCreated {
   title: string;
   yearLevel: number;
   semester: string;
+  isElective: boolean;
+  isPlaceholder: boolean;
+  unitsMode: UnitsMode;
 }
 
 export interface SynthesizedCode {
@@ -206,6 +224,7 @@ export interface ImportConfirmResult {
   warnings: string[];
   skippedRows: SkippedRow[];
   slots: SlotCreated[];
+  temporaryCodes: TemporaryCode[];
 }
 
 
