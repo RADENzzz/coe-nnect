@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ReauthDto } from './dto/reauth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SkipDeptActive } from '../../common/decorators/skip-dept-active.decorator';
 
@@ -15,7 +16,19 @@ export class AuthController {
   @ApiSecurity({})
   @Post('login')
   login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+    return this.auth.login(dto.email, dto.password, dto.capToken);
+  }
+
+  /**
+   * Re-check the signed-in user's password for a sensitive action (deleting a
+   * user, deactivating a department). No Cap solve is required because the
+   * bearer token already proves an authenticated session.
+   */
+  @SkipDeptActive()
+  @UseGuards(JwtAuthGuard)
+  @Post('reauth')
+  reauth(@Req() req: any, @Body() dto: ReauthDto) {
+    return this.auth.reauthenticate(req.user.id, req.user.email, dto.password);
   }
 
   /**

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -12,6 +13,7 @@ import {
 } from '../../database/supabase.service';
 import { SystemStatusService } from '../system-status/system-status.service';
 import { User } from '../users/entities/user.entity';
+import { CapService } from './cap.service';
 
 @Injectable()
 export class AuthService {
@@ -21,9 +23,15 @@ export class AuthService {
     private supabase: SupabaseService,
     private systemStatus: SystemStatusService,
     @InjectRepository(User) private userRepo: Repository<User>,
+    private cap: CapService,
   ) {}
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, capToken: string) {
+    // Consume the solved challenge before checking the password. A token is
+    // single-use, so an attacker cannot reuse one solve for a password-spray
+    // run, and a provider failure cannot silently bypass the CAPTCHA.
+    await this.cap.consumeLoginToken(capToken);
+
     const auth = this.supabase.getClient().auth;
     let result: Awaited<ReturnType<typeof auth.signInWithPassword>>;
     try {
@@ -68,6 +76,46 @@ export class AuthService {
       refreshToken: data.session.refresh_token,
       user: this.serializeProfile(profile),
     };
+  }
+
+  /**
+   * Re-check the current user's password for a sensitive action.
+   *
+   * This route is session-authenticated, so it deliberately does not require a
+   * fresh Cap solve: the user already proved humanity to get the session.
+   * It also returns 400 (not 401) for a bad password so the global axios 401
+   * handler cannot sign the user out.
+   */
+  async reauthenticate(
+    userId: string,
+    email: string | undefined,
+    password: string,
+  ) {
+    if (!email) throw new UnauthorizedException('No email on session');
+
+    const auth = this.supabase.getClient().auth;
+    let result: Awaited<ReturnType<typeof auth.signInWithPassword>>;
+    try {
+      result = await auth.signInWithPassword({ email, password });
+    } catch (err) {
+      throw this.authProviderUnavailable(err);
+    }
+
+    const { data, error } = result;
+    if (error || !data.user) {
+      if (isSupabaseAuthOutage(error)) {
+        throw this.authProviderUnavailable(error);
+      }
+      throw new BadRequestException('Incorrect password');
+    }
+
+    // The password must belong to the session that is asking. This prevents a
+    // valid session from confirming somebody else's credentials.
+    if (data.user.id !== userId) {
+      throw new BadRequestException('Incorrect password');
+    }
+
+    return { verified: true };
   }
 
   /**

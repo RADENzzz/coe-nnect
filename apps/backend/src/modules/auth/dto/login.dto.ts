@@ -1,4 +1,10 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
@@ -7,4 +13,10 @@ export class LoginDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  /** Solved Cap challenge token from the login widget. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  capToken: string;
 }

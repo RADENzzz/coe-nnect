@@ -12,7 +12,7 @@ import {
 import { useAuthStore } from '../../store/auth.store';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchFaculty } from '../../api/faculty.api';
-import { login } from '../../api/auth.api';
+import { reauthenticate } from '../../api/auth.api';
 import Icon from '@/components/ui/Icon';
 import ResponsiveTable, { type Column } from '@/components/ui/ResponsiveTable';
 import type { RowAction } from '@/components/ui/RowActionMenu';
@@ -182,7 +182,7 @@ export default function AdminUsersPage() {
 
   const handleDeleteConfirm = async (password: string) => {
     if (!user?.email || !actionTarget) return;
-    await login({ email: user.email, password });           // throws on bad password
+    await reauthenticate(password);                          // throws on bad password
     await deleteMutation.mutateAsync(actionTarget.userId);  // throws on delete failure
     setSuccess(`User "${actionTarget.username}" deleted.`);
     if (String(drawerUserId) === String(actionTarget.userId)) setDrawerUserId(null);

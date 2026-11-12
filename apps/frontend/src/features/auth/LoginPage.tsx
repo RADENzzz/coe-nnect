@@ -1,18 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import type { User } from '@supabase/supabase-js';
+import type { CapWidget } from 'cap-widget';
+import 'cap-widget';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { supabase, createAuthProbeClient } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
 import Modal from '../../components/ui/Modal';
 import LiquidBackground from '../../components/layout/LiquidBackground';
 import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
-import { fetchSystemStatus } from '../../api/system-status.api';
-import {
-  isLocalMaintenanceBypassEnabled,
-  isMaintenancePreviewEnabled,
-} from '../../lib/maintenance-preview';
+import { CAP_API_ENDPOINT, login as loginWithCap } from '../../api/auth.api';
+import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -42,20 +40,34 @@ const SS_DEV_PANEL_OPEN = 'coe-nnect:dev-panel-open';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Maps raw Supabase auth failures to the messages the login form shows. */
-function normalizeSignInError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error);
+/** Maps backend auth failures to the messages the login form shows. */
+function normalizeLoginError(error: unknown): Error {
+  const data = (
+    error as {
+      response?: { data?: { message?: unknown; code?: string } };
+    }
+  )?.response?.data;
+
+  const raw = data?.message;
+  const message = Array.isArray(raw)
+    ? String(raw[0] ?? '')
+    : typeof raw === 'string'
+      ? raw
+      : '';
+
+  if (data?.code === 'CAPTCHA_FAILED') {
+    return new Error(
+      'Verification expired or was already used. Please complete the challenge again.',
+    );
+  }
   if (/too many|rate limit/i.test(message)) {
     return new Error(
       'Too many attempts. Please wait a minute before trying again.',
     );
   }
-  if (/email not confirmed/i.test(message)) {
-    return new Error(
-      'Your email address hasn\'t been confirmed yet. Check your inbox for the confirmation link.',
-    );
-  }
-  return error instanceof Error ? error : new Error(message);
+  if (message) return new Error(message);
+  if (error instanceof Error) return error;
+  return new Error('An error occurred during login');
 }
 
 /* ────────────────────────────────────────────
@@ -392,12 +404,53 @@ export default function LoginPage() {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [slowNetwork, setSlowNetwork] = useState(false);
   const [attemptCount, setAttemptCount] = useState(0);
+  const [capToken, setCapToken] = useState<string | null>(null);
+  const [capError, setCapError] = useState<string | null>(null);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const capRef = useRef<CapWidget | null>(null);
 
   const emailValid = useMemo(() => EMAIL_REGEX.test(email.trim()), [email]);
-  const canSubmit = emailValid && password.length > 0 && !loading;
+  const canSubmit =
+    emailValid && password.length > 0 && !!capToken && !loading;
+
+  // React 18 does not forward custom-element events from JSX props, so bind
+  // the widget's events through its DOM node. The form wrapper is keyed by
+  // `shakeKey` and remounts after a failed attempt, which replaces the widget;
+  // re-running on that key keeps the listeners attached to the live element.
+  useEffect(() => {
+    const el = capRef.current;
+    if (!el) return;
+
+    const handleSolve = (event: Event) => {
+      const token =
+        (event as CustomEvent<{ token?: string }>).detail?.token ?? el.token;
+      if (token) {
+        setCapToken(token);
+        setCapError(null);
+      }
+    };
+    const handleReset = () => setCapToken(null);
+    const handleError = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      setCapToken(null);
+      setCapError(
+        detail?.message?.trim() ||
+          'Human verification failed. Please try again.',
+      );
+    };
+
+    el.addEventListener('solve', handleSolve);
+    el.addEventListener('reset', handleReset);
+    el.addEventListener('error', handleError);
+
+    return () => {
+      el.removeEventListener('solve', handleSolve);
+      el.removeEventListener('reset', handleReset);
+      el.removeEventListener('error', handleError);
+    };
+  }, [shakeKey]);
 
   // Slow-network detection: if login takes > 3s, hint to the user
   useEffect(() => {
@@ -426,7 +479,7 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || !capToken) return;
 
     setLoading(true);
     setError(null);
@@ -434,75 +487,19 @@ export default function LoginPage() {
     const cleanEmail = email.trim().toLowerCase();
 
     try {
-      // Decide whether the wall is enforced before creating an app session.
-      // Preview mode locally simulates a real maintenance window, so it is
-      // included here too.
-      const systemStatus = await fetchSystemStatus().catch(() => null);
-      const maintenanceEnforced =
-        (systemStatus?.maintenanceMode === true &&
-          !isLocalMaintenanceBypassEnabled()) ||
-        isMaintenancePreviewEnabled();
+      // The backend consumes the single-use Cap token before it checks the
+      // password, then returns the Supabase session to adopt here.
+      const session = await loginWithCap({
+        email: cleanEmail,
+        password,
+        capToken,
+      });
 
-      let authUser!: User;
-      let metaRole: string | undefined;
-
-      if (maintenanceEnforced) {
-        // Verify the credentials with a throwaway client so a normal user is
-        // never signed in to the app. The main client is untouched, which
-        // means an existing session on another device is not signed out.
-        const probe = createAuthProbeClient();
-        const { data, error: signInError } =
-          await probe.auth.signInWithPassword({
-            email: cleanEmail,
-            password,
-          });
-
-        if (signInError) throw normalizeSignInError(signInError);
-        if (!data.user) throw new Error('No user returned from login');
-
-        metaRole = data.user.app_metadata?.role as string | undefined;
-        if (!metaRole) {
-          const { data: profileRow, error: profileError } = await probe
-            .from('users')
-            .select('role')
-            .eq('user_id', data.user.id)
-            .maybeSingle();
-          if (profileError) throw profileError;
-          metaRole = profileRow?.role as string | undefined;
-        }
-
-        if (metaRole !== 'administrator') {
-          // Drop only the throwaway session, then show the wall. No popup and
-          // no session in this browser (or any other device).
-          await probe.auth.signOut({ scope: 'local' });
-          navigate('/maintenance', { replace: true });
-          return;
-        }
-
-        if (!data.session) throw new Error('No session returned from login');
-
-        // The developer account is allowed in: adopt the verified session
-        // into the normal client.
-        const { error: setSessionError } = await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
-        if (setSessionError) throw setSessionError;
-
-        authUser = data.user;
-      } else {
-        const { data, error: signInError } =
-          await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password,
-          });
-
-        if (signInError) throw normalizeSignInError(signInError);
-        if (!data.user) throw new Error('No user returned from login');
-
-        authUser = data.user;
-        metaRole = data.user.app_metadata?.role as string | undefined;
-      }
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: session.accessToken,
+        refresh_token: session.refreshToken,
+      });
+      if (setSessionError) throw setSessionError;
 
       // Persist email if "remember me" is checked
       try {
@@ -515,57 +512,19 @@ export default function LoginPage() {
         /* ignore */
       }
 
-      let role = metaRole;
-      if (!role) {
-        const { data: profile, error: profileError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
+      const role = session.user.role;
 
-        if (profileError) throw profileError;
-
-        if (!profile) {
-          // Local scope: never revoke this user's sessions on other devices.
-          await supabase.auth.signOut({ scope: 'local' });
-          throw new Error(
-            'Your account exists but has no profile. Contact the College Dean.',
-          );
-        }
-        role = profile.role;
+      // Local-only preview: simulate the wall after the backend has verified
+      // the credentials, then drop the session so the wall is the real gate.
+      if (isMaintenancePreviewEnabled() && role !== 'administrator') {
+        await supabase.auth.signOut({ scope: 'local' });
+        navigate('/maintenance', { replace: true });
+        return;
       }
 
-      // Fetch the authoritative dept_active flag from the backend
-      // BEFORE navigating, so we can decide whether a DH should be
-      // routed to the wall or the dashboard.
-      // We use the DB directly (not the API) to avoid a token-round-trip
-      // right after sign-in — the token is available on the session.
-      let deptActive: boolean | null = null;
-      if (role === 'department_head') {
-        const { data: deptRow } = await supabase
-          .from('users')
-          .select(
-            `dept_id, department:dept_id ( is_active, dept_code, dept_name )`,
-          )
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-        const dept = Array.isArray((deptRow as any)?.department)
-          ? (deptRow as any)?.department[0]
-          : (deptRow as any)?.department;
-        if (dept) deptActive = dept.is_active === true;
-      } else if (
-        role === 'college_dean' ||
-        role === 'college_secretary' ||
-        role === 'administrator'
-      ) {
-        deptActive = true;
-      }
-
-      // Redirect based on role + dept state.
-      if (
-        role === 'department_head' &&
-        deptActive === false
-      ) {
+      // Redirect based on role + dept state. The backend already resolved
+      // deptActive, so no extra Supabase query is needed.
+      if (role === 'department_head' && session.user.deptActive === false) {
         // Walled — bypass `from` because `from` might point at a page
         // the DH can't load anyway.
         navigate('/department-deactivated', { replace: true });
@@ -581,9 +540,21 @@ export default function LoginPage() {
         navigate('/dashboard', { replace: true });
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'An error occurred during login';
-      setError(msg);
+      // A failed login consumes the Cap token. Reset the widget so the next
+      // attempt gets a fresh single-use token.
+      setCapToken(null);
+      capRef.current?.reset();
+
+      const data = (err as { response?: { data?: { code?: string } } })
+        ?.response?.data;
+
+      if (data?.code === 'MAINTENANCE_MODE') {
+        navigate('/maintenance', { replace: true });
+        return;
+      }
+
+      const normalized = normalizeLoginError(err);
+      setError(normalized.message);
       setShakeKey((k) => k + 1);
       setAttemptCount((c) => c + 1);
 
@@ -830,6 +801,26 @@ export default function LoginPage() {
               >
                 Forgot password?
               </button>
+            </div>
+
+            {/* Human verification. The backend consumes this token exactly
+                once; a failed attempt resets the widget in handleLogin. */}
+            <div className="pt-1">
+              <cap-widget
+                ref={capRef}
+                data-cap-api-endpoint={CAP_API_ENDPOINT}
+                data-cap-hidden-field-name="cap-token"
+                data-cap-i18n-initial-state="I'm not a robot"
+                data-cap-i18n-verifying-label="Verifying…"
+                data-cap-i18n-solved-label="Verified"
+                data-cap-i18n-error-label="Verification failed"
+                required
+              />
+              {capError && (
+                <p className="mt-1.5 text-[11px] text-red-600" role="alert">
+                  {capError}
+                </p>
+              )}
             </div>
 
             <button

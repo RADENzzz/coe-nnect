@@ -62,6 +62,9 @@ const webServerEnv: Record<string, string> = {
   SUPABASE_ANON_KEY: anonKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
   FRONTEND_URL: baseURL,
+  // Required for the login CAPTCHA. Test-only value: challenges and redeems
+  // only need to agree within one run, and E2E never touches production.
+  CAP_SECRET: 'e2e-cap-secret-not-for-production-0123456789',
   VITE_API_BASE_URL: apiURL,
   VITE_SUPABASE_URL: supabaseURL,
   VITE_SUPABASE_ANON_KEY: anonKey,

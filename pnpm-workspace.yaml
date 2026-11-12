@@ -7,3 +7,5 @@ allowBuilds:
   bcrypt: true
   esbuild: true
   msgpackr-extract: true
+minimumReleaseAgeExclude:
+  - capjs-core@0.1.15
