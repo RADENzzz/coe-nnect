@@ -281,6 +281,288 @@ describe('ProspectusPdfsService confirmImport room types', () => {
   });
 });
 
+describe('ProspectusPdfsService elective imports', () => {
+  function createImportService() {
+    const pdfRepo = createFakeRepository(
+      [{ pdfId: 'pdf-1', departmentId: '1', deletedAt: null }],
+      { idKey: 'pdfId' },
+    );
+    const tableRepo = createFakeRepository(
+      [
+        {
+          tableId: '1',
+          pdfId: 'pdf-1',
+          yearLevel: 1,
+          semester: '1st',
+          tableKind: 'elective',
+        },
+      ],
+      { idKey: 'tableId' },
+    );
+    const subjectRepo = createFakeRepository([], { idKey: 'subjectId' });
+    const prospectusRepo = createFakeRepository([], { idKey: 'prospectusId' });
+    const programRepo = createFakeRepository([{ programId: '1', deptId: '1' }], {
+      idKey: 'programId',
+    });
+
+    const service = new ProspectusPdfsService(
+      pdfRepo as any,
+      tableRepo as any,
+      subjectRepo as any,
+      prospectusRepo as any,
+      programRepo as any,
+      { uploadPdf: jest.fn() } as any,
+      { getPageInfo: jest.fn() } as any,
+      { dispatch: jest.fn().mockResolvedValue(undefined) } as any,
+    );
+
+    return { service, subjectRepo, prospectusRepo };
+  }
+
+  const user = { userId: 'u1', role: 'administrator', deptId: '1' };
+
+  function importDto(subjects: any[]) {
+    return {
+      program_id: 1,
+      table_ids: [1],
+      regions: [{ table_id: 1, subjects }],
+    };
+  }
+
+  it('imports a typed elective code as a real elective subject', async () => {
+    const { service, subjectRepo, prospectusRepo } = createImportService();
+
+    const result = await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'GEC 101',
+          title: 'Gender and Society',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          units_mode: 'lec_lab',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'GEC 101',
+      isElective: true,
+      isPlaceholder: false,
+      unitsMode: 'lec_lab',
+      lectureUnits: 3,
+      labUnits: 0,
+    });
+    expect(prospectusRepo.rows).toHaveLength(1);
+    expect(result.slots).toHaveLength(1);
+    expect(result.temporaryCodes).toEqual([]);
+  });
+
+  it('imports a total-only elective without a lec/lab breakdown', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'GEC 102',
+          title: 'Free Elective',
+          lec: '0',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          units_mode: 'total_only',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'GEC 102',
+      isElective: true,
+      unitsMode: 'total_only',
+      totalUnits: 3,
+      lectureUnits: 0,
+      labUnits: 0,
+    });
+  });
+
+  it('creates a deterministic temporary code and reports it', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    const result = await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: '',
+          title: 'Free Elective',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          units_mode: 'lec_lab',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(subjectRepo.rows[0].subjectCode).toMatch(
+      /^ELEC-Y1S1-[A-F0-9]{6}$/,
+    );
+    expect(subjectRepo.rows[0].isPlaceholder).toBe(true);
+    expect(result.temporaryCodes).toHaveLength(1);
+    expect(result.temporaryCodes[0].subjectCode).toBe(
+      subjectRepo.rows[0].subjectCode,
+    );
+    expect(result.warnings.join(' ')).toContain('temporary code');
+  });
+
+  it('is idempotent when the same temporary elective is re-imported', async () => {
+    const { service, subjectRepo } = createImportService();
+    const dto = importDto([
+      {
+        code: '',
+        title: 'Free Elective',
+        lec: '3',
+        lab: '0',
+        total: '3',
+        action: 'elective',
+      },
+    ]);
+
+    await service.confirmImport('pdf-1', dto as any, user);
+    await service.confirmImport('pdf-1', dto as any, user);
+
+    expect(subjectRepo.rows).toHaveLength(1);
+  });
+
+  it('reuses an existing elective chosen by subject id', async () => {
+    const { service, subjectRepo } = createImportService();
+    subjectRepo.rows.push({
+      subjectId: 'e1',
+      subjectCode: 'ELEC 201',
+      title: 'Existing Elective',
+      totalUnits: 3,
+      lectureUnits: 3,
+      labUnits: 0,
+      deptId: '1',
+      isActive: true,
+      isElective: true,
+      isPlaceholder: false,
+      unitsMode: 'lec_lab',
+    });
+
+    const result = await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: '',
+          subject_id: 'e1',
+          title: 'Existing Elective',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(result.slots).toHaveLength(1);
+    expect(result.slots[0].subjectId).toBe('e1');
+  });
+
+  it('rejects a regular subject chosen as an elective row', async () => {
+    const { service, subjectRepo, prospectusRepo } = createImportService();
+    subjectRepo.rows.push({
+      subjectId: 's1',
+      subjectCode: 'MATH 100',
+      title: 'College Algebra',
+      totalUnits: 3,
+      lectureUnits: 3,
+      labUnits: 0,
+      deptId: '1',
+      isActive: true,
+      isElective: false,
+      isPlaceholder: false,
+    });
+
+    const result = await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'MATH 100',
+          subject_id: 's1',
+          title: 'College Algebra',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(prospectusRepo.rows).toHaveLength(0);
+    expect(result.skippedRows).toHaveLength(1);
+    expect(result.skippedRows[0].reason).toBe('not_elective');
+  });
+});
+
+describe('ProspectusPdfsService table kinds', () => {
+  it('allows multiple elective tables for the same year and semester', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective' } as any,
+      ADMIN_USER,
+    );
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective' } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows).toHaveLength(2);
+    expect(tableRepo.rows.every((t) => t.tableKind === 'elective')).toBe(true);
+  });
+
+  it('still enforces one regular table per year and semester', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await service.createTable('pdf-1', tableDto([]) as any, ADMIN_USER);
+
+    await expect(
+      service.createTable('pdf-1', tableDto([]) as any, ADMIN_USER),
+    ).rejects.toThrow(/regular table for Year 1 1st already exists/);
+    expect(tableRepo.rows).toHaveLength(1);
+    expect(tableRepo.rows[0].tableKind).toBe('regular');
+  });
+
+  it('allows a regular and an elective table side by side', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await service.createTable('pdf-1', tableDto([]) as any, ADMIN_USER);
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective' } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows).toHaveLength(2);
+  });
+});
+
 describe('ProspectusPdfsService uploads', () => {
   it('stores PDF metadata for a department head own department', async () => {
     const { service, storage, parser, pdfRepo } = createService();

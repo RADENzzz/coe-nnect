@@ -410,7 +410,7 @@ export default function ProspectusPdfEditorPage() {
       y_end_pt: number;
     }) => {
       if (!pdfRecord || drawingMode.kind !== 'drawing-region') return;
-      const { yearLevel, semester } = drawingMode;
+      const { yearLevel, semester, tableKind } = drawingMode;
 
       const columns = makeDefaultColumns(rect.x_start_pt, rect.x_end_pt);
       const regionHeight = rect.y_end_pt - rect.y_start_pt;
@@ -428,6 +428,7 @@ export default function ProspectusPdfEditorPage() {
         const created = await createProspectusPdfTable(id!, {
           year_level: yearLevel,
           semester,
+          table_kind: tableKind,
           region_page_index: pageIndex,
           region_x_start_pt: rect.x_start_pt,
           region_x_end_pt: rect.x_end_pt,
@@ -934,9 +935,10 @@ export default function ProspectusPdfEditorPage() {
               <>
                 Drag a rectangle on the PDF to mark the{' '}
                 <strong>
-                  Year {drawingMode.yearLevel} {drawingMode.semester}
-                </strong>{' '}
-                semester. Row 1 will be created automatically. Press{' '}
+                  {drawingMode.tableKind === 'elective'
+                    ? `Elective table for Year ${drawingMode.yearLevel} ${drawingMode.semester}`
+                    : `Year ${drawingMode.yearLevel} ${drawingMode.semester} table`}
+                </strong>. Row 1 will be created automatically. Press{' '}
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/60 rounded">
                   Esc
                 </kbd>{' '}
@@ -1177,8 +1179,14 @@ export default function ProspectusPdfEditorPage() {
                           : 'border-surface-variant hover:bg-surface-container-low'
                       }`}
                     >
-                      <div className="font-bold">
+                      <div className="font-bold flex items-center gap-1 flex-wrap">
                         Y{t.yearLevel} · {t.semester}
+                        {t.tableKind === 'elective' && (
+                          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800">
+                            <Icon name="stars" size={8} />
+                            Elective
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] opacity-70">
                         p.{t.regionPageIndex + 1} · {t.rows.length} row
@@ -1323,9 +1331,9 @@ export default function ProspectusPdfEditorPage() {
         open={addTableOpen}
         onClose={() => setAddTableOpen(false)}
         existingTables={tables}
-        onConfirm={(yearLevel, semester) => {
+        onConfirm={(yearLevel, semester, tableKind) => {
           setAddTableOpen(false);
-          setDrawingMode({ kind: 'drawing-region', yearLevel, semester });
+          setDrawingMode({ kind: 'drawing-region', yearLevel, semester, tableKind });
         }}
       />
 

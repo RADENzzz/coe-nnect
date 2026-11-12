@@ -170,6 +170,11 @@ export default function SubjectDetailPanel({
             </p>
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
               <ActiveBadge isActive={subject.isActive} />
+              {subject.isElective && (
+                <Chip icon="stars" tone="teal" title="Elective subject">
+                  Elective
+                </Chip>
+              )}
               {subject.isMinor && (
                 <Chip icon="school" tone="purple">
                   Minor
@@ -294,27 +299,35 @@ export default function SubjectDetailPanel({
                     Breakdown
                   </span>
                   <div className="flex items-center gap-1 flex-1 flex-wrap">
-                    {lec > 0 && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/15 text-blue-600">
-                        {lec} Lecture
+                    {subject.unitsMode === 'total_only' ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-500/15 text-purple-600">
+                        {total} Total (no lec/lab split)
                       </span>
-                    )}
-                    {lab > 0 && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-600">
-                        {lab} Lab
-                      </span>
-                    )}
-                    {lec === 0 && lab === 0 && (
-                      <span className="text-xs text-rose-500 font-medium">
-                        No units set
-                      </span>
-                    )}
-                    {(lec > 0 || lab > 0) && (
+                    ) : (
                       <>
-                        <span className="text-on-surface-variant text-xs">=</span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-surface-container-high text-on-surface">
-                          {total} Total
-                        </span>
+                        {lec > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/15 text-blue-600">
+                            {lec} Lecture
+                          </span>
+                        )}
+                        {lab > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-600">
+                            {lab} Lab
+                          </span>
+                        )}
+                        {lec === 0 && lab === 0 && (
+                          <span className="text-xs text-rose-500 font-medium">
+                            No units set
+                          </span>
+                        )}
+                        {(lec > 0 || lab > 0) && (
+                          <>
+                            <span className="text-on-surface-variant text-xs">=</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-surface-container-high text-on-surface">
+                              {total} Total
+                            </span>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -331,6 +344,20 @@ export default function SubjectDetailPanel({
                   label="Minor"
                   icon="school"
                   value={subject.isMinor ? 'Yes — cross-department' : 'No'}
+                />
+                <InfoRow
+                  label="Elective"
+                  icon="stars"
+                  value={subject.isElective ? 'Yes' : 'No'}
+                />
+                <InfoRow
+                  label="Units mode"
+                  icon="functions"
+                  value={
+                    subject.unitsMode === 'total_only'
+                      ? 'Total units only'
+                      : 'Lecture + lab'
+                  }
                 />
                 <InfoRow
                   label="Placeholder"
@@ -545,7 +572,7 @@ function Chip({
   children,
 }: {
   icon?: string;
-  tone?: 'purple' | 'blue' | 'amber' | 'neutral';
+  tone?: 'purple' | 'blue' | 'amber' | 'teal' | 'neutral';
   title?: string;
   children: React.ReactNode;
 }) {
@@ -553,6 +580,7 @@ function Chip({
     purple: 'bg-purple-500/15 text-purple-600 border-purple-500/30',
     blue: 'bg-blue-500/15 text-blue-600 border-blue-500/30',
     amber: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
+    teal: 'bg-teal-500/15 text-teal-600 border-teal-500/30',
     neutral:
       'bg-surface-container-high text-on-surface-variant border-surface-variant',
   } as const;

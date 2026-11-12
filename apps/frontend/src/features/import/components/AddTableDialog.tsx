@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
-import type { ProspectusPdfTable, SemesterType } from '../types';
+import Icon from '@/components/ui/Icon';
+import type { ProspectusPdfTable, SemesterType, TableKind } from '../types';
 import {
   MAX_TABLES,
   nextFreeCombination,
@@ -11,8 +12,12 @@ import {
 interface AddTableDialogProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (yearLevel: number, semester: SemesterType) => void;
-  /** Tables already present for this PDF — disables taken (year, sem) pairs. */
+  onConfirm: (
+    yearLevel: number,
+    semester: SemesterType,
+    tableKind: TableKind,
+  ) => void;
+  /** Tables already present for this PDF — disables taken regular (year, sem) pairs. */
   existingTables: ProspectusPdfTable[];
 }
 
@@ -24,28 +29,36 @@ export default function AddTableDialog({
 }: AddTableDialogProps) {
   const [year, setYear] = useState(1);
   const [semester, setSemester] = useState<SemesterType>('1st');
+  const [tableKind, setTableKind] = useState<TableKind>('regular');
+
+  const regularTables = useMemo(
+    () => existingTables.filter((t) => (t.tableKind ?? 'regular') === 'regular'),
+    [existingTables],
+  );
 
   const free = useMemo(
-    () => nextFreeCombination(existingTables),
-    [existingTables],
+    () => nextFreeCombination(regularTables),
+    [regularTables],
   );
   const maxTablesReached = existingTables.length >= MAX_TABLES;
 
   useEffect(() => {
     if (!open) return;
-    const start = nextFreeCombination(existingTables);
+    const start = nextFreeCombination(regularTables);
     setYear(start?.yearLevel ?? 1);
     setSemester(start?.semester ?? '1st');
-  }, [open, existingTables]);
+    setTableKind('regular');
+  }, [open, regularTables]);
 
   const taken = (y: number, s: SemesterType) =>
-    existingTables.some((t) => t.yearLevel === y && t.semester === s);
+    tableKind === 'regular' &&
+    regularTables.some((t) => t.yearLevel === y && t.semester === s);
 
   const conflict = taken(year, semester);
 
   const handleConfirm = () => {
     if (conflict || maxTablesReached) return;
-    onConfirm(year, semester);
+    onConfirm(year, semester, tableKind);
   };
 
   return (
@@ -75,6 +88,54 @@ export default function AddTableDialog({
       }
     >
       <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+            Table Type
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                {
+                  key: 'regular' as const,
+                  label: 'Regular curriculum',
+                  icon: 'table_chart',
+                  hint: 'One per year/semester',
+                },
+                {
+                  key: 'elective' as const,
+                  label: 'Elective',
+                  icon: 'stars',
+                  hint: 'Multiple allowed',
+                },
+              ]
+            ).map((k) => {
+              const active = tableKind === k.key;
+              return (
+                <button
+                  key={k.key}
+                  type="button"
+                  onClick={() => setTableKind(k.key)}
+                  className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                    active
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-surface-variant text-on-surface-variant hover:bg-surface-container'
+                  }`}
+                >
+                  <Icon name={k.icon} size={16} className="mt-0.5 shrink-0" />
+                  <span>
+                    <span className="block text-xs font-semibold">
+                      {k.label}
+                    </span>
+                    <span className="block text-[10px] opacity-80">
+                      {k.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div>
           <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
             Year Level
@@ -157,14 +218,14 @@ export default function AddTableDialog({
 
         {conflict && (
           <div className="p-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 text-xs">
-            A table for Year {year} {semester} already exists. Pick another
-            combination.
+            A regular table for Year {year} {semester} already exists. Pick
+            another combination or switch the table type to Elective.
           </div>
         )}
 
         {maxTablesReached && (
           <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-800 text-xs">
-            All {MAX_TABLES} combinations are already mapped for this PDF (
+            All {MAX_TABLES} table slots are already mapped for this PDF (
             {YEAR_LEVELS.length} years × {SEMESTERS.length} semesters). Delete a
             table before adding another.
           </div>
@@ -172,11 +233,14 @@ export default function AddTableDialog({
 
         {!conflict && !maxTablesReached && (
           <p className="text-xs text-on-surface-variant">
-            {free
-              ? `Next free combination: Year ${free.yearLevel} ${free.semester}. `
+            {tableKind === 'regular' && free
+              ? `Next free regular combination: Year ${free.yearLevel} ${free.semester}. `
               : ''}
-            After clicking next, drag a rectangle on the PDF to mark the Year{' '}
-            {year} {semester} table.
+            After clicking next, drag a rectangle on the PDF to mark the{' '}
+            {tableKind === 'elective'
+              ? `elective table for Year ${year} ${semester}`
+              : `Year ${year} ${semester} table`}
+            .
           </p>
         )}
       </div>

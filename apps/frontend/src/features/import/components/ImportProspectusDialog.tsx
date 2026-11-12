@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import { confirmImport } from '@/api/prospectus-pdfs.api';
+import { fetchSubjects, type SubjectRecord } from '@/api/subjects.api';
 import type {
   ProspectusPdfTable,
   SemesterType,
   ImportResult,
   SlotCreated,
-  ColumnRole
+  ColumnRole,
+  UnitsMode,
 } from '../types';
 import { extractTextInRect } from '../hooks/useCellExtraction';
 import type { TextItem } from '../hooks/usePdfTextLayer';
@@ -40,6 +42,7 @@ interface ReviewRow {
   tableId: string;
   yearLevel: number;
   semester: SemesterType;
+  isElectiveTable: boolean;
   code: string;
   typedCode: string;
   title: string;
@@ -48,7 +51,10 @@ interface ReviewRow {
   lab: string;
   total: string;
   status: 'new' | 'exists' | 'invalid';
-  action: 'subject' | 'slot' | 'skip';
+  action: 'subject' | 'elective' | 'slot' | 'skip';
+  /** Existing elective subject chosen for this row. */
+  subjectId: string;
+  unitsMode: UnitsMode;
   warning?: string;
   checked: boolean;
 }
@@ -67,6 +73,37 @@ function isSuspiciousTitle(title: string): boolean {
   if (words.length === 1 && words[0].length < 4) return true;
   if (words.length >= 2 && new Set(words).size === 1) return true;
   return false;
+}
+
+/** Recompute a row's validity after the user changes its action or units mode. */
+function deriveRowStatus(
+  row: ReviewRow,
+  action: ReviewRow['action'],
+  unitsMode: UnitsMode,
+): Pick<ReviewRow, 'status' | 'warning'> {
+  if (!row.title) {
+    return { status: 'invalid', warning: 'Missing subject title' };
+  }
+  const lec = parseIntSafe(row.lec);
+  const lab = parseIntSafe(row.lab);
+  const total = parseIntSafe(row.total);
+
+  if (action === 'elective' && unitsMode === 'total_only') {
+    if (total <= 0) {
+      return {
+        status: 'invalid',
+        warning: 'Total-only elective has no total units',
+      };
+    }
+    return { status: 'new', warning: undefined };
+  }
+  if ((action === 'subject' || action === 'elective') && lec + lab !== total) {
+    return {
+      status: 'invalid',
+      warning: `lec+lab≠total (${lec}+${lab}≠${total})`,
+    };
+  }
+  return { status: 'new', warning: undefined };
 }
 
 export default function ImportProspectusDialog({
@@ -95,6 +132,22 @@ export default function ImportProspectusDialog({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [filter, setFilter] = useState('');
+
+  const { data: catalogSubjects = [] } = useQuery({
+    queryKey: ['subjects', { includeInactive: false }],
+    queryFn: () => fetchSubjects(false),
+    enabled: open,
+  });
+
+  const electiveSubjects = useMemo(
+    () => catalogSubjects.filter((s: SubjectRecord) => s.isElective),
+    [catalogSubjects],
+  );
+  const electiveById = useMemo(() => {
+    const m = new Map<string, SubjectRecord>();
+    for (const s of electiveSubjects) m.set(String(s.subjectId), s);
+    return m;
+  }, [electiveSubjects]);
 
   const visiblePrograms = useMemo(() => {
     if (!programs || programs.length === 0) return [];
@@ -169,13 +222,26 @@ export default function ImportProspectusDialog({
         const lab = parseIntSafe(cells.lab);
         const total = parseIntSafe(cells.total);
 
+        const isElectiveTable = table.tableKind === 'elective';
+        const defaultAction: ReviewRow['action'] = isElectiveTable
+          ? 'elective'
+          : code
+          ? 'subject'
+          : 'slot';
+
+        // Electives may list only a total. Auto-detect that shape so the
+        // lec+lab=total check does not reject a valid total-only row.
+        const looksTotalOnly =
+          isElectiveTable && lec === 0 && lab === 0 && total > 0;
+        const unitsMode: UnitsMode = looksTotalOnly ? 'total_only' : 'lec_lab';
+
         let status: ReviewRow['status'] = 'new';
         let warning: string | undefined;
 
         if (!title) {
           status = 'invalid';
           warning = 'Missing subject title';
-        } else if (lec + lab !== total) {
+        } else if (lec + lab !== total && unitsMode !== 'total_only') {
           status = 'invalid';
           warning = `lec+lab≠total (${lec}+${lab}≠${total})`;
         }
@@ -190,16 +256,18 @@ export default function ImportProspectusDialog({
           tableId: table.tableId,
           yearLevel: table.yearLevel,
           semester: table.semester,
+          isElectiveTable,
           code,
-          typedCode: '',
+          typedCode: isElectiveTable ? code : '',
           title,
           prereq: cells.prereq.trim(),
           lec: cells.lec.trim(),
           lab: cells.lab.trim(),
           total: cells.total.trim(),
           status,
-          // Default: if no code, assume it's an elective slot.
-          action: code ? 'subject' : 'slot',
+          action: defaultAction,
+          subjectId: '',
+          unitsMode,
           warning,
           checked: status === 'new' && !suspicious,
         });
@@ -225,13 +293,22 @@ export default function ImportProspectusDialog({
       const regions = [...byTable.entries()].map(([tableId, rows]) => ({
         table_id: Number(tableId),
         subjects: rows.map((r) => ({
-          code: r.action === 'subject' ? (r.typedCode.trim() || r.code) : '',
+          code:
+            r.action === 'subject' || r.action === 'elective'
+              ? r.typedCode.trim() || r.code
+              : '',
           title: r.title,
           prereq: r.prereq,
           lec: r.lec,
           lab: r.lab,
           total: r.total,
           action: r.action,
+          ...(r.action === 'elective' && r.subjectId
+            ? { subject_id: Number(r.subjectId) }
+            : {}),
+          ...(r.action === 'elective'
+            ? { units_mode: r.unitsMode }
+            : {}),
         })),
       }));
 
@@ -279,6 +356,23 @@ export default function ImportProspectusDialog({
   const slotCount = reviewRows.filter(
     (r) => r.checked && r.action === 'slot',
   ).length;
+  const electiveCount = reviewRows.filter(
+    (r) => r.checked && r.action === 'elective',
+  ).length;
+  const temporaryElectiveCount = reviewRows.filter(
+    (r) =>
+      r.checked &&
+      r.action === 'elective' &&
+      !r.subjectId &&
+      !(r.typedCode.trim() || r.code),
+  ).length;
+  const selectedElectiveTables = useMemo(
+    () =>
+      tables.filter(
+        (t) => selectedTableIds.has(t.tableId) && t.tableKind === 'elective',
+      ),
+    [tables, selectedTableIds],
+  );
 
   const filteredReviewRows = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -420,17 +514,37 @@ export default function ImportProspectusDialog({
                     className="w-4 h-4 accent-primary"
                   />
                   <div className="flex-1">
-                    <div className="text-sm font-semibold">
+                    <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
                       Year {t.yearLevel} · {t.semester} Semester
+                      {t.tableKind === 'elective' && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800">
+                          <Icon name="stars" size={9} />
+                          Elective
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-on-surface-variant">
                       {t.rows.length} row{t.rows.length === 1 ? '' : 's'}
+                      {t.label ? ` · ${t.label}` : ''}
                     </div>
                   </div>
                 </label>
               ))}
             </div>
           </div>
+
+          {selectedElectiveTables.length > 0 && electiveSubjects.length === 0 && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+              <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
+              <span>
+                No elective subjects exist in the catalog yet. Elective rows
+                without a typed code will be imported with a{' '}
+                <strong>temporary flagged code</strong> (for example{' '}
+                <span className="font-mono">ELEC-Y1S1-AB12CD</span>) and must be
+                resolved before plotting or auto-generating.
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -482,6 +596,12 @@ export default function ImportProspectusDialog({
                     <span className="text-xs font-bold text-slate-900">
                       Year {table?.yearLevel ?? '?'} · {table?.semester ?? '?'}
                     </span>
+                    {table?.tableKind === 'elective' && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800">
+                        <Icon name="stars" size={9} />
+                        Elective table
+                      </span>
+                    )}
                     <span className="text-[10px] text-slate-500 font-normal">
                       {rows.length} row{rows.length === 1 ? '' : 's'}
                     </span>
@@ -537,37 +657,172 @@ export default function ImportProspectusDialog({
                                   className="w-4 h-4 accent-primary"
                                 />
                               </td>
-                              <td className="px-2 py-1.5 font-mono">
-                                {row.code ? (
-                                  <span className="font-semibold">{row.code}</span>
-                                ) : (
-                                  <div className="flex flex-col gap-1">
-                                    <select
-                                      value={row.action}
+                              <td className="px-2 py-1.5 font-mono align-top">
+                                <div className="flex flex-col gap-1 min-w-[150px]">
+                                  <select
+                                    value={row.action}
+                                    onChange={(e) => {
+                                      const act = e.target
+                                        .value as ReviewRow['action'];
+                                      const autoTotalOnly =
+                                        act === 'elective' &&
+                                        parseIntSafe(row.lec) === 0 &&
+                                        parseIntSafe(row.lab) === 0 &&
+                                        parseIntSafe(row.total) > 0;
+                                      const nextMode: UnitsMode = autoTotalOnly
+                                        ? 'total_only'
+                                        : row.unitsMode;
+                                      setReviewRows((prev) =>
+                                        prev.map((r) =>
+                                          r.key === row.key
+                                            ? {
+                                                ...r,
+                                                action: act,
+                                                unitsMode: nextMode,
+                                                ...deriveRowStatus(
+                                                  r,
+                                                  act,
+                                                  nextMode,
+                                                ),
+                                              }
+                                            : r,
+                                        ),
+                                      );
+                                    }}
+                                    className="text-[10px] border border-surface-variant rounded px-1 py-0.5 bg-white"
+                                  >
+                                    <option value="elective">Elective</option>
+                                    <option value="subject">Regular subject</option>
+                                    {!row.isElectiveTable && (
+                                      <option value="slot">Legacy slot</option>
+                                    )}
+                                    <option value="skip">Skip</option>
+                                  </select>
+
+                                  {row.action === 'subject' && (
+                                    <input
+                                      type="text"
+                                      placeholder={row.code || 'Code…'}
+                                      value={row.typedCode}
                                       onChange={(e) => {
-                                        const act = e.target.value as 'subject' | 'slot' | 'skip';
-                                        setReviewRows(prev => prev.map(r => r.key === row.key ? { ...r, action: act } : r));
+                                        const val = e.target.value;
+                                        setReviewRows((prev) =>
+                                          prev.map((r) =>
+                                            r.key === row.key
+                                              ? { ...r, typedCode: val }
+                                              : r,
+                                          ),
+                                        );
                                       }}
-                                      className="text-[10px] border border-surface-variant rounded px-1 py-0.5 bg-white"
-                                    >
-                                      <option value="slot">Elective Slot</option>
-                                      <option value="subject">Type Code</option>
-                                      <option value="skip">Skip</option>
-                                    </select>
-                                    {row.action === 'subject' && (
-                                      <input
-                                        type="text"
-                                        placeholder="Code…"
-                                        value={row.typedCode}
+                                      className="w-24 px-1 py-0.5 text-[11px] border border-primary/40 rounded focus:outline-none focus:border-primary"
+                                    />
+                                  )}
+
+                                  {row.action === 'elective' && (
+                                    <>
+                                      <select
+                                        value={row.subjectId}
                                         onChange={(e) => {
                                           const val = e.target.value;
-                                          setReviewRows(prev => prev.map(r => r.key === row.key ? { ...r, typedCode: val } : r));
+                                          setReviewRows((prev) =>
+                                            prev.map((r) =>
+                                              r.key === row.key
+                                                ? {
+                                                    ...r,
+                                                    subjectId: val,
+                                                    typedCode: val
+                                                      ? ''
+                                                      : r.typedCode,
+                                                  }
+                                                : r,
+                                            ),
+                                          );
                                         }}
-                                        className="w-20 px-1 py-0.5 text-[11px] border border-primary/40 rounded mt-0.5 focus:outline-none focus:border-primary"
-                                      />
-                                    )}
-                                  </div>
-                                )}
+                                        className="w-36 text-[10px] border border-surface-variant rounded px-1 py-0.5 bg-white"
+                                        title="Use an existing elective subject, or leave blank to type a code / use a temporary code"
+                                      >
+                                        <option value="">
+                                          — New / typed code —
+                                        </option>
+                                        {electiveSubjects.map((s) => (
+                                          <option
+                                            key={s.subjectId}
+                                            value={s.subjectId}
+                                          >
+                                            {s.subjectCode} — {s.title}
+                                          </option>
+                                        ))}
+                                      </select>
+
+                                      {!row.subjectId && (
+                                        <input
+                                          type="text"
+                                          placeholder={
+                                            row.code || 'Code (optional)…'
+                                          }
+                                          value={row.typedCode}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setReviewRows((prev) =>
+                                              prev.map((r) =>
+                                                r.key === row.key
+                                                  ? { ...r, typedCode: val }
+                                                  : r,
+                                              ),
+                                            );
+                                          }}
+                                          className="w-28 px-1 py-0.5 text-[11px] border border-primary/40 rounded focus:outline-none focus:border-primary"
+                                        />
+                                      )}
+
+                                      <select
+                                        value={row.unitsMode}
+                                        onChange={(e) => {
+                                          const mode = e.target
+                                            .value as UnitsMode;
+                                          setReviewRows((prev) =>
+                                            prev.map((r) =>
+                                              r.key === row.key
+                                                ? {
+                                                    ...r,
+                                                    unitsMode: mode,
+                                                    ...deriveRowStatus(
+                                                      r,
+                                                      r.action,
+                                                      mode,
+                                                    ),
+                                                  }
+                                                : r,
+                                            ),
+                                          );
+                                        }}
+                                        className="w-28 text-[10px] border border-surface-variant rounded px-1 py-0.5 bg-white"
+                                        title="Total-only electives store only the total units"
+                                      >
+                                        <option value="lec_lab">Lec/Lab</option>
+                                        <option value="total_only">
+                                          Total only
+                                        </option>
+                                      </select>
+
+                                      {!row.subjectId &&
+                                        !(row.typedCode.trim() || row.code) && (
+                                          <span
+                                            className="text-[9px] text-amber-700 font-semibold"
+                                            title="This row will receive a deterministic temporary code"
+                                          >
+                                            Temporary code
+                                          </span>
+                                        )}
+                                    </>
+                                  )}
+
+                                  {row.warning && (
+                                    <span className="text-[9px] text-amber-700">
+                                      {row.warning}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td
                                 className="px-2 py-1.5 max-w-[200px] truncate text-slate-700"
@@ -607,12 +862,53 @@ export default function ImportProspectusDialog({
             <span>
               Ready: <strong className="text-primary">{readyCount}</strong>
             </span>
+            {electiveCount > 0 && (
+              <span>
+                · Electives:{' '}
+                <strong className="text-teal-700">{electiveCount}</strong>
+              </span>
+            )}
+            {temporaryElectiveCount > 0 && (
+              <span>
+                · Temporary codes:{' '}
+                <strong className="text-amber-700">
+                  {temporaryElectiveCount}
+                </strong>
+              </span>
+            )}
             {slotCount > 0 && (
               <span>
-                · Slots: <strong className="text-amber-700">{slotCount}</strong>
+                · Legacy slots:{' '}
+                <strong className="text-amber-700">{slotCount}</strong>
               </span>
             )}
           </div>
+
+          {temporaryElectiveCount > 0 && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+              <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
+              <span>
+                {temporaryElectiveCount} elective row
+                {temporaryElectiveCount === 1 ? '' : 's'} will receive a
+                deterministic temporary code. You can resolve{' '}
+                {temporaryElectiveCount === 1 ? 'it' : 'them'} later from the
+                Subjects page; plotting and auto-generate will exclude unresolved
+                electives and warn you.
+              </span>
+            </div>
+          )}
+
+          {electiveSubjects.length === 0 && electiveCount > 0 && (
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-300 text-blue-900 text-xs flex items-start gap-2">
+              <Icon name="info" size={16} className="shrink-0 mt-0.5" />
+              <span>
+                There are no elective subjects in the catalog yet. Choose{' '}
+                <strong>Regular subject</strong> and type a real code, or let
+                these rows import with temporary codes and add the electives
+                afterward.
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -634,12 +930,65 @@ export default function ImportProspectusDialog({
               </li>
               {result.slotsCreated > 0 && (
                 <li>
-                  {result.slotsCreated} elective slot
-                  {result.slotsCreated === 1 ? '' : 's'} created
+                  {result.slotsCreated} elective subject
+                  {result.slotsCreated === 1 ? '' : 's'} imported
+                </li>
+              )}
+              {result.temporaryCodes?.length > 0 && (
+                <li className="text-amber-800">
+                  {result.temporaryCodes.length} temporary code
+                  {result.temporaryCodes.length === 1 ? '' : 's'} need
+                  resolving
                 </li>
               )}
             </ul>
           </div>
+
+          {result.temporaryCodes?.length > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon
+                  name="warning"
+                  size={20}
+                  className="text-amber-700 shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Temporary elective codes
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    These electives have no fixed course code yet. Edit them on
+                    the Subjects page before plotting or auto-generating.
+                  </p>
+                  <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                    {result.temporaryCodes.map((temp) => (
+                      <li
+                        key={temp.subjectId}
+                        className="flex items-start gap-3 p-2 rounded border border-amber-200 bg-white"
+                      >
+                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded shrink-0 bg-amber-200 text-amber-900">
+                          Temp
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-amber-800 text-xs">
+                              {temp.subjectCode}
+                            </span>
+                            <span className="text-[10px] text-on-surface-variant font-mono">
+                              Y{temp.yearLevel} · {temp.semester}
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface truncate mt-0.5">
+                            {temp.title}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {result.slots && result.slots.length > 0 && (
             <div className="rounded-lg border border-blue-300 bg-blue-50 p-4">
@@ -647,13 +996,20 @@ export default function ImportProspectusDialog({
                 <Icon name="info" filled size={20} className="text-blue-700 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-blue-900">
-                    {result.slots.length} elective slot{result.slots.length === 1 ? '' : 's'} created
+                    {result.slots.length} elective subject
+                    {result.slots.length === 1 ? '' : 's'} imported
                   </p>
                   <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto">
                     {result.slots.map((slot: SlotCreated) => (
-                      <li key={slot.subjectCode} className="flex items-start gap-3 p-2 rounded border border-blue-200 bg-white">
-                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded shrink-0 bg-blue-200 text-blue-900">
-                          Slot
+                      <li key={slot.subjectId} className="flex items-start gap-3 p-2 rounded border border-blue-200 bg-white">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded shrink-0 ${
+                            slot.isPlaceholder
+                              ? 'bg-amber-200 text-amber-900'
+                              : 'bg-teal-200 text-teal-900'
+                          }`}
+                        >
+                          {slot.isPlaceholder ? 'Temp' : 'Elective'}
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2 flex-wrap">
@@ -662,6 +1018,11 @@ export default function ImportProspectusDialog({
                             </span>
                             <span className="text-[10px] text-on-surface-variant font-mono">
                               Y{slot.yearLevel} · {slot.semester}
+                            </span>
+                            <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500">
+                              {slot.unitsMode === 'total_only'
+                                ? 'Total only'
+                                : 'Lec/Lab'}
                             </span>
                           </div>
                           <p className="text-xs text-on-surface truncate mt-0.5">

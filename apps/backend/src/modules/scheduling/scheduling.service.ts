@@ -225,6 +225,7 @@ export class SchedulingService {
   }
 
   async plot(dto: PlotSubjectDto, user?: any): Promise<Schedule> {
+    await this.assertSubjectPlottable(dto.subjectId);
     const hasSystemFaculty = !!dto.facultyId;
     const extTrimmed = dto.externalFacultyName?.trim() ?? '';
     const hasExternalFaculty = extTrimmed.length > 0;
@@ -414,6 +415,7 @@ export class SchedulingService {
   }
 
   async plotMulti(dto: PlotMultiDto, user?: any): Promise<Schedule[]> {
+    await this.assertSubjectPlottable(dto.subjectId);
     const hasSystemFaculty = !!dto.facultyId;
     const extTrimmed = dto.externalFacultyName?.trim() ?? '';
     const hasExternalFaculty = extTrimmed.length > 0;
@@ -940,6 +942,37 @@ export class SchedulingService {
    * Look up a subject's owning department. Used by plot/validate paths
    * to feed the dept-active guard + cross-dept gate.
    */
+  /**
+   * Refuse to plot an unresolved elective. Temporary elective codes exist so
+   * imports are idempotent, but a schedule entry must point at a real course.
+   */
+  private async assertSubjectPlottable(subjectId: string): Promise<void> {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('subject')
+      .select('subject_code, is_elective, is_placeholder')
+      .eq('subject_id', subjectId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.warn(
+        `assertSubjectPlottable(${subjectId}) failed: ${error.message}`,
+      );
+      return;
+    }
+    if (!data) return;
+
+    const unresolved =
+      data.is_elective === true &&
+      (data.is_placeholder === true ||
+        /^(ELEC|SLOT)-/i.test(String(data.subject_code ?? '')));
+    if (unresolved) {
+      throw new BadRequestException(
+        `Cannot plot ${data.subject_code}: this elective still has a temporary code. Resolve it on the Subjects page first.`,
+      );
+    }
+  }
+
   private async lookupSubjectDept(
     subjectId: string,
   ): Promise<string | null> {

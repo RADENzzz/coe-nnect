@@ -23,8 +23,12 @@ export interface SubjectRecord {
   isActive: boolean;
   isPlaceholder: boolean;
   isMinor: boolean;
+  isElective: boolean;
+  unitsMode: UnitsMode;
   requiredRoomType: string | null;
 }
+
+export type UnitsMode = 'lec_lab' | 'total_only';
 
 export interface CreateSubjectInput {
   subjectCode: string;
@@ -34,6 +38,8 @@ export interface CreateSubjectInput {
   labUnits: number;
   requiredRoomType?: SubjectRoomType | null;
   isMinor?: boolean;
+  isElective?: boolean;
+  unitsMode?: UnitsMode;
   deptId: string;
 }
 

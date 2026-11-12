@@ -7,6 +7,10 @@ Use these guides to set up the applications, understand workspace packages, and 
 - [Backend API](apps/backend.md) — API modules, environment configuration, database scripts, and checks.
 - [Frontend](apps/frontend.md) — application features, environment configuration, and checks.
 
+## Features
+
+- [Elective subjects](features/electives.md) — catalog model, elective PDF tables, import resolution, temporary codes, and scheduling behavior.
+
 ## Architecture
 
 - [System architecture](architecture/README.md) — component map, data flows, persistence, and integration status.

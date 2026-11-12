@@ -9,6 +9,7 @@ import {
   type SubjectRecord,
   type CreateSubjectInput,
   type SubjectRoomType,
+  type UnitsMode,
 } from '../../../api/subjects.api';
 
 const ROOM_TYPES: Array<{
@@ -58,8 +59,8 @@ interface StepDef {
 
 const STEP_DEFS: StepDef[] = [
   { label: 'Identity', icon: 'badge', description: 'Code, department & title' },
-  { label: 'Units', icon: 'calculate', description: 'Lecture & lab breakdown' },
-  { label: 'Classification', icon: 'tune', description: 'Room type & minor flag' },
+  { label: 'Units', icon: 'calculate', description: 'Lecture & lab or total units' },
+  { label: 'Classification', icon: 'tune', description: 'Room type, minor & elective flags' },
   { label: 'Review', icon: 'fact_check', description: 'Confirm & save' },
 ];
 
@@ -70,9 +71,12 @@ interface FormState {
   title: string;
   lectureUnits: string;
   labUnits: string;
+  totalOnlyUnits: string;
+  unitsMode: UnitsMode;
   requiredRoomType: '' | SubjectRoomType;
   deptId: string;
   isMinor: boolean;
+  isElective: boolean;
 }
 
 type FieldErrors = Partial<Record<keyof FormState, string>>;
@@ -82,9 +86,12 @@ const EMPTY_FORM: FormState = {
   title: '',
   lectureUnits: '',
   labUnits: '',
+  totalOnlyUnits: '',
+  unitsMode: 'lec_lab',
   requiredRoomType: '',
   deptId: '',
   isMinor: false,
+  isElective: false,
 };
 
 function extractErrorMessage(err: any, fallback: string): string {
@@ -102,6 +109,8 @@ interface Props {
   departments: Department[];
   isDH: boolean;
   myDeptId: string | null;
+  /** Pre-select the elective flag when creating from the Elective tab. */
+  defaultElective?: boolean;
   onClose: () => void;
   onSuccess: (message: string) => void;
 }
@@ -114,6 +123,7 @@ export default function SubjectFormModal({
   departments,
   isDH,
   myDeptId,
+  defaultElective = false,
   onClose,
   onSuccess,
 }: Props) {
@@ -134,6 +144,7 @@ export default function SubjectFormModal({
       setForm({
         ...EMPTY_FORM,
         deptId: isDH && myDeptId ? myDeptId : '',
+        isElective: defaultElective,
       });
     } else if (mode === 'edit' && subject) {
       setForm({
@@ -141,11 +152,15 @@ export default function SubjectFormModal({
         title: subject.title,
         lectureUnits: String(subject.lectureUnits ?? 0),
         labUnits: String(subject.labUnits ?? 0),
+        totalOnlyUnits:
+          subject.unitsMode === 'total_only' ? String(subject.totalUnits ?? 0) : '',
+        unitsMode: subject.unitsMode ?? 'lec_lab',
         requiredRoomType: (subject.requiredRoomType ?? '') as
           | ''
           | SubjectRoomType,
         deptId: subject.deptId ?? '',
         isMinor: subject.isMinor ?? false,
+        isElective: subject.isElective ?? false,
       });
     }
     setStepIdx(0);
@@ -194,7 +209,11 @@ export default function SubjectFormModal({
 
   const lectureUnitsNum = Number(form.lectureUnits || 0);
   const labUnitsNum = Number(form.labUnits || 0);
-  const totalUnits = lectureUnitsNum + labUnitsNum;
+  const totalOnlyUnitsNum = Number(form.totalOnlyUnits || 0);
+  const isTotalOnly = form.unitsMode === 'total_only';
+  const totalUnits = isTotalOnly
+    ? totalOnlyUnitsNum
+    : lectureUnitsNum + labUnitsNum;
   const isMixed = lectureUnitsNum > 0 && labUnitsNum > 0;
   const isLectureOnly = lectureUnitsNum > 0 && labUnitsNum === 0;
   const isLabOnly = labUnitsNum > 0 && lectureUnitsNum === 0;
@@ -220,6 +239,14 @@ export default function SubjectFormModal({
 
   const validateUnits = (): FieldErrors => {
     const errs: FieldErrors = {};
+    if (isTotalOnly) {
+      if (!form.totalOnlyUnits || totalOnlyUnitsNum <= 0) {
+        errs.totalOnlyUnits = 'Enter the total units';
+      } else if (totalOnlyUnitsNum > 24) {
+        errs.totalOnlyUnits = 'Total units cannot exceed 24';
+      }
+      return errs;
+    }
     if (!form.lectureUnits && !form.labUnits) {
       errs.lectureUnits = 'Enter at least one unit';
     }
@@ -298,9 +325,9 @@ export default function SubjectFormModal({
       return;
     }
 
-    const lecture = lectureUnitsNum;
-    const lab = labUnitsNum;
-    const total = lecture + lab;
+    const lecture = isTotalOnly ? 0 : lectureUnitsNum;
+    const lab = isTotalOnly ? 0 : labUnitsNum;
+    const total = isTotalOnly ? totalOnlyUnitsNum : lecture + lab;
 
     const inferredRoomType = inferRoomType(lecture, lab);
     const hasSpecializedRoom = (
@@ -328,6 +355,8 @@ export default function SubjectFormModal({
       labUnits: lab,
       requiredRoomType,
       isMinor: form.isMinor,
+      isElective: form.isElective,
+      unitsMode: form.unitsMode,
       deptId: form.deptId,
     };
 
@@ -346,7 +375,10 @@ export default function SubjectFormModal({
         !!form.title.trim() ||
         !!form.lectureUnits ||
         !!form.labUnits ||
+        !!form.totalOnlyUnits ||
+        form.unitsMode !== 'lec_lab' ||
         form.isMinor ||
+        form.isElective !== defaultElective ||
         form.requiredRoomType !== '' ||
         form.deptId !== initialDept ||
         stepIdx > 0
@@ -358,10 +390,16 @@ export default function SubjectFormModal({
         form.title !== subject.title ||
         form.lectureUnits !== String(subject.lectureUnits ?? 0) ||
         form.labUnits !== String(subject.labUnits ?? 0) ||
+        form.totalOnlyUnits !==
+          (subject.unitsMode === 'total_only'
+            ? String(subject.totalUnits ?? 0)
+            : '') ||
+        form.unitsMode !== (subject.unitsMode ?? 'lec_lab') ||
         form.requiredRoomType !==
           ((subject.requiredRoomType ?? '') as '' | SubjectRoomType) ||
         form.deptId !== (subject.deptId ?? '') ||
-        form.isMinor !== (subject.isMinor ?? false)
+        form.isMinor !== (subject.isMinor ?? false) ||
+        form.isElective !== (subject.isElective ?? false)
       );
     }
     return false;
@@ -431,58 +469,139 @@ export default function SubjectFormModal({
 
   const renderUnits = () => (
     <FormSection title="Units" icon="calculate">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField
-          label="Lecture Units"
-          required
-          error={fieldErrors.lectureUnits}
-        >
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            max="12"
-            value={form.lectureUnits}
-            onChange={(e) => handleUnitsChange('lectureUnits', e.target.value)}
-            placeholder="0"
-            className={inputClass(!!fieldErrors.lectureUnits)}
-          />
-        </FormField>
-        <FormField
-          label="Lab Units"
-          required
-          error={fieldErrors.labUnits}
-        >
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            max="12"
-            value={form.labUnits}
-            onChange={(e) => handleUnitsChange('labUnits', e.target.value)}
-            placeholder="0"
-            className={inputClass(!!fieldErrors.labUnits)}
-          />
-        </FormField>
+      {/* Unit mode — total-only is an elective-only convenience. */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {(
+          [
+            {
+              key: 'lec_lab' as const,
+              label: 'Lecture + Lab',
+              icon: 'calculate',
+              hint: 'Total is the sum of the lecture and lab units.',
+            },
+            {
+              key: 'total_only' as const,
+              label: 'Total units only',
+              icon: 'functions',
+              hint: 'The source lists only a total; lecture and lab stay at zero.',
+            },
+          ]
+        ).map((m) => {
+          const active = form.unitsMode === m.key;
+          const disabled = m.key === 'total_only' && !form.isElective;
+          return (
+            <button
+              key={m.key}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                setField('unitsMode', m.key);
+                setFieldErrors((prev) => ({
+                  ...prev,
+                  lectureUnits: undefined,
+                  labUnits: undefined,
+                  totalOnlyUnits: undefined,
+                }));
+              }}
+              className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                active
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-surface-variant text-on-surface-variant hover:bg-surface-container'
+              } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={disabled ? 'Enable Elective on the next step first.' : m.hint}
+            >
+              <Icon name={m.icon} size={16} className="mt-0.5 shrink-0" />
+              <span>
+                <span className="block text-xs font-semibold">{m.label}</span>
+                <span className="block text-[10px] opacity-80">{m.hint}</span>
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {isTotalOnly ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            label="Total Units"
+            required
+            error={fieldErrors.totalOnlyUnits}
+            hint="Used when the prospectus lists only a total for this elective."
+          >
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="24"
+              value={form.totalOnlyUnits}
+              onChange={(e) => setField('totalOnlyUnits', e.target.value)}
+              placeholder="0"
+              className={inputClass(!!fieldErrors.totalOnlyUnits)}
+            />
+          </FormField>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            label="Lecture Units"
+            required
+            error={fieldErrors.lectureUnits}
+          >
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="12"
+              value={form.lectureUnits}
+              onChange={(e) => handleUnitsChange('lectureUnits', e.target.value)}
+              placeholder="0"
+              className={inputClass(!!fieldErrors.lectureUnits)}
+            />
+          </FormField>
+          <FormField
+            label="Lab Units"
+            required
+            error={fieldErrors.labUnits}
+          >
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="12"
+              value={form.labUnits}
+              onChange={(e) => handleUnitsChange('labUnits', e.target.value)}
+              placeholder="0"
+              className={inputClass(!!fieldErrors.labUnits)}
+            />
+          </FormField>
+        </div>
+      )}
 
       {totalUnits > 0 && (
         <div className="flex flex-wrap items-center gap-2 mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs">
           <span className="font-semibold text-slate-600">Breakdown:</span>
-          {lectureUnitsNum > 0 && (
-            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-semibold">
-              {lectureUnitsNum} Lecture
+          {isTotalOnly ? (
+            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-semibold">
+              {totalUnits} Total (no lec/lab split)
             </span>
+          ) : (
+            <>
+              {lectureUnitsNum > 0 && (
+                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-semibold">
+                  {lectureUnitsNum} Lecture
+                </span>
+              )}
+              {labUnitsNum > 0 && (
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-semibold">
+                  {labUnitsNum} Lab
+                </span>
+              )}
+              <span className="text-slate-400">=</span>
+              <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-mono font-bold">
+                {totalUnits} Total
+              </span>
+            </>
           )}
-          {labUnitsNum > 0 && (
-            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-semibold">
-              {labUnitsNum} Lab
-            </span>
-          )}
-          <span className="text-slate-400">=</span>
-          <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-mono font-bold">
-            {totalUnits} Total
-          </span>
           <span className="ml-auto inline-flex items-center gap-1 text-slate-500">
             <Icon name="meeting_room" size={12} />
             Room:
@@ -490,6 +609,16 @@ export default function SubjectFormModal({
               {ROOM_TYPES.find((r) => r.value === form.requiredRoomType)
                 ?.label ?? '—'}
             </strong>
+          </span>
+        </div>
+      )}
+
+      {!form.isElective && form.unitsMode === 'lec_lab' && (
+        <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-slate-50 text-slate-600 border border-slate-200 mt-3">
+          <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+          <span>
+            Total-only units are available for <strong>elective subjects</strong>.
+            Turn on the elective flag on the next step to use them.
           </span>
         </div>
       )}
@@ -586,6 +715,48 @@ export default function SubjectFormModal({
           </div>
         </div>
       )}
+
+      <label className="flex items-start gap-3 cursor-pointer select-none rounded-lg border border-surface-variant bg-surface-container-low p-3 hover:bg-surface-container transition mt-4">
+        <input
+          type="checkbox"
+          checked={form.isElective}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            setForm((prev) => ({
+              ...prev,
+              isElective: checked,
+              // Total-only mode is elective-only; fall back when it is off.
+              unitsMode: checked ? prev.unitsMode : 'lec_lab',
+            }));
+          }}
+          className="accent-primary w-4 h-4 mt-0.5"
+        />
+        <div className="flex-1">
+          <span className="text-sm font-semibold text-on-surface flex items-center gap-1.5">
+            <Icon name="stars" size={14} className="text-teal-600" />
+            Elective subject
+          </span>
+          <p className="text-[11px] text-on-surface-variant mt-0.5">
+            One of a set of options a student may choose. Electives are plotted
+            <strong> first</strong>, may use total-only units, and multiple
+            electives can appear in one semester.
+          </p>
+        </div>
+      </label>
+
+      {form.isElective && (
+        <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-teal-50 text-teal-900 border border-teal-200 mt-3">
+          <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Elective subject</p>
+            <p className="mt-0.5">
+              Will show a teal "Elective" badge and appear in the Elective tab.
+              Imported electives without a code get a temporary flagged code
+              that must be resolved before plotting.
+            </p>
+          </div>
+        </div>
+      )}
       </FormSection>
     );
   };
@@ -627,32 +798,50 @@ export default function SubjectFormModal({
             <div>
               <p className="text-on-surface-variant">Classification</p>
               <p className="font-semibold text-on-surface">
-                {form.isMinor ? 'Minor (cross-dept)' : 'Regular'}
+                {form.isElective
+                  ? 'Elective'
+                  : form.isMinor
+                  ? 'Minor (cross-dept)'
+                  : 'Regular'}
               </p>
             </div>
           </div>
 
           <div className="pt-2 border-t border-surface-variant space-y-1 text-xs">
-            {lectureUnitsNum > 0 && (
+            {isTotalOnly ? (
               <div className="flex items-center gap-2">
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/15 text-blue-600">
-                  Lecture
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-500/15 text-purple-600">
+                  Total only
                 </span>
                 <span className="text-on-surface">
-                  {lectureUnitsNum} unit
-                  {lectureUnitsNum === 1 ? '' : 's'}
+                  {totalUnits} unit{totalUnits === 1 ? '' : 's'} (no lec/lab
+                  split)
                 </span>
               </div>
-            )}
-            {labUnitsNum > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-600">
-                  Lab
-                </span>
-                <span className="text-on-surface">
-                  {labUnitsNum} unit{labUnitsNum === 1 ? '' : 's'}
-                </span>
-              </div>
+            ) : (
+              <>
+                {lectureUnitsNum > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/15 text-blue-600">
+                      Lecture
+                    </span>
+                    <span className="text-on-surface">
+                      {lectureUnitsNum} unit
+                      {lectureUnitsNum === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                )}
+                {labUnitsNum > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-500/15 text-amber-600">
+                      Lab
+                    </span>
+                    <span className="text-on-surface">
+                      {labUnitsNum} unit{labUnitsNum === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
             <div className="flex items-center gap-2">
               <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-surface-container-high text-on-surface-variant">
@@ -930,6 +1119,18 @@ function LivePreview({
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-[10px] font-semibold text-purple-700 border border-purple-500/20">
             <Icon name="school" size={10} />
             Minor
+          </span>
+        )}
+        {form.isElective && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-500/10 text-[10px] font-semibold text-teal-700 border border-teal-500/20">
+            <Icon name="stars" size={10} />
+            Elective
+          </span>
+        )}
+        {form.unitsMode === 'total_only' && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-500/10 text-[10px] font-semibold text-slate-700 border border-slate-500/20">
+            <Icon name="functions" size={10} />
+            Total only
           </span>
         )}
         {roomMeta && roomMeta.value && (

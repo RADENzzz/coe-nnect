@@ -29,7 +29,12 @@ export class ExtractRequestDto {
 }
 
 /** What the user decided to do with this row on import. */
-export const IMPORT_ROW_ACTIONS = ['subject', 'slot', 'skip'] as const;
+export const IMPORT_ROW_ACTIONS = [
+  'subject',
+  'elective',
+  'slot',
+  'skip',
+] as const;
 export type ImportRowAction = (typeof IMPORT_ROW_ACTIONS)[number];
 
 export class ImportSubjectDto {
@@ -62,11 +67,30 @@ export class ImportSubjectDto {
   total?: string;
 
   /**
+   * Existing elective subject chosen by the user. When set, the importer uses
+   * that subject instead of creating a new one.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  subject_id?: number;
+
+  /**
+   * `lec_lab` (default) uses the lec/lab/total columns. `total_only` is valid
+   * for elective rows whose source only lists a total.
+   */
+  @IsOptional()
+  @IsIn(['lec_lab', 'total_only'])
+  units_mode?: 'lec_lab' | 'total_only';
+
+  /**
    * Per-row decision. Defaults to 'subject' so older clients keep working.
-   *   'subject' → treat `code` as a real subject code (the classic path).
-   *   'slot'    → the row is an elective placeholder ("GEC Elective 1").
-   *               `code` is ignored; the PDF title becomes the slot label.
-   *   'skip'    → don't import this row; report it back as skipped.
+   *   'subject'  → treat `code` as a real subject code (the classic path).
+   *   'elective' → elective subject; use `subject_id` when chosen, otherwise
+   *                `code` when typed, otherwise a temporary flagged code.
+   *   'slot'     → legacy elective placeholder ("GEC Elective 1").
+   *                `code` is ignored; the PDF title becomes the slot label.
+   *   'skip'     → don't import this row; report it back as skipped.
    */
   @IsOptional()
   @IsIn(IMPORT_ROW_ACTIONS)

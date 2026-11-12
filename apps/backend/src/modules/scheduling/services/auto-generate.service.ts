@@ -230,7 +230,13 @@ export class AutoGenerateService {
       //     Both halves of the data dependency must be inside the mutex.
       // ═══════════════════════════════════════════════════════════════
       type SerializedOutcome =
-        | { kind: 'ok'; result: any; saved: Schedule[]; validation: any }
+        | {
+            kind: 'ok';
+            result: any;
+            saved: Schedule[];
+            validation: any;
+            electiveWarnings?: string[];
+          }
         | { kind: 'room-deficit'; sufficiency: any }
         | { kind: 'solver-error'; error: Error }
         | { kind: 'no-solution'; message: string | undefined }
@@ -297,6 +303,7 @@ export class AutoGenerateService {
             result: solveResult,
             saved,
             validation,
+            electiveWarnings: problem.electiveWarnings,
           };
         },
       );
@@ -467,7 +474,10 @@ export class AutoGenerateService {
         success: true,
         scheduleCount: saved.length,
         solveTimeSeconds: result.solveTimeSeconds ?? null,
-        warnings: validation.softWarnings,
+        warnings: [
+          ...(outcome.electiveWarnings ?? []),
+          ...validation.softWarnings,
+        ],
         unscheduled: result.unscheduled ?? [],
       };
     } catch (err) {
@@ -557,7 +567,7 @@ export class AutoGenerateService {
     const { data: subjects, error: subErr } = await db
       .from('subject')
       .select(
-        'subject_id, subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_id, source_dept',
+        'subject_id, subject_code, title, total_units, lecture_units, lab_units, required_room_type, dept_id, source_dept, is_elective, is_placeholder',
       )
       .in('subject_id', subjectIds)
       .eq('is_active', true);
@@ -565,7 +575,26 @@ export class AutoGenerateService {
     if (subErr)
       throw new Error(`Failed to load subjects: ${subErr.message}`);
 
-    const cpeSubjects = (subjects ?? []).filter((s: any) => !s.source_dept);
+    // Unresolved electives carry a deterministic temporary code and must not
+    // be handed to the solver. Excluding them here also removes their
+    // prospectus rows, so they cannot consume sections or faculty.
+    const unresolvedElectives = (subjects ?? []).filter(
+      (s: any) =>
+        s.is_elective === true &&
+        (s.is_placeholder === true ||
+          /^(ELEC|SLOT)-/i.test(String(s.subject_code ?? ''))),
+    );
+    const unresolvedIds = new Set(
+      unresolvedElectives.map((s: any) => String(s.subject_id)),
+    );
+    const electiveWarnings = unresolvedElectives.map(
+      (s: any) =>
+        `Elective ${s.subject_code} (${s.title}) has a temporary code and was excluded from auto-generate. Resolve it on the Subjects page and run again.`,
+    );
+
+    const cpeSubjects = (subjects ?? []).filter(
+      (s: any) => !s.source_dept && !unresolvedIds.has(String(s.subject_id)),
+    );
     const cpeSubjectIds = new Set(
       cpeSubjects.map((s: any) => String(s.subject_id)),
     );
@@ -734,6 +763,7 @@ export class AutoGenerateService {
         facultyId: String(q.faculty_id),
         subjectId: String(q.subject_id),
       })),
+      electiveWarnings,
       preferences: (preferences ?? []).map((p) => ({
         facultyId: String(p.faculty_id),
         preferredDay: p.preferred_day,

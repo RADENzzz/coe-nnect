@@ -101,11 +101,15 @@ export class SubjectsService {
       );
     }
 
-    if (dto.totalUnits !== dto.lectureUnits + dto.labUnits) {
-      throw new BadRequestException(
-        'totalUnits must equal lectureUnits + labUnits',
-      );
-    }
+    const isElective = dto.isElective ?? false;
+    const unitsMode = dto.unitsMode ?? 'lec_lab';
+    this.assertUnits({
+      totalUnits: Number(dto.totalUnits),
+      lectureUnits: Number(dto.lectureUnits),
+      labUnits: Number(dto.labUnits),
+      isElective,
+      unitsMode,
+    });
 
     const entity = this.repo.create({
       subjectCode: dto.subjectCode,
@@ -115,6 +119,8 @@ export class SubjectsService {
       labUnits: dto.labUnits,
       requiredRoomType: (dto.requiredRoomType as any) ?? null,
       isMinor: dto.isMinor ?? false,
+      isElective,
+      unitsMode,
       deptId: dto.deptId,
     });
     return this.repo.save(entity);
@@ -145,7 +151,37 @@ export class SubjectsService {
       await this.departments.assertDepartmentActive(found.deptId);
     }
 
-    if (dto.subjectCode !== undefined) found.subjectCode = dto.subjectCode;
+    const nextIsElective = dto.isElective ?? found.isElective ?? false;
+    const nextUnitsMode = dto.unitsMode ?? found.unitsMode ?? 'lec_lab';
+    const nextTotalUnits =
+      dto.totalUnits !== undefined
+        ? Number(dto.totalUnits)
+        : Number(found.totalUnits);
+    const nextLectureUnits =
+      dto.lectureUnits !== undefined
+        ? Number(dto.lectureUnits)
+        : Number(found.lectureUnits);
+    const nextLabUnits =
+      dto.labUnits !== undefined ? Number(dto.labUnits) : Number(found.labUnits);
+
+    this.assertUnits({
+      totalUnits: nextTotalUnits,
+      lectureUnits: nextLectureUnits,
+      labUnits: nextLabUnits,
+      isElective: nextIsElective,
+      unitsMode: nextUnitsMode,
+    });
+
+    if (dto.subjectCode !== undefined) {
+      found.subjectCode = dto.subjectCode;
+      // Giving a temporary elective a real code resolves it automatically.
+      if (
+        found.isPlaceholder &&
+        !/^(ELEC|SLOT)-/i.test(dto.subjectCode.trim())
+      ) {
+        found.isPlaceholder = false;
+      }
+    }
     if (dto.title !== undefined) found.title = dto.title;
     if (dto.totalUnits !== undefined) found.totalUnits = dto.totalUnits;
     if (dto.lectureUnits !== undefined) found.lectureUnits = dto.lectureUnits;
@@ -153,15 +189,54 @@ export class SubjectsService {
     if (dto.requiredRoomType !== undefined)
       found.requiredRoomType = (dto.requiredRoomType as any) ?? null;
     if (dto.isMinor !== undefined) found.isMinor = dto.isMinor;
+    if (dto.isElective !== undefined) found.isElective = dto.isElective;
+    if (dto.unitsMode !== undefined) found.unitsMode = dto.unitsMode;
     if (dto.deptId !== undefined) found.deptId = dto.deptId;
 
-    if (found.totalUnits !== found.lectureUnits + found.labUnits) {
+    return this.repo.save(found);
+  }
+
+  /**
+   * Validate the units contract.
+   *
+   * Regular subjects must satisfy total = lecture + lab. Electives may instead
+   * use `total_only`, where the breakdown columns are zero because the source
+   * prospectus only lists the total.
+   */
+  private assertUnits(params: {
+    totalUnits: number;
+    lectureUnits: number;
+    labUnits: number;
+    isElective: boolean;
+    unitsMode: 'lec_lab' | 'total_only';
+  }): void {
+    const { totalUnits, lectureUnits, labUnits, isElective, unitsMode } =
+      params;
+
+    if (unitsMode === 'total_only') {
+      if (!isElective) {
+        throw new BadRequestException(
+          'unitsMode "total_only" is only allowed for elective subjects',
+        );
+      }
+      if (lectureUnits !== 0 || labUnits !== 0) {
+        throw new BadRequestException(
+          'Total-only elective subjects must have 0 lecture and 0 lab units',
+        );
+      }
+      if (totalUnits <= 0) {
+        throw new BadRequestException(
+          'Total units must be greater than 0 for a total-only elective',
+        );
+      }
+      return;
+    }
+
+    if (totalUnits !== lectureUnits + labUnits) {
       throw new BadRequestException(
         'totalUnits must equal lectureUnits + labUnits',
       );
     }
-
-    return this.repo.save(found);
   }
 
   async toggleActive(id: string, profile: User): Promise<Subject> {
