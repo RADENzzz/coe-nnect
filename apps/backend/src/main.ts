@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import { createAppLogger } from './common/logging/structured-logger';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import {
+  createCapRateLimiter,
   createGlobalRateLimiter,
   createLoginRateLimiter,
 } from './config/rate-limit.config';
@@ -150,6 +151,8 @@ async function createApp() {
   // login endpoint and Swagger. Login gets a second, stricter bucket.
   app.use(createGlobalRateLimiter());
   app.use(`/${apiPrefix}/v1/auth/login`, createLoginRateLimiter());
+  app.use(`/${apiPrefix}/v1/auth/reauth`, createLoginRateLimiter());
+  app.use(`/${apiPrefix}/v1/auth/cap`, createCapRateLimiter());
 
   app.useGlobalPipes(
     new ValidationPipe({

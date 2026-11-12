@@ -19,7 +19,9 @@ const LONG_ENDPOINT_TIMEOUTS: Array<[RegExp, number]> = [
   [/\/prospectus\/.*\/info(\?|$)/, 90_000],
 ];
 
-const RETRYABLE_POST = [/\/solve(\?|$)/, /\/login(\?|$)/];
+// Login is deliberately not retried: its Cap token is single-use, so a
+// transparent retry would submit an already-consumed token.
+const RETRYABLE_POST = [/\/solve(\?|$)/];
 
 interface RetryableConfig extends InternalAxiosRequestConfig {
   _retryCount?: number;

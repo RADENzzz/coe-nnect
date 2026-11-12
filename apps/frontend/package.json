@@ -18,6 +18,7 @@
     "animate.css": "^4.1.1",
     "axios": "^1.7.3",
     "canvas-confetti": "^1.9.4",
+    "cap-widget": "0.1.62",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.427.0",

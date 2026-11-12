@@ -42,3 +42,20 @@ export function createLoginRateLimiter(env: Env = process.env) {
     validate: { xForwardedForHeader: false },
   });
 }
+
+/**
+ * Challenge/redeem traffic is two requests per login attempt. Keep a separate
+ * bucket so a burst on the CAPTCHA routes cannot consume the login budget or
+ * the global budget for the rest of the API.
+ */
+export function createCapRateLimiter(env: Env = process.env) {
+  return rateLimit({
+    windowMs: 60_000,
+    limit: positiveNumber(env.CAP_THROTTLE_LIMIT, 60),
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skip: (req) => req.method === 'OPTIONS',
+    message: RATE_LIMIT_MESSAGE,
+    validate: { xForwardedForHeader: false },
+  });
+}

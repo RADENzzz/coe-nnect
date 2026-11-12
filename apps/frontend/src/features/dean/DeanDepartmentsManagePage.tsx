@@ -14,7 +14,7 @@ import {
   updateUser,
   type UserRecord,
 } from '../../api/users.api';
-import { login } from '../../api/auth.api';
+import { reauthenticate } from '../../api/auth.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
@@ -166,7 +166,7 @@ export default function DeanDepartmentsManagePage() {
     setIsVerifying(true);
     setVerifyError(null);
     try {
-      await login({ email: user.email, password: adminPassword });
+      await reauthenticate(adminPassword);
       toggleMutation.mutate(deactivateTarget);
     } catch (err: any) {
       setVerifyError(err?.response?.data?.message || 'Incorrect password');

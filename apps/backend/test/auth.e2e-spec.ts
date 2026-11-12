@@ -13,6 +13,7 @@ describe('AuthController (e2e)', () => {
   let app: INestApplication;
   const authService = {
     login: jest.fn(),
+    reauthenticate: jest.fn(),
     getProfile: jest.fn(),
   };
   const fakeSupabase = createFakeSupabase();
@@ -31,6 +32,7 @@ describe('AuthController (e2e)', () => {
 
   beforeEach(() => {
     authService.login.mockReset();
+    authService.reauthenticate.mockReset();
     authService.getProfile.mockReset();
   });
 
@@ -50,6 +52,7 @@ describe('AuthController (e2e)', () => {
       .send({
         email: 'dean@wmsu.edu.ph',
         password: 'Demo!2345',
+        capToken: 'solved-token',
       })
       .expect(201);
 
@@ -61,7 +64,20 @@ describe('AuthController (e2e)', () => {
     expect(authService.login).toHaveBeenCalledWith(
       'dean@wmsu.edu.ph',
       'Demo!2345',
+      'solved-token',
     );
+  });
+
+  it('rejects a login without a Cap token', async () => {
+    await request(app.getHttpServer())
+      .post('/v1/auth/login')
+      .send({
+        email: 'dean@wmsu.edu.ph',
+        password: 'Demo!2345',
+      })
+      .expect(400);
+
+    expect(authService.login).not.toHaveBeenCalled();
   });
 
   it('rejects malformed login input before calling the service', async () => {
@@ -70,6 +86,7 @@ describe('AuthController (e2e)', () => {
       .send({
         email: 'not-an-email',
         password: '123',
+        capToken: 'solved-token',
       })
       .expect(400);
 
@@ -100,6 +117,32 @@ describe('AuthController (e2e)', () => {
     });
     expect(authService.getProfile).toHaveBeenCalledWith(
       '00000000-0000-4000-8000-000000000001',
+    );
+  });
+
+  it('rejects /reauth requests without a bearer token', async () => {
+    await request(app.getHttpServer())
+      .post('/v1/auth/reauth')
+      .send({ password: 'correct' })
+      .expect(401);
+
+    expect(authService.reauthenticate).not.toHaveBeenCalled();
+  });
+
+  it('re-checks the password for an authenticated session', async () => {
+    authService.reauthenticate.mockResolvedValueOnce({ verified: true });
+
+    const response = await request(app.getHttpServer())
+      .post('/v1/auth/reauth')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ password: 'correct' })
+      .expect(201);
+
+    expect(response.body).toEqual({ verified: true });
+    expect(authService.reauthenticate).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      'test@wmsu.edu.ph',
+      'correct',
     );
   });
 });

@@ -57,6 +57,33 @@ export async function seedTutorialState(page: Page): Promise<void> {
 }
 
 /**
+ * Solve the Cap proof-of-work challenge through the widget's public API.
+ *
+ * The login button stays disabled until the widget emits a token, so tests
+ * cannot simply click "Sign in" after filling the form. Driving `solve()`
+ * avoids depending on the widget's shadow-DOM internals.
+ */
+export async function solveCap(page: Page): Promise<void> {
+  const widget = page.locator('cap-widget');
+  await expect(widget).toBeVisible();
+
+  await widget.evaluate(async (el) => {
+    const cap = el as HTMLElement & {
+      solve?: () => Promise<unknown>;
+    };
+    if (typeof cap.solve !== 'function') {
+      throw new Error('Cap widget is not ready');
+    }
+    await cap.solve();
+  });
+
+  await expect(
+    page.locator('cap-widget input[name="cap-token"]'),
+  ).toHaveValue(/.+/, { timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+}
+
+/**
  * Sign in through the real login form. Each test starts with a fresh browser
  * context, so this also verifies that the test users can authenticate against
  * the dedicated Supabase project.
@@ -71,6 +98,7 @@ export async function loginAs(page: Page, role: E2eRole): Promise<void> {
   await gotoApp(page, '/login');
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
+  await solveCap(page);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page).toHaveURL(

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { e2eState, gotoApp, loginAs } from './helpers';
+import { e2eState, gotoApp, loginAs, solveCap } from './helpers';
 
 test('Dean deactivates the E2E department and the DH gets walled', async ({
   page,
@@ -37,6 +37,7 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
   await dhPage.goto('/login', { waitUntil: 'domcontentloaded' });
   await dhPage.locator('input[name="email"]').fill(state.headEmail);
   await dhPage.locator('input[name="password"]').fill(state.headPassword);
+  await solveCap(dhPage);
   await dhPage.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(dhPage).toHaveURL(/\/department-deactivated/, {
