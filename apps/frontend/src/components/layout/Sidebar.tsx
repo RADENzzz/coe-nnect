@@ -9,6 +9,7 @@ import {
 import { Link, NavLink } from 'react-router-dom';
 import clsx from 'clsx';
 import Icon from '../ui/Icon';
+import CetLogo from '../brand/CetLogo';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
@@ -328,7 +329,7 @@ export default function Sidebar({ nav }: SidebarProps) {
                 className="w-full h-full object-contain"
               />
             ) : (
-              <Icon name="school" filled className="text-white" size={20} />
+              <CetLogo variant="mark" className="h-full w-full p-0.5" />
             )}
             {collapsed && attention.totalUnread > 0 && (
               <span

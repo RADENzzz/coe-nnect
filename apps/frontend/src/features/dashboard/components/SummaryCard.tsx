@@ -56,11 +56,15 @@ export default function SummaryCard({
       <span
         className={`text-[22px] font-bold leading-none tracking-tight tabular-nums ${VALUE_TONE[tone]}`}
       >
-        <RollingValue value={isLoading ? '—' : value} />
+        <RollingValue value={value} loading={isLoading} />
       </span>
       {hint && (
         <span className="text-[11px] leading-snug text-on-surface-variant">
-          {hint}
+          <RollingValue
+            value={hint}
+            loading={isLoading}
+            loadingLength={Math.min(18, hint.length)}
+          />
         </span>
       )}
     </>

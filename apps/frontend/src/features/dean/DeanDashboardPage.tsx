@@ -905,14 +905,20 @@ export default function DeanDashboardPage() {
             <div className="flex items-baseline justify-between gap-2">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-3xl font-bold leading-none tabular-nums text-on-surface">
-                  <RollingNumber value={schedules.length} />
+                  <RollingNumber
+                    value={schedules.length}
+                    loading={schedLoading}
+                  />
                 </span>
                 <span className="text-xs text-on-surface-variant">
                   class blocks
                 </span>
               </div>
               <span className="text-xs font-semibold tabular-nums text-on-surface-variant">
-                <RollingValue value={`${completionRate}% complete`} />
+                <RollingValue
+                  value={`${completionRate}% complete`}
+                  loading={schedLoading}
+                />
               </span>
             </div>
 
@@ -961,7 +967,10 @@ export default function DeanDashboardPage() {
                     {item.label}
                   </span>
                   <span className="ml-auto font-semibold tabular-nums text-on-surface">
-                    <RollingNumber value={item.value} />
+                    <RollingNumber
+                      value={item.value}
+                      loading={schedLoading}
+                    />
                   </span>
                 </div>
               ))}
@@ -970,13 +979,22 @@ export default function DeanDashboardPage() {
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant/60 pt-3 text-[11px] text-on-surface-variant">
               <span className="inline-flex items-center gap-1.5">
                 <Icon name="today" size={12} />
-                {dayInsight.classesToday} today
+                <RollingNumber
+                  value={dayInsight.classesToday}
+                  loading={schedLoading}
+                />{' '}
+                today
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Icon name="trending_up" size={12} />
-                {dayInsight.busiest
-                  ? `Busiest · ${dayInsight.busiest.day} (${dayInsight.busiest.count})`
-                  : 'No day distribution yet'}
+                <RollingValue
+                  value={
+                    dayInsight.busiest
+                      ? `Busiest · ${dayInsight.busiest.day} (${dayInsight.busiest.count})`
+                      : 'No day distribution yet'
+                  }
+                  loading={schedLoading}
+                />
               </span>
             </div>
           </ReportCard>
@@ -991,7 +1009,7 @@ export default function DeanDashboardPage() {
           >
             <div className="flex items-baseline gap-1.5">
               <span className="text-3xl font-bold leading-none tabular-nums text-on-surface">
-                <RollingNumber value={faculty.length} />
+                <RollingNumber value={faculty.length} loading={facultyLoading} />
               </span>
               <span className="text-xs text-on-surface-variant">
                 active faculty
@@ -1005,11 +1023,8 @@ export default function DeanDashboardPage() {
                 </span>
                 <span className="font-semibold tabular-nums text-on-surface">
                   <RollingValue
-                    value={
-                      statusLoading
-                        ? '—'
-                        : `${qualifiedCount}/${faculty.length}`
-                    }
+                    value={`${qualifiedCount}/${faculty.length}`}
+                    loading={statusLoading}
                   />
                 </span>
               </div>
@@ -1032,7 +1047,10 @@ export default function DeanDashboardPage() {
                     aria-hidden="true"
                   />
                   <span className="text-sm font-semibold tabular-nums text-on-surface">
-                    <RollingNumber value={item.value} />
+                    <RollingNumber
+                      value={item.value}
+                      loading={facultyLoading || schedLoading}
+                    />
                   </span>
                   <span className="truncate text-[10px] text-on-surface-variant">
                     {item.label}
@@ -1070,7 +1088,10 @@ export default function DeanDashboardPage() {
           >
             <div className="flex items-baseline gap-1.5">
               <span className="text-3xl font-bold leading-none tabular-nums text-on-surface">
-                <RollingNumber value={activeDepts.length} />
+                <RollingNumber
+                  value={activeDepts.length}
+                  loading={deptLoading}
+                />
               </span>
               <span className="text-xs text-on-surface-variant">
                 active departments
@@ -1083,6 +1104,7 @@ export default function DeanDashboardPage() {
                 <span className="font-semibold tabular-nums text-on-surface">
                   <RollingValue
                     value={`${activeWithHead}/${activeDepts.length}`}
+                    loading={deptLoading || dirLoading}
                   />
                 </span>
               </div>
@@ -1105,7 +1127,10 @@ export default function DeanDashboardPage() {
                     aria-hidden="true"
                   />
                   <span className="text-sm font-semibold tabular-nums text-on-surface">
-                    <RollingNumber value={item.value} />
+                    <RollingNumber
+                      value={item.value}
+                      loading={deptLoading || dirLoading}
+                    />
                   </span>
                   <span className="truncate text-[10px] text-on-surface-variant">
                     {item.label}
@@ -1145,17 +1170,25 @@ export default function DeanDashboardPage() {
                 Needs attention
               </h2>
               <p className="mt-0.5 text-[11px] text-on-surface-variant">
-                {attentionCount > 0
-                  ? `${attentionCount} item${
-                      attentionCount === 1 ? '' : 's'
-                    } to review`
-                  : 'Flagged classes, unassigned blocks, and pending requests'}
+                <RollingValue
+                  value={
+                    attentionCount > 0
+                      ? `${attentionCount} item${
+                          attentionCount === 1 ? '' : 's'
+                        } to review`
+                      : 'Flagged classes, unassigned blocks, and pending requests'
+                  }
+                  loading={attentionLoading}
+                />
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {attentionCount > 0 && (
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800">
-                  <RollingNumber value={attentionCount} />
+                  <RollingNumber
+                    value={attentionCount}
+                    loading={attentionLoading}
+                  />
                 </span>
               )}
               {reviewSchedules.length > 0 && (
@@ -1231,6 +1264,7 @@ export default function DeanDashboardPage() {
           <TodayScheduleStrip
             schedules={schedules}
             now={nowDate}
+            loading={schedLoading}
             onOpenTimetable={() => navigate('/dean/timetable')}
             emptyHint="Nothing scheduled college-wide today."
           />
@@ -1247,8 +1281,12 @@ export default function DeanDashboardPage() {
             <div>
               <h2 className="text-sm font-bold text-on-surface">Departments</h2>
               <p className="mt-0.5 text-[11px] text-on-surface-variant">
-                {activeDepts.length} active · {inactiveDepts.length} inactive ·{' '}
-                {onlineDHs} head{onlineDHs === 1 ? '' : 's'} online
+                <RollingValue
+                  value={`${activeDepts.length} active · ${inactiveDepts.length} inactive · ${onlineDHs} head${
+                    onlineDHs === 1 ? '' : 's'
+                  } online`}
+                  loading={deptLoading || dirLoading}
+                />
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1346,11 +1384,18 @@ export default function DeanDashboardPage() {
                     <div className="hidden w-24 shrink-0 sm:block">
                       <div className="flex items-center justify-between text-[10px] text-on-surface-variant">
                         <span>
-                          {deptStats
-                            ? `${deptStats.completed}/${deptStats.total}`
-                            : '—'}
+                          {deptStats ? (
+                            <RollingValue
+                              value={`${deptStats.completed}/${deptStats.total}`}
+                              loading={schedLoading}
+                            />
+                          ) : (
+                            '—'
+                          )}
                         </span>
-                        <span>{pct}%</span>
+                        <span>
+                          <RollingNumber value={pct} loading={schedLoading} />%
+                        </span>
                       </div>
                       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-container">
                         <div
@@ -1405,7 +1450,10 @@ export default function DeanDashboardPage() {
               <div className="flex items-center gap-2">
                 {reviewSchedules.length > 0 && (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800">
-                    {reviewSchedules.length}
+                    <RollingNumber
+                      value={reviewSchedules.length}
+                      loading={schedLoading}
+                    />
                   </span>
                 )}
                 {reviewSchedules.length > 0 && (
@@ -1492,7 +1540,10 @@ export default function DeanDashboardPage() {
               <div className="flex items-center gap-2">
                 {pendingRequests.length > 0 && (
                   <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800">
-                    {pendingRequests.length}
+                    <RollingNumber
+                      value={pendingRequests.length}
+                      loading={reqLoading}
+                    />
                   </span>
                 )}
                 {pendingRequests.length > 0 && (

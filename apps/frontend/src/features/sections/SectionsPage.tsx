@@ -16,6 +16,7 @@ import Modal from '../../components/ui/Modal';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
+import RollingValue from '../../components/ui/RollingValue';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'program' | 'year' | 'students';
@@ -763,6 +764,7 @@ export default function SectionsPage() {
           icon="groups"
           tone="neutral"
           onClick={hasAnyFilter ? clearAll : undefined}
+          loading={isLoading}
         />
         <StatCard
           label="Active"
@@ -772,12 +774,14 @@ export default function SectionsPage() {
           onClick={() =>
             setFilter('status', statusFilter === 'active' ? 'all' : 'active')
           }
+          loading={isLoading}
         />
         <StatCard
           label="With Students"
           value={stats.withStudents}
           icon="school"
           tone="blue"
+          loading={isLoading}
         />
         <StatCard
           label="Inactive"
@@ -790,6 +794,7 @@ export default function SectionsPage() {
               statusFilter === 'inactive' ? 'all' : 'inactive',
             )
           }
+          loading={isLoading}
         />
       </div>
 
@@ -1333,12 +1338,14 @@ function StatCard({
   icon,
   tone,
   onClick,
+  loading,
 }: {
   label: string;
   value: number;
   icon: string;
   tone: 'neutral' | 'emerald' | 'blue' | 'rose';
   onClick?: () => void;
+  loading?: boolean;
 }) {
   const tones = {
     neutral: 'bg-surface-container-lowest border-surface-variant',
@@ -1366,7 +1373,9 @@ function StatCard({
         </span>
         <Icon name={icon} size={16} className={iconTones[tone]} />
       </div>
-      <p className="text-2xl font-bold text-on-surface mt-1">{value}</p>
+      <p className="text-2xl font-bold text-on-surface mt-1 tabular-nums">
+        <RollingValue value={value} loading={loading} />
+      </p>
     </Comp>
   );
 }

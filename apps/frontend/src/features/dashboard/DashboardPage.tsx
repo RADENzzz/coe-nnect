@@ -404,13 +404,11 @@ export default function DashboardPage() {
       0,
     ) ?? 0;
 
-  const roomStatusLabel = roomLoading
-    ? 'Checking…'
-    : !roomReport
-      ? 'No room data'
-      : roomReport.sufficient
-        ? 'Sufficient'
-        : `${roomsMissing} room${roomsMissing === 1 ? '' : 's'} short`;
+  const roomStatusLabel = !roomReport
+    ? 'No room data'
+    : roomReport.sufficient
+      ? 'Sufficient'
+      : `${roomsMissing} room${roomsMissing === 1 ? '' : 's'} short`;
 
   const recentActivity = useMemo(
     () =>
@@ -582,13 +580,11 @@ export default function DashboardPage() {
           icon="meeting_room"
           label="Room sufficiency"
           value={
-            roomLoading
-              ? '—'
-              : !roomReport
-                ? 'No data'
-                : roomReport.sufficient
-                  ? 'Sufficient'
-                  : `${roomsMissing} short`
+            !roomReport
+              ? 'No data'
+              : roomReport.sufficient
+                ? 'Sufficient'
+                : `${roomsMissing} short`
           }
           hint={
             roomReport
@@ -631,7 +627,10 @@ export default function DashboardPage() {
           >
             <div className="flex items-baseline gap-1.5">
               <span className="text-3xl font-bold leading-none tabular-nums text-on-surface">
-                <RollingNumber value={myFaculty.length} />
+                <RollingNumber
+                  value={myFaculty.length}
+                  loading={facultyLoading}
+                />
               </span>
               <span className="text-xs text-on-surface-variant">
                 active faculty
@@ -645,11 +644,8 @@ export default function DashboardPage() {
                 </span>
                 <span className="font-semibold tabular-nums text-on-surface">
                   <RollingValue
-                    value={
-                      statusLoading
-                        ? '—'
-                        : `${qualifiedCount}/${myFaculty.length}`
-                    }
+                    value={`${qualifiedCount}/${myFaculty.length}`}
+                    loading={statusLoading}
                   />
                 </span>
               </div>
@@ -693,7 +689,10 @@ export default function DashboardPage() {
                     aria-hidden="true"
                   />
                   <span className="text-sm font-semibold tabular-nums text-on-surface">
-                    <RollingNumber value={item.value} />
+                    <RollingNumber
+                      value={item.value}
+                      loading={facultyLoading || schedLoading}
+                    />
                   </span>
                   <span className="truncate text-[10px] text-on-surface-variant">
                     {item.label}
@@ -743,13 +742,14 @@ export default function DashboardPage() {
                       : 'text-rose-700'
                 }`}
               >
-                <RollingValue value={roomStatusLabel} />
+                <RollingValue value={roomStatusLabel} loading={roomLoading} />
               </span>
             </div>
             <p className="mt-1 text-[11px] text-on-surface-variant">
               {roomReport ? (
                 <RollingValue
                   value={`${roomReport.totals.rooms} rooms · ${roomReport.totals.blocks} class blocks`}
+                  loading={roomLoading}
                 />
               ) : (
                 'The room report will appear once a term is active.'
@@ -769,6 +769,7 @@ export default function DashboardPage() {
                     <span className="shrink-0 font-semibold tabular-nums text-amber-700">
                       <RollingValue
                         value={`${deficit.shortByHours.toFixed(1)}h short`}
+                        loading={roomLoading}
                       />
                     </span>
                   </div>
@@ -793,7 +794,10 @@ export default function DashboardPage() {
             <div className="flex items-baseline justify-between gap-2">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-3xl font-bold leading-none tabular-nums text-on-surface">
-                  <RollingNumber value={scheduleStats.total} />
+                  <RollingNumber
+                    value={scheduleStats.total}
+                    loading={schedLoading}
+                  />
                 </span>
                 <span className="text-xs text-on-surface-variant">
                   class blocks
@@ -802,6 +806,7 @@ export default function DashboardPage() {
               <span className="text-xs font-semibold text-on-surface-variant tabular-nums">
                 <RollingValue
                   value={`${scheduleStats.completionRate}% complete`}
+                  loading={schedLoading}
                 />
               </span>
             </div>
@@ -851,7 +856,10 @@ export default function DashboardPage() {
                     {item.label}
                   </span>
                   <span className="ml-auto font-semibold tabular-nums text-on-surface">
-                    <RollingNumber value={item.value} />
+                    <RollingNumber
+                      value={item.value}
+                      loading={schedLoading}
+                    />
                   </span>
                 </div>
               ))}
@@ -872,14 +880,22 @@ export default function DashboardPage() {
                 Needs attention
               </h2>
               <p className="mt-0.5 text-[11px] text-on-surface-variant">
-                {attentionCount > 0
-                  ? `${attentionCount} item${attentionCount === 1 ? '' : 's'} to review`
-                  : 'Flagged classes, unassigned blocks, and pending requests'}
+                <RollingValue
+                  value={
+                    attentionCount > 0
+                      ? `${attentionCount} item${attentionCount === 1 ? '' : 's'} to review`
+                      : 'Flagged classes, unassigned blocks, and pending requests'
+                  }
+                  loading={isLoading || flaggedLoading}
+                />
               </p>
             </div>
             {attentionCount > 0 && (
               <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800">
-                <RollingNumber value={attentionCount} />
+                <RollingNumber
+                  value={attentionCount}
+                  loading={isLoading || flaggedLoading}
+                />
               </span>
             )}
           </header>
@@ -946,6 +962,7 @@ export default function DashboardPage() {
           <TodayScheduleStrip
             schedules={mySchedules}
             now={now}
+            loading={schedLoading}
             onOpenTimetable={() => navigate('/timetable')}
           />
         </div>

@@ -1,0 +1,21 @@
+<svg id="cet-mark" xmlns="http://www.w3.org/2000/svg" viewBox="120 120 660 660" role="img" aria-labelledby="cet-mark-title cet-mark-desc">
+  <title id="cet-mark-title">WMSU College of Engineering and Technology logo</title>
+  <desc id="cet-mark-desc">Compact College of Engineering and Technology mark with a yellow octagon and red angular arrows.</desc>
+  <g id="cet-badge" class="cet-badge">
+    <g id="cet-inner-ring" class="cet-inner-ring">
+      <circle cx="450" cy="450" r="338" fill="none" stroke="#111111" stroke-width="6"/>
+    </g>
+    <g id="cet-octagon" class="cet-octagon">
+      <path d="M323.7 145.1 L576.3 145.1 L754.9 323.7 L754.9 576.3 L576.3 754.9 L323.7 754.9 L145.1 576.3 L145.1 323.7 Z" fill="#ffff00" stroke="#111111" stroke-width="14" stroke-linejoin="miter"/>
+    </g>
+    <g id="cet-inner-arrows" fill="#cccccc" stroke="#111111" stroke-width="5" stroke-linejoin="round">
+      <path d="M446 274 L470 274 L470 380 L597 448 L470 448 L470 380 L446 380 Z"/>
+      <path d="M300 452 L400 452 L356 512 Z"/>
+      <path d="M445 517 L445 602 L405 562 Z"/>
+    </g>
+    <g id="cet-red-arrows" stroke-linejoin="round">
+      <path d="M332 268 L422 268 L422 353 L401 336 L284 452 L284 456 L358 528 L416 467 L402 450 L463 449 L467 507 L450 497 L391 561 L449 622 L619 454 L504 339 L483 353 L484 268 L572 268 L551 293 L712 453 L450 715 L191 454 L351 294 L352 288 Z" fill="#da0000" stroke="#ffffff" stroke-width="9"/>
+      <path d="M332 268 L422 268 L422 353 L401 336 L284 452 L284 456 L358 528 L416 467 L402 450 L463 449 L467 507 L450 497 L391 561 L449 622 L619 454 L504 339 L483 353 L484 268 L572 268 L551 293 L712 453 L450 715 L191 454 L351 294 L352 288 Z" fill="#da0000" stroke="#111111" stroke-width="4"/>
+    </g>
+  </g>
+</svg>

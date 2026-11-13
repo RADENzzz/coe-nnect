@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
 import Icon from '../../../components/ui/Icon';
+import {
+  RollingNumber,
+  ScrambleText,
+} from '../../../components/ui/RollingValue';
 import type { RawSchedule } from '../../../api/schedule.api';
 import {
   DAY_ABBR_TO_LABEL,
@@ -16,11 +20,13 @@ export default function TodayScheduleStrip({
   now,
   onOpenTimetable,
   emptyHint = 'Nothing scheduled for your department.',
+  loading = false,
 }: {
   schedules: RawSchedule[];
   now: Date;
   onOpenTimetable: () => void;
   emptyHint?: string;
+  loading?: boolean;
 }) {
   const todayName = DAY_FULL_NAMES[now.getDay()];
   const todayShort = DAY_ABBR_TO_LABEL[todayName] ?? todayName;
@@ -70,12 +76,37 @@ export default function TodayScheduleStrip({
           </span>
         </div>
         <span className="rounded-full bg-surface-container-low px-2 py-0.5 text-[10px] font-semibold text-on-surface-variant tabular-nums">
-          {todaySchedules.length} class
+          <RollingNumber value={todaySchedules.length} loading={loading} /> class
           {todaySchedules.length === 1 ? '' : 'es'}
         </span>
       </div>
 
-      {todaySchedules.length === 0 ? (
+      {loading ? (
+        <div className="flex-1 divide-y divide-outline-variant/50">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-start gap-3 px-4 py-2.5"
+            >
+              <div className="w-12 shrink-0 pt-0.5 text-xs font-bold text-on-surface tabular-nums">
+                <ScrambleText value="00:00" loading />
+              </div>
+              <div className="min-w-0 flex-1">
+                <ScrambleText
+                  value="Subject code"
+                  loading
+                  className="block text-sm font-semibold text-on-surface"
+                />
+                <ScrambleText
+                  value="Section · Rm 000"
+                  loading
+                  className="mt-0.5 block text-[11px] text-on-surface-variant"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : todaySchedules.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
           <Icon
             name="event_available"

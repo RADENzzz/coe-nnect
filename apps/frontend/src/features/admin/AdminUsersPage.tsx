@@ -327,7 +327,7 @@ export default function AdminUsersPage() {
         </button>
       </div>
 
-      <UserStatsCards users={visibleUsers} />
+      <UserStatsCards users={visibleUsers} loading={isLoading} />
 
       {pageError && (
         <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-center justify-between gap-2">

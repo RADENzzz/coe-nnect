@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useId } from 'react';
 import clsx from 'clsx';
 import RowActionMenu, { type RowAction } from './RowActionMenu';
+import { ScrambleText } from './RollingValue';
 
 export type CardVariant =
   | 'title'
@@ -229,13 +230,31 @@ export default function ResponsiveTable<T>({
   // ── Loading skeleton ──
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
-        <div className="p-4 space-y-3">
+      <div
+        className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden"
+        aria-busy="true"
+      >
+        <div className="p-4 space-y-3" aria-hidden="true">
           {Array.from({ length: skeletonRows }).map((_, i) => (
             <div key={i} className="flex items-center gap-3">
-              <div className="h-4 bg-slate-100 rounded animate-pulse flex-1" />
-              <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
-              <div className="h-4 bg-slate-100 rounded animate-pulse w-32" />
+              <ScrambleText
+                value="Loading"
+                loading
+                loadingLength={16 + (i % 3) * 6}
+                className="block h-4 flex-1 overflow-hidden whitespace-nowrap rounded bg-slate-100 px-1.5 text-sm leading-4 text-slate-400"
+              />
+              <ScrambleText
+                value="Loading"
+                loading
+                loadingLength={8 + (i % 2) * 3}
+                className="block h-4 w-24 overflow-hidden whitespace-nowrap rounded bg-slate-100 px-1.5 text-sm leading-4 text-slate-400"
+              />
+              <ScrambleText
+                value="Loading"
+                loading
+                loadingLength={10 + (i % 3) * 2}
+                className="block h-4 w-32 overflow-hidden whitespace-nowrap rounded bg-slate-100 px-1.5 text-sm leading-4 text-slate-400"
+              />
             </div>
           ))}
         </div>

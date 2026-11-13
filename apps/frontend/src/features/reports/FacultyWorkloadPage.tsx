@@ -122,6 +122,7 @@ function SummaryTile({
   tone,
   hint,
   active,
+  loading = false,
   onClick,
 }: {
   label: string;
@@ -129,6 +130,7 @@ function SummaryTile({
   tone: StatusTone;
   hint?: string;
   active?: boolean;
+  loading?: boolean;
   onClick?: () => void;
 }) {
   const iconMap: Record<StatusTone, string> = {
@@ -169,12 +171,16 @@ function SummaryTile({
       </div>
       <div className="min-w-0">
         <p className="text-2xl font-extrabold text-on-surface leading-tight tabular-nums">
-          <RollingValue value={value} />
+          <RollingValue value={value} loading={loading} />
         </p>
         <p className="text-xs font-semibold text-on-surface-variant">{label}</p>
         {hint && (
           <p className="text-[10px] text-on-surface-variant/70 mt-0.5">
-            {hint}
+            <RollingValue
+              value={hint}
+              loading={loading}
+              loadingLength={Math.min(20, hint.length)}
+            />
           </p>
         )}
       </div>
@@ -581,6 +587,7 @@ export default function FacultyWorkloadPage() {
             label="Total"
             value={summary.total}
             tone="neutral"
+            loading={isLoading}
             onClick={() => setStatusFilter('all')}
             active={statusFilter === 'all'}
           />
@@ -588,6 +595,7 @@ export default function FacultyWorkloadPage() {
             label="Overloaded"
             value={summary.overload}
             tone="danger"
+            loading={isLoading}
             hint={`${formatHours(summary.overloadTotal)} over`}
             onClick={() =>
               setStatusFilter(statusFilter === 'overload' ? 'all' : 'overload')
@@ -598,6 +606,7 @@ export default function FacultyWorkloadPage() {
             label="Under-loaded"
             value={summary.under}
             tone="warning"
+            loading={isLoading}
             hint={`${formatHours(summary.underloadTotal)} under`}
             onClick={() =>
               setStatusFilter(statusFilter === 'under' ? 'all' : 'under')
@@ -608,6 +617,7 @@ export default function FacultyWorkloadPage() {
             label="Full"
             value={summary.full}
             tone="success"
+            loading={isLoading}
             hint="Within ±2h"
             onClick={() =>
               setStatusFilter(statusFilter === 'full' ? 'all' : 'full')
@@ -618,6 +628,7 @@ export default function FacultyWorkloadPage() {
             label="No load"
             value={summary.idle}
             tone="neutral"
+            loading={isLoading}
             hint="Zero hours"
             onClick={() =>
               setStatusFilter(statusFilter === 'idle' ? 'all' : 'idle')
@@ -628,6 +639,7 @@ export default function FacultyWorkloadPage() {
             label="Total Overload"
             value={formatHours(summary.overloadTotal)}
             tone="danger"
+            loading={isLoading}
             hint="Sum across filtered"
           />
         </div>
