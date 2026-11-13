@@ -12,6 +12,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -1681,7 +1682,7 @@ function StatCard({
         <div className="h-7 mt-1 w-12 rounded bg-slate-200/70 animate-pulse" />
       ) : (
         <p className="text-2xl font-bold text-on-surface mt-1 tabular-nums">
-          {value}
+          <RollingValue value={value} />
         </p>
       )}
       {active && (

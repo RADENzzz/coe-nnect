@@ -95,7 +95,9 @@ function ShellInner() {
           className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 focus:outline-none"
         >
           <SystemStatusBanner />
-          <Outlet />
+          <div key={location.pathname} className="animate-page-roll h-full">
+            <Outlet />
+          </div>
         </main>
       </div>
 

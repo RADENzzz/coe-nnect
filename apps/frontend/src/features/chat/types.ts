@@ -33,3 +33,19 @@ export interface ChatParticipant {
   dept_name: string | null;
   isOnline: boolean;
 }
+
+/** Resolved presence for one chat participant. */
+export interface ChatPresence {
+  online: boolean;
+  label: string;
+}
+
+/**
+ * Resolve a participant's presence from their server last-seen timestamp.
+ * The drawer also feeds in locally observed disconnects so the label flips
+ * to "Active just now" before the next directory refetch.
+ */
+export type PresenceResolver = (
+  userId: string,
+  lastSeenAt: string | null | undefined,
+) => ChatPresence;

@@ -8,6 +8,7 @@ import {
 } from '../../api/schedule.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
+import RollingValue from '../../components/ui/RollingValue';
 
 function formatHours(h: number): string {
   return `${h.toFixed(1)}h`;
@@ -124,7 +125,7 @@ export default function RoomSufficiencyPage() {
             </div>
             <div>
               <p className="text-2xl font-extrabold text-emerald-900">
-                {summary.sufficient}
+                <RollingValue value={summary.sufficient} />
               </p>
               <p className="text-xs font-semibold text-emerald-800">
                 Sufficient
@@ -141,7 +142,7 @@ export default function RoomSufficiencyPage() {
             </div>
             <div>
               <p className="text-2xl font-extrabold text-amber-900">
-                {summary.deficient}
+                <RollingValue value={summary.deficient} />
               </p>
               <p className="text-xs font-semibold text-amber-800">
                 Deficient
@@ -158,7 +159,7 @@ export default function RoomSufficiencyPage() {
             </div>
             <div>
               <p className="text-2xl font-extrabold text-red-900">
-                {summary.totalMissingRooms}
+                <RollingValue value={summary.totalMissingRooms} />
               </p>
               <p className="text-xs font-semibold text-red-800">
                 Rooms to add

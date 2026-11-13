@@ -452,6 +452,45 @@ export default function LoginPage() {
     };
   }, [shakeKey]);
 
+  // The Cap widget always re-inserts a branded "Cap" link into its open
+  // shadow root (on mount, solve, and reset) and exposes no supported option
+  // to hide it. Remove the link whenever the widget adds it back.
+  useEffect(() => {
+    const el = capRef.current;
+    if (!el) return;
+
+    const removeCredits = () => {
+      el.shadowRoot
+        ?.querySelectorAll('a.credits')
+        .forEach((credit) => credit.remove());
+    };
+
+    let observer: MutationObserver | null = null;
+    let frame = 0;
+    let attempts = 0;
+
+    const watch = () => {
+      const shadow = el.shadowRoot;
+      if (!shadow) {
+        // The custom element attaches its shadow root on connect; retry for
+        // a short window in case the effect runs before that happens.
+        if (attempts++ < 120) frame = requestAnimationFrame(watch);
+        return;
+      }
+
+      removeCredits();
+      observer = new MutationObserver(removeCredits);
+      observer.observe(shadow, { childList: true, subtree: true });
+    };
+
+    watch();
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [shakeKey]);
+
   // Slow-network detection: if login takes > 3s, hint to the user
   useEffect(() => {
     if (!loading) {

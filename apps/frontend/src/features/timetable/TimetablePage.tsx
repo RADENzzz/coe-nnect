@@ -42,6 +42,7 @@ import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import RollingValue from '../../components/ui/RollingValue';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 import { colorForSubject } from './utils/color.util';
@@ -1203,7 +1204,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
             {activeTerm && !isLoading && !error && (
               <div className="hidden sm:flex items-center gap-2 text-xs text-on-surface-variant">
                 <Icon name="calendar_view_month" size={16} />
-                <span className="tabular-nums">{entryCountLabel}</span>
+                <span className="tabular-nums">
+                  <RollingValue value={entryCountLabel} />
+                </span>
                 {writable && movePending && (
                   <span className="ml-1 text-primary font-medium animate-pulse">
                     Saving…
@@ -1230,7 +1233,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
                   {coverage?.totals.plotted}/{coverage?.totals.expected}
                 </span>
                 <span className="opacity-70">·</span>
-                <span className="tabular-nums">{coveragePercent}%</span>
+                <span className="tabular-nums">
+                  <RollingValue value={`${coveragePercent}%`} />
+                </span>
                 {coverage && coverage.totals.missing > 0 && (
                   <span className="ml-1 text-[10px] px-1.5 py-px rounded-full bg-white/60 font-bold">
                     {coverage.totals.missing} left

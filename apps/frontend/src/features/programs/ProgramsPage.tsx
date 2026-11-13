@@ -13,6 +13,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, {
   type Column,
 } from '../../components/ui/ResponsiveTable';
@@ -748,7 +749,9 @@ function StatCard({
         </span>
         <Icon name={icon} size={16} className="opacity-60" />
       </div>
-      <div className="text-2xl font-bold mt-1 tabular-nums">{value}</div>
+      <div className="text-2xl font-bold mt-1 tabular-nums">
+        <RollingValue value={value} />
+      </div>
     </div>
   );
 }

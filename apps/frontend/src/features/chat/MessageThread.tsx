@@ -9,6 +9,11 @@ interface Props {
   isLoading?: boolean;
 }
 
+function initials(name: string): string {
+  if (!name) return '—';
+  return name.slice(0, 2).toUpperCase();
+}
+
 function safeDate(iso: string | null | undefined): Date | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -62,19 +67,19 @@ function dayLabel(iso: string | null | undefined): string {
   });
 }
 
-// Linkify URLs in message text
+// Linkify URLs in message text. Test with a fresh non-global regex so a
+// stateful `lastIndex` from the split pass cannot skip a link.
 function renderMessageBody(body: string): React.ReactNode {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = body.split(urlRegex);
+  const parts = body.split(/(https?:\/\/[^\s]+)/g);
   return parts.map((part, i) => {
-    if (urlRegex.test(part)) {
+    if (/^https?:\/\//.test(part)) {
       return (
         <a
           key={i}
           href={part}
           target="_blank"
           rel="noopener noreferrer"
-          className="underline hover:no-underline break-all"
+          className="break-all underline hover:no-underline"
           onClick={(e) => e.stopPropagation()}
         >
           {part}
@@ -110,8 +115,7 @@ export default function MessageThread({
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    const atBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     setIsAtBottom(atBottom);
     if (atBottom) setShowJumpButton(false);
   };
@@ -151,49 +155,45 @@ export default function MessageThread({
 
   if (isLoading && messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-slate-300 border-t-primary animate-spin rounded-full" />
+      <div className="flex flex-1 items-center justify-center bg-surface-container-lowest">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-outline-variant border-t-primary" />
       </div>
     );
   }
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center py-10 px-6 text-center">
-        <div className="w-16 h-16 bg-slate-50 border border-slate-200 flex items-center justify-center mb-4 rounded-full">
-          <span
-            className="material-symbols-outlined text-slate-300"
-            style={{ fontSize: 32 }}
-          >
-            waving_hand
-          </span>
+      <div className="flex flex-1 flex-col items-center justify-center bg-surface-container-lowest px-6 py-10 text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-surface-container text-on-surface-variant/70">
+          <Icon name="waving_hand" size={26} />
         </div>
-        <p className="text-sm font-semibold text-slate-800">
+        <p className="text-sm font-semibold text-on-surface">
           Start the conversation
         </p>
-        <p className="text-xs text-slate-500 mt-1 max-w-[200px] leading-snug">
-          Say hello to <strong>{otherName}</strong>.
+        <p className="mt-1 max-w-[220px] text-xs leading-snug text-on-surface-variant">
+          Say hello to <strong>{otherName}</strong>. Messages are private to
+          the two of you.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 relative min-h-0">
+    <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50/30"
+        className="absolute inset-0 space-y-3 overflow-y-auto bg-surface-container-lowest px-3 py-4 sm:px-4"
       >
         {grouped.map((group) => (
-          <div key={group.day} className="space-y-3">
+          <div key={group.day} className="space-y-2">
             {group.label && (
-              <div className="flex items-center gap-3 py-1 sticky top-0 bg-slate-50/30 backdrop-blur-sm z-10 -mx-4 px-4">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <div className="sticky top-0 z-10 -mx-3 flex items-center gap-3 bg-surface-container-lowest/95 px-3 py-1.5 backdrop-blur sm:-mx-4 sm:px-4">
+                <div className="h-px flex-1 bg-outline-variant" />
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-on-surface-variant">
                   {group.label}
                 </span>
-                <div className="flex-1 h-px bg-slate-200" />
+                <div className="h-px flex-1 bg-outline-variant" />
               </div>
             )}
 
@@ -208,24 +208,40 @@ export default function MessageThread({
               return (
                 <div
                   key={m.messageId}
-                  className={`flex ${isSelf ? 'justify-end' : 'justify-start'} group`}
+                  className={`group flex items-end gap-2 ${
+                    isSelf ? 'justify-end' : 'justify-start'
+                  }`}
                 >
-                  <div className="relative max-w-[80%]">
+                  {!isSelf &&
+                    (isFirstInGroup ? (
+                      <span
+                        className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-[8px] font-bold text-on-surface-variant"
+                        aria-hidden="true"
+                      >
+                        {initials(otherName)}
+                      </span>
+                    ) : (
+                      <span className="w-6 shrink-0" aria-hidden="true" />
+                    ))}
+
+                  <div className="relative max-w-[78%]">
                     <div
                       title={fullTime || undefined}
-                      className={`px-3.5 py-2 transition-colors rounded-2xl ${
+                      className={`px-3.5 py-2 ${
                         isSelf
-                          ? 'bg-primary text-white rounded-br-sm'
-                          : 'bg-white text-slate-900 border border-slate-200 rounded-bl-sm'
+                          ? 'rounded-[18px] rounded-br-[4px] bg-primary text-on-primary'
+                          : 'rounded-[18px] rounded-bl-[4px] border border-outline-variant bg-surface text-on-surface'
                       }`}
                     >
-                      <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                      <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed">
                         {renderMessageBody(m.body)}
                       </p>
                       {time && (
                         <p
-                          className={`text-[9px] mt-1 tabular-nums transition-opacity duration-150 ${
-                            isSelf ? 'text-white/70' : 'text-slate-400'
+                          className={`mt-1 text-[9px] tabular-nums transition-opacity duration-150 ${
+                            isSelf
+                              ? 'text-on-primary/70'
+                              : 'text-on-surface-variant'
                           } ${
                             isFirstInGroup
                               ? 'opacity-100'
@@ -242,12 +258,17 @@ export default function MessageThread({
                       type="button"
                       onClick={() => copyMessage(m.messageId, m.body)}
                       className={`absolute top-1 ${
-                        isSelf ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'
-                      } opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-slate-700`}
+                        isSelf
+                          ? 'left-0 -translate-x-full pr-1'
+                          : 'right-0 translate-x-full pl-1'
+                      } p-1 text-on-surface-variant/60 opacity-0 transition-opacity hover:text-on-surface group-hover:opacity-100`}
                       title="Copy message"
                       aria-label="Copy message"
                     >
-                      <Icon name={isCopied ? 'check' : 'content_copy'} size={12} />
+                      <Icon
+                        name={isCopied ? 'check' : 'content_copy'}
+                        size={12}
+                      />
                     </button>
                   </div>
                 </div>
@@ -263,7 +284,7 @@ export default function MessageThread({
         <button
           type="button"
           onClick={jumpToLatest}
-          className="absolute bottom-4 right-4 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-full shadow-lg hover:bg-primary-container transition flex items-center gap-1.5 animate-fade-in"
+          className="absolute bottom-4 right-4 flex animate-fade-in items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary shadow-lg transition hover:bg-primary-container"
         >
           <Icon name="arrow_downward" size={14} />
           Latest
