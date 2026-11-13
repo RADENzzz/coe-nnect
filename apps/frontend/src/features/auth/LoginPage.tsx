@@ -6,11 +6,14 @@ import { supabase } from '../../lib/supabase';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
 import Modal from '../../components/ui/Modal';
+import CetLogo from '../../components/brand/CetLogo';
+import WmsuSeal from '../../components/brand/WmsuSeal';
 import LiquidBackground from '../../components/layout/LiquidBackground';
 import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
 import { CAP_API_ENDPOINT, login as loginWithCap } from '../../api/auth.api';
 import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
+import { useAppearanceStore } from '../../store/appearance.store';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -378,6 +381,7 @@ function ForgotPasswordModal({
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const brandLogo = useAppearanceStore((s) => s.logo);
   const from =
     (location.state as { from?: Location })?.from?.pathname ?? null;
 
@@ -663,6 +667,10 @@ export default function LoginPage() {
 
         <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/5 rounded-full blur-3xl animate-pulse-slow" />
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl animate-pulse-slower" />
+        <WmsuSeal
+          animated={false}
+          className="pointer-events-none absolute -bottom-24 -right-20 h-80 w-80 opacity-[0.07]"
+        />
 
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
           <Link
@@ -671,9 +679,26 @@ export default function LoginPage() {
             aria-label="Back to the CoE-NNECT public landing page"
             title="Back to public landing page"
           >
-            <div className="w-10 h-10 border border-white/25 bg-white/10 flex items-center justify-center transition-colors group-hover:bg-white/20">
-              <Icon name="school" filled className="text-white" size={24} />
-            </div>
+            <span className="flex items-center gap-2">
+              {brandLogo ? (
+                <span className="flex h-11 w-11 items-center justify-center border border-white/25 bg-white/10 p-1 transition-colors group-hover:bg-white/20">
+                  <img
+                    src={brandLogo}
+                    alt="CoE-NNECT logo"
+                    className="h-full w-full object-contain"
+                  />
+                </span>
+              ) : (
+                <>
+                  <WmsuSeal className="h-11 w-11" />
+                  <span
+                    aria-hidden="true"
+                    className="h-8 w-px bg-white/20"
+                  />
+                  <CetLogo variant="mark" className="h-11 w-11" />
+                </>
+              )}
+            </span>
             <div>
               <p className="text-sm font-bold tracking-tight text-white">
                 CoE-NNECT
@@ -722,8 +747,16 @@ export default function LoginPage() {
             aria-label="Back to the CoE-NNECT public landing page"
             title="Back to public landing page"
           >
-            <div className="w-9 h-9 bg-primary flex items-center justify-center">
-              <Icon name="school" filled className="text-on-primary" size={22} />
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden">
+              {brandLogo ? (
+                <img
+                  src={brandLogo}
+                  alt="CoE-NNECT logo"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <CetLogo variant="mark" className="h-full w-full" />
+              )}
             </div>
             <div>
               <p className="text-sm font-bold text-slate-900 transition-colors group-hover:text-primary">

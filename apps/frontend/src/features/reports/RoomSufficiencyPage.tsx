@@ -117,15 +117,15 @@ export default function RoomSufficiencyPage() {
       </div>
 
       {/* Summary tiles */}
-      {!isLoading && reports.length > 0 && (
+      {!error && (isLoading || reports.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
             <div className="w-9 h-9 bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
               <Icon name="check_circle" filled size={18} className="text-emerald-700" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-emerald-900">
-                <RollingValue value={summary.sufficient} />
+              <p className="text-2xl font-extrabold text-emerald-900 tabular-nums">
+                <RollingValue value={summary.sufficient} loading={isLoading} />
               </p>
               <p className="text-xs font-semibold text-emerald-800">
                 Sufficient
@@ -141,8 +141,8 @@ export default function RoomSufficiencyPage() {
               <Icon name="warning" filled size={18} className="text-amber-700" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-amber-900">
-                <RollingValue value={summary.deficient} />
+              <p className="text-2xl font-extrabold text-amber-900 tabular-nums">
+                <RollingValue value={summary.deficient} loading={isLoading} />
               </p>
               <p className="text-xs font-semibold text-amber-800">
                 Deficient
@@ -158,8 +158,8 @@ export default function RoomSufficiencyPage() {
               <Icon name="add_home" filled size={18} className="text-red-700" />
             </div>
             <div>
-              <p className="text-2xl font-extrabold text-red-900">
-                <RollingValue value={summary.totalMissingRooms} />
+              <p className="text-2xl font-extrabold text-red-900 tabular-nums">
+                <RollingValue value={summary.totalMissingRooms} loading={isLoading} />
               </p>
               <p className="text-xs font-semibold text-red-800">
                 Rooms to add

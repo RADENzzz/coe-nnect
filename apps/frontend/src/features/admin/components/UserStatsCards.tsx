@@ -1,7 +1,14 @@
 import Icon from '@/components/ui/Icon';
+import RollingValue from '@/components/ui/RollingValue';
 import type { UserRecord } from './types';
 
-export default function UserStatsCards({ users }: { users: UserRecord[] }) {
+export default function UserStatsCards({
+  users,
+  loading = false,
+}: {
+  users: UserRecord[];
+  loading?: boolean;
+}) {
   const total = users.length;
   const active = users.filter((u) => u.isActive).length;
   const deptHeads = users.filter((u) => u.role === 'department_head').length;
@@ -28,7 +35,9 @@ export default function UserStatsCards({ users }: { users: UserRecord[] }) {
             <Icon name={c.icon} size={18} />
           </div>
           <div className="min-w-0">
-            <p className="text-lg font-bold text-on-surface leading-none">{c.value}</p>
+            <p className="text-lg font-bold text-on-surface leading-none tabular-nums">
+              <RollingValue value={c.value} loading={loading} />
+            </p>
             <p className="text-[11px] text-on-surface-variant truncate mt-0.5">{c.label}</p>
           </div>
         </div>

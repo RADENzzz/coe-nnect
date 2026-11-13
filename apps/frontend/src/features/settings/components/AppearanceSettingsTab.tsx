@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Icon from '../../../components/ui/Icon';
 import { useThemeStore } from '../../../store/theme.store';
+import { useMotionStore } from '../../../store/motion.store';
 import {
   ACCENT_PRESETS,
   DEFAULT_APPEARANCE,
@@ -91,6 +92,8 @@ export default function AppearanceSettingsTab({
   const setLogo = useAppearanceStore((s) => s.setLogo);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const loadingAnimations = useMotionStore((s) => s.loadingAnimations);
+  const setLoadingAnimations = useMotionStore((s) => s.setLoadingAnimations);
 
   const [hexDraft, setHexDraft] = useState(appearance.accent);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -307,6 +310,37 @@ export default function AppearanceSettingsTab({
               </button>
             );
           })}
+        </div>
+      </Section>
+
+      {/* ── Motion ── */}
+      <Section
+        title="Motion"
+        description="Control how values animate while data loads. Stored in this browser."
+        icon="auto_awesome"
+      >
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-surface-variant bg-surface-container-low/50 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-on-surface">
+              Loading animations
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-on-surface-variant">
+              Numbers roll up from zero and text decodes into place as data
+              arrives. Turn this off for instant values. It is automatically
+              off when your device requests reduced motion.
+            </p>
+          </div>
+          <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={loadingAnimations}
+              onChange={(e) => setLoadingAnimations(e.target.checked)}
+              aria-label="Enable loading animations"
+            />
+            <span className="h-5 w-9 rounded-full bg-slate-300 transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40 peer-focus-visible:ring-offset-2" />
+            <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+          </label>
         </div>
       </Section>
 

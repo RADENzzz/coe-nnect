@@ -392,6 +392,7 @@ export default function ApprovalsReportPage() {
           label="Total"
           value={summary.total}
           tone="neutral"
+          loading={isLoading}
           onClick={() => setStatusFilter('all')}
           active={statusFilter === 'all'}
         />
@@ -399,6 +400,7 @@ export default function ApprovalsReportPage() {
           label="Pending"
           value={summary.pending}
           tone="warning"
+          loading={isLoading}
           onClick={() =>
             setStatusFilter(statusFilter === 'pending' ? 'all' : 'pending')
           }
@@ -408,6 +410,7 @@ export default function ApprovalsReportPage() {
           label="Approved"
           value={summary.approved}
           tone="success"
+          loading={isLoading}
           onClick={() =>
             setStatusFilter(statusFilter === 'approved' ? 'all' : 'approved')
           }
@@ -417,6 +420,7 @@ export default function ApprovalsReportPage() {
           label="Rejected"
           value={summary.rejected}
           tone="danger"
+          loading={isLoading}
           onClick={() =>
             setStatusFilter(statusFilter === 'rejected' ? 'all' : 'rejected')
           }
@@ -426,6 +430,7 @@ export default function ApprovalsReportPage() {
           label="Avg response"
           value={fmtHoursShort(summary.avgResponseHours)}
           tone="neutral"
+          loading={isLoading}
           hint={
             summary.respondedCount > 0
               ? `across ${summary.respondedCount} responded`
@@ -567,6 +572,7 @@ function SummaryTile({
   tone,
   hint,
   active,
+  loading = false,
   onClick,
 }: {
   label: string;
@@ -574,6 +580,7 @@ function SummaryTile({
   tone: 'neutral' | 'warning' | 'success' | 'danger';
   hint?: string;
   active?: boolean;
+  loading?: boolean;
   onClick?: () => void;
 }) {
   const toneClasses = {
@@ -596,13 +603,19 @@ function SummaryTile({
       <p
         className={`text-2xl font-extrabold leading-tight tabular-nums ${toneClasses[tone]}`}
       >
-        <RollingValue value={value} />
+        <RollingValue value={value} loading={loading} />
       </p>
       <p className="text-xs font-semibold text-on-surface-variant mt-0.5">
         {label}
       </p>
       {hint && (
-        <p className="text-[10px] text-on-surface-variant/70 mt-0.5">{hint}</p>
+        <p className="text-[10px] text-on-surface-variant/70 mt-0.5">
+          <RollingValue
+            value={hint}
+            loading={loading}
+            loadingLength={Math.min(20, hint.length)}
+          />
+        </p>
       )}
     </Comp>
   );

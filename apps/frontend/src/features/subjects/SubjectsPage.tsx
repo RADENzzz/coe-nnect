@@ -1678,13 +1678,9 @@ function StatCard({
         </span>
         <Icon name={icon} size={16} className={iconTones[tone]} />
       </div>
-      {loading ? (
-        <div className="h-7 mt-1 w-12 rounded bg-slate-200/70 animate-pulse" />
-      ) : (
-        <p className="text-2xl font-bold text-on-surface mt-1 tabular-nums">
-          <RollingValue value={value} />
-        </p>
-      )}
+      <p className="text-2xl font-bold text-on-surface mt-1 tabular-nums">
+        <RollingValue value={value} loading={loading} />
+      </p>
       {active && (
         <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
       )}

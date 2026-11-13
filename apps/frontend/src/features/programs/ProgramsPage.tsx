@@ -406,13 +406,14 @@ export default function ProgramsPage() {
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Programs" value={stats.total} icon="school" tone="neutral" />
-        <StatCard label="Active" value={stats.active} icon="check_circle" tone="green" />
+        <StatCard label="Programs" value={stats.total} icon="school" tone="neutral" loading={isLoading} />
+        <StatCard label="Active" value={stats.active} icon="check_circle" tone="green" loading={isLoading} />
         <StatCard
           label="Inactive"
           value={stats.inactive}
           icon="toggle_off"
           tone={stats.inactive > 0 ? 'rose' : 'neutral'}
+          loading={isLoading}
         />
       </div>
 
@@ -733,11 +734,13 @@ function StatCard({
   value,
   icon,
   tone,
+  loading,
 }: {
   label: string;
   value: number;
   icon: string;
   tone: keyof typeof STAT_TONES;
+  loading?: boolean;
 }) {
   return (
     <div
@@ -750,7 +753,7 @@ function StatCard({
         <Icon name={icon} size={16} className="opacity-60" />
       </div>
       <div className="text-2xl font-bold mt-1 tabular-nums">
-        <RollingValue value={value} />
+        <RollingValue value={value} loading={loading} />
       </div>
     </div>
   );

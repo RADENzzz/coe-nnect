@@ -1,4 +1,5 @@
 import Icon from '../ui/Icon';
+import RollingValue from '../ui/RollingValue';
 
 interface StatsCardProps {
   label: string;
@@ -14,8 +15,8 @@ export default function StatsCard({ label, value, icon, loading }: StatsCardProp
         <Icon name={icon} size={18} className="text-primary" />
       </div>
       <div>
-        <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          {loading ? '—' : value}
+        <p className="text-2xl font-extrabold text-slate-900 tracking-tight tabular-nums">
+          <RollingValue value={value} loading={loading} />
         </p>
         <p className="text-sm text-slate-500 mt-0.5">{label}</p>
       </div>

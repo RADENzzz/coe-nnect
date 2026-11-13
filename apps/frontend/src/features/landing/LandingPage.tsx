@@ -5,7 +5,12 @@ import { useQuery } from '@tanstack/react-query';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
 import ThemeStyleMenu from '../../components/ui/ThemeStyleMenu';
+import RollingValue from '../../components/ui/RollingValue';
+import CetLogo from '../../components/brand/CetLogo';
+import WmsuSeal from '../../components/brand/WmsuSeal';
+import WmsuIntro from './components/WmsuIntro';
 import { useAuthStore } from '../../store/auth.store';
+import { useAppearanceStore } from '../../store/appearance.store';
 import {
   fetchPublicFaculty,
   fetchPublicIntegration,
@@ -64,11 +69,13 @@ function StatCard({
   label,
   value,
   hint,
+  loading = false,
 }: {
   icon: string;
   label: string;
   value: number | string;
   hint?: string;
+  loading?: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-outline-variant bg-surface p-5 shadow-sm">
@@ -78,11 +85,17 @@ function StatCard({
           {label}
         </span>
       </div>
-      <p className="mt-3 text-3xl font-extrabold tracking-tight text-on-surface">
-        {value}
+      <p className="mt-3 text-3xl font-extrabold tracking-tight text-on-surface tabular-nums">
+        <RollingValue value={value} loading={loading} />
       </p>
       {hint && (
-        <p className="mt-1 text-xs text-on-surface-variant">{hint}</p>
+        <p className="mt-1 text-xs text-on-surface-variant">
+          <RollingValue
+            value={hint}
+            loading={loading}
+            loadingLength={Math.min(22, hint.length)}
+          />
+        </p>
       )}
     </div>
   );
@@ -136,13 +149,23 @@ function FeatureCard({
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: number | string }) {
+function HeroStat({
+  label,
+  value,
+  loading = false,
+}: {
+  label: string;
+  value: number | string;
+  loading?: boolean;
+}) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-3">
       <dt className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
         {label}
       </dt>
-      <dd className="mt-1 text-2xl font-extrabold text-white">{value}</dd>
+      <dd className="mt-1 text-2xl font-extrabold text-white tabular-nums">
+        <RollingValue value={value} loading={loading} />
+      </dd>
     </div>
   );
 }
@@ -556,6 +579,7 @@ function FacultyPanel({
           label="Faculty"
           value={data?.total ?? '—'}
           hint="Active faculty in the directory"
+          loading={isLoading}
         />
         <StatCard
           icon="badge"
@@ -566,12 +590,14 @@ function FacultyPanel({
             ).size || '—'
           }
           hint="Distinct roles across the college"
+          loading={isLoading}
         />
         <StatCard
           icon="school"
           label="Departments"
           value={data?.departments.length ?? '—'}
           hint="With active faculty"
+          loading={isLoading}
         />
       </div>
 
@@ -957,6 +983,7 @@ function IntegrationPanel({
 export default function LandingPage() {
   const user = useAuthStore((state) => state.user);
   const profile = useAuthStore((state) => state.profile);
+  const brandLogo = useAppearanceStore((state) => state.logo);
   const [tab, setTab] = useState<LandingTab>('schedules');
   const [termId, setTermId] = useState<string | undefined>(undefined);
 
@@ -1017,6 +1044,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background text-on-background">
+      <WmsuIntro />
       <a
         href="#public-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-primary"
@@ -1026,8 +1054,16 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 border-b border-outline-variant bg-surface/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <Link to="/" className="group flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center bg-primary text-on-primary">
-              <Icon name="school" filled size={22} />
+            <span className="flex h-10 w-10 items-center justify-center overflow-hidden">
+              {brandLogo ? (
+                <img
+                  src={brandLogo}
+                  alt="CoE-NNECT logo"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <CetLogo variant="mark" className="h-full w-full" />
+              )}
             </span>
             <span>
               <span className="block text-sm font-extrabold tracking-tight text-on-surface">
@@ -1157,18 +1193,22 @@ export default function LandingPage() {
               <HeroStat
                 label="Published class blocks"
                 value={overview.data?.publishedEntries ?? '—'}
+                loading={overview.isLoading}
               />
               <HeroStat
                 label="Published terms"
                 value={overview.data?.publishedTerms ?? '—'}
+                loading={overview.isLoading}
               />
               <HeroStat
                 label="Active faculty"
                 value={overview.data?.activeFaculty ?? '—'}
+                loading={overview.isLoading}
               />
               <HeroStat
                 label="Active departments"
                 value={overview.data?.activeDepartments ?? '—'}
+                loading={overview.isLoading}
               />
             </dl>
             <p className="mt-4 text-[11px] leading-relaxed text-white/60">
@@ -1338,9 +1378,20 @@ export default function LandingPage() {
           <div className="grid gap-10 lg:grid-cols-[1.4fr,1fr,1fr]">
             <div>
               <Link to="/" className="inline-flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white ring-1 ring-white/10">
-                  <Icon name="school" filled size={22} />
-                </span>
+                {brandLogo ? (
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 p-1 text-white ring-1 ring-white/10">
+                    <img
+                      src={brandLogo}
+                      alt="CoE-NNECT logo"
+                      className="h-full w-full object-contain"
+                    />
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <CetLogo variant="mark" className="h-10 w-10" />
+                    <WmsuSeal className="h-10 w-10" />
+                  </span>
+                )}
                 <span>
                   <span className="block text-sm font-extrabold tracking-tight text-white">
                     CoE-NNECT

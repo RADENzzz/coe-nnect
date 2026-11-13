@@ -21,6 +21,7 @@ import RoomPreferencesModal from './components/RoomPreferencesModal';
 import RoomDetailPanel from './components/RoomDetailPanel';
 import RoomFormModal from './components/RoomFormModal';
 import { ROOM_TYPES, TYPE_ICON } from './components/RoomFormFields';
+import RollingValue from '../../components/ui/RollingValue';
 
 type Mode = 'create' | 'edit';
 type QuickFilter = 'all' | 'mine' | 'shared' | 'other' | 'preferred' | 'inactive';
@@ -665,6 +666,7 @@ export default function RoomsPage() {
               icon="meeting_room"
               active={quickFilter === 'all'}
               onClick={() => setQuickFilter('all')}
+              loading={isLoading}
             />
             {isDH && (
               <QuickTile
@@ -674,6 +676,7 @@ export default function RoomsPage() {
                 active={quickFilter === 'mine'}
                 onClick={() => setQuickFilter('mine')}
                 disabled={counts.mine === 0}
+                loading={isLoading}
               />
             )}
             <QuickTile
@@ -684,6 +687,7 @@ export default function RoomsPage() {
               onClick={() => setQuickFilter('shared')}
               disabled={counts.shared === 0}
               accentColor="blue"
+              loading={isLoading}
             />
             <QuickTile
               label={isDH ? 'Other depts' : 'Owned'}
@@ -692,6 +696,7 @@ export default function RoomsPage() {
               active={quickFilter === 'other'}
               onClick={() => setQuickFilter('other')}
               disabled={counts.other === 0}
+              loading={isLoading}
             />
             <QuickTile
               label="Preferred"
@@ -701,6 +706,7 @@ export default function RoomsPage() {
               onClick={() => setQuickFilter('preferred')}
               disabled={counts.preferred === 0}
               accentColor="amber"
+              loading={isLoading}
             />
             <QuickTile
               label="Inactive"
@@ -710,6 +716,7 @@ export default function RoomsPage() {
               onClick={() => setQuickFilter('inactive')}
               disabled={counts.inactive === 0}
               accentColor="rose"
+              loading={isLoading}
             />
           </div>
           <p className="text-[11px] text-on-surface-variant mt-2 flex items-center gap-1">
@@ -999,6 +1006,7 @@ interface QuickTileProps {
   onClick: () => void;
   disabled?: boolean;
   accentColor?: 'blue' | 'amber' | 'rose';
+  loading?: boolean;
 }
 
 function QuickTile({
@@ -1009,6 +1017,7 @@ function QuickTile({
   onClick,
   disabled,
   accentColor,
+  loading = false,
 }: QuickTileProps) {
   const accent = accentColor
     ? {
@@ -1050,11 +1059,11 @@ function QuickTile({
         </span>
       </div>
       <div
-        className={`text-2xl font-bold leading-none ${
+        className={`text-2xl font-bold leading-none tabular-nums ${
           active ? 'text-on-primary' : 'text-on-surface'
         }`}
       >
-        {count}
+        <RollingValue value={count} loading={loading} />
       </div>
     </button>
   );

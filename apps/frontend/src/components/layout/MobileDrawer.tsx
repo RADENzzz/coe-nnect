@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import Icon from '../ui/Icon';
+import CetLogo from '../brand/CetLogo';
 import { useUiStore } from '../../store/ui.store';
 import { useDepartmentLabel } from '../../hooks/use-department-label';
 import {
@@ -198,7 +199,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         {/* Brand */}
         <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-2 pt-safe">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="w-8 h-8 flex items-center justify-center shrink-0 overflow-hidden">
               {brandLogo ? (
                 <img
                   src={brandLogo}
@@ -206,7 +207,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <Icon name="school" filled className="text-white" />
+                <CetLogo variant="mark" className="h-full w-full" />
               )}
             </div>
             <div className="min-w-0">
