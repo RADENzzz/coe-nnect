@@ -57,54 +57,59 @@ Route: `/dean/dashboard`
 
 The dean dashboard is college-wide. `college_secretary` shares the same shell and dashboard, but approval actions and some report links are read-only or hidden.
 
-### Header and attention banner
+### Masthead
 
-- Greeting, role label, active term, and a refresh action.
-- A **Needs attention** banner appears when there are schedules in review, pending faculty requests, inactive departments, or other items requiring follow-up. It provides direct actions such as **Review** or **Manage departments**.
+- College/role eyebrow, greeting, and the active term with its class-block and active-department counts.
+- Live clock, date, and refresh label, plus a manual **Refresh dashboard** action.
+- Term shortcuts: **Terms** opens the academic-terms section of system settings. **New term** is shown to the dean and opens the creation form; the secretary sees the academic calendar in read-only mode.
 
-### Stat cards
+### Summary cards
 
 | Card | Value | Notes |
 | --- | --- | --- |
-| **Active Departments** | Active department count | Shows total and inactive counts. |
-| **Pending Approvals** / **Schedules in Review** | Schedules waiting for review | The label and action depend on whether the viewer can approve. |
-| **Finalized Schedules** | Finalized schedules for the active term | Links to the approvals report. |
-| **Published Schedules** | Published schedules | Visible on the public portal. |
-| **Active Faculty** | College-wide active faculty | Includes the active department count. |
-| **Faculty Requests** | Pending cross-department requests | Links to the requests page. |
+| **Active departments** | Active department count | Shows total and inactive counts. Opens the departments page. |
+| **Class blocks** | Schedule rows for the active term | Shows finalized/published count or "Nothing plotted yet". Opens the timetable. |
+| **Faculty** | College-wide active faculty | Shows how many have qualifications on file. Opens the faculty directory. |
+| **Needs attention** | Combined attention count | Includes schedules in review, flagged classes, unassigned blocks, pending requests, and inactive departments. Scrolls to the attention queue. |
 
-### Schedule progress
+### Report cards
 
-Breaks the active term's class blocks down by published, finalized, in review, and draft, with counts and percentages. It also shows:
+- **Schedule progress** — class blocks by published, finalized, in review, and draft, with a completion bar, today's class count, and the busiest day.
+- **Faculty workload** — assigned load versus required hours after designation release hours. Shows overloaded, under-loaded, on-track, and no-load counts, plus qualification coverage and the faculty who most need a load review.
+- **Department coverage** — active versus inactive departments, heads assigned, heads online, and departments without a head.
 
-- total class blocks;
-- classes scheduled today;
-- the busiest day and its class count;
-- overall completion rate.
+### Needs attention and today
 
-### Active departments
+The attention queue combines schedules in review, flagged classes (dean only), class blocks missing an instructor or room, pending cross-department faculty requests, and deactivated departments. Each item links to the page where it can be resolved. The adjacent **Today** strip lists the college's classes for the current day.
 
-Lists active departments with their department head and online status. The presence dot comes from the shared Supabase Realtime channel; the list also uses persisted last-seen timestamps when a head is offline. Each row shows the department's schedule completion progress and links to its records.
+### Departments
 
-### Quick links
+One row per department merges head assignment, live presence, and schedule completion. The presence dot comes from the shared Supabase Realtime channel; the list also uses persisted last-seen timestamps when a head is offline. Deactivated departments and departments without a head are called out directly.
 
-Role-aware shortcuts to common college-level tasks. For the secretary, the list emphasizes operational pages rather than approvals, audit, and reports.
+### Review queue, requests, and activity
+
+- **Pending approvals** for the dean, or a read-only **Schedules in review** queue for the secretary. The secretary never sees approval actions.
+- **Faculty requests** shows pending cross-department requests with the requesting and target department codes.
+- **Quick links** are role-aware: the secretary sees operational pages instead of approvals, audit, and reports.
+- **Recent activity** lists the latest faculty requests across the college with status and relative time.
 
 ## Data sources
 
 | Dashboard area | API |
 | --- | --- |
-| Active term | `GET /api/v1/terms/active` |
+| Active term | `GET /api/v1/schedules/active-term` |
 | Schedule rows and statuses | `GET /api/v1/schedules?termId=` |
-| Flagged rows | `GET /api/v1/schedules/flagged` |
-| Room sufficiency | `GET /api/v1/schedules/room-sufficiency` |
+| Flagged rows (dean only) | `GET /api/v1/schedules/flagged` |
+| Room sufficiency (department head dashboard only) | `GET /api/v1/schedules/room-sufficiency` |
 | Faculty list | `GET /api/v1/faculty` |
 | Faculty status summary | `GET /api/v1/faculty/status-summary` |
+| Designations and release hours | `GET /api/v1/designations` |
 | Faculty requests | `GET /api/v1/faculty-requests` |
-| Departments | `GET /api/v1/departments` |
+| Departments | `GET /api/v1/departments?includeInactive=true` |
 | User directory | `GET /api/v1/users/directory` |
-| College statistics | `GET /api/v1/stats/overview` |
 | Presence | Supabase Realtime `presence:online-users` + `user_presence.last_seen_at` |
+
+The dean dashboard does not use `GET /api/v1/schedules/flagged` for the secretary because that route excludes `college_secretary`. It also leaves room sufficiency to the department head dashboard for the same reason.
 
 The dean dashboard refetches the user directory every 60 seconds so online/offline labels stay reasonably fresh. The shared presence channel updates the live dots immediately.
 

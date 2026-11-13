@@ -1,10 +1,4 @@
-import {
-  useState,
-  useMemo,
-  useEffect,
-  useCallback,
-  type ReactNode,
-} from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../../components/ui/Icon';
@@ -24,7 +18,7 @@ import {
 import { fetchFaculty, fetchFacultyStatusSummary } from '../../api/faculty.api';
 import { fetchFacultyRequests } from '../../api/faculty-requests.api';
 import { fetchDesignations } from '../../api/system-config.api';
-import { SummaryCard, TodayScheduleStrip } from './components';
+import { ReportCard, SummaryCard, TodayScheduleStrip } from './components';
 import {
   fmtTime,
   relativeTime,
@@ -76,38 +70,6 @@ function scheduleWhen(schedule: RawSchedule): string {
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-function ReportCard({
-  title,
-  subtitle,
-  to,
-  linkLabel,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  to: string;
-  linkLabel: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
-      <header className="flex items-start justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold text-on-surface">{title}</h2>
-          <p className="mt-0.5 text-[11px] text-on-surface-variant">{subtitle}</p>
-        </div>
-        <Link
-          to={to}
-          className="shrink-0 text-[11px] font-semibold text-primary hover:underline"
-        >
-          {linkLabel}
-        </Link>
-      </header>
-      <div className="flex flex-1 flex-col p-4">{children}</div>
-    </section>
-  );
 }
 
 export default function DashboardPage() {
