@@ -21,6 +21,7 @@ import {
   ReportCard,
   SummaryCard,
   TodayScheduleStrip,
+  LiveClock,
 } from '../dashboard/components';
 import { useAuthStore } from '../../store/auth.store';
 import { useOnlineUsers } from '../../hooks/use-online-users';
@@ -29,7 +30,6 @@ import { formatLastSeen } from '../../lib/utils/format.util';
 import {
   DAY_FULL_NAMES,
   fmtTime,
-  greeting,
   humanizeRole,
   initials,
   relativeTime,
@@ -674,10 +674,6 @@ export default function DeanDashboardPage() {
       ? `Updated ${relativeTime(new Date(lastUpdated).toISOString())}`
       : 'Ready';
 
-  const clock = nowDate.toLocaleTimeString('en-PH', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
   const dateLabel = nowDate.toLocaleDateString('en-PH', {
     weekday: 'long',
     month: 'long',
@@ -770,7 +766,7 @@ export default function DeanDashboardPage() {
             {roleLabel ? ` · ${roleLabel}` : ''}
           </p>
           <h1 className="mt-1 truncate text-2xl font-extrabold tracking-tight text-on-surface">
-            {greeting()}, {profile?.first_name || 'there'}
+            {profile?.first_name || 'Welcome'}
           </h1>
           <p className="mt-0.5 text-xs text-on-surface-variant">
             {activeTerm
@@ -784,7 +780,7 @@ export default function DeanDashboardPage() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="text-right">
             <p className="text-xl font-bold leading-none tabular-nums text-on-surface">
-              <RollingNumber value={clock} />
+              <LiveClock />
             </p>
             <p className="mt-1 text-[11px] leading-none text-on-surface-variant">
               <RollingText value={dateLabel} />

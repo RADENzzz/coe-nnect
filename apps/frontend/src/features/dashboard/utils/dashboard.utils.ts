@@ -63,13 +63,6 @@ export function initials(username: string): string {
   return username.slice(0, 2).toUpperCase();
 }
 
-export function greeting(d: Date = new Date()): string {
-  const h = d.getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
 export function humanizeRole(role: string): string {
   const map: Record<string, string> = {
     administrator: 'Administrator',

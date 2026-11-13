@@ -1,6 +1,7 @@
 export { default as QuickAction } from './QuickAction';
 export { default as SummaryCard } from './SummaryCard';
 export { default as ReportCard } from './ReportCard';
+export { default as LiveClock } from './LiveClock';
 export { default as DashboardHeader } from './DashboardHeader';
 export { default as ActivityItem } from './ActivityItem';
 export { default as BreakdownEmpty } from './BreakdownEmpty';

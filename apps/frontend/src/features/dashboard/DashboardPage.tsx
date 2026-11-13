@@ -18,7 +18,12 @@ import {
 import { fetchFaculty, fetchFacultyStatusSummary } from '../../api/faculty.api';
 import { fetchFacultyRequests } from '../../api/faculty-requests.api';
 import { fetchDesignations } from '../../api/system-config.api';
-import { ReportCard, SummaryCard, TodayScheduleStrip } from './components';
+import {
+  ReportCard,
+  SummaryCard,
+  TodayScheduleStrip,
+  LiveClock,
+} from './components';
 import {
   fmtTime,
   relativeTime,
@@ -440,10 +445,6 @@ export default function DashboardPage() {
       ? `Updated ${relativeTime(new Date(lastUpdated).toISOString())}`
       : 'Ready';
 
-  const clock = now.toLocaleTimeString('en-PH', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
   const dateLabel = now.toLocaleDateString('en-PH', {
     weekday: 'long',
     month: 'long',
@@ -506,7 +507,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="text-right">
             <p className="text-xl font-bold leading-none tabular-nums text-on-surface">
-              <RollingNumber value={clock} />
+              <LiveClock />
             </p>
             <p className="mt-1 text-[11px] leading-none text-on-surface-variant">
               <RollingText value={dateLabel} />
