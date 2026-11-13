@@ -11,6 +11,10 @@ export interface ChatUser {
   username: string;
   role: ChatUserRole;
   deptId: string | null;
+  deptCode: string | null;
+  deptName: string | null;
+  /** Durable last heartbeat; null if the user has never been seen. */
+  lastSeenAt: string | null;
 }
 
 export interface ConversationSummary {
@@ -20,6 +24,9 @@ export interface ConversationSummary {
     username: string;
     role: ChatUserRole;
     deptId: string | null;
+    deptCode: string | null;
+    deptName: string | null;
+    lastSeenAt: string | null;
   } | null;
   lastMessage: {
     messageId: string;
@@ -65,6 +72,14 @@ function normalizeConversation(raw: any): ConversationSummary {
           username: String(raw.otherUser.username ?? ''),
           role: raw.otherUser.role,
           deptId: raw.otherUser.deptId ?? null,
+          deptCode:
+            raw.otherUser.deptCode ?? raw.otherUser.dept_code ?? null,
+          deptName:
+            raw.otherUser.deptName ?? raw.otherUser.dept_name ?? null,
+          lastSeenAt:
+            raw.otherUser.lastSeenAt ??
+            raw.otherUser.last_seen_at ??
+            null,
         }
       : null,
     lastMessage: raw.lastMessage
@@ -84,9 +99,21 @@ function normalizeConversation(raw: any): ConversationSummary {
   };
 }
 
+function normalizeChatUser(raw: any): ChatUser {
+  return {
+    userId: String(raw.userId ?? raw.user_id ?? ''),
+    username: String(raw.username ?? ''),
+    role: (raw.role ?? 'viewer') as ChatUserRole,
+    deptId: raw.deptId ?? raw.dept_id ?? null,
+    deptCode: raw.deptCode ?? raw.dept_code ?? null,
+    deptName: raw.deptName ?? raw.dept_name ?? null,
+    lastSeenAt: raw.lastSeenAt ?? raw.last_seen_at ?? null,
+  };
+}
+
 export async function fetchEligibleUsers(): Promise<ChatUser[]> {
   const { data } = await api.get('/v1/chat/users');
-  return data.data;
+  return (data.data as any[]).map(normalizeChatUser);
 }
 
 export async function fetchConversations(): Promise<ConversationSummary[]> {

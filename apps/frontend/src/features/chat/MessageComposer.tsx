@@ -20,7 +20,7 @@ const EMOJI_PALETTE = [
 export default function MessageComposer({
   onSend,
   disabled,
-  placeholder = 'Type a message…',
+  placeholder = 'Write a message…',
   conversationId,
 }: Props) {
   const [value, setValue] = useState('');
@@ -110,7 +110,7 @@ export default function MessageComposer({
   const nearLimit = value.length > MAX_CHARS * 0.9;
 
   return (
-    <div className="border-t border-slate-200 px-3 py-2.5 shrink-0 bg-white">
+    <div className="shrink-0 border-t border-outline-variant bg-surface px-3 py-2.5">
       <div className="flex items-end gap-2">
         {/* Emoji button */}
         <div ref={emojiRef} className="relative shrink-0">
@@ -118,25 +118,25 @@ export default function MessageComposer({
             type="button"
             onClick={() => setShowEmoji((v) => !v)}
             disabled={disabled}
-            className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-40"
             aria-label="Insert emoji"
             title="Emoji"
           >
             <Icon name="sentiment_satisfied" size={18} />
           </button>
           {showEmoji && (
-            <div className="absolute bottom-full left-0 mb-1 bg-white border border-slate-200 shadow-lg rounded-lg p-2 grid grid-cols-8 gap-0.5 w-[280px] z-10 animate-fade-in">
-              {EMOJI_PALETTE.map((e) => (
+            <div className="absolute bottom-full left-0 z-10 mb-1 grid w-[280px] animate-fade-in grid-cols-8 gap-0.5 rounded-[12px] border border-outline-variant bg-surface p-2 shadow-lg">
+              {EMOJI_PALETTE.map((emoji) => (
                 <button
-                  key={e}
+                  key={emoji}
                   type="button"
                   onClick={() => {
-                    insertEmoji(e);
+                    insertEmoji(emoji);
                     setShowEmoji(false);
                   }}
-                  className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded text-lg"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-lg hover:bg-surface-container-low"
                 >
-                  {e}
+                  {emoji}
                 </button>
               ))}
             </div>
@@ -162,15 +162,12 @@ export default function MessageComposer({
           placeholder={placeholder}
           maxLength={MAX_CHARS + 200}
           className="
-            flex-1 resize-none
-            bg-slate-50 border border-slate-200
-            px-3 py-2 text-[13px] text-slate-900
-            placeholder:text-slate-400
-            focus:outline-none focus:border-primary focus:bg-white
-            transition-colors
-            max-h-[120px] overflow-y-auto
-            disabled:opacity-60 disabled:cursor-not-allowed
-            rounded
+            max-h-[120px] flex-1 resize-none overflow-y-auto
+            rounded-[18px] border border-outline-variant bg-surface-container-low
+            px-3.5 py-2 text-[13px] text-on-surface
+            placeholder:text-on-surface-variant/70
+            transition-colors focus:border-primary focus:bg-surface focus:outline-none
+            disabled:cursor-not-allowed disabled:opacity-60
           "
           style={{ minHeight: 38 }}
         />
@@ -181,13 +178,10 @@ export default function MessageComposer({
           onClick={submit}
           disabled={disabled || !value.trim() || overLimit}
           className="
-            w-9 h-9 bg-primary text-white
-            flex items-center justify-center
+            flex h-9 w-9 shrink-0 items-center justify-center rounded-full
+            bg-primary text-on-primary transition-colors
             hover:bg-primary-container active:bg-primary-container
-            transition-colors
-            disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary
-            shrink-0
-            rounded
+            disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-primary
             focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1
           "
           aria-label="Send"
@@ -197,25 +191,25 @@ export default function MessageComposer({
         </button>
       </div>
 
-      <div className="flex items-center justify-between mt-1.5 px-1">
-        <span className="text-[9px] text-slate-400">
-          <kbd className="px-1 py-px border border-slate-300 bg-slate-50 font-mono text-[9px] rounded">
+      <div className="mt-1.5 flex items-center justify-between px-1">
+        <span className="hidden text-[9px] text-on-surface-variant/70 sm:block">
+          <kbd className="rounded border border-outline-variant bg-surface-container-low px-1 py-px font-mono text-[9px]">
             ⏎
           </kbd>{' '}
           to send ·{' '}
-          <kbd className="px-1 py-px border border-slate-300 bg-slate-50 font-mono text-[9px] rounded">
+          <kbd className="rounded border border-outline-variant bg-surface-container-low px-1 py-px font-mono text-[9px]">
             ⇧⏎
           </kbd>{' '}
           for new line
         </span>
         {value.length > 0 && (
           <span
-            className={`text-[9px] tabular-nums ${
+            className={`ml-auto text-[9px] tabular-nums ${
               overLimit
-                ? 'text-red-600 font-bold'
+                ? 'font-bold text-error'
                 : nearLimit
-                ? 'text-amber-600'
-                : 'text-slate-400'
+                  ? 'text-amber-600'
+                  : 'text-on-surface-variant/70'
             }`}
           >
             {value.length}/{MAX_CHARS}

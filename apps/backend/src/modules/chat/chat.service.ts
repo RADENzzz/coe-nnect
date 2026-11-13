@@ -14,6 +14,7 @@ import { Message } from './entities/message.entity';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { User } from '../users/entities/user.entity';
+import { UserPresence } from '../users/entities/user-presence.entity';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 /** Roles allowed to participate in chat. Viewers are excluded (CH-1.9). */
@@ -36,6 +37,8 @@ export class ChatService {
     private readonly messages: Repository<Message>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    @InjectRepository(UserPresence)
+    private readonly presence: Repository<UserPresence>,
     private readonly supabase: SupabaseService,
     private readonly notifications: NotificationsGateway,
   ) {}
@@ -68,6 +71,22 @@ export class ChatService {
     return member;
   }
 
+  /**
+   * Durable presence timestamps for the "Active 5m ago" labels. Live dots
+   * still come from Supabase Realtime; this is the offline half of the
+   * answer when a user closes the tab.
+   */
+  private async lastSeenFor(
+    userIds: string[],
+  ): Promise<Map<string, Date>> {
+    if (userIds.length === 0) return new Map();
+
+    const rows = await this.presence.find({
+      where: { userId: In(userIds) },
+    });
+    return new Map(rows.map((row) => [row.userId, row.lastSeenAt]));
+  }
+
   // ────────────────────────────────────────────
   // List / read
   // ────────────────────────────────────────────
@@ -97,9 +116,12 @@ export class ChatService {
     if (otherUserIds.length > 0) {
       const users = await this.users.find({
         where: { userId: In(otherUserIds) },
+        relations: ['department'],
       });
       for (const u of users) usersById.set(u.userId, u);
     }
+
+    const lastSeenByUser = await this.lastSeenFor(otherUserIds);
 
     // Fetch last message per conversation (one query, then reduce)
     const allMessages = await this.messages.find({
@@ -133,7 +155,7 @@ export class ChatService {
       }
     }
 
-    return myMemberships.map((my) => {
+    const rows = myMemberships.map((my) => {
       const otherMember = allMembers.find(
         (m) =>
           m.conversationId === my.conversationId && m.userId !== userId,
@@ -151,6 +173,10 @@ export class ChatService {
               username: otherUser.username,
               role: otherUser.role,
               deptId: otherUser.deptId,
+              deptCode: otherUser.department?.deptCode ?? null,
+              deptName: otherUser.department?.deptName ?? null,
+              lastSeenAt:
+                lastSeenByUser.get(otherUser.userId)?.toISOString() ?? null,
             }
           : null,
         lastMessage: last
@@ -165,6 +191,11 @@ export class ChatService {
         lastReadAt: my.lastReadAt,
       };
     });
+
+    // Never surface the hidden dev/administrator account in chat.
+    return rows.filter(
+      (conversation) => conversation.otherUser?.role !== 'administrator',
+    );
   }
 
   async listMessages(
@@ -350,15 +381,27 @@ export class ChatService {
     const users = await this.users.find({
       where: { isActive: true, role: In(CHAT_ELIGIBLE_ROLES as any) },
       order: { username: 'ASC' },
+      relations: ['department'],
     });
+
+    const lastSeenByUser = await this.lastSeenFor(
+      users.map((u) => u.userId),
+    );
 
     return users
       .filter((u) => u.userId !== profile.userId)
+      // The hidden dev/administrator account is not a user-facing chat
+      // participant. It can still reach the chat routes itself, but it never
+      // appears in anyone's people picker.
+      .filter((u) => u.role !== 'administrator')
       .map((u) => ({
         userId: u.userId,
         username: u.username,
         role: u.role,
         deptId: u.deptId,
+        deptCode: u.department?.deptCode ?? null,
+        deptName: u.department?.deptName ?? null,
+        lastSeenAt: lastSeenByUser.get(u.userId)?.toISOString() ?? null,
       }));
   }
 }

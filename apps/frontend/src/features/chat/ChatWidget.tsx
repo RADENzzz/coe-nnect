@@ -43,7 +43,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { data: conversations = [] } = useConversations(isEligible);
 
   const totalUnread = useMemo(
-    () => conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
+    () =>
+      conversations.reduce(
+        (sum, c) =>
+          c.otherUser?.role === 'administrator'
+            ? sum
+            : sum + (c.unreadCount ?? 0),
+        0,
+      ),
     [conversations],
   );
 
