@@ -11,8 +11,8 @@ the hosted Supabase deployment and for local/disposable environments.
 | Relational data and schema | Supabase Postgres / `DATABASE_URL` | Supabase automated backups or `pg_dump` |
 | Prospectus PDFs and generated files | Supabase Storage bucket `prospectus-pdfs` | Dashboard/provider object backup |
 | Auth users and sessions | Supabase Auth (stored in Postgres) | Included in a full database dump |
-| Application configuration | Vercel/host environment | Export environment variables through the host console |
-| Solver/parser configuration | Deployment environment | Versioned infrastructure files and secret manager |
+| Application configuration | Railway service environment | Export variables through the Railway dashboard or CLI |
+| Solver/parser configuration | Railway service environment | Versioned infrastructure files and the Railway dashboard |
 
 > Never commit dumps, storage archives, `DATABASE_URL`, or service-role keys to
 > the repository.
@@ -106,7 +106,7 @@ Start the API against the restored database and run the smoke checks:
 ## Production restore procedure
 
 1. Announce a maintenance window and stop writes (pause the API or enable
-   maintenance mode at the edge).
+   `system_status.maintenance_mode`).
 2. Take a fresh backup of the current production database before changing it.
 3. Restore the selected dump with `pg_restore` into the production database, or
    restore the Supabase backup/PITR checkpoint from the dashboard.
@@ -114,8 +114,8 @@ Start the API against the restored database and run the smoke checks:
    `supabase/migrations/`. If the dump predates a migration, run the migration
    workflow after the restore.
 5. Restore the `prospectus-pdfs` storage objects and verify signed URLs.
-6. Restore application environment variables and redeploy the backend and
-   frontend.
+6. Restore application environment variables and redeploy the Railway backend
+   and frontend services.
 7. Run the smoke checks above, then re-enable writes.
 8. Record the restore time, backup timestamp, operator, and verification
    results in the incident/change log.

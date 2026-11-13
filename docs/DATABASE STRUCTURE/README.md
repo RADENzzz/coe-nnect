@@ -1,8 +1,10 @@
 # Database structure
 
-> **Snapshot:** [`coe-nnect-database-structure.sql`](coe-nnect-database-structure.sql) — generated 22 October 2026 from PostgreSQL 17.11 / Supabase. It contains the public schema only: tables, enum types, functions, triggers, indexes, RLS policies, and grants. It contains no row data.
+> **Snapshot:** [`coe-nnect-database-structure.sql`](coe-nnect-database-structure.sql) — generated 13 November 2026 from the hosted Supabase PostgreSQL database. It contains the public schema only: tables, enum types, functions, triggers, indexes, RLS policies, and grants. It contains no row data.
 
-**At a glance:** 34 tables · 70 foreign keys · 9 enum types · 65 explicit indexes · 51 RLS policies · 19 functions · 12 triggers. Row-level security is enabled on all 34 tables.
+**Snapshot at a glance:** 37 tables · 73 foreign keys · 9 enum types · 72 explicit indexes · 51 RLS policies · 14 functions · 13 triggers. Row-level security is enabled on all 37 tables in the snapshot.
+
+The tracked migration set defines **40 tables** and **9 enum types**. The three IDP integration tables (`idp_processed_event`, `idp_outbox`, `idp_change_request`) are documented in [section 8](#8-idp-integration-state) and are created by their migrations; they were not yet present in the hosted database when this snapshot was generated.
 
 CoE-NNECT uses PostgreSQL (Supabase) as its system of record. The NestJS API accesses it through TypeORM; the frontend uses Supabase Auth and Realtime. This page is the visual reference for the schema. The SQL snapshot remains the authoritative DDL.
 
@@ -63,6 +65,7 @@ flowchart LR
         notification[notification]
         user_notification_setting[user_notification_setting]
         audit_trail[audit_trail]
+        user_presence[user_presence]
     end
 
     subgraph pdf["Prospectus import"]
@@ -71,9 +74,11 @@ flowchart LR
         prospectus_pdf_table[prospectus_pdf_table]
     end
 
-    subgraph platform["Platform status"]
+    subgraph platform["Platform status and auth state"]
         direction TB
         system_status[system_status]
+        cap_nonce[cap_nonce]
+        cap_token[cap_token]
     end
 
     subgraph integration["IDP integration state"]
@@ -156,6 +161,9 @@ erDiagram
         boolean is_active
         text source_dept
         boolean is_minor
+        boolean is_placeholder
+        boolean is_elective
+        text units_mode
     }
     PROSPECTUS {
         bigint prospectus_id PK
@@ -168,6 +176,8 @@ erDiagram
         smallint lecture_minutes_per_session
         smallint lab_sessions_per_week
         smallint lab_minutes_per_session
+        text slot_label
+        boolean deactivated_by_subject
     }
     SECTION {
         bigint section_id PK
@@ -209,6 +219,8 @@ Key constraints:
 - `users.user_id` mirrors `auth.users.id`; the `on_auth_user_created` trigger creates the profile row.
 - `users.faculty_id` is unique, so one faculty record can be linked to at most one application account.
 - `faculty.email`, `faculty.employee_id`, `faculty.wmsu_id`, `program.program_code`, `subject.subject_code`, `section.section_code`, and `department.dept_code` are unique where present.
+- `subject.is_placeholder` marks deterministic placeholder codes created by the elective importer. `subject.is_elective` marks elective catalog entries, and `subject.units_mode` is `lec_lab` or `total_only`. Total-only mode is allowed only for electives and requires lecture and lab units to be zero.
+- `prospectus.slot_label` preserves the human-readable slot from the PDF. `prospectus.deactivated_by_subject` distinguishes rows deactivated by the subject cascade from rows a user deactivated by hand.
 
 ## 2. Faculty constraints, qualifications, and requests
 
@@ -556,6 +568,7 @@ erDiagram
     USERS ||--o{ MESSAGE : "sends"
     USERS ||--o{ NOTIFICATION : "receives"
     USERS ||--o{ USER_NOTIFICATION_SETTING : "configures"
+    USERS ||--o| USER_PRESENCE : "last seen"
     USERS |o--o{ AUDIT_TRAIL : "acts"
 
     USERS {
@@ -598,6 +611,10 @@ erDiagram
         boolean enabled
         timestamptz updated_at
     }
+    USER_PRESENCE {
+        uuid user_id PK
+        timestamptz last_seen_at
+    }
     AUDIT_TRAIL {
         bigint audit_id PK
         uuid user_id FK
@@ -615,6 +632,7 @@ Key constraints and behavior:
 - `message.body` is constrained to 1–2000 characters.
 - `conversation` has no name or type column; a conversation is defined by its membership and messages.
 - `notification` and `audit_trail` use polymorphic/JSON data rather than foreign keys to every possible target entity.
+- `user_presence` is one row per user with `last_seen_at`. It is separate from `users` so a minute-level heartbeat never touches `users.updated_at` or user audit triggers. RLS is enabled with no client policies, and `anon`/`authenticated` have no grants; only the API's database connection reads or writes it.
 
 ## 6. Prospectus PDF import
 
@@ -667,6 +685,7 @@ erDiagram
         integer total_units
         timestamptz created_at
         timestamptz updated_at
+        text table_kind
     }
 ```
 
@@ -674,7 +693,7 @@ Key constraints and behavior:
 
 - `prospectus_pdf.storage_bucket` defaults to `prospectus-pdfs`; the bucket itself is created in Supabase Storage, not by the SQL snapshot.
 - `prospectus_pdf.deleted_at` provides soft deletion. The repository uses `deleted_at IS NULL` for active PDF queries.
-- `prospectus_pdf_table` is unique on `(pdf_id, year_level, semester)` and is cascade-deleted with its parent PDF.
+- `prospectus_pdf_table` has a partial unique index on `(pdf_id, year_level, semester)` where `table_kind = 'regular'`, so a PDF has one regular curriculum table per year/semester but may contain many elective tables. `table_kind` is `regular` or `elective`.
 - `prospectus_pdf_table.columns` and `.rows` hold the parsed table structure as JSONB; the remaining numeric fields are copied totals for quick display.
 
 ## 7. Platform status
@@ -699,6 +718,7 @@ erDiagram
         timestamptz suppress_until
         uuid updated_by FK
         timestamptz updated_at
+        boolean maintenance_mode
     }
 ```
 
@@ -710,6 +730,7 @@ Key constraints and behavior:
 - `updated_by` references `users(user_id)` with `ON DELETE SET NULL`, so the banner survives a deleted user.
 - `trg_system_status_touch` refreshes `updated_at` on every update.
 - `suppress_until` mutes the banner without deleting it; the API reports the banner as disabled while `suppress_until` is in the future.
+- `maintenance_mode` is a separate access gate. When true, only the hidden administrator may sign in or call the API; everyone else sees the maintenance page and receives `503`. A banner can be shown without locking the app, and the lock can be enabled without displaying the banner.
 - RLS exposes the row as read-only to `anon` and `authenticated`. Writes are administrator-only and go through the NestJS `PATCH /v1/system-status` endpoint, which also writes an `audit_trail` entry.
 
 ## 8. IDP integration state
@@ -779,12 +800,38 @@ Key constraints and behavior:
   present. The first decision wins, and a retry with the same decision is
   idempotent.
 
+## 9. Cap authentication state
+
+Cap challenges are signed JWTs, but redemption still needs server-side state so a solved challenge cannot be replayed. Two narrow tables hold that state. The NestJS API reads and writes them through `DATABASE_URL`; direct Supabase clients have no access.
+
+```mermaid
+erDiagram
+    CAP_NONCE {
+        text signature PK
+        timestamptz expires_at
+    }
+    CAP_TOKEN {
+        text token_key PK
+        timestamptz expires_at
+        timestamptz created_at
+    }
+```
+
+Key constraints and behavior:
+
+- `cap_nonce.signature` is the challenge signature and primary key. Inserting it makes redemption single-use; a duplicate signature is rejected.
+- `cap_token.token_key` is the redeem lookup key. The login flow reads and deletes the row, so each solved challenge yields one login token.
+- Both tables expire rows after 10 minutes, and `CapService` sweeps expired rows hourly. Both `expires_at` columns have supporting indexes.
+- RLS is enabled with no client policies and no `anon`/`authenticated` grants.
+
 ## Table inventory
 
 | Table                       | Primary key                  | Purpose                                                                        |
 | --------------------------- | ---------------------------- | ------------------------------------------------------------------------------ |
 | `audit_trail`               | `audit_id`                   | Append-oriented audit events with actor, action, JSON data, and source system. |
 | `auto_generate_lock`        | `term_id`                    | One row per term used to serialize auto-generation runs.                       |
+| `cap_nonce`                 | `signature`                  | Single-use Cap challenge redemption state.                                     |
+| `cap_token`                 | `token_key`                  | Single-use Cap login token lookup and expiry.                                  |
 | `conversation`              | `conversation_id`            | Chat thread header.                                                            |
 | `conversation_member`       | `(conversation_id, user_id)` | Conversation membership and last-read marker.                                  |
 | `cross_department_request`  | `request_id` (UUID)          | Cross-department request with a specific timeslot and free-text status.        |
@@ -819,6 +866,7 @@ Key constraints and behavior:
 | `term`                      | `term_id`                    | Academic term with school year, dates, and semester.                           |
 | `time_slot`                 | `timeslot_id`                | Reusable day/start/end slot with generated duration.                           |
 | `user_notification_setting` | `(user_id, trigger_key)`     | Per-user notification opt-in.                                                  |
+| `user_presence`             | `user_id`                    | Persisted last-seen heartbeat for presence labels.                             |
 | `users`                     | `user_id`                    | Application profile linked to a Supabase Auth user.                            |
 
 ## Enum types
@@ -833,13 +881,14 @@ Key constraints and behavior:
 | `schedule_status`        | `draft`, `review`, `finalized`, `published`                                   |
 | `semester_type`          | `1st`, `2nd`, `summer`                                                        |
 | `sync_status`            | `pending`, `synced`, `failed`                                                 |
-| `user_role`              | `administrator`, `college_dean`, `department_head`, `viewer`                  |
+| `user_role`              | `administrator`, `college_dean`, `college_secretary`, `department_head`, `viewer` |
 
 ## Important database behavior
 
 ### Identity and auth
 
 - `users.user_id` is the Supabase Auth user ID (UUID). The `on_auth_user_created` trigger inserts a matching `public.users` row from the auth metadata, defaulting unknown roles to `viewer`.
+- Login requires a solved Cap challenge. `cap_nonce` makes redemption single-use, `cap_token` stores the redeem lookup key until it is consumed, and both rows expire after 10 minutes.
 - The API verifies Supabase access tokens, then loads the application profile for role checks. The frontend also reads its own profile and uses Supabase Realtime for presence/chat; those direct anon-key requests are subject to RLS. Privileged writes go through the NestJS API.
 
 ### Row-level security
@@ -848,6 +897,7 @@ Key constraints and behavior:
 - There are 51 policies. They use `auth.uid()`, `public.current_user_role()`, and `public.current_user_dept()` for ownership and role checks.
 - `system_status` is the one table with intentionally public read access: `system_status_public_read` (anon) and `system_status_authenticated_read` (authenticated) both allow `SELECT` for everyone, because the banner is shown before sign-in. No write policy exists, so direct writes are impossible even for authenticated users.
 - `REVOKE USAGE ON SCHEMA public FROM PUBLIC` keeps the schema reachable only through the `anon`, `authenticated`, and `service_role` roles.
+- `cap_nonce`, `cap_token`, `user_presence`, `idp_processed_event`, `idp_outbox`, and `idp_change_request` enable RLS with no client policies and no `anon`/`authenticated` grants. They are API-internal tables.
 - The backend connects through the trusted PostgreSQL role and applies application-level guards. RLS is the boundary for direct Supabase client access.
 
 ### Generated and derived values
@@ -890,5 +940,6 @@ Key constraints and behavior:
 - Schema changes are applied through the Supabase SQL workflow and captured in `coe-nnect-database-structure.sql`.
 - The SQL file contains the public schema only; the `on_auth_user_created` trigger on `auth.users` is appended separately because a public-only `pg_dump` does not include it.
 - The snapshot is regenerated from the live database with `scripts/dump-database-schema.ps1`, which reads `DATABASE_URL` from `apps/backend/.env` and writes this folder's SQL file. Schema-only dumps are used, so no row data is ever committed.
+- The snapshot reflects the hosted database on its generation date. The tracked migrations remain authoritative for schema that has not yet been applied to that database; the IDP integration tables are the current example.
 - When the schema changes, regenerate the snapshot and update the diagrams/counts on this page.
 - Tracked migrations in `supabase/migrations/` mirror the same schema; every change to the live database also needs a migration file so `supabase db reset` reproduces it.

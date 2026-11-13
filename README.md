@@ -6,9 +6,8 @@
 ![Frontend CI](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-frontend.yml/badge.svg)
 ![Database Migrations](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-migrations.yml/badge.svg)
 ![Browser E2E](https://github.com/RADENzzz/coe-nnect/actions/workflows/ci-e2e.yml/badge.svg)
-![Vercel](https://img.shields.io/badge/Vercel-Deployed-success)
 ![Railway](https://img.shields.io/badge/Railway-Deployed-blue)
-![Tests](https://img.shields.io/badge/Tests-190%20Passing-brightgreen)
+![Constraint Rules](https://img.shields.io/badge/Constraint%20Rules-194%20Tests-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/Status-Capstone%20Ready-orange)
 
@@ -31,71 +30,97 @@ Western Mindanao State University</p>
 
 </div>
 
-CoE-NNECT supports academic scheduling for the College of Engineering at Western Mindanao State University (WMSU). The system provides schedule planning and validation, role-based review workflows, timetable views, reports, and related academic data management.
+CoE-NNECT is the academic scheduling system for the College of Engineering at Western Mindanao State University (WMSU). It combines academic data management, constraint-based schedule planning, role-based review and publication, live collaboration, reporting, and integration with the university's Institutional Data Platform (IDP).
 
-## Table of Contents
+## Table of contents
 
-- [Project Information](#project-information)
+- [Tech stack](#tech-stack)
+- [Project status](#project-status)
 - [Capabilities](#capabilities)
+- [Roles and access](#roles-and-access)
 - [Architecture](#architecture)
-- [Get Started](#get-started)
-- [Common Commands](#common-commands)
+- [Repository layout](#repository-layout)
+- [Requirements](#requirements)
+- [Get started](#get-started)
+- [Common commands](#common-commands)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Documentation](#documentation)
+- [Project information](#project-information)
+- [Project team](#project-team)
 
-## Tech Stack
+## Tech stack
 
 - **Monorepo:** pnpm workspaces
-- **Backend:** NestJS, TypeORM, Supabase (PostgreSQL), Swagger
-- **Frontend:** React, Vite, TailwindCSS, React Query, Zustand
-- **Solver Engine:** Python CP-SAT (Google OR-Tools)
-- **PDF Parser:** Python FastAPI (pypdfium2)
-- **Deployment:** Railway (Backend/Solver/Parser) + Vercel (Frontend)
+- **Backend:** NestJS, TypeORM, Supabase (PostgreSQL), Socket.IO, Swagger
+- **Frontend:** React, Vite, Tailwind CSS, React Query, Zustand, React Router
+- **Scheduling rules:** TypeScript package used by the API and as a post-solve validation gate
+- **Solver:** Python FastAPI service using Google OR-Tools CP-SAT
+- **PDF parser:** Python FastAPI service using pypdfium2, with optional Tesseract OCR
+- **Deployment:** Railway — four services defined with Infrastructure as Code
 
-## Project Status
+## Project status
 
-- **FR Coverage:** 78/79 (~99% complete)
-- **Constraint Rules:** 27 rules, 190 passing tests
-- **CI/CD:** Fully automated via GitHub Actions
+- **Constraint rules:** 27 registered rules with **194 passing tests**
+- **CI/CD:** GitHub Actions covers backend build/type-check/tests, frontend lint/type-check/build, clean database migrations, and the Playwright scheduling workflow
+- **Deployment:** Railway hosts the frontend, backend, solver, and parser; only the frontend is publicly exposed
+- **Active development:** the application is feature-complete for its capstone scope, with ongoing hardening and documentation work
 
 ## Capabilities
 
 Here is the automatic schedule generator in action:
+
 ![Auto-Generate Demo](docs/demo.gif)
 
-## Project information
+- **Academic records:** manage departments, programs, terms, faculty, subjects, sections, rooms, and prospectuses.
+- **Schedule planning:** plot, move, validate, review, finalize, and publish class schedules on a timetable grid.
+- **Constraint validation:** detect faculty, room, section, workload, load-type, time, and laboratory conflicts with hard and soft rules.
+- **Automatic generation:** build candidate schedules with the OR-Tools solver, then re-validate every generated block with the TypeScript rules engine before persisting a draft.
+- **Approvals:** route department schedules through review and finalization, and coordinate cross-department faculty requests.
+- **Reporting:** faculty workload, approval status, and room sufficiency reports, plus Excel/PDF exports where supported.
+- **Collaboration:** role-scoped chat for deans and department heads, live online presence, persisted last-seen timestamps, notifications, and unread counts.
+- **Prospectus import:** upload a PDF, define table and cell regions, extract selectable text, and resolve elective subjects and temporary codes.
+- **IDP integration:** refresh faculty identity, qualifications, and unavailability from the Institutional Data Platform; exchange signed webhooks, schedules, faculty-request statuses, and change-request acknowledgements.
+- **Administration:** user lifecycle, system settings, maintenance mode, audit trail, and a hidden developer tools surface for reset/seed operations.
 
-|                    |                                               |
-| ------------------ | --------------------------------------------- |
-| **Project**        | CPE SD 3 — Management Information System      |
-| **Institution**    | Western Mindanao State University             |
-| **College**        | College of Engineering                        |
-| **Academic year**  | 2026–2027                                     |
-| **Status**         | Active development                            |
-| **Project client** | Engr. Gajil J. Santos, College of Engineering |
+## Roles and access
 
-## Project team
+| Role | Workspace | Summary |
+| --- | --- | --- |
+| `college_dean` | `/dean/*` | College-wide oversight: approvals, reports, audit trail, user management, and all academic operations. |
+| `college_secretary` | `/dean/*` | College-wide operational access. Shares the dean shell but has no approvals, audit trail, reports, timetable, or dev tools. |
+| `department_head` | `/dashboard`, `/timetable`, ... | Department-scoped planning, faculty, subjects, sections, rooms, prospectus import, reports, and approvals. Blocked by the deactivated-department wall. |
+| `viewer` | Department shell | Legacy read-oriented role retained for compatibility; it is not used by the current demo accounts. |
+| `administrator` | `/dean/dev-tools` | Hidden developer-only account for reset, seed, and account maintenance. It is redirected away from all other dean pages and excluded from user-facing chat. |
 
-| Name                        | Project role                                       |
-| --------------------------- | -------------------------------------------------- |
-| Jazmine Elaiza L. Luis      | Project Manager                                    |
-| Alrhaden A. Javier          | Lead Developer · System Architect                  |
-| Giel V. Andales             | Senior Developer                                   |
-| Edzel Don V. Tio            | Junior Developer · Database Initialization         |
-| Roland C. Velez             | Lead Tester · Assistant Trainer · Junior Archivist |
-| Andre Aga B. Dacumos        | Lead Trainer · Senior Tester                       |
-| Aizzah Arabelle B. Javelosa | Lead Archivist · Assistant System Analyst          |
-| Euwan Tyrone B. Prias       | Lead System Analyst · Senior Archivist             |
+Chat is available to `college_dean` and `department_head`. The `administrator` role can reach the service layer for maintenance but is filtered out of user-facing chat lists.
 
-## Capabilities
+## Architecture
 
-- Manage departments, academic terms, faculty, rooms, subjects, sections, and prospectuses.
-- Create, edit, validate, and review class schedules; coordinate approvals and publication.
-- Apply scheduling rules for conflicts, qualifications, workloads, room suitability, and other constraints.
-- Provide role-based workspaces for college deans, department heads, and administrators.
-- View timetables and reports, review audit history, and use notifications and chat.
-- Import prospectus information from PDF text using editor-defined regions.
-- Refresh faculty, qualifications, and unavailability from the university's Institutional Data Platform (IDP) and receive signed faculty-change webhooks.
+```text
+Browser
+  └── React + Vite frontend (apps/frontend)
+        │  HTTP /api and Socket.IO /socket.io
+        └── NestJS API (apps/backend)
+              ├── Supabase Auth and PostgreSQL
+              ├── TypeScript constraint rules (packages/constraint-rules)
+              ├── FastAPI prospectus parser (packages/prospectus-parser)
+              ├── FastAPI OR-Tools solver (packages/solver-service)
+              └── Institutional Data Platform (IDP)
+```
 
-The Python OR-Tools solver is a separately deployed service called by the backend during automatic schedule generation. The IDP integration (Milestone 1) lives in `apps/backend/src/modules/idp`; the `packages/idp-client` package remains a placeholder. See the [IDP integration guide](docs/integrations/idp.md), [system architecture](docs/architecture/README.md), and [package documentation](docs/README.md) for details.
+In production, Railway runs four services:
+
+| Service | Source | Exposure |
+| --- | --- | --- |
+| `coe-nnectfrontend` | repo root; Vite build served by `apps/frontend/server.mjs` | Public |
+| `coe-nnectbackend` | repo root; NestJS build | Private |
+| `coe-nnectsolver` | `packages/solver-service` | Private |
+| `coe-nnectparser` | `packages/prospectus-parser` | Private |
+
+The browser talks only to the frontend origin. The Node server in `apps/frontend/server.mjs` serves the built SPA and proxies `/api` and `/socket.io` to the backend over Railway's private network, so the backend needs no public domain and the frontend needs no build-time backend URL.
+
+Database schema changes are managed through the Supabase SQL workflow. TypeORM schema synchronization is disabled. See the [system architecture](docs/architecture/README.md) for component boundaries, data flows, and key workflows.
 
 ## Repository layout
 
@@ -108,19 +133,23 @@ packages/
   idp-client/              Reserved IDP client package (integration lives in the backend)
   prospectus-parser/       FastAPI PDF text extraction service
   shared-types/            Reserved shared TypeScript types package
-  solver-service/          Standalone OR-Tools scheduling service
-docs/                      App, package, API, and rules documentation
+  solver-service/          FastAPI OR-Tools scheduling service
+docs/                      App, feature, package, operations, and database documentation
+e2e/                       Playwright end-to-end scheduling workflow
+supabase/                  Tracked migrations and database workflow
+.railway/                  Railway Infrastructure as Code
 ```
 
-See the [documentation index](docs/README.md) for guides and service-specific instructions.
+`packages/idp-client` and `packages/shared-types` are placeholders. The working IDP integration lives in `apps/backend/src/modules/idp`, and the frontend and backend currently maintain their own transport types.
 
 ## Requirements
 
 - Node.js 24 or newer
 - pnpm 12.6.0 (the repository pins this version)
 - Git
-- Supabase project credentials and a PostgreSQL database for database-backed features
-- Python is required only for the optional parser and solver services.
+- A Supabase project and PostgreSQL database for database-backed features
+- Python 3.11+ only for the optional parser and solver services
+- Docker only for local Supabase and migration validation
 
 ## Get started
 
@@ -142,7 +171,7 @@ Start the development system from the repository root:
 pnpm dev
 ```
 
-The root development script starts the backend and frontend, plus the parser and solver when their Python virtual environments exist. It prints service logs with labels and shows the local URLs when startup completes. Press `Ctrl+C` to stop the services it started.
+The root development script starts the backend and frontend, plus the parser and solver when their Python virtual environments exist. It prints labelled service logs and shows the local URLs when startup completes. Press `Ctrl+C` to stop the services it started.
 
 To install the Python dependencies and run all four services, run this one-time setup before starting the system:
 
@@ -153,7 +182,7 @@ pnpm dev
 
 The setup command creates virtual environments under `packages\solver-service\.venv` and `packages\prospectus-parser\.venv` and installs each service's requirements. If those environments are absent, `pnpm dev` warns and skips the corresponding Python service while still starting the other available services.
 
-By default, the frontend is at `http://localhost:5173`, the API is at `http://localhost:3000/api`, and the API docs are at `http://localhost:3000/api/docs`. The parser and solver use ports `8001` and `8000`, respectively. The backend requires a configured database; the development script does not start PostgreSQL or Supabase.
+By default, the frontend is at `http://localhost:5173`, the API is at `http://localhost:3000/api`, and the API docs are at `http://localhost:3000/api/docs`. The parser and solver use ports `8001` and `8000`, respectively. The backend requires a configured database; the development script does not start PostgreSQL or Supabase. Run backend commands from `apps/backend` when a command depends on its `.env` file.
 
 To run only one service, use the root shortcuts: `pnpm dev:backend`, `pnpm dev:frontend`, `pnpm dev:parser`, or `pnpm dev:solver`. The `pnpm dev:no-parser` and `pnpm dev:no-solver` commands start the other services without the named service. See the [backend guide](docs/apps/backend.md) and [frontend guide](docs/apps/frontend.md) for configuration and checks.
 
@@ -169,50 +198,93 @@ It prints an `https://<random-words>.trycloudflare.com` link that anyone can ope
 
 Run from the repository root:
 
-| Command                                          | Purpose                                                          |
-| ------------------------------------------------ | ---------------------------------------------------------------- |
-| `pnpm build`                                     | Run available workspace build scripts                            |
-| `pnpm test`                                      | Run available workspace test scripts                             |
-| `pnpm lint`                                      | Run available workspace lint scripts; backend lint applies fixes |
-| `pnpm typecheck`                                 | Run available workspace type checks                              |
-| `pnpm --filter @coe-nnect/constraint-rules test` | Test the scheduling rules package                                |
-| `pnpm --filter @coe-nnect/backend test`          | Run backend unit tests                                           |
-| `pnpm --filter @coe-nnect/backend test:e2e`      | Run backend integration tests                                    |
-| `pnpm test:e2e`                                  | Run the Playwright scheduling workflow (test project required)   |
-| `pnpm typecheck:e2e`                             | Type-check the Playwright tests                                  |
-| `pnpm --filter @coe-nnect/frontend lint`         | Lint the frontend                                                |
-| `pnpm online`                                    | Temporary public Cloudflare link for the app already running     |
-| `pnpm dev:online`                                | Dev services plus the temporary public link, one terminal        |
-| `pnpm --filter @coe-nnect/backend db:reset`      | Hard-reset the configured database (destructive)                 |
-| `pnpm --filter @coe-nnect/backend seed:demo`     | Seed four departments and six demo accounts                      |
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Start the frontend, backend, and available Python services |
+| `pnpm dev:no-solver` / `pnpm dev:no-parser` | Start the system without one Python service |
+| `pnpm build` | Run available workspace build scripts |
+| `pnpm test` | Run all workspace test scripts (backend Jest suites and constraint rules) |
+| `pnpm lint` | Run available workspace lint scripts; backend lint applies fixes |
+| `pnpm typecheck` | Run available workspace type checks |
+| `pnpm --filter @coe-nnect/constraint-rules test` | Test the scheduling rules package (194 tests) |
+| `pnpm --filter @coe-nnect/backend test` | Run backend unit tests |
+| `pnpm --filter @coe-nnect/backend test:e2e` | Run backend integration tests with Supertest |
+| `pnpm test:e2e` | Run the Playwright scheduling workflow (test project required) |
+| `pnpm test:e2e:list` | Discover Playwright tests without starting servers |
+| `pnpm typecheck:e2e` | Type-check the Playwright tests |
+| `pnpm --filter @coe-nnect/frontend lint` | Lint the frontend |
+| `pnpm online` | Temporary public Cloudflare link for the app already running |
+| `pnpm dev:online` | Dev services plus the temporary public link, one terminal |
+| `pnpm db:snapshot` | Regenerate the database DDL snapshot from `DATABASE_URL` |
+| `pnpm --filter @coe-nnect/backend db:reset` | Hard-reset the configured database (destructive) |
+| `pnpm --filter @coe-nnect/backend seed:demo` | Seed four departments and six demo accounts |
+| `pnpm kill` | Stop listeners on ports 3000, 5173, 8000, and 8001 |
 
 Review scripts and database targets before running them. Python services use the commands in their respective guides. The Dev Tools page runs the same reset and seed operations from the backend; in production it uses the compiled scripts and preserves the signed-in administrator during a reset.
 
-## Architecture
+## Testing
 
-```text
-Browser
-  └── React + Vite frontend (apps/frontend)
-        └── NestJS API (apps/backend)
-              ├── Supabase Auth and PostgreSQL
-              └── TypeScript scheduling rules (packages/constraint-rules)
+The repository uses several complementary test layers:
 
-Supporting services:
-  ├── FastAPI prospectus parser (packages/prospectus-parser)
-  └── FastAPI OR-Tools solver (packages/solver-service; called by backend auto-generation)
+- **Constraint rules:** 27 rules and 194 unit tests in `packages/constraint-rules`.
+- **Backend:** Jest unit tests plus Supertest integration tests under `apps/backend/test`, using fake Supabase adapters and no live database.
+- **Database:** CI builds a clean Supabase database from every tracked migration and runs the empty `seed.sql`.
+- **Browser E2E:** Playwright drives the department-head-to-dean scheduling workflow against a disposable Supabase project. Never point `E2E_*` variables at production.
+
+The frontend has no unit or component test runner; it is covered by type-checking, linting, the production build, and Playwright. See the [testing guide](docs/testing.md) for commands, CI behavior, and the E2E seed model.
+
+## Deployment
+
+Railway deployment is defined in [`.railway/railway.ts`](.railway/railway.ts) and applied with the Railway CLI:
+
+```bash
+railway link
+railway config plan
+railway config apply
 ```
 
-Database schema changes are managed through the Supabase SQL workflow; TypeORM schema synchronization is disabled. Use a configured development database when running seeds or other database-changing commands.
-
-See the [system architecture](docs/architecture/README.md) for component boundaries, persistence, and key workflows.
+The IaC file creates the four services, private solver/parser URLs, build commands, health checks, and non-secret environment values. Secrets such as `DATABASE_URL`, Supabase keys, `CAP_SECRET`, and IDP credentials are entered in the Railway dashboard and preserved across applies. See the [Railway deployment guide](docs/operations/railway.md) for service details, manual variables, domains, and smoke tests.
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Database structure](docs/DATABASE%20STRUCTURE/README.md)
-- [Scheduling API contract](docs/interface-contract/docs/interface-contract/scheduling-api.md)
-- [Scheduling rules checklist](docs/reconciliation/scheduling-rules-checklist.md)
-- [Prospectus parser quick reference](packages/prospectus-parser/README.md)
+- [Documentation index](docs/README.md) — start here for all guides.
+- [Frontend guide](docs/apps/frontend.md) — routes, roles, features, environment, and checks.
+- [Backend guide](docs/apps/backend.md) — modules, routes, auth, security, database scripts, and tests.
+- [Chat and presence](docs/features/chat.md) — two-pane chat, Realtime presence, heartbeats, and notifications.
+- [Dashboard](docs/features/dashboard.md) — department-head and dean dashboard content and data sources.
+- [Elective subjects](docs/features/electives.md) — catalog model, elective PDF tables, and scheduling behavior.
+- [System architecture](docs/architecture/README.md) — component map, data flows, and integration status.
+- [Database structure](docs/DATABASE%20STRUCTURE/README.md) — ERDs, table inventory, enums, and constraints.
+- [Testing](docs/testing.md) — unit, integration, migration, and browser test coverage.
+- [Security policy](SECURITY.md) — supported versions, reporting, and implemented controls.
+- [Accessibility statement](ACCESSIBILITY.md) — conformance target, supported assistive technology, and known limitations.
+- [Contributing](CONTRIBUTING.md) — setup, branch, commit, and pull-request expectations.
+- [Scheduling API contract](docs/interface-contract/docs/interface-contract/scheduling-api.md) — schedule routes and payload conventions.
+- [Scheduling rules checklist](docs/reconciliation/scheduling-rules-checklist.md) — rule inventory and implementation links.
+
+## Project information
+
+| | |
+| ------------------ | --------------------------------------------- |
+| **Project** | CPE SD 3 — Management Information System |
+| **Institution** | Western Mindanao State University |
+| **College** | College of Engineering |
+| **Academic year** | 2026–2027 |
+| **Status** | Active development |
+| **Project client** | Engr. Gajil J. Santos, College of Engineering |
+
+## Project team
+
+| Name | Project role |
+| --- | --- |
+| Jazmine Elaiza L. Luis | Project Manager |
+| Alrhaden A. Javier | Lead Developer · System Architect |
+| Giel V. Andales | Senior Developer |
+| Edzel Don V. Tio | Junior Developer · Database Initialization |
+| Roland C. Velez | Lead Tester · Assistant Trainer · Junior Archivist |
+| Andre Aga B. Dacumos | Lead Trainer · Senior Tester |
+| Aizzah Arabelle B. Javelosa | Lead Archivist · Assistant System Analyst |
+| Euwan Tyrone B. Prias | Lead System Analyst · Senior Archivist |
 
 ---
 

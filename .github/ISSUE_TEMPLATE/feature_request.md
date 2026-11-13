@@ -1,20 +1,48 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
-title: ''
+about: Propose a capability or workflow improvement for CoE-NNECT
+title: '[Feature] '
 labels: ''
 assignees: ''
-
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Problem
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+<!-- What user problem are you trying to solve? Who experiences it, and in which role or workflow? -->
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Proposed behavior
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+<!-- Describe the desired outcome and the main interaction. Focus on behavior, not implementation. -->
+
+## Affected area
+
+- [ ] Frontend UI or navigation
+- [ ] Backend API or authorization
+- [ ] Scheduling rules or solver
+- [ ] Prospectus import or parser
+- [ ] Chat, presence, or notifications
+- [ ] Reports or exports
+- [ ] Database schema or migrations
+- [ ] IDP integration
+- [ ] Deployment, tooling, or documentation
+
+## Roles and access
+
+<!-- Which roles should see or use this? Note any department-scoping, approval, or audit requirements. -->
+
+## Alternatives considered
+
+<!-- Existing workarounds, simpler options, or reasons not to build this. -->
+
+## Acceptance criteria
+
+<!-- Bullet the observable outcomes that would make this complete. -->
+
+- [ ]
+- [ ]
+
+## Additional context
+
+<!-- Mockups, examples from other systems, related issues, or dependencies. -->
+
+> Security issues should be reported privately according to [SECURITY.md](../../SECURITY.md), not as a feature request.

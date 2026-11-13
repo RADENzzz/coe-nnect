@@ -1,7 +1,7 @@
 # Railway deployment
 
 The Railway project is defined with **Infrastructure as Code** in
-[`.railway/railway.ts`](../.railway/railway.ts). Railway's older
+[`.railway/railway.ts`](../../.railway/railway.ts). Railway's older
 `railway.json` / `railway.toml` format is deprecated and stops being read on
 2026-12-01, so the per-package `railway.json` files have been removed.
 
@@ -9,7 +9,7 @@ The Railway project is defined with **Infrastructure as Code** in
 
 | Service             | Source                       | Public? | Healthcheck      |
 | ------------------- | ---------------------------- | ------- | ---------------- |
-| `coe-nnectfrontend` | repo root (Vite build)       | Yes     | `/`              |
+| `coe-nnectfrontend` | repo root (Vite build + Node server) | Yes     | `/`              |
 | `coe-nnectbackend`  | repo root (NestJS build)     | No      | `/api/v1/health` |
 | `coe-nnectsolver`   | `packages/solver-service`    | No      | `/health`        |
 | `coe-nnectparser`   | `packages/prospectus-parser` | No      | `/health`        |
@@ -77,15 +77,22 @@ dashboard after the services exist.
 | `SUPABASE_URL`              | Yes      | Supabase project URL.                                  |
 | `SUPABASE_ANON_KEY`         | Yes      | Supabase anon key.                                     |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes      | Server-side Supabase key.                              |
+| `CAP_SECRET`                | Yes      | Cap signing secret, at least 16 bytes. Login fails closed without it. |
 | `GITHUB_TOKEN`              | No       | Raises GitHub API limits for the repo stats endpoints. |
 | `FRONTEND_URL`              | No       | Exact frontend origin, for a custom domain.            |
 | `ENABLE_SWAGGER`            | No       | Set to `true` only together with the next two values.  |
 | `SWAGGER_USER`              | No       | Basic-auth user for production Swagger.                |
 | `SWAGGER_PASSWORD`          | No       | Basic-auth password for production Swagger.            |
 | `CORS_ALLOW_TUNNEL`         | No       | `true` only for temporary Cloudflare tunnel demos.     |
+| `IDP_ENABLED`               | No       | Enable Pattern A pulls and the refresh action.         |
+| `IDP_BASE_URL`, `IDP_API_KEY` | No     | Pattern A endpoint and bearer token.                   |
+| `IDP_DEVICE_API_KEY`        | No       | Pattern C device bearer key.                           |
+| `IDP_WEBHOOK_SECRET`        | No       | HMAC secret for inbound IDP webhooks.                  |
 
 `DATABASE_SSL=true`, `NODE_ENV=production`, `API_PREFIX=api`,
-`TRUST_PROXY=1`, and the private solver/parser URLs are set by the IaC file.
+`TRUST_PROXY=1`, the CORS allowlist, and the private solver/parser URLs are set
+by the IaC file. The variables above are declared with `preserve()` so values
+entered in the dashboard survive future applies.
 
 ### Frontend service
 
@@ -117,8 +124,8 @@ use Swagger directly, generate a domain for `backend`, then set
 For a custom frontend domain, add it in Railway and set the backend's
 `FRONTEND_URL` to that exact origin (for example
 `https://coe-nnect.example.edu`). The default
-`CORS_ALLOWED_ORIGINS=https://*.up.railway.app,https://*.vercel.app` covers
-generated Railway and Vercel domains.
+`CORS_ALLOWED_ORIGINS=https://*.up.railway.app` covers generated Railway
+domains. Add any other exact origin through `CORS_ALLOWED_ORIGINS`.
 
 ## Private service URLs
 
