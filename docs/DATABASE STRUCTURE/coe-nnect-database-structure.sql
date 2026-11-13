@@ -1,5 +1,5 @@
 -- CoE-NNECT database schema
--- Generated: 2026-10-22T01:03:16.124Z
+-- Generated: 2026-11-13T01:18:51.644Z
 --
 -- This file contains the public schema only (tables, types, functions,
 -- triggers, RLS policies, indexes, and grants). It does not contain row data.
@@ -145,38 +145,9 @@ CREATE TYPE public.user_role AS ENUM (
     'administrator',
     'college_dean',
     'department_head',
-    'viewer'
+    'viewer',
+    'college_secretary'
 );
-
-
---
--- Name: auto_generate_lock_key(text); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.auto_generate_lock_key(p_term_id text) RETURNS bigint
-    LANGUAGE sql IMMUTABLE
-    AS $$
-  select ('x' || substr(md5('auto_generate:' || p_term_id), 1, 16))::bit(64)::bigint;
-$$;
-
-
---
--- Name: cleanup_expired_auto_generate_locks(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.cleanup_expired_auto_generate_locks() RETURNS integer
-    LANGUAGE plpgsql SECURITY DEFINER
-    AS $$
-declare
-  v_deleted int;
-begin
-  delete from public.auto_generate_lock
-  where expires_at < now();
-
-  get diagnostics v_deleted = row_count;
-  return v_deleted;
-end;
-$$;
 
 
 --
@@ -278,31 +249,20 @@ $$;
 
 
 --
--- Name: get_auto_generate_lock(bigint); Type: FUNCTION; Schema: public; Owner: -
+-- Name: get_auto_generate_lock(bigint, bigint); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.get_auto_generate_lock(p_term_id bigint) RETURNS TABLE(held_by uuid, state text, expires_at timestamp with time zone)
-    LANGUAGE sql SECURITY DEFINER
-    SET search_path TO 'public'
+CREATE FUNCTION public.get_auto_generate_lock(p_term_id bigint, p_dept_id bigint) RETURNS TABLE(held_by uuid, state text, expires_at timestamp with time zone)
+    LANGUAGE plpgsql
     AS $$
-  select acquired_by, state, expires_at
-  from public.auto_generate_lock
-  where term_id = p_term_id
-    and expires_at > now();
-$$;
-
-
---
--- Name: get_auto_generate_lock_state(bigint); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.get_auto_generate_lock_state(p_term_id bigint) RETURNS TABLE(held_by uuid, state text, expires_at timestamp with time zone)
-    LANGUAGE sql SECURITY DEFINER
-    SET search_path TO 'public'
-    AS $$
-  select acquired_by, state, expires_at
-  from public.auto_generate_lock
-  where term_id = p_term_id;
+BEGIN
+  RETURN QUERY
+    SELECT l.acquired_by, l.state, l.expires_at
+      FROM public.auto_generate_lock l
+     WHERE l.term_id = p_term_id
+       AND l.dept_id = p_dept_id
+       AND l.expires_at >= now();
+END;
 $$;
 
 
@@ -315,17 +275,18 @@ CREATE FUNCTION public.handle_new_auth_user() RETURNS trigger
     SET search_path TO 'public'
     AS $$
 DECLARE
-  meta jsonb := coalesce(new.raw_app_meta_data, '{}'::jsonb);
+  app_meta  jsonb := coalesce(new.raw_app_meta_data,  '{}'::jsonb);
+  user_meta jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+  merged    jsonb := app_meta || user_meta;   -- app_meta wins on conflict
   role_value public.user_role;
 BEGIN
-  -- Parse role safely. Unknown values fall back to 'viewer'.
   BEGIN
     role_value := coalesce(
-      nullif(meta->>'role', '')::public.user_role,
-      'viewer'::public.user_role
+      nullif(merged->>'role', '')::public.user_role,
+      'department_head'::public.user_role
     );
   EXCEPTION WHEN invalid_text_representation THEN
-    role_value := 'viewer'::public.user_role;
+    role_value := 'department_head'::public.user_role;
   END;
 
   INSERT INTO public.users (
@@ -333,13 +294,13 @@ BEGIN
   )
   VALUES (
     new.id,
-    coalesce(nullif(meta->>'username', ''), split_part(new.email, '@', 1)),
+    coalesce(nullif(merged->>'username', ''), split_part(new.email, '@', 1)),
     new.email,
     role_value,
-    nullif(meta->>'dept_id', '')::bigint,
-    nullif(meta->>'faculty_id', '')::bigint,
-    nullif(meta->>'employee_id', ''),
-    nullif(meta->>'wmsu_id', '')
+    nullif(merged->>'dept_id', '')::bigint,
+    nullif(merged->>'faculty_id', '')::bigint,
+    nullif(merged->>'employee_id', ''),
+    nullif(merged->>'wmsu_id', '')
   )
   ON CONFLICT (user_id) DO NOTHING;
   RETURN new;
@@ -348,20 +309,21 @@ $$;
 
 
 --
--- Name: mark_auto_generate_pending(bigint, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
+-- Name: mark_auto_generate_pending(bigint, bigint, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer DEFAULT 600) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'public'
+CREATE FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer DEFAULT 600) RETURNS void
+    LANGUAGE plpgsql
     AS $$
-begin
-  update public.auto_generate_lock
-  set state = 'pending_confirm',
-      expires_at = now() + (p_ttl_seconds || ' seconds')::interval
-  where term_id = p_term_id
-    and acquired_by = p_user_id;
-end;
+DECLARE
+  v_expires timestamptz := now() + (p_ttl_seconds || ' seconds')::interval;
+BEGIN
+  UPDATE public.auto_generate_lock
+     SET state      = 'pending_confirm',
+         expires_at = v_expires
+   WHERE term_id = p_term_id
+     AND dept_id = p_dept_id;
+END;
 $$;
 
 
@@ -388,29 +350,17 @@ $$;
 
 
 --
--- Name: release_auto_generate_lock(text); Type: FUNCTION; Schema: public; Owner: -
+-- Name: release_auto_generate_lock(bigint, bigint, uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.release_auto_generate_lock(p_term_id text) RETURNS boolean
-    LANGUAGE sql SECURITY DEFINER
+CREATE FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid) RETURNS void
+    LANGUAGE plpgsql
     AS $$
-  select pg_advisory_unlock(public.auto_generate_lock_key(p_term_id));
-$$;
-
-
---
--- Name: release_auto_generate_lock(bigint, uuid); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_user_id uuid) RETURNS void
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'public'
-    AS $$
-begin
-  delete from public.auto_generate_lock
-  where term_id = p_term_id
-    and acquired_by = p_user_id;
-end;
+BEGIN
+  DELETE FROM public.auto_generate_lock
+   WHERE term_id = p_term_id
+     AND dept_id = p_dept_id;
+END;
 $$;
 
 
@@ -457,44 +407,31 @@ $$;
 
 
 --
--- Name: try_acquire_auto_generate_lock(bigint, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
+-- Name: try_acquire_auto_generate_lock(bigint, bigint, uuid, integer); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer DEFAULT 120) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'public'
+CREATE FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer DEFAULT 120) RETURNS boolean
+    LANGUAGE plpgsql
     AS $$
-begin
-  -- Clear stale locks
-  delete from public.auto_generate_lock
-  where term_id = p_term_id
-    and expires_at < now();
+DECLARE
+  v_expires timestamptz := now() + (p_ttl_seconds || ' seconds')::interval;
+  v_rows    integer;
+BEGIN
+  -- Purge an expired lock for this (term, dept) so a crash can't wedge us.
+  DELETE FROM public.auto_generate_lock
+   WHERE term_id = p_term_id
+     AND dept_id = p_dept_id
+     AND expires_at < now();
 
-  begin
-    insert into public.auto_generate_lock
-      (term_id, acquired_by, expires_at, state)
-    values (
-      p_term_id,
-      p_user_id,
-      now() + (p_ttl_seconds || ' seconds')::interval,
-      'running'
-    );
-    return true;
-  exception when unique_violation then
-    return false;
-  end;
-end;
-$$;
+  INSERT INTO public.auto_generate_lock
+    (term_id, dept_id, acquired_at, acquired_by, expires_at, state)
+  VALUES
+    (p_term_id, p_dept_id, now(), p_user_id, v_expires, 'running')
+  ON CONFLICT (term_id, dept_id) DO NOTHING;
 
-
---
--- Name: try_auto_generate_lock(text); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.try_auto_generate_lock(p_term_id text) RETURNS boolean
-    LANGUAGE sql SECURITY DEFINER
-    AS $$
-  select pg_try_advisory_lock(public.auto_generate_lock_key(p_term_id));
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RETURN v_rows > 0;
+END;
 $$;
 
 
@@ -550,11 +487,33 @@ ALTER TABLE public.audit_trail ALTER COLUMN audit_id ADD GENERATED ALWAYS AS IDE
 
 CREATE TABLE public.auto_generate_lock (
     term_id bigint NOT NULL,
+    dept_id bigint NOT NULL,
     acquired_at timestamp with time zone DEFAULT now() NOT NULL,
     acquired_by uuid,
     expires_at timestamp with time zone NOT NULL,
     state text DEFAULT 'running'::text NOT NULL,
     CONSTRAINT auto_generate_lock_state_check CHECK ((state = ANY (ARRAY['running'::text, 'pending_confirm'::text])))
+);
+
+
+--
+-- Name: cap_nonce; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cap_nonce (
+    signature text NOT NULL,
+    expires_at timestamp with time zone NOT NULL
+);
+
+
+--
+-- Name: cap_token; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cap_token (
+    token_key text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1001,12 +960,21 @@ CREATE TABLE public.prospectus (
     lecture_minutes_per_session smallint DEFAULT 90 NOT NULL,
     lab_sessions_per_week smallint DEFAULT 1 NOT NULL,
     lab_minutes_per_session smallint DEFAULT 180 NOT NULL,
+    slot_label text,
+    deactivated_by_subject boolean DEFAULT false NOT NULL,
     CONSTRAINT prospectus_lab_minutes_per_session_check CHECK (((lab_minutes_per_session >= 60) AND (lab_minutes_per_session <= 300))),
     CONSTRAINT prospectus_lab_sessions_per_week_check CHECK (((lab_sessions_per_week >= 1) AND (lab_sessions_per_week <= 3))),
     CONSTRAINT prospectus_lecture_minutes_per_session_check CHECK (((lecture_minutes_per_session >= 30) AND (lecture_minutes_per_session <= 240))),
     CONSTRAINT prospectus_lecture_sessions_per_week_check CHECK (((lecture_sessions_per_week >= 1) AND (lecture_sessions_per_week <= 5))),
     CONSTRAINT prospectus_year_level_check CHECK (((year_level >= 1) AND (year_level <= 6)))
 );
+
+
+--
+-- Name: COLUMN prospectus.deactivated_by_subject; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.prospectus.deactivated_by_subject IS 'True when this row was deactivated automatically because its subject was deactivated. Cleared when the subject (or the user) reactivates it.';
 
 
 --
@@ -1076,6 +1044,8 @@ CREATE TABLE public.prospectus_pdf_table (
     total_units integer DEFAULT 0 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    table_kind text DEFAULT 'regular'::text NOT NULL,
+    CONSTRAINT prospectus_pdf_table_kind_check CHECK ((table_kind = ANY (ARRAY['regular'::text, 'elective'::text]))),
     CONSTRAINT prospectus_pdf_table_region_page_index_check CHECK ((region_page_index >= 0)),
     CONSTRAINT prospectus_pdf_table_semester_check CHECK ((semester = ANY (ARRAY['1st'::text, '2nd'::text, 'summer'::text]))),
     CONSTRAINT prospectus_pdf_table_year_level_check CHECK (((year_level >= 1) AND (year_level <= 6)))
@@ -1101,6 +1071,13 @@ COMMENT ON COLUMN public.prospectus_pdf_table.columns IS 'Array of {role: code|t
 --
 
 COMMENT ON COLUMN public.prospectus_pdf_table.rows IS 'Array of {row_id: string, y_top_pt, y_bottom_pt}';
+
+
+--
+-- Name: COLUMN prospectus_pdf_table.table_kind; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.prospectus_pdf_table.table_kind IS 'regular = curriculum table (one per year/semester per PDF); elective = elective table (many allowed).';
 
 
 --
@@ -1255,6 +1232,7 @@ CREATE TABLE public.schedule_unscheduled (
     session_index integer DEFAULT 0 NOT NULL,
     reason text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    dept_id bigint,
     CONSTRAINT schedule_unscheduled_kind_check CHECK (((kind)::text = ANY (ARRAY[('lecture'::character varying)::text, ('lab'::character varying)::text])))
 );
 
@@ -1363,10 +1341,30 @@ CREATE TABLE public.subject (
     is_active boolean DEFAULT true NOT NULL,
     source_dept text,
     is_minor boolean DEFAULT false NOT NULL,
+    is_placeholder boolean DEFAULT false NOT NULL,
+    is_elective boolean DEFAULT false NOT NULL,
+    units_mode text DEFAULT 'lec_lab'::text NOT NULL,
     CONSTRAINT subject_lab_units_check CHECK ((lab_units >= (0)::numeric)),
     CONSTRAINT subject_lecture_units_check CHECK ((lecture_units >= (0)::numeric)),
-    CONSTRAINT subject_total_units_check CHECK ((total_units >= (0)::numeric))
+    CONSTRAINT subject_total_only_units_check CHECK (((units_mode = 'lec_lab'::text) OR ((lecture_units = (0)::numeric) AND (lab_units = (0)::numeric)))),
+    CONSTRAINT subject_total_units_check CHECK ((total_units >= (0)::numeric)),
+    CONSTRAINT subject_units_mode_check CHECK ((units_mode = ANY (ARRAY['lec_lab'::text, 'total_only'::text]))),
+    CONSTRAINT subject_units_mode_elective_check CHECK (((units_mode = 'lec_lab'::text) OR is_elective))
 );
+
+
+--
+-- Name: COLUMN subject.is_elective; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.subject.is_elective IS 'True when the catalog entry is an elective subject. Electives may use total-only units and are plotted before regular subjects.';
+
+
+--
+-- Name: COLUMN subject.units_mode; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.subject.units_mode IS 'lec_lab = total is lecture + lab; total_only = only total units are known (electives only).';
 
 
 --
@@ -1427,10 +1425,18 @@ CREATE TABLE public.system_status (
     suppress_until timestamp with time zone,
     updated_by uuid,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT chk_system_status_title_required CHECK (((enabled = false) OR ((title IS NOT NULL) AND (length(btrim(title)) > 0)))),
+    maintenance_mode boolean DEFAULT false NOT NULL,
+    CONSTRAINT chk_system_status_title_required CHECK ((((enabled = false) AND (maintenance_mode = false)) OR ((title IS NOT NULL) AND (length(btrim(title)) > 0)))),
     CONSTRAINT system_status_severity_check CHECK ((severity = ANY (ARRAY['info'::text, 'warning'::text, 'critical'::text, 'maintenance'::text]))),
     CONSTRAINT system_status_status_id_check CHECK ((status_id = 1))
 );
+
+
+--
+-- Name: COLUMN system_status.maintenance_mode; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.system_status.maintenance_mode IS 'When true, blocks sign-in and API access for every non-administrator.';
 
 
 --
@@ -1504,6 +1510,16 @@ CREATE TABLE public.user_notification_setting (
 
 
 --
+-- Name: user_presence; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_presence (
+    user_id uuid NOT NULL,
+    last_seen_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1513,7 +1529,7 @@ CREATE TABLE public.users (
     email text NOT NULL,
     employee_id text,
     wmsu_id text,
-    role public.user_role DEFAULT 'viewer'::public.user_role NOT NULL,
+    role public.user_role DEFAULT 'department_head'::public.user_role NOT NULL,
     dept_id bigint,
     is_active boolean DEFAULT true NOT NULL,
     faculty_id bigint,
@@ -1535,7 +1551,23 @@ ALTER TABLE ONLY public.audit_trail
 --
 
 ALTER TABLE ONLY public.auto_generate_lock
-    ADD CONSTRAINT auto_generate_lock_pkey PRIMARY KEY (term_id);
+    ADD CONSTRAINT auto_generate_lock_pkey PRIMARY KEY (term_id, dept_id);
+
+
+--
+-- Name: cap_nonce cap_nonce_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cap_nonce
+    ADD CONSTRAINT cap_nonce_pkey PRIMARY KEY (signature);
+
+
+--
+-- Name: cap_token cap_token_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cap_token
+    ADD CONSTRAINT cap_token_pkey PRIMARY KEY (token_key);
 
 
 --
@@ -1907,19 +1939,19 @@ ALTER TABLE ONLY public.time_slot
 
 
 --
--- Name: prospectus_pdf_table uq_prospectus_pdf_table_ys; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prospectus_pdf_table
-    ADD CONSTRAINT uq_prospectus_pdf_table_ys UNIQUE (pdf_id, year_level, semester);
-
-
---
 -- Name: user_notification_setting user_notification_setting_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_notification_setting
     ADD CONSTRAINT user_notification_setting_pkey PRIMARY KEY (user_id, trigger_key);
+
+
+--
+-- Name: user_presence user_presence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_presence
+    ADD CONSTRAINT user_presence_pkey PRIMARY KEY (user_id);
 
 
 --
@@ -2067,6 +2099,20 @@ CREATE INDEX idx_auto_generate_lock_expires ON public.auto_generate_lock USING b
 
 
 --
+-- Name: idx_cap_nonce_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cap_nonce_expires_at ON public.cap_nonce USING btree (expires_at);
+
+
+--
+-- Name: idx_cap_token_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cap_token_expires_at ON public.cap_token USING btree (expires_at);
+
+
+--
 -- Name: idx_conversation_member_user; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2144,6 +2190,13 @@ CREATE INDEX idx_prospectus_pdf_uploaded_by ON public.prospectus_pdf USING btree
 
 
 --
+-- Name: idx_prospectus_subject_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prospectus_subject_active ON public.prospectus USING btree (subject_id, is_active);
+
+
+--
 -- Name: idx_room_preference_dept; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2200,6 +2253,13 @@ CREATE INDEX idx_schedule_unscheduled_term ON public.schedule_unscheduled USING 
 
 
 --
+-- Name: idx_schedule_unscheduled_term_dept; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_schedule_unscheduled_term_dept ON public.schedule_unscheduled USING btree (term_id, dept_id);
+
+
+--
 -- Name: idx_schedule_version_term; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2207,10 +2267,24 @@ CREATE INDEX idx_schedule_version_term ON public.schedule_version USING btree (t
 
 
 --
+-- Name: idx_subject_is_elective; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_subject_is_elective ON public.subject USING btree (is_elective) WHERE is_elective;
+
+
+--
 -- Name: idx_subject_is_minor; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_subject_is_minor ON public.subject USING btree (is_minor) WHERE (is_minor = true);
+
+
+--
+-- Name: idx_subject_is_placeholder; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_subject_is_placeholder ON public.subject USING btree (is_placeholder) WHERE (is_placeholder = true);
 
 
 --
@@ -2375,6 +2449,13 @@ CREATE UNIQUE INDEX uq_faculty_unavailability_external ON public.faculty_unavail
 
 
 --
+-- Name: uq_prospectus_pdf_table_regular_ys; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_prospectus_pdf_table_regular_ys ON public.prospectus_pdf_table USING btree (pdf_id, year_level, semester) WHERE (table_kind = 'regular'::text);
+
+
+--
 -- Name: uq_schedule_faculty_slot; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2507,6 +2588,14 @@ ALTER TABLE ONLY public.audit_trail
 
 ALTER TABLE ONLY public.auto_generate_lock
     ADD CONSTRAINT auto_generate_lock_acquired_by_fkey FOREIGN KEY (acquired_by) REFERENCES public.users(user_id) ON DELETE SET NULL;
+
+
+--
+-- Name: auto_generate_lock auto_generate_lock_dept_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.auto_generate_lock
+    ADD CONSTRAINT auto_generate_lock_dept_id_fkey FOREIGN KEY (dept_id) REFERENCES public.department(dept_id) ON DELETE CASCADE;
 
 
 --
@@ -2918,6 +3007,14 @@ ALTER TABLE ONLY public.schedule
 
 
 --
+-- Name: schedule_unscheduled schedule_unscheduled_dept_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.schedule_unscheduled
+    ADD CONSTRAINT schedule_unscheduled_dept_id_fkey FOREIGN KEY (dept_id) REFERENCES public.department(dept_id) ON DELETE CASCADE;
+
+
+--
 -- Name: schedule_unscheduled schedule_unscheduled_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3030,6 +3127,14 @@ ALTER TABLE ONLY public.user_notification_setting
 
 
 --
+-- Name: user_presence user_presence_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_presence
+    ADD CONSTRAINT user_presence_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+
+--
 -- Name: users users_dept_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3078,6 +3183,18 @@ ALTER TABLE public.audit_trail ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.auto_generate_lock ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: cap_nonce; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.cap_nonce ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: cap_token; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.cap_token ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: conversation; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3439,7 +3556,7 @@ CREATE POLICY section_read ON public.section FOR SELECT TO authenticated USING (
 -- Name: section section_write_admin; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY section_write_admin ON public.section TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role])));
+CREATE POLICY section_write_admin ON public.section TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role])));
 
 
 --
@@ -3491,6 +3608,12 @@ ALTER TABLE public.time_slot ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.user_notification_setting ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: user_presence; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.user_presence ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: users; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3593,21 +3716,21 @@ CREATE POLICY write_administrator ON public.time_slot TO authenticated USING ((p
 -- Name: faculty_commitment write_staff; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY write_staff ON public.faculty_commitment TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role])));
+CREATE POLICY write_staff ON public.faculty_commitment TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role])));
 
 
 --
 -- Name: faculty_preference write_staff; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY write_staff ON public.faculty_preference TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role])));
+CREATE POLICY write_staff ON public.faculty_preference TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role])));
 
 
 --
 -- Name: faculty_qualification write_staff; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY write_staff ON public.faculty_qualification TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role])));
+CREATE POLICY write_staff ON public.faculty_qualification TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role])));
 
 
 --
@@ -3621,7 +3744,7 @@ CREATE POLICY write_staff ON public.schedule_version TO authenticated USING ((pu
 -- Name: subject_restriction write_staff; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY write_staff ON public.subject_restriction TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'department_head'::public.user_role])));
+CREATE POLICY write_staff ON public.subject_restriction TO authenticated USING ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role]))) WITH CHECK ((public.current_user_role() = ANY (ARRAY['administrator'::public.user_role, 'college_dean'::public.user_role, 'college_secretary'::public.user_role, 'department_head'::public.user_role])));
 
 
 --
@@ -3632,24 +3755,6 @@ REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO service_role;
-
-
---
--- Name: FUNCTION auto_generate_lock_key(p_term_id text); Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON FUNCTION public.auto_generate_lock_key(p_term_id text) TO anon;
-GRANT ALL ON FUNCTION public.auto_generate_lock_key(p_term_id text) TO authenticated;
-GRANT ALL ON FUNCTION public.auto_generate_lock_key(p_term_id text) TO service_role;
-
-
---
--- Name: FUNCTION cleanup_expired_auto_generate_locks(); Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON FUNCTION public.cleanup_expired_auto_generate_locks() TO anon;
-GRANT ALL ON FUNCTION public.cleanup_expired_auto_generate_locks() TO authenticated;
-GRANT ALL ON FUNCTION public.cleanup_expired_auto_generate_locks() TO service_role;
 
 
 --
@@ -3689,21 +3794,12 @@ GRANT ALL ON FUNCTION public.enforce_schedule_status_flow() TO service_role;
 
 
 --
--- Name: FUNCTION get_auto_generate_lock(p_term_id bigint); Type: ACL; Schema: public; Owner: -
+-- Name: FUNCTION get_auto_generate_lock(p_term_id bigint, p_dept_id bigint); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.get_auto_generate_lock(p_term_id bigint) TO anon;
-GRANT ALL ON FUNCTION public.get_auto_generate_lock(p_term_id bigint) TO authenticated;
-GRANT ALL ON FUNCTION public.get_auto_generate_lock(p_term_id bigint) TO service_role;
-
-
---
--- Name: FUNCTION get_auto_generate_lock_state(p_term_id bigint); Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON FUNCTION public.get_auto_generate_lock_state(p_term_id bigint) TO anon;
-GRANT ALL ON FUNCTION public.get_auto_generate_lock_state(p_term_id bigint) TO authenticated;
-GRANT ALL ON FUNCTION public.get_auto_generate_lock_state(p_term_id bigint) TO service_role;
+GRANT ALL ON FUNCTION public.get_auto_generate_lock(p_term_id bigint, p_dept_id bigint) TO anon;
+GRANT ALL ON FUNCTION public.get_auto_generate_lock(p_term_id bigint, p_dept_id bigint) TO authenticated;
+GRANT ALL ON FUNCTION public.get_auto_generate_lock(p_term_id bigint, p_dept_id bigint) TO service_role;
 
 
 --
@@ -3716,12 +3812,12 @@ GRANT ALL ON FUNCTION public.handle_new_auth_user() TO service_role;
 
 
 --
--- Name: FUNCTION mark_auto_generate_pending(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer); Type: ACL; Schema: public; Owner: -
+-- Name: FUNCTION mark_auto_generate_pending(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer) TO anon;
-GRANT ALL ON FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer) TO authenticated;
-GRANT ALL ON FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer) TO service_role;
+GRANT ALL ON FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer) TO anon;
+GRANT ALL ON FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer) TO authenticated;
+GRANT ALL ON FUNCTION public.mark_auto_generate_pending(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer) TO service_role;
 
 
 --
@@ -3734,21 +3830,12 @@ GRANT ALL ON FUNCTION public.prevent_owned_room_preference() TO service_role;
 
 
 --
--- Name: FUNCTION release_auto_generate_lock(p_term_id text); Type: ACL; Schema: public; Owner: -
+-- Name: FUNCTION release_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id text) TO anon;
-GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id text) TO authenticated;
-GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id text) TO service_role;
-
-
---
--- Name: FUNCTION release_auto_generate_lock(p_term_id bigint, p_user_id uuid); Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_user_id uuid) TO anon;
-GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_user_id uuid) TO authenticated;
-GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_user_id uuid) TO service_role;
+GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid) TO anon;
+GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid) TO authenticated;
+GRANT ALL ON FUNCTION public.release_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid) TO service_role;
 
 
 --
@@ -3779,21 +3866,12 @@ GRANT ALL ON FUNCTION public.touch_updated_at() TO service_role;
 
 
 --
--- Name: FUNCTION try_acquire_auto_generate_lock(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer); Type: ACL; Schema: public; Owner: -
+-- Name: FUNCTION try_acquire_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer); Type: ACL; Schema: public; Owner: -
 --
 
-GRANT ALL ON FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer) TO anon;
-GRANT ALL ON FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer) TO authenticated;
-GRANT ALL ON FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_user_id uuid, p_ttl_seconds integer) TO service_role;
-
-
---
--- Name: FUNCTION try_auto_generate_lock(p_term_id text); Type: ACL; Schema: public; Owner: -
---
-
-GRANT ALL ON FUNCTION public.try_auto_generate_lock(p_term_id text) TO anon;
-GRANT ALL ON FUNCTION public.try_auto_generate_lock(p_term_id text) TO authenticated;
-GRANT ALL ON FUNCTION public.try_auto_generate_lock(p_term_id text) TO service_role;
+GRANT ALL ON FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer) TO anon;
+GRANT ALL ON FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer) TO authenticated;
+GRANT ALL ON FUNCTION public.try_acquire_auto_generate_lock(p_term_id bigint, p_dept_id bigint, p_user_id uuid, p_ttl_seconds integer) TO service_role;
 
 
 --
@@ -3830,6 +3908,20 @@ GRANT ALL ON SEQUENCE public.audit_trail_audit_id_seq TO service_role;
 GRANT ALL ON TABLE public.auto_generate_lock TO anon;
 GRANT ALL ON TABLE public.auto_generate_lock TO authenticated;
 GRANT ALL ON TABLE public.auto_generate_lock TO service_role;
+
+
+--
+-- Name: TABLE cap_nonce; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.cap_nonce TO service_role;
+
+
+--
+-- Name: TABLE cap_token; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.cap_token TO service_role;
 
 
 --
@@ -4343,6 +4435,15 @@ GRANT ALL ON SEQUENCE public.time_slot_timeslot_id_seq TO service_role;
 GRANT ALL ON TABLE public.user_notification_setting TO anon;
 GRANT ALL ON TABLE public.user_notification_setting TO authenticated;
 GRANT ALL ON TABLE public.user_notification_setting TO service_role;
+
+
+--
+-- Name: TABLE user_presence; Type: ACL; Schema: public; Owner: -
+--
+
+GRANT ALL ON TABLE public.user_presence TO anon;
+GRANT ALL ON TABLE public.user_presence TO authenticated;
+GRANT ALL ON TABLE public.user_presence TO service_role;
 
 
 --

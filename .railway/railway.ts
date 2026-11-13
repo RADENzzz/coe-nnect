@@ -91,11 +91,22 @@ export default defineRailway((ctx) => {
       SWAGGER_PASSWORD: preserve(),
       CORS_ALLOW_TUNNEL: preserve(),
 
+      // Cap CAPTCHA signing secret. Login fails closed when this is missing.
+      CAP_SECRET: preserve(),
+
+      // IDP integration (Pattern A fallback, Pattern C device access, and
+      // webhook verification). Leave unset when the integration is disabled.
+      IDP_ENABLED: preserve(),
+      IDP_BASE_URL: preserve(),
+      IDP_API_KEY: preserve(),
+      IDP_DEVICE_API_KEY: preserve(),
+      IDP_WEBHOOK_SECRET: preserve(),
+
       // The browser talks to the frontend origin; the frontend Node server
       // proxies /api and /socket.io over Railway's private network. The
-      // wildcard keeps the generated frontend domain (and any existing Vercel
-      // deployment) allowed by the HTTP + Socket.IO origin checks.
-      CORS_ALLOWED_ORIGINS: "https://*.up.railway.app,https://*.vercel.app",
+      // wildcard keeps the generated frontend domain allowed by the HTTP +
+      // Socket.IO origin checks.
+      CORS_ALLOWED_ORIGINS: "https://*.up.railway.app",
 
       // Railway reference variables resolve to the private DNS name and the
       // platform-assigned port at deploy time.

@@ -1,38 +1,62 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: ''
+about: Report a reproducible defect in CoE-NNECT
+title: '[Bug] '
 labels: ''
 assignees: ''
-
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Summary
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+<!-- One or two sentences describing the defect. -->
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Environment
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+| Field | Value |
+| --- | --- |
+| Where | Local / Railway / Cloudflare tunnel / other |
+| Frontend URL |  |
+| Backend version or commit |  |
+| Browser and version |  |
+| Operating system |  |
+| Signed-in role | `college_dean` / `college_secretary` / `department_head` / `viewer` / `administrator` / not signed in |
+| Department (if applicable) |  |
+| Active term |  |
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+## Steps to reproduce
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+1.
+2.
+3.
 
-**Additional context**
-Add any other context about the problem here.
+## Expected behavior
+
+<!-- What should happen? -->
+
+## Actual behavior
+
+<!-- What happened instead? Include the exact error message or status code. -->
+
+## Scope
+
+- [ ] Login / Cap CAPTCHA / session
+- [ ] Dashboard
+- [ ] Timetable or schedule generation
+- [ ] Approvals or cross-department requests
+- [ ] Faculty, subjects, sections, rooms, programs, or prospectus
+- [ ] Prospectus PDF import or parser
+- [ ] Chat, presence, or notifications
+- [ ] Reports or exports
+- [ ] User management, settings, or system status
+- [ ] IDP integration
+- [ ] Database migration or deployment
+
+## Evidence
+
+<!-- Screenshots, screen recordings, browser console output, or API responses. Redact tokens, emails, and personal data. -->
+
+## Additional context
+
+<!-- Recent changes, whether it reproduces consistently, and any workaround. -->
+
+> Do not report security vulnerabilities here. Follow [SECURITY.md](../../SECURITY.md) and report privately.

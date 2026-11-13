@@ -116,14 +116,16 @@ the Supabase default site instead of the tunnel.
   you are done and keep `CORS_ALLOW_TUNNEL` off in production.
 - **New URL on every restart.** Old bookmarks and email links stop working.
 - **~100 second request limit.** Cloudflare closes proxied requests that take
-  longer than 100 s (HTTP 524). Automatic schedule generation has a 150 s client
-  timeout locally, so a large solve may time out through the tunnel. Prospectus
-  extraction (120 s limit) is also close to the edge.
+  longer than 100 s (HTTP 524). The backend's solver client budget is 240 s, the
+  parser OCR budget is 240 s, and table detection allows 180 s, so a large solve,
+  a full-document OCR run, or a big detection request may fail through a quick
+  tunnel even though it succeeds locally. Normal parser extraction (`/info` and
+  non-OCR `/extract`) uses a 60 s budget and is usually safe.
 - **Uploads** are fine for this app's PDF sizes; Cloudflare's request body limit
   is 100 MB on the free plan.
 - **Rate limiting** uses the client address forwarded by cloudflared. Set
   `TRUST_PROXY=true` in `apps/backend/.env` when the backend runs behind the
-  tunnel outside dev (Vercel already sets it).
+  tunnel outside dev.
 - **Port already in use in `pnpm dev:online`.** Tunnel mode pins Vite to `5173`
   and stops with an error instead of switching ports. Free it (`pnpm kill`) and
   retry.
