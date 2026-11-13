@@ -10,8 +10,8 @@ The department head dashboard summarizes the signed-in head's department for the
 
 ### Header
 
-- Greeting and department name.
-- Live clock, date, and "last refreshed" label rendered with rolling animations.
+- Department label and name, plus the active term.
+- Live clock (with seconds), date, and "last refreshed" label rendered with rolling animations.
 - **Refresh dashboard** action that invalidates the dashboard queries.
 - Links to the timetable and other primary actions.
 
@@ -59,8 +59,8 @@ The dean dashboard is college-wide. `college_secretary` shares the same shell an
 
 ### Masthead
 
-- College/role eyebrow, greeting, and the active term with its class-block and active-department counts.
-- Live clock, date, and refresh label, plus a manual **Refresh dashboard** action.
+- College/role eyebrow, the signed-in user's name, and the active term with its class-block and active-department counts.
+- Live clock (with seconds), date, and refresh label, plus a manual **Refresh dashboard** action.
 - Term shortcuts: **Terms** opens the academic-terms section of system settings. **New term** is shown to the dean and opens the creation form; the secretary sees the academic calendar in read-only mode.
 
 ### Summary cards
@@ -117,7 +117,7 @@ The dean dashboard refetches the user directory every 60 seconds so online/offli
 
 `RollingValue`, `RollingNumber`, and `RollingText` in `src/components/ui/RollingValue.tsx` animate values when they change. They are used for:
 
-- the clock, date, and refresh label;
+- the clock (with seconds), date, and refresh label;
 - summary-card values and hints;
 - workload and room-sufficiency labels;
 - schedule totals;

@@ -195,7 +195,7 @@ const DASHBOARD_TOUR: Tour = {
   steps: [
     {
       title: 'Your department at a glance',
-      body: 'The greeting, department name, and active term confirm you are working in the right place. Use refresh to pull the latest numbers.',
+      body: 'The department name and active term confirm you are working in the right place. Use refresh to pull the latest numbers.',
       target: '[data-tour="dash-header"]',
       placement: 'bottom',
       icon: 'dashboard',
