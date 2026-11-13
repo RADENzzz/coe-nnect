@@ -15,10 +15,12 @@ export default function TodayScheduleStrip({
   schedules,
   now,
   onOpenTimetable,
+  emptyHint = 'Nothing scheduled for your department.',
 }: {
   schedules: RawSchedule[];
   now: Date;
   onOpenTimetable: () => void;
+  emptyHint?: string;
 }) {
   const todayName = DAY_FULL_NAMES[now.getDay()];
   const todayShort = DAY_ABBR_TO_LABEL[todayName] ?? todayName;
@@ -81,9 +83,7 @@ export default function TodayScheduleStrip({
             className="text-emerald-500"
           />
           <p className="text-sm font-medium text-on-surface">No classes today</p>
-          <p className="text-xs text-on-surface-variant">
-            Nothing scheduled for your department.
-          </p>
+          <p className="text-xs text-on-surface-variant">{emptyHint}</p>
         </div>
       ) : (
         <div className="flex-1 divide-y divide-outline-variant/50">
