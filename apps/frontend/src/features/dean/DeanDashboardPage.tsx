@@ -11,6 +11,7 @@ import { fetchUserDirectory } from '../../api/users.api';
 import { fetchStatsOverview } from '../../api/stats.api';
 import { fetchFacultyRequests } from '../../api/faculty-requests.api';
 import Icon from '../../components/ui/Icon';
+import RollingValue from '../../components/ui/RollingValue';
 import { useAuthStore } from '../../store/auth.store';
 import { useOnlineUsers } from '../../hooks/use-online-users';
 import { useNow } from '../../hooks/use-now';
@@ -84,7 +85,7 @@ function StatCard({
           {label}
         </p>
         <p className="mt-0.5 text-3xl font-extrabold tracking-tight text-on-surface tabular-nums">
-          {value}
+          <RollingValue value={value} />
         </p>
         {sub && (
           <p className="mt-1 text-xs leading-snug text-on-surface-variant">

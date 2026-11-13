@@ -1,4 +1,5 @@
 import Icon from '../../../components/ui/Icon';
+import RollingValue from '../../../components/ui/RollingValue';
 
 type Tone = 'default' | 'success' | 'warning' | 'danger';
 
@@ -55,7 +56,7 @@ export default function SummaryCard({
       <span
         className={`text-[22px] font-bold leading-none tracking-tight tabular-nums ${VALUE_TONE[tone]}`}
       >
-        {isLoading ? '—' : value}
+        <RollingValue value={isLoading ? '—' : value} />
       </span>
       {hint && (
         <span className="text-[11px] leading-snug text-on-surface-variant">

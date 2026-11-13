@@ -11,6 +11,7 @@ import {
 } from '../../api/schedule.api';
 import { fetchDesignations } from '../../api/system-config.api';
 import Icon from '../../components/ui/Icon';
+import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import type { RowAction } from '../../components/ui/RowActionMenu';
@@ -168,7 +169,7 @@ function SummaryTile({
       </div>
       <div className="min-w-0">
         <p className="text-2xl font-extrabold text-on-surface leading-tight tabular-nums">
-          {value}
+          <RollingValue value={value} />
         </p>
         <p className="text-xs font-semibold text-on-surface-variant">{label}</p>
         {hint && (

@@ -9,6 +9,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchActiveTerm } from '../../api/schedule.api';
 import Icon from '../../components/ui/Icon';
+import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge from '../../components/ui/StatusBadge';
 import ApprovalsExportToolbar from './export/ApprovalsExportToolbar';
@@ -595,7 +596,7 @@ function SummaryTile({
       <p
         className={`text-2xl font-extrabold leading-tight tabular-nums ${toneClasses[tone]}`}
       >
-        {value}
+        <RollingValue value={value} />
       </p>
       <p className="text-xs font-semibold text-on-surface-variant mt-0.5">
         {label}

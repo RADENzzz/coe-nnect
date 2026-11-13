@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../ui/Icon';
+import { RollingText } from '../ui/RollingValue';
 import ThemeToggle from '../ui/ThemeToggle';
 import { useUiStore } from '../../store/ui.store';
 import { useAuthStore } from '../../store/auth.store';
@@ -553,12 +554,12 @@ export default function TopBar({ label }: TopBarProps) {
           </button>
 
           <span className="md:hidden text-sm font-bold text-slate-900 truncate min-w-0">
-            {pageTitle}
+            <RollingText value={pageTitle} />
           </span>
 
           {label && (
             <span className="hidden md:inline text-sm text-slate-500 font-medium">
-              {label}
+              <RollingText value={label} />
             </span>
           )}
         </div>
