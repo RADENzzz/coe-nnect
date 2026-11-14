@@ -472,6 +472,7 @@ export default function ProspectusPdfEditorPage() {
             rect.x_end_pt,
             rect.y_start_pt,
             rect.y_end_pt,
+            columns,
           )
         : [];
       let rows = rowsFromTextLines(lines, rect.y_start_pt, rect.y_end_pt);
@@ -607,6 +608,7 @@ export default function ProspectusPdfEditorPage() {
         Number(table.regionXEndPt),
         Number(table.regionYStartPt),
         Number(table.regionYEndPt),
+        table.columns,
       );
     },
     [textItemsForTable],
