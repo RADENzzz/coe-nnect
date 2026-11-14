@@ -270,45 +270,57 @@ export default function RoomSufficiencyPage() {
                   Shortfalls
                 </p>
                 <div className="rounded-lg border border-red-200 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-red-50 border-b border-red-200 text-red-900 text-xs uppercase tracking-wider">
-                        <th className="text-left px-4 py-2.5">Room Type</th>
-                        <th className="text-right px-4 py-2.5">Needed</th>
-                        <th className="text-right px-4 py-2.5">Available</th>
-                        <th className="text-right px-4 py-2.5">Short by</th>
-                        <th className="text-right px-4 py-2.5">Add</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.deficits.map((d) => (
-                        <tr
-                          key={d.roomType}
-                          className="border-b border-red-100 last:border-b-0"
-                        >
-                          <td className="px-4 py-3 font-medium text-on-surface capitalize">
-                            {d.roomType.replace(/_/g, ' ')}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs text-on-surface-variant">
-                            {formatHours(d.neededHours)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs text-on-surface-variant">
-                            {formatHours(d.availableHours)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-xs text-red-700 font-semibold">
-                            {formatHours(d.shortByHours)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="inline-flex items-center gap-1 text-xs font-bold text-white bg-red-600 px-2 py-1">
-                              <Icon name="add" size={12} />
-                              {d.suggestedExtraRooms}{' '}
-                              {d.suggestedExtraRooms === 1 ? 'room' : 'rooms'}
-                            </span>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[34rem] text-sm">
+                      <thead>
+                        <tr className="bg-red-50 border-b border-red-200 text-red-900 text-xs uppercase tracking-wider">
+                          <th className="text-left px-3 sm:px-4 py-2.5">
+                            Room Type
+                          </th>
+                          <th className="text-right px-3 sm:px-4 py-2.5">
+                            Needed
+                          </th>
+                          <th className="text-right px-3 sm:px-4 py-2.5">
+                            Available
+                          </th>
+                          <th className="text-right px-3 sm:px-4 py-2.5">
+                            Short by
+                          </th>
+                          <th className="text-right px-3 sm:px-4 py-2.5">
+                            Add
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {r.deficits.map((d) => (
+                          <tr
+                            key={d.roomType}
+                            className="border-b border-red-100 last:border-b-0"
+                          >
+                            <td className="px-3 sm:px-4 py-3 font-medium text-on-surface capitalize">
+                              {d.roomType.replace(/_/g, ' ')}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right font-mono text-xs text-on-surface-variant">
+                              {formatHours(d.neededHours)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right font-mono text-xs text-on-surface-variant">
+                              {formatHours(d.availableHours)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right font-mono text-xs text-red-700 font-semibold">
+                              {formatHours(d.shortByHours)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-3 text-right">
+                              <span className="inline-flex items-center gap-1 text-xs font-bold text-white bg-red-600 px-2 py-1 whitespace-nowrap">
+                                <Icon name="add" size={12} />
+                                {d.suggestedExtraRooms}{' '}
+                                {d.suggestedExtraRooms === 1 ? 'room' : 'rooms'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   <strong>Tip:</strong> {r.hint}
