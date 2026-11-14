@@ -691,7 +691,7 @@ export default function DeanApprovalsPage() {
 
       {/* ── Floating BulkActionBar ── */}
       {effectiveSelectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
+        <div className="fixed above-bottom-nav left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
           <div className="bg-slate-900 text-white rounded-xl shadow-2xl px-4 py-3 flex items-center gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/10 font-bold text-sm tabular-nums">

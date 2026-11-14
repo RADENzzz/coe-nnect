@@ -436,6 +436,17 @@
 }
 
 @layer utilities {
+  /* Keep floating action bars clear of the mobile bottom navigation. */
+  .above-bottom-nav {
+    bottom: calc(3.5rem + env(safe-area-inset-bottom) + 1rem);
+  }
+
+  @media (min-width: 768px) {
+    .above-bottom-nav {
+      bottom: 1.5rem;
+    }
+  }
+
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }

@@ -1290,7 +1290,7 @@ export default function ProspectusPage() {
 
       {/* ── Floating bulk action bar (auto-appears when any row is checked) ── */}
       {hasSelection && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl bg-slate-900 text-white shadow-2xl border border-slate-700 max-w-[calc(100vw-2rem)]">
+        <div className="fixed above-bottom-nav left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 rounded-xl bg-slate-900 text-white shadow-2xl border border-slate-700 max-w-[calc(100vw-2rem)]">
           <span className="text-xs sm:text-sm font-semibold px-2 whitespace-nowrap">
             {selectedIds.size} selected
           </span>

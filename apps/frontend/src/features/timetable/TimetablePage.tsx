@@ -1971,7 +1971,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </Modal>
 
         {!activeVersion && unscheduledRecords.length > 0 && !autoPreview && (
-          <div className="fixed bottom-4 right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
+          <div className="fixed above-bottom-nav right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
             <details className="bg-white border border-amber-200 shadow-lg rounded-lg overflow-hidden">
               <summary className="px-4 py-3 cursor-pointer bg-amber-50 text-amber-900 font-semibold text-sm flex items-center gap-2 hover:bg-amber-100 transition select-none">
                 <Icon name="warning" size={16} />
