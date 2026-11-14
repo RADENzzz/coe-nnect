@@ -12,6 +12,7 @@ import { UpdateSystemStatusDto } from './dto/update-system-status.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { Auditable } from '../../common/decorators/auditable.decorator';
 
 @ApiTags('System Status')
@@ -23,6 +24,7 @@ export class SystemStatusController {
    * PUBLIC. No auth. The login page calls this before the user has a
    * session, so it must be reachable anonymously.
    */
+  @Public()
   @Get()
   async get() {
     const data = await this.service.getPublic();

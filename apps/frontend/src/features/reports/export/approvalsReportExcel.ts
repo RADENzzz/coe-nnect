@@ -1,4 +1,7 @@
-import * as XLSX from 'xlsx';
+import writeXlsxFile, {
+  type Row,
+  type SheetData,
+} from 'write-excel-file/browser';
 import type { FacultyRequest } from '../../../api/faculty-requests.api';
 
 export interface ApprovalsExcelOptions {
@@ -8,17 +11,28 @@ export interface ApprovalsExcelOptions {
   termLabel: string;
 }
 
-export function exportApprovalsExcel(
+const COLUMN_COUNT = 10;
+const COLUMN_WIDTHS = [7, 12, 12, 12, 12, 42, 11, 32, 12, 12];
+
+/** A merged title/meta row spanning the full table width. */
+function metaRow(text: string, span = COLUMN_COUNT): Row {
+  return [
+    { value: text, columnSpan: span },
+    ...Array.from({ length: span - 1 }, () => null),
+  ];
+}
+
+export async function exportApprovalsExcel(
   { rows, deptCode, termLabel }: ApprovalsExcelOptions,
   filename: string,
-): void {
+): Promise<void> {
   const generatedAt = new Date().toLocaleString('en-PH');
 
-  const metaRows: any[][] = [
-    ['Faculty Requests Report'],
-    ['Western Mindanao State University — College of Engineering'],
-    [`Term: ${termLabel}`],
-    [`Generated: ${generatedAt}`],
+  const metaRows: SheetData = [
+    metaRow('Faculty Requests Report'),
+    metaRow('Western Mindanao State University — College of Engineering'),
+    metaRow(`Term: ${termLabel}`),
+    metaRow(`Generated: ${generatedAt}`),
     [],
   ];
 
@@ -30,19 +44,22 @@ export function exportApprovalsExcel(
     cancelled: rows.filter((r) => r.status === 'cancelled').length,
   };
 
-  const summaryRows: any[][] = [
-    [
-      'Summary',
-      `Total: ${counts.total}`,
-      `Pending: ${counts.pending}`,
-      `Approved: ${counts.approved}`,
-      `Rejected: ${counts.rejected}`,
-      `Cancelled: ${counts.cancelled}`,
-    ],
+  const summaryRows: SheetData = [
+    metaRow(
+      [
+        'Summary',
+        `Total: ${counts.total}`,
+        `Pending: ${counts.pending}`,
+        `Approved: ${counts.approved}`,
+        `Rejected: ${counts.rejected}`,
+        `Cancelled: ${counts.cancelled}`,
+      ].join('   ·   '),
+      6,
+    ),
     [],
   ];
 
-  const headerRow = [
+  const headerRow: Row = [
     'ID',
     'Requesting Dept',
     'Target Dept',
@@ -53,7 +70,11 @@ export function exportApprovalsExcel(
     'Response Remarks',
     'Created',
     'Responded',
-  ];
+  ].map((value) => ({
+    value,
+    fontWeight: 'bold' as const,
+    backgroundColor: '#f1f5f9',
+  }));
 
   const fmtDate = (iso: string | null | undefined): string => {
     if (!iso) return '';
@@ -66,7 +87,7 @@ export function exportApprovalsExcel(
     });
   };
 
-  const dataRows = rows.map((r) => [
+  const dataRows: SheetData = rows.map((r) => [
     `#${r.requestId}`,
     deptCode(r.requestingDeptId),
     deptCode(r.targetDeptId),
@@ -79,38 +100,12 @@ export function exportApprovalsExcel(
     fmtDate(r.respondedAt),
   ]);
 
-  const aoa: any[][] = [
+  const sheetData: SheetData = [
     ...metaRows,
     ...summaryRows,
     headerRow,
     ...dataRows,
   ];
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-  ws['!cols'] = [
-    { wch: 7 },   // ID
-    { wch: 12 },  // Requesting Dept
-    { wch: 12 },  // Target Dept
-    { wch: 12 },  // Faculty ID
-    { wch: 12 },  // Subject ID
-    { wch: 42 },  // Reason
-    { wch: 11 },  // Status
-    { wch: 32 },  // Response Remarks
-    { wch: 12 },  // Created
-    { wch: 12 },  // Responded
-  ];
-
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 9 } },
-    { s: { r: 3, c: 0 }, e: { r: 3, c: 9 } },
-    { s: { r: 5, c: 0 }, e: { r: 5, c: 5 } },
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Approvals');
 
   const safe = filename
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
@@ -118,5 +113,8 @@ export function exportApprovalsExcel(
     .replace(/^-|-$/g, '');
   const safeName = safe.endsWith('.xlsx') ? safe : `${safe}.xlsx`;
 
-  XLSX.writeFile(wb, safeName);
+  await writeXlsxFile(sheetData, {
+    sheet: 'Approvals',
+    columns: COLUMN_WIDTHS.map((width) => ({ width })),
+  }).toFile(safeName);
 }

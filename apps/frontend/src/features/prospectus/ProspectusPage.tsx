@@ -1427,6 +1427,8 @@ export default function ProspectusPage() {
           }}
           slotLabel={fillTarget?.subject?.title ?? 'Elective Slot'}
           programId={fillTarget?.programId ?? ''}
+          yearLevel={fillTarget?.yearLevel ?? selectedYearLevel}
+          semester={fillTarget?.semester ?? selectedSemester}
           isPending={fillSlotMutation.isPending}
         />
       )}

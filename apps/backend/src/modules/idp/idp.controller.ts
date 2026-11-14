@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Auditable } from '../../common/decorators/auditable.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -52,6 +53,7 @@ import type {
  * They authenticate with `Authorization: Bearer <IDP_DEVICE_API_KEY>`.
  */
 @ApiTags('IDP')
+@Public()
 @Controller('idp/v1')
 export class IdpController {
   constructor(

@@ -3,7 +3,9 @@ import {
   IsOptional,
   IsNumber,
   IsBoolean,
+  IsInt,
   Min,
+  Max,
   MaxLength,
   IsNumberString,
   IsIn,
@@ -61,6 +63,25 @@ export class CreateSubjectDto {
   @IsOptional()
   @IsIn(['lec_lab', 'total_only'])
   unitsMode?: 'lec_lab' | 'total_only';
+
+  /** Free-text elective group used by filters and grouped dropdowns. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  electiveCategory?: string | null;
+
+  /** Preferred year level (1-6); null means any year. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  electiveYearLevel?: number | null;
+
+  /** Preferred semester; null means any term. */
+  @IsOptional()
+  @IsIn(['1st', '2nd', 'summer'])
+  electiveSemester?: '1st' | '2nd' | 'summer' | null;
 
   @IsNumberString()
   deptId: string;

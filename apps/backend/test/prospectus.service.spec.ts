@@ -91,3 +91,92 @@ describe('ProspectusService subject-active guard', () => {
     expect(prospectusRepo.rows[0].isActive).toBe(false);
   });
 });
+
+describe('ProspectusService fillSlot elective guard', () => {
+  const placeholder = {
+    subjectId: 'slot-1',
+    subjectCode: 'SLOT-1',
+    title: 'Elective Slot',
+    isActive: true,
+    isPlaceholder: true,
+    isElective: false,
+    deptId: '7',
+  };
+
+  const elective = {
+    subjectId: 'elective-1',
+    subjectCode: 'GEC 101',
+    title: 'Gender and Society',
+    isActive: true,
+    isPlaceholder: false,
+    isElective: true,
+    deptId: '7',
+  };
+
+  const regular = {
+    subjectId: 'regular-1',
+    subjectCode: 'MATH 100',
+    title: 'College Algebra',
+    isActive: true,
+    isPlaceholder: false,
+    isElective: false,
+    deptId: '7',
+  };
+
+  function createService() {
+    const prospectusRepo = createFakeRepository(
+      [
+        {
+          ...prospectusRow({
+            prospectusId: 'p1',
+            subjectId: 'slot-1',
+            isActive: true,
+            deactivatedBySubject: false,
+          }),
+          slotLabel: null,
+          subject: { ...placeholder },
+          program: { ...programRow() },
+        },
+      ],
+      { idKey: 'prospectusId' },
+    );
+    const programRepo = createFakeRepository([programRow()], {
+      idKey: 'programId',
+    });
+    const subjectRepo = createFakeRepository(
+      [{ ...placeholder }, { ...elective }, { ...regular }],
+      { idKey: 'subjectId' },
+    );
+
+    const service = new ProspectusService(
+      prospectusRepo as any,
+      programRepo as any,
+      subjectRepo as any,
+    );
+
+    return { service, prospectusRepo, subjectRepo };
+  }
+
+  it('rejects a regular subject as the fill target', async () => {
+    const { service, prospectusRepo } = createService();
+
+    await expect(
+      service.fillSlot('p1', 'regular-1', admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prospectusRepo.rows[0].subjectId).toBe('slot-1');
+  });
+
+  it('fills a placeholder slot with an elective and retires the slot', async () => {
+    const { service, prospectusRepo, subjectRepo } = createService();
+
+    const result = await service.fillSlot('p1', 'elective-1', admin);
+
+    expect(result.subjectId).toBe('elective-1');
+    expect(prospectusRepo.rows[0].subjectId).toBe('elective-1');
+    expect(prospectusRepo.rows[0].slotLabel).toBe('Elective Slot');
+    expect(
+      subjectRepo.rows.find((row) => row.subjectId === 'slot-1')?.isActive,
+    ).toBe(false);
+  });
+});

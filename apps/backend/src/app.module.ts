@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -29,6 +30,8 @@ import { SystemStatusModule } from './modules/system-status/system-status.module
 import { HealthModule } from './modules/health/health.module';
 import { IdpModule } from './modules/idp/idp.module';
 import { PublicModule } from './modules/public/public.module';
+import { MailModule } from './modules/mail/mail.module';
+import { RecoveryModule } from './modules/recovery/recovery.module';
 
 @Module({
   imports: [
@@ -66,8 +69,17 @@ import { PublicModule } from './modules/public/public.module';
     HealthModule,
     IdpModule,
     PublicModule,
+    MailModule,
+    RecoveryModule,
   ],
   providers: [
+    // Every HTTP route requires a verified Supabase JWT unless it is
+    // explicitly marked with @Public(). Per-controller guards remain as a
+    // second layer, but new controllers are secure by default.
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,

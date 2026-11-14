@@ -63,6 +63,10 @@ All paths below are relative to `/api` unless noted. Role names are illustrative
 | `GET` | `/v1/auth/me` | Bearer JWT | Current application profile and role/department state. |
 | `POST` | `/v1/auth/cap/challenge` | Public, rate-limited | Issue a Cap challenge. |
 | `POST` | `/v1/auth/cap/redeem` | Public, rate-limited | Redeem a solved challenge for a single-use login token. |
+| `GET/PUT/DELETE` | `/v1/recovery/me` | Bearer JWT | Read, set, or remove the optional verified recovery email. |
+| `POST` | `/v1/recovery/request` | Public, rate-limited | Send a reset link to a login email or verified recovery email. Always answers generically. |
+| `POST` | `/v1/recovery/verify` | Public, rate-limited | Consume a recovery-email verification token. |
+| `POST` | `/v1/recovery/reset` | Public, rate-limited | Consume a single-use reset token and set a new password. |
 | `GET` | `/v1/users` | Dean, secretary | List users. |
 | `GET` | `/v1/users/directory` | Dean, secretary, department head | Minimal directory used by chat and request forms. |
 | `GET` | `/v1/users/:id` | Dean, secretary | Read a user profile. |
@@ -194,6 +198,14 @@ Cap details:
 - `/v1/auth/cap/*` is rate-limited separately by `CAP_THROTTLE_LIMIT` (default 60 requests/minute per IP).
 - Both Cap tables enable RLS and revoke access from `anon` and `authenticated`; only the API's database connection touches them.
 
+Password recovery:
+
+- Users can set an optional recovery email in Settings → Security. It is separate from the Supabase login email and must be verified before it can receive reset links.
+- Verification tokens last 24 hours; reset tokens last 30 minutes. Both are random, stored only as SHA-256 hashes, and single-use.
+- Reset requests accept either the login email or a verified recovery email and always answer `{ "success": true }` to avoid account enumeration.
+- Public recovery routes are limited by `RECOVERY_THROTTLE_LIMIT` (default 10 per 15 minutes per IP), plus a per-address request limit and a per-user change limit.
+- SMTP delivery is optional; see [Password recovery email](../operations/email-recovery.md) for Mox setup, environment variables, and troubleshooting.
+
 Application roles are `college_dean`, `college_secretary`, `department_head`, `viewer`, and `administrator`. The `administrator` role is a hidden developer account, not a general user persona. The backend still permits it where maintenance access is required, but user-facing chat filters it out.
 
 ## Public API
@@ -292,7 +304,7 @@ See the [IDP integration guide](../integrations/idp.md) for payloads, sync seman
 - **CORS:** production accepts only the exact origins listed in `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS`; leading-subdomain wildcards are supported. Development and test additionally allow loopback origins. `CORS_ALLOW_TUNNEL=true` explicitly enables `https://*.trycloudflare.com` in production for demos.
 - **Swagger:** available outside production. In production it stays disabled unless `ENABLE_SWAGGER=true` and both `SWAGGER_USER` and `SWAGGER_PASSWORD` are set; the docs are then protected with HTTP basic auth.
 - **CSP and headers:** Helmet applies a Content-Security-Policy, HSTS in production, a no-referrer policy, and frame-ancestor denial. Swagger-specific inline allowances are enabled only when the docs are mounted.
-- **Rate limiting:** HTTP requests are limited globally (`THROTTLE_LIMIT`, default 300 per `THROTTLE_TTL_MS`, default 60 seconds). Login is limited separately (`LOGIN_THROTTLE_LIMIT`, default 10 per minute), and Cap has its own bucket (`CAP_THROTTLE_LIMIT`, default 60 per minute).
+- **Rate limiting:** HTTP requests are limited globally (`THROTTLE_LIMIT`, default 300 per `THROTTLE_TTL_MS`, default 60 seconds). Login is limited separately (`LOGIN_THROTTLE_LIMIT`, default 10 per minute), Cap has its own bucket (`CAP_THROTTLE_LIMIT`, default 60 per minute), and the public recovery routes have a strict bucket (`RECOVERY_THROTTLE_LIMIT`, default 10 per 15 minutes per IP).
 - **Proxy trust:** set `TRUST_PROXY=true` only behind a trusted proxy. Railway's IaC sets it for the deployed backend.
 - **Logs:** production emits one JSON object per line with a request correlation id (`X-Request-Id`), status, duration, and user id. Set `LOG_FORMAT=json` to opt in locally. Do not log request bodies or authorization headers.
 - **Validation:** DTOs use class-validator; unknown properties are rejected by the global validation pipe.
@@ -321,6 +333,15 @@ Copy `apps/backend/.env.example` to `apps/backend/.env`. The API must run with t
 | `LOGIN_THROTTLE_LIMIT` | `10` | Login attempts per minute. |
 | `CAP_SECRET` | — | Cap signing secret, at least 16 bytes. Required for login. |
 | `CAP_THROTTLE_LIMIT` | `60` | Cap challenge/redeem requests per minute per IP. |
+| `RECOVERY_THROTTLE_LIMIT` | `10` | Public recovery requests per 15 minutes per IP. |
+| `APP_PUBLIC_URL` | First `FRONTEND_URL` entry | Public frontend origin used in verification and reset email links. |
+| `SMTP_HOST` | — | SMTP/Mox host. Required to enable recovery email. |
+| `SMTP_PORT` | `587` | SMTP submission port. Use `465` with `SMTP_SECURE=true` for implicit TLS. |
+| `SMTP_SECURE` | Auto (`true` on 465) | Use implicit TLS instead of STARTTLS. |
+| `SMTP_USER`, `SMTP_PASSWORD` | — | SMTP login. Password is required when a user is set. |
+| `SMTP_FROM` | — | From header for recovery email. Required to enable the feature. |
+| `SMTP_REQUIRE_TLS` | `true` | Refuse plaintext SMTP delivery. |
+| `SMTP_TLS_REJECT_UNAUTHORIZED` | `true` | Verify the SMTP server certificate; disable only for local self-signed Mox. |
 | `PROSPECTUS_PARSER_URL` | `http://localhost:8001` | Parser base URL. |
 | `SOLVER_URL` | `http://localhost:8000` | Solver base URL. Set by Railway IaC in deployment. |
 | `LOG_FORMAT` | — | Set `json` to force structured logs outside production. |

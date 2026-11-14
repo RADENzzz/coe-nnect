@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -56,6 +57,18 @@ export class RowDto {
   @IsOptional()
   @IsObject()
   cells?: Record<string, string>;
+
+  /** Explicitly blank row; the extractor must not read the PDF below it. */
+  @IsOptional()
+  @IsBoolean()
+  blank?: boolean;
+
+  /** Roles that were empty when the row's PDF geometry was pinned. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsIn(COLUMN_ROLES, { each: true })
+  pinned_empty?: (typeof COLUMN_ROLES)[number][];
 }
 
 export class CreateTableDto {

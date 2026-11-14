@@ -33,6 +33,13 @@ export function defaultRowHeight(
   return regionHeight / Math.max(n + 2, 6);
 }
 
+export interface RowSnapshot {
+  /** Non-empty cell text plus any existing explicit overrides. */
+  cells: Partial<Record<ColumnRole, string>>;
+  /** Roles that were empty when the snapshot was taken. */
+  pinnedEmpty: ColumnRole[];
+}
+
 export interface InsertRowResult {
   rows: RowBox[];
   /** Region bottom extended when the new row needed more room. */
@@ -57,15 +64,16 @@ export function insertRow(
   options: {
     height?: number;
     cells?: Partial<Record<ColumnRole, string>>;
+    pinnedEmpty?: ColumnRole[];
     rowId?: string;
     /** Make the new row explicitly empty instead of reading the PDF below. */
     blank?: boolean;
     /**
-     * Cell snapshots for rows that will shift down. Without this, shifting a
-     * row's geometry changes which PDF text it reads, so existing rows would
+     * Snapshots for rows that will shift down. Without this, shifting a row's
+     * geometry changes which PDF text it reads, so existing rows would
      * silently appear to swap content.
      */
-    pinCells?: Record<string, Partial<Record<ColumnRole, string>>>;
+    pinSnapshots?: Record<string, RowSnapshot>;
   } = {},
 ): InsertRowResult {
   const sorted = sortRowsTopDown(table.rows);
@@ -96,34 +104,37 @@ export function insertRow(
     .reduce((lowest, row) => Math.min(lowest, row.y_bottom_pt), top);
   const height = Math.max(0.5, Math.min(preferredHeight, roomBelow));
 
-  const blankCells = options.blank
-    ? COLUMN_ORDER.reduce<Partial<Record<ColumnRole, string>>>(
-        (acc, role) => {
-          acc[role] = '';
-          return acc;
-        },
-        {},
-      )
-    : undefined;
-  const insertedCells = options.blank ? blankCells : options.cells;
-
   const insertedRowId = options.rowId ?? makeRowId();
   const newRow: RowBox = {
     row_id: insertedRowId,
     y_top_pt: top,
     y_bottom_pt: top - height,
-    ...(insertedCells ? { cells: insertedCells } : {}),
+    ...(options.blank
+      ? { blank: true }
+      : {
+          ...(options.cells ? { cells: options.cells } : {}),
+          ...(options.pinnedEmpty?.length
+            ? { pinned_empty: options.pinnedEmpty }
+            : {}),
+        }),
   };
 
   const shifted = sorted.map((row, i) => {
     if (i < index) return row;
-    const pin = options.pinCells?.[row.row_id];
-    const cells = pin ? { cells: { ...pin, ...(row.cells ?? {}) } } : {};
+    const pin = options.pinSnapshots?.[row.row_id];
+    const pinned = pin
+      ? {
+          cells: pin.cells,
+          ...(pin.pinnedEmpty.length
+            ? { pinned_empty: pin.pinnedEmpty }
+            : {}),
+        }
+      : {};
     return {
       ...row,
       y_top_pt: row.y_top_pt - height,
       y_bottom_pt: row.y_bottom_pt - height,
-      ...cells,
+      ...pinned,
     };
   });
 
@@ -180,26 +191,37 @@ export function moveRow(
   });
 }
 
-/** Current text-layer snapshot for one row, used when copying it. */
-export function snapshotRowCells(
+/**
+ * Current text-layer snapshot for one row, used when copying it or when its
+ * geometry is about to change.
+ *
+ * Only non-empty text is stored in `cells`. Empty results are recorded in
+ * `pinnedEmpty` instead, so a later geometry change does not turn a genuinely
+ * empty PDF cell into a permanent empty-string override.
+ */
+export function snapshotRow(
   table: ProspectusPdfTable,
   row: RowBox,
   textItems: TextItem[] | null,
-): Partial<Record<ColumnRole, string>> {
+): RowSnapshot {
   // Existing overrides are the row's real content; never replace them with
   // fresh extraction, or duplicating an edited row would lose the edits.
   const cells: Partial<Record<ColumnRole, string>> = { ...(row.cells ?? {}) };
-  if (!textItems) return cells;
+  const pinnedEmpty = new Set<ColumnRole>(row.pinned_empty ?? []);
+  if (!textItems) return { cells, pinnedEmpty: [...pinnedEmpty] };
 
   for (const column of table.columns) {
     if (typeof cells[column.role] === 'string') continue;
-    cells[column.role] = extractTextInRect(
+    if (pinnedEmpty.has(column.role)) continue;
+    const text = extractTextInRect(
       textItems,
       column.x_start_pt,
       row.y_bottom_pt,
       column.x_end_pt,
       row.y_top_pt,
     );
+    if (text.trim()) cells[column.role] = text;
+    else pinnedEmpty.add(column.role);
   }
-  return cells;
+  return { cells, pinnedEmpty: [...pinnedEmpty] };
 }

@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ReauthDto } from './dto/reauth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import { SkipDeptActive } from '../../common/decorators/skip-dept-active.decorator';
 
 @ApiTags('Auth')
@@ -13,6 +14,7 @@ export class AuthController {
   constructor(private auth: AuthService) {}
 
   /** Public — no bearer token required. */
+  @Public()
   @ApiSecurity({})
   @Post('login')
   login(@Body() dto: LoginDto) {

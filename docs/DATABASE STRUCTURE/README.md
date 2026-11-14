@@ -2,9 +2,9 @@
 
 > **Snapshot:** [`coe-nnect-database-structure.sql`](coe-nnect-database-structure.sql) — generated 13 November 2026 from the hosted Supabase PostgreSQL database. It contains the public schema only: tables, enum types, functions, triggers, indexes, RLS policies, and grants. It contains no row data.
 
-**Snapshot at a glance:** 37 tables · 73 foreign keys · 9 enum types · 72 explicit indexes · 51 RLS policies · 14 functions · 13 triggers. Row-level security is enabled on all 37 tables in the snapshot.
+**Snapshot at a glance:** 37 tables · 73 foreign keys · 9 enum types · 73 explicit indexes · 51 RLS policies · 14 functions · 13 triggers. Row-level security is enabled on all 37 tables in the snapshot.
 
-The tracked migration set defines **40 tables** and **9 enum types**. The three IDP integration tables (`idp_processed_event`, `idp_outbox`, `idp_change_request`) are documented in [section 8](#8-idp-integration-state) and are created by their migrations; they were not yet present in the hosted database when this snapshot was generated.
+The tracked migration set defines **41 tables** and **9 enum types**. The three IDP integration tables (`idp_processed_event`, `idp_outbox`, `idp_change_request`) are documented in [section 8](#8-idp-integration-state) and are created by their migrations; they were not yet present in the hosted database when this snapshot was generated. The snapshot does include `public.user_recovery` and the elective category/year/semester columns.
 
 CoE-NNECT uses PostgreSQL (Supabase) as its system of record. The NestJS API accesses it through TypeORM; the frontend uses Supabase Auth and Realtime. This page is the visual reference for the schema. The SQL snapshot remains the authoritative DDL.
 
