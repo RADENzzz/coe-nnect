@@ -221,3 +221,118 @@ describe('SubjectsService elective units', () => {
     expect(subjectRepo.rows[0].isPlaceholder).toBe(false);
   });
 });
+
+describe('SubjectsService elective metadata', () => {
+  function createService(initialRows: Record<string, any>[] = []) {
+    const subjectRepo = createFakeRepository(initialRows, {
+      idKey: 'subjectId',
+    });
+    const emptyRepo = createFakeRepository([]);
+    const departments = {
+      assertDepartmentActive: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new SubjectsService(
+      subjectRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      departments as any,
+    );
+    return { service, subjectRepo };
+  }
+
+  const electiveDto = (overrides: Record<string, any> = {}) => ({
+    subjectCode: 'GEC 101',
+    title: 'Gender and Society',
+    totalUnits: 3,
+    lectureUnits: 3,
+    labUnits: 0,
+    isElective: true,
+    unitsMode: 'lec_lab',
+    deptId: '7',
+    ...overrides,
+  });
+
+  it('trims and persists category/year/semester for an elective', async () => {
+    const { service, subjectRepo } = createService();
+
+    const saved = await service.create(
+      electiveDto({
+        electiveCategory: '  GEC  ',
+        electiveYearLevel: 2,
+        electiveSemester: '2nd',
+      }) as any,
+      admin,
+    );
+
+    expect(saved).toMatchObject({
+      isElective: true,
+      electiveCategory: 'GEC',
+      electiveYearLevel: 2,
+      electiveSemester: '2nd',
+    });
+    expect(subjectRepo.rows[0]).toMatchObject({
+      electiveCategory: 'GEC',
+      electiveYearLevel: 2,
+      electiveSemester: '2nd',
+    });
+  });
+
+  it('ignores elective metadata on a non-elective subject', async () => {
+    const { service, subjectRepo } = createService();
+
+    await service.create(
+      electiveDto({
+        isElective: false,
+        electiveCategory: 'GEC',
+        electiveYearLevel: 3,
+        electiveSemester: 'summer',
+      }) as any,
+      admin,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      isElective: false,
+      electiveCategory: null,
+      electiveYearLevel: null,
+      electiveSemester: null,
+    });
+  });
+
+  it('clears elective metadata when an elective becomes regular', async () => {
+    const { service, subjectRepo } = createService([
+      subjectRow({
+        subjectId: 'e1',
+        isElective: true,
+        unitsMode: 'lec_lab',
+        electiveCategory: 'GEC',
+        electiveYearLevel: 2,
+        electiveSemester: '1st',
+      }),
+    ]);
+
+    await service.update('e1', { isElective: false } as any, admin);
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      isElective: false,
+      electiveCategory: null,
+      electiveYearLevel: null,
+      electiveSemester: null,
+    });
+  });
+
+  it('treats a blank elective category as uncategorized', async () => {
+    const { service, subjectRepo } = createService([
+      subjectRow({
+        subjectId: 'e1',
+        isElective: true,
+        unitsMode: 'lec_lab',
+        electiveCategory: 'GEC',
+      }),
+    ]);
+
+    await service.update('e1', { electiveCategory: '   ' } as any, admin);
+
+    expect(subjectRepo.rows[0].electiveCategory).toBeNull();
+  });
+});

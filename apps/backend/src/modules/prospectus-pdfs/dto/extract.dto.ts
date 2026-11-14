@@ -84,6 +84,15 @@ export class ImportSubjectDto {
   units_mode?: 'lec_lab' | 'total_only';
 
   /**
+   * User-defined elective group (for example "GEC" or "Major"). Stored on a
+   * newly created elective subject so filters and dropdowns can group it.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  elective_category?: string;
+
+  /**
    * Per-row decision. Defaults to 'subject' so older clients keep working.
    *   'subject'  → treat `code` as a real subject code (the classic path).
    *   'elective' → elective subject; use `subject_id` when chosen, otherwise

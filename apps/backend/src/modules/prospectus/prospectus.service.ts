@@ -290,7 +290,7 @@ export class ProspectusService {
   }
 
   /**
-   * Replaces a placeholder slot subject with a real subject.
+   * Replaces a placeholder slot subject with a real elective subject.
    * Preserves the original slot label for history, then deactivates
    * the placeholder subject so it drops out of dropdowns.
    */
@@ -327,6 +327,11 @@ export class ProspectusService {
     if (newSubject.isPlaceholder) {
       throw new BadRequestException(
         'Cannot fill a slot with another placeholder subject.',
+      );
+    }
+    if (!newSubject.isElective) {
+      throw new BadRequestException(
+        'Slots can only be filled with elective subjects.',
       );
     }
 

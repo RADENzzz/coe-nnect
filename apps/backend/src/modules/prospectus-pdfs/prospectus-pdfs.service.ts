@@ -277,6 +277,10 @@ export class ProspectusPdfsService {
         y_top_pt: r.y_top_pt,
         y_bottom_pt: r.y_bottom_pt,
         ...(r.cells ? { cells: r.cells } : {}),
+        ...(r.blank ? { blank: true } : {}),
+        ...(r.pinned_empty?.length
+          ? { pinned_empty: r.pinned_empty as RowSpec['pinned_empty'] }
+          : {}),
       })) as RowSpec[],
       subjectCount: dto.rows.length,
       totalLecUnits: 0,
@@ -345,6 +349,10 @@ export class ProspectusPdfsService {
         y_top_pt: r.y_top_pt,
         y_bottom_pt: r.y_bottom_pt,
         ...(r.cells ? { cells: r.cells } : {}),
+        ...(r.blank ? { blank: true } : {}),
+        ...(r.pinned_empty?.length
+          ? { pinned_empty: r.pinned_empty as RowSpec['pinned_empty'] }
+          : {}),
       })) as RowSpec[];
       table.subjectCount = dto.rows.length;
     }
@@ -536,12 +544,32 @@ export class ProspectusPdfsService {
         x_start_pt: c.x_start_pt,
         x_end_pt: c.x_end_pt,
       })),
-      rows: t.rows.map((r) => ({
-        row_id: r.row_id,
-        y_top_pt: r.y_top_pt,
-        y_bottom_pt: r.y_bottom_pt,
-        ...(r.cells ? { cells: r.cells } : {}),
-      })),
+      rows: t.rows.map((r) => {
+        // Blank rows and pinned-empty roles must read as empty even when the
+        // parser looks at the PDF text under their geometry.
+        const cells: Record<string, string> = { ...(r.cells ?? {}) };
+        if (r.blank) {
+          for (const role of [
+            'code',
+            'title',
+            'prereq',
+            'lec',
+            'lab',
+            'total',
+          ]) {
+            cells[role] = '';
+          }
+        }
+        for (const role of r.pinned_empty ?? []) {
+          if (cells[role] === undefined) cells[role] = '';
+        }
+        return {
+          row_id: r.row_id,
+          y_top_pt: r.y_top_pt,
+          y_bottom_pt: r.y_bottom_pt,
+          ...(Object.keys(cells).length ? { cells } : {}),
+        };
+      }),
     }));
 
     const result = await this.parser.extract({
@@ -802,9 +830,9 @@ export class ProspectusPdfsService {
           continue;
         }
 
-        const parsedLec = this.parseIntSafe(sub.lec);
-        const parsedLab = this.parseIntSafe(sub.lab);
-        const parsedTotal = this.parseIntSafe(sub.total);
+        const parsedLec = this.parseUnits(sub.lec);
+        const parsedLab = this.parseUnits(sub.lab);
+        const parsedTotal = this.parseUnits(sub.total);
 
         const isElectiveAction = action === 'elective' || action === 'slot';
 
@@ -842,7 +870,7 @@ export class ProspectusPdfsService {
           lec = 0;
           lab = 0;
         } else if (
-          lec + lab !== total &&
+          !this.unitsEqual(lec + lab, total) &&
           (action === 'subject' || action === 'elective')
         ) {
           skipped++;
@@ -934,6 +962,7 @@ export class ProspectusPdfsService {
                 deptId: pdf.departmentId,
                 unitsMode,
                 code: rawCode,
+                category: sub.elective_category,
                 isPlaceholder: false,
                 rowIndex: rowIndexInTable,
               });
@@ -949,6 +978,7 @@ export class ProspectusPdfsService {
               total,
               deptId: pdf.departmentId,
               unitsMode,
+              category: sub.elective_category,
               isPlaceholder: true,
               rowIndex: rowIndexInTable,
               legacySlot: action === 'slot',
@@ -1211,6 +1241,7 @@ export class ProspectusPdfsService {
     deptId: string;
     unitsMode: 'lec_lab' | 'total_only';
     code?: string;
+    category?: string;
     isPlaceholder: boolean;
     rowIndex: number;
     legacySlot?: boolean;
@@ -1241,6 +1272,9 @@ export class ProspectusPdfsService {
       isPlaceholder: params.isPlaceholder,
       isElective: true,
       unitsMode: params.unitsMode,
+      electiveCategory: params.category?.trim() || null,
+      electiveYearLevel: params.table.yearLevel,
+      electiveSemester: params.table.semester,
       requiredRoomType: inferRoomTypeFromUnits(params.lec, params.lab),
     });
     return { subject: await this.subjectRepo.save(subject), created: true };
@@ -1348,12 +1382,35 @@ export class ProspectusPdfsService {
     }
   }
 
-  private parseIntSafe(v: string | undefined): number {
+  /**
+   * Parse unit strings from a prospectus PDF.
+   *
+   * Decimals are preserved. A fraction such as "3/3" means three units, while
+   * "2/1" is a squashed "2 1" and sums to three; stripping the slash would
+   * turn both into "33".
+   */
+  private parseUnits(v: string | undefined): number {
     if (!v) return 0;
-    const cleaned = String(v).replace(/[^0-9.-]/g, '');
-    if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
+    const cleaned = String(v).replace(/[^0-9./-]/g, '');
+    if (!cleaned) return 0;
+
+    if (cleaned.includes('/')) {
+      const parts = cleaned
+        .split('/')
+        .map((part) => parseFloat(part))
+        .filter((part) => Number.isFinite(part));
+      if (parts.length === 0) return 0;
+      if (parts.every((part) => part === parts[0])) return parts[0];
+      return parts.reduce((sum, part) => sum + part, 0);
+    }
+
     const n = parseFloat(cleaned);
-    return Number.isFinite(n) ? Math.round(n) : 0;
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /** Unit sums are numeric columns; tolerate floating-point noise. */
+  private unitsEqual(a: number, b: number): boolean {
+    return Math.abs(a - b) < 1e-9;
   }
 
   private assertCanReadDepartment(

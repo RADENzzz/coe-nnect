@@ -46,6 +46,58 @@ function ordinalSuffix(n: number): string {
   return 'th';
 }
 
+interface SubjectPickerGroup {
+  key: string;
+  label: string;
+  isElective: boolean;
+  subjects: SubjectRecord[];
+}
+
+// Group the subject picker so electives are visually separated from regular
+// subjects and bucketed by their catalog category.
+function groupSubjectsForPicker(
+  subjects: SubjectRecord[],
+): SubjectPickerGroup[] {
+  const regular = subjects.filter((s) => !s.isElective);
+  const electiveMap = new Map<string, SubjectRecord[]>();
+  for (const s of subjects) {
+    if (!s.isElective) continue;
+    const category = s.electiveCategory?.trim() || 'Uncategorized';
+    const items = electiveMap.get(category) ?? [];
+    items.push(s);
+    electiveMap.set(category, items);
+  }
+
+  const groups: SubjectPickerGroup[] = [];
+  if (regular.length > 0) {
+    groups.push({
+      key: 'regular',
+      label: 'Regular subjects',
+      isElective: false,
+      subjects: regular,
+    });
+  }
+
+  const electiveGroups = [...electiveMap.entries()].sort(([a], [b]) => {
+    if (a === 'Uncategorized') return 1;
+    if (b === 'Uncategorized') return -1;
+    return a.localeCompare(b);
+  });
+  for (const [category, items] of electiveGroups) {
+    groups.push({
+      key: `elective:${category}`,
+      label:
+        category === 'Uncategorized'
+          ? 'Electives · Uncategorized'
+          : `Electives · ${category}`,
+      isElective: true,
+      subjects: items,
+    });
+  }
+
+  return groups;
+}
+
 // ── Form types ──
 
 interface Props {
@@ -264,6 +316,11 @@ export default function ProspectusFormModal({
       });
   }, [subjects, subjectSearch, subjectsInCurrentProgram, editing]);
 
+  const subjectGroups = useMemo(
+    () => groupSubjectsForPicker(filteredSubjects),
+    [filteredSubjects],
+  );
+
   // ── Shared invalidation helper ──
   const invalidateAfterProspectusChange = () => {
     qc.invalidateQueries({ queryKey: ['prospectus'] });
@@ -467,6 +524,7 @@ export default function ProspectusFormModal({
             programs={programs}
             subjects={subjects}
             filteredSubjects={filteredSubjects}
+            subjectGroups={subjectGroups}
             subjectSearch={subjectSearch}
             setSubjectSearch={setSubjectSearch}
             subjectDropdownOpen={subjectDropdownOpen}
@@ -686,6 +744,7 @@ function PlacementStep({
   programs,
   subjects,
   filteredSubjects,
+  subjectGroups,
   subjectSearch,
   setSubjectSearch,
   subjectDropdownOpen,
@@ -704,6 +763,7 @@ function PlacementStep({
   programs: ProgramRecord[];
   subjects: SubjectRecord[];
   filteredSubjects: SubjectRecord[];
+  subjectGroups: SubjectPickerGroup[];
   subjectSearch: string;
   setSubjectSearch: (v: string) => void;
   subjectDropdownOpen: boolean;
@@ -715,6 +775,7 @@ function PlacementStep({
   subjectsInCurrentProgram: Set<string>;
   editing: ProspectusRecord | null;
 }) {
+  const isElective = selectedSubject?.isElective ?? false;
   return (
     <FormSection title="Placement" icon="place">
       <div className="space-y-4">
@@ -794,56 +855,115 @@ function PlacementStep({
                       : 'No subjects match your search.'}
                   </div>
                 ) : (
-                  filteredSubjects.slice(0, 60).map((s) => {
-                    const lec = Number(s.lectureUnits ?? 0);
-                    const lab = Number(s.labUnits ?? 0);
-                    return (
-                      <button
-                        key={s.subjectId}
-                        type="button"
-                        onClick={() => {
-                          setForm((p) => ({
-                            ...p,
-                            subjectId: String(s.subjectId),
-                          }));
-                          setSubjectSearch(`[${s.subjectCode}] ${s.title}`);
-                          setSubjectDropdownOpen(false);
-                          setFieldErrors((fe) => ({ ...fe, subjectId: undefined }));
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-primary/5 transition border-b border-slate-100 last:border-0"
+                  subjectGroups.map((group, groupIdx) => (
+                    <div
+                      key={group.key}
+                      className={
+                        groupIdx > 0 ? 'border-t border-slate-200' : undefined
+                      }
+                    >
+                      <div
+                        className={`sticky top-0 z-10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                          group.isElective
+                            ? 'bg-teal-50 text-teal-800'
+                            : 'bg-slate-50 text-slate-500'
+                        }`}
                       >
-                        <div className="flex items-center gap-2">
-                          {s.isMinor && (
-                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800 shrink-0">
-                              <Icon name="school" size={8} />
-                              Minor
-                            </span>
-                          )}
-                          <span className="font-mono text-xs font-bold text-primary shrink-0">
-                            {s.subjectCode}
-                          </span>
-                          <span className="text-sm text-slate-800 truncate">
-                            {s.title}
-                          </span>
+                        <Icon
+                          name={group.isElective ? 'stars' : 'menu_book'}
+                          size={10}
+                        />
+                        {group.label}
+                        <span className="ml-auto font-normal normal-case tracking-normal opacity-70">
+                          {group.subjects.length}
+                        </span>
+                      </div>
+                      {group.subjects.slice(0, 20).map((s) => {
+                        const lec = Number(s.lectureUnits ?? 0);
+                        const lab = Number(s.labUnits ?? 0);
+                        return (
+                          <button
+                            key={s.subjectId}
+                            type="button"
+                            onClick={() => {
+                              setForm((p) => ({
+                                ...p,
+                                subjectId: String(s.subjectId),
+                              }));
+                              setSubjectSearch(`[${s.subjectCode}] ${s.title}`);
+                              setSubjectDropdownOpen(false);
+                              setFieldErrors((fe) => ({
+                                ...fe,
+                                subjectId: undefined,
+                              }));
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-primary/5 transition border-b border-slate-100 last:border-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              {s.isElective && (
+                                <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800 shrink-0">
+                                  <Icon name="stars" size={8} />
+                                  Elective
+                                </span>
+                              )}
+                              {s.isMinor && (
+                                <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800 shrink-0">
+                                  <Icon name="school" size={8} />
+                                  Minor
+                                </span>
+                              )}
+                              <span className="font-mono text-xs font-bold text-primary shrink-0">
+                                {s.subjectCode}
+                              </span>
+                              <span className="text-sm text-slate-800 truncate">
+                                {s.title}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              {lec > 0 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-100 text-blue-800">
+                                  {lec}L
+                                </span>
+                              )}
+                              {lab > 0 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-100 text-amber-800">
+                                  {lab}Lab
+                                </span>
+                              )}
+                              {s.isElective && (
+                                <>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                                    {s.electiveCategory?.trim() || 'Uncategorized'}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600">
+                                    {s.electiveYearLevel
+                                      ? `Year ${s.electiveYearLevel}`
+                                      : 'Any year'}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600">
+                                    {s.electiveSemester === 'summer'
+                                      ? 'Summer'
+                                      : s.electiveSemester
+                                      ? `${s.electiveSemester} sem`
+                                      : 'Any term'}
+                                  </span>
+                                </>
+                              )}
+                              <span className="text-[10px] text-slate-400 ml-auto">
+                                {Number(s.totalUnits)} units
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {group.subjects.length > 20 && (
+                        <div className="px-3 py-2 text-[10px] text-slate-400 text-center">
+                          Showing 20 of {group.subjects.length} — refine your
+                          search to see more.
                         </div>
-                        <div className="flex items-center gap-1 mt-1">
-                          {lec > 0 && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-100 text-blue-800">
-                              {lec}L
-                            </span>
-                          )}
-                          {lab > 0 && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-100 text-amber-800">
-                              {lab}Lab
-                            </span>
-                          )}
-                          <span className="text-[10px] text-slate-400 ml-auto">
-                            {Number(s.totalUnits)} units
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })
+                      )}
+                    </div>
+                  ))
                 )}
               </div>
             )}
@@ -895,6 +1015,30 @@ function PlacementStep({
               <p className="mt-0.5">
                 This subject is taught by another department. It will be plotted
                 manually before running auto-generate.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {isElective && selectedSubject && (
+          <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-teal-50 text-teal-900 border border-teal-200">
+            <Icon name="stars" size={14} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Elective subject</p>
+              <p className="mt-0.5">
+                {selectedSubject.electiveCategory?.trim() || 'Uncategorized'}
+                {' · '}
+                {selectedSubject.electiveYearLevel
+                  ? `Year ${selectedSubject.electiveYearLevel}`
+                  : 'Any year'}
+                {' · '}
+                {selectedSubject.electiveSemester === 'summer'
+                  ? 'Summer'
+                  : selectedSubject.electiveSemester
+                  ? `${selectedSubject.electiveSemester} semester`
+                  : 'Any term'}
+                . Electives can also fill code-less elective rows in a
+                prospectus.
               </p>
             </div>
           </div>

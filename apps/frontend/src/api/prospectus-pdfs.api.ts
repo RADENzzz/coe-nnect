@@ -167,6 +167,8 @@ export interface ImportConfirmInput {
       subject_id?: number;
       /** `total_only` keeps lecture/lab at zero (electives only). */
       units_mode?: UnitsMode;
+      /** Group for a newly created elective (for example GEC). */
+      elective_category?: string;
     }[];
   }[];
 }

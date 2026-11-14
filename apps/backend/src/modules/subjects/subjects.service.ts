@@ -121,6 +121,11 @@ export class SubjectsService {
       isMinor: dto.isMinor ?? false,
       isElective,
       unitsMode,
+      electiveCategory: isElective
+        ? this.normalizeElectiveCategory(dto.electiveCategory)
+        : null,
+      electiveYearLevel: isElective ? (dto.electiveYearLevel ?? null) : null,
+      electiveSemester: isElective ? (dto.electiveSemester ?? null) : null,
       deptId: dto.deptId,
     });
     return this.repo.save(entity);
@@ -153,6 +158,18 @@ export class SubjectsService {
 
     const nextIsElective = dto.isElective ?? found.isElective ?? false;
     const nextUnitsMode = dto.unitsMode ?? found.unitsMode ?? 'lec_lab';
+    const nextElectiveCategory =
+      dto.electiveCategory !== undefined
+        ? this.normalizeElectiveCategory(dto.electiveCategory)
+        : (found.electiveCategory ?? null);
+    const nextElectiveYearLevel =
+      dto.electiveYearLevel !== undefined
+        ? (dto.electiveYearLevel ?? null)
+        : (found.electiveYearLevel ?? null);
+    const nextElectiveSemester =
+      dto.electiveSemester !== undefined
+        ? (dto.electiveSemester ?? null)
+        : (found.electiveSemester ?? null);
     const nextTotalUnits =
       dto.totalUnits !== undefined
         ? Number(dto.totalUnits)
@@ -191,6 +208,15 @@ export class SubjectsService {
     if (dto.isMinor !== undefined) found.isMinor = dto.isMinor;
     if (dto.isElective !== undefined) found.isElective = dto.isElective;
     if (dto.unitsMode !== undefined) found.unitsMode = dto.unitsMode;
+    // Elective metadata is only valid while the subject is an elective.
+    // Unchecking the flag clears it instead of tripping the DB constraint.
+    found.electiveCategory = nextIsElective
+      ? nextElectiveCategory
+      : null;
+    found.electiveYearLevel = nextIsElective
+      ? nextElectiveYearLevel
+      : null;
+    found.electiveSemester = nextIsElective ? nextElectiveSemester : null;
     if (dto.deptId !== undefined) found.deptId = dto.deptId;
 
     return this.repo.save(found);
@@ -237,6 +263,15 @@ export class SubjectsService {
         'totalUnits must equal lectureUnits + labUnits',
       );
     }
+  }
+
+  /** Trim a free-text elective category; blank input means "no category". */
+  private normalizeElectiveCategory(
+    value: string | null | undefined,
+  ): string | null {
+    if (value === null || value === undefined) return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 
   async toggleActive(id: string, profile: User): Promise<Subject> {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
@@ -10,6 +10,7 @@ import {
   type CreateSubjectInput,
   type SubjectRoomType,
   type UnitsMode,
+  type ElectiveSemester,
 } from '../../../api/subjects.api';
 
 const ROOM_TYPES: Array<{
@@ -77,6 +78,9 @@ interface FormState {
   deptId: string;
   isMinor: boolean;
   isElective: boolean;
+  electiveCategory: string;
+  electiveYearLevel: string;
+  electiveSemester: '' | ElectiveSemester;
 }
 
 type FieldErrors = Partial<Record<keyof FormState, string>>;
@@ -92,6 +96,9 @@ const EMPTY_FORM: FormState = {
   deptId: '',
   isMinor: false,
   isElective: false,
+  electiveCategory: '',
+  electiveYearLevel: '',
+  electiveSemester: '',
 };
 
 function extractErrorMessage(err: any, fallback: string): string {
@@ -161,6 +168,12 @@ export default function SubjectFormModal({
         deptId: subject.deptId ?? '',
         isMinor: subject.isMinor ?? false,
         isElective: subject.isElective ?? false,
+        electiveCategory: subject.electiveCategory ?? '',
+        electiveYearLevel:
+          subject.electiveYearLevel != null
+            ? String(subject.electiveYearLevel)
+            : '',
+        electiveSemester: subject.electiveSemester ?? '',
       });
     }
     setStepIdx(0);
@@ -217,6 +230,19 @@ export default function SubjectFormModal({
   const isMixed = lectureUnitsNum > 0 && labUnitsNum > 0;
   const isLectureOnly = lectureUnitsNum > 0 && labUnitsNum === 0;
   const isLabOnly = labUnitsNum > 0 && lectureUnitsNum === 0;
+
+  const electiveCategorySuggestions = useMemo(
+    () =>
+      [
+        ...new Set(
+          subjects
+            .filter((s) => s.isElective)
+            .map((s) => s.electiveCategory?.trim())
+            .filter((c): c is string => !!c),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [subjects],
+  );
 
   // ── Per-step validation ──
 
@@ -357,6 +383,16 @@ export default function SubjectFormModal({
       isMinor: form.isMinor,
       isElective: form.isElective,
       unitsMode: form.unitsMode,
+      electiveCategory: form.isElective
+        ? form.electiveCategory.trim() || null
+        : null,
+      electiveYearLevel:
+        form.isElective && form.electiveYearLevel
+          ? Number(form.electiveYearLevel)
+          : null,
+      electiveSemester: form.isElective
+        ? form.electiveSemester || null
+        : null,
       deptId: form.deptId,
     };
 
@@ -379,6 +415,9 @@ export default function SubjectFormModal({
         form.unitsMode !== 'lec_lab' ||
         form.isMinor ||
         form.isElective !== defaultElective ||
+        !!form.electiveCategory.trim() ||
+        !!form.electiveYearLevel ||
+        !!form.electiveSemester ||
         form.requiredRoomType !== '' ||
         form.deptId !== initialDept ||
         stepIdx > 0
@@ -399,7 +438,13 @@ export default function SubjectFormModal({
           ((subject.requiredRoomType ?? '') as '' | SubjectRoomType) ||
         form.deptId !== (subject.deptId ?? '') ||
         form.isMinor !== (subject.isMinor ?? false) ||
-        form.isElective !== (subject.isElective ?? false)
+        form.isElective !== (subject.isElective ?? false) ||
+        form.electiveCategory !== (subject.electiveCategory ?? '') ||
+        form.electiveYearLevel !==
+          (subject.electiveYearLevel != null
+            ? String(subject.electiveYearLevel)
+            : '') ||
+        form.electiveSemester !== (subject.electiveSemester ?? '')
       );
     }
     return false;
@@ -727,6 +772,10 @@ export default function SubjectFormModal({
               isElective: checked,
               // Total-only mode is elective-only; fall back when it is off.
               unitsMode: checked ? prev.unitsMode : 'lec_lab',
+              // Metadata is meaningful for electives only.
+              electiveCategory: checked ? prev.electiveCategory : '',
+              electiveYearLevel: checked ? prev.electiveYearLevel : '',
+              electiveSemester: checked ? prev.electiveSemester : '',
             }));
           }}
           className="accent-primary w-4 h-4 mt-0.5"
@@ -745,17 +794,83 @@ export default function SubjectFormModal({
       </label>
 
       {form.isElective && (
-        <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-teal-50 text-teal-900 border border-teal-200 mt-3">
-          <Icon name="info" size={14} className="shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">Elective subject</p>
-            <p className="mt-0.5">
-              Will show a teal "Elective" badge and appear in the Elective tab.
-              Imported electives without a code get a temporary flagged code
-              that must be resolved before plotting.
-            </p>
+        <>
+          <div className="rounded-lg p-3 text-xs flex items-start gap-2 bg-teal-50 text-teal-900 border border-teal-200 mt-3">
+            <Icon name="info" size={14} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Elective subject</p>
+              <p className="mt-0.5">
+                Will show a teal "Elective" badge and appear in the Elective
+                tab. Imported electives without a code get a temporary flagged
+                code that must be resolved before plotting.
+              </p>
+            </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+            <FormField
+              label="Elective Category"
+              hint="Optional group, e.g. GEC or Major. Used by filters and dropdowns."
+            >
+              <input
+                type="text"
+                list="subject-elective-categories"
+                value={form.electiveCategory}
+                onChange={(e) =>
+                  setField('electiveCategory', e.target.value)
+                }
+                placeholder="e.g. GEC"
+                className={inputClass(false)}
+              />
+              <datalist id="subject-elective-categories">
+                {electiveCategorySuggestions.map((category) => (
+                  <option key={category} value={category} />
+                ))}
+              </datalist>
+            </FormField>
+
+            <FormField
+              label="Year Level"
+              hint="Leave as Any year when this elective fits every level."
+            >
+              <select
+                value={form.electiveYearLevel}
+                onChange={(e) =>
+                  setField('electiveYearLevel', e.target.value)
+                }
+                className={inputClass(false)}
+              >
+                <option value="">Any year</option>
+                {[1, 2, 3, 4, 5, 6].map((year) => (
+                  <option key={year} value={String(year)}>
+                    Year {year}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField
+              label="Semester"
+              hint="Leave as Any term when this elective fits every term."
+            >
+              <select
+                value={form.electiveSemester}
+                onChange={(e) =>
+                  setField(
+                    'electiveSemester',
+                    e.target.value as '' | ElectiveSemester,
+                  )
+                }
+                className={inputClass(false)}
+              >
+                <option value="">Any term</option>
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+                <option value="summer">Summer</option>
+              </select>
+            </FormField>
+          </div>
+        </>
       )}
       </FormSection>
     );
@@ -806,6 +921,22 @@ export default function SubjectFormModal({
               </p>
             </div>
           </div>
+
+          {form.isElective && (
+            <div className="flex flex-wrap gap-1.5 text-[10px]">
+              <span className="px-1.5 py-0.5 rounded font-semibold bg-teal-500/15 text-teal-700">
+                {form.electiveCategory.trim() || 'Uncategorized'}
+              </span>
+              <span className="px-1.5 py-0.5 rounded font-semibold bg-surface-container-high text-on-surface-variant">
+                {form.electiveYearLevel
+                  ? `Year ${form.electiveYearLevel}`
+                  : 'Any year'}
+              </span>
+              <span className="px-1.5 py-0.5 rounded font-semibold bg-surface-container-high text-on-surface-variant">
+                {form.electiveSemester || 'Any term'}
+              </span>
+            </div>
+          )}
 
           <div className="pt-2 border-t border-surface-variant space-y-1 text-xs">
             {isTotalOnly ? (
@@ -1125,6 +1256,21 @@ function LivePreview({
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-500/10 text-[10px] font-semibold text-teal-700 border border-teal-500/20">
             <Icon name="stars" size={10} />
             Elective
+          </span>
+        )}
+        {form.isElective && form.electiveCategory.trim() && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/70 text-[10px] font-semibold text-teal-700 border border-teal-500/20">
+            {form.electiveCategory.trim()}
+          </span>
+        )}
+        {form.isElective && form.electiveYearLevel && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/70 text-[10px] font-semibold text-on-surface border border-surface-variant">
+            Year {form.electiveYearLevel}
+          </span>
+        )}
+        {form.isElective && form.electiveSemester && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/70 text-[10px] font-semibold text-on-surface border border-surface-variant">
+            {form.electiveSemester} sem
           </span>
         )}
         {form.unitsMode === 'total_only' && (

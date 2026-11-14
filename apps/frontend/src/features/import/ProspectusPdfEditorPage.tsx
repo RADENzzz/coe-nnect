@@ -17,7 +17,7 @@ import type {
   RowBox,
 } from './types';
 import { usePdfDocument } from './hooks/usePdfDocument';
-import { usePdfTextLayer } from './hooks/usePdfTextLayer';
+import { usePdfTextLayer, type TextItem } from './hooks/usePdfTextLayer';
 import {
   makeDefaultColumns,
   useRegionState,
@@ -35,8 +35,9 @@ import {
   insertRow,
   moveRow,
   rowHeight,
-  snapshotRowCells,
+  snapshotRow,
   sortRowsTopDown,
+  type RowSnapshot,
 } from './utils/rows';
 import { fetchPrograms } from '@/api/programs.api';
 import { useUiStore } from '@/store/ui.store';
@@ -118,9 +119,56 @@ export default function ProspectusPdfEditorPage() {
     setRegion,
   } = useRegionState(initialTables);
 
+  // Refetching the PDF record (after a save or an import) must not overwrite
+  // tables that still have unsaved local edits.
+  const dirtyTableIdsRef = useRef(dirtyTableIds);
   useEffect(() => {
-    setTables(initialTables);
+    dirtyTableIdsRef.current = dirtyTableIds;
+  }, [dirtyTableIds]);
+  const tablesRef = useRef(tables);
+  useEffect(() => {
+    tablesRef.current = tables;
+  }, [tables]);
+
+  useEffect(() => {
+    setTables(
+      initialTables.map((incoming) => {
+        if (!dirtyTableIdsRef.current.has(incoming.tableId)) return incoming;
+        return (
+          tablesRef.current.find((t) => t.tableId === incoming.tableId) ??
+          incoming
+        );
+      }),
+    );
   }, [initialTables, setTables]);
+
+  const selectedTable = useMemo(() => {
+    if (selection.kind === 'none') return null;
+    return tables.find((t) => t.tableId === selection.tableId) ?? null;
+  }, [selection, tables]);
+
+  // Extraction always reads the selected table's own page, which is not
+  // necessarily the page currently displayed on the canvas.
+  const { data: selectedTableTextLayer } = usePdfTextLayer(
+    pdf,
+    selectedTable?.regionPageIndex ?? pageIndex,
+  );
+
+  const textItemsForTable = useCallback(
+    (table: ProspectusPdfTable): TextItem[] | null => {
+      if (table.regionPageIndex === pageIndex) return textLayer?.items ?? null;
+      if (table.regionPageIndex === selectedTable?.regionPageIndex) {
+        return selectedTableTextLayer?.items ?? null;
+      }
+      return null;
+    },
+    [
+      pageIndex,
+      textLayer?.items,
+      selectedTable?.regionPageIndex,
+      selectedTableTextLayer?.items,
+    ],
+  );
 
   // Hide sidebar when editing
   const prevEditingRef = useRef<string>('none');
@@ -492,6 +540,7 @@ export default function ProspectusPdfEditorPage() {
       options: {
         height?: number;
         cells?: Partial<Record<ColumnRole, string>>;
+        pinnedEmpty?: ColumnRole[];
         blank?: boolean;
       } = {},
     ) => {
@@ -501,19 +550,19 @@ export default function ProspectusPdfEditorPage() {
       // Rows below the insertion point move down, so their PDF bands change.
       // Pin what they currently show before shifting them.
       const sorted = sortRowsTopDown(table.rows);
-      const pinCells: Record<
-        string,
-        Partial<Record<ColumnRole, string>>
-      > = {};
+      const pinSnapshots: Record<string, RowSnapshot> = {};
       for (const row of sorted.slice(sortedIndex)) {
-        pinCells[row.row_id] = snapshotRowCells(
+        pinSnapshots[row.row_id] = snapshotRow(
           table,
           row,
-          textLayer?.items ?? null,
+          textItemsForTable(table),
         );
       }
 
-      const result = insertRow(table, sortedIndex, { ...options, pinCells });
+      const result = insertRow(table, sortedIndex, {
+        ...options,
+        pinSnapshots,
+      });
       setRows(tableId, result.rows);
 
       if (result.regionYStart !== Number(table.regionYStartPt)) {
@@ -528,7 +577,7 @@ export default function ProspectusPdfEditorPage() {
       markDirty(tableId);
       return result.insertedRowId;
     },
-    [tables, setRows, setRegion, textLayer?.items],
+    [tables, setRows, setRegion, textItemsForTable],
   );
 
   const handleAddRow = useCallback(
@@ -572,20 +621,21 @@ export default function ProspectusPdfEditorPage() {
       const index = sorted.findIndex((row) => row.row_id === rowId);
       if (index === -1) return;
       const source = sorted[index];
-      const cells = snapshotRowCells(
-        table,
-        source,
-        textLayer?.items ?? null,
-      );
+      const snapshot = snapshotRow(table, source, textItemsForTable(table));
       const inserted = applyRowInsert(tableId, index + 1, {
         height: rowHeight(source),
-        cells,
+        ...(source.blank
+          ? { blank: true }
+          : {
+              cells: snapshot.cells,
+              pinnedEmpty: snapshot.pinnedEmpty,
+            }),
       });
       if (inserted) {
         setSelection({ kind: 'row', tableId, rowId: inserted });
       }
     },
-    [tables, applyRowInsert, textLayer?.items, setSelection],
+    [tables, applyRowInsert, textItemsForTable, setSelection],
   );
 
   const handleMoveRow = useCallback(
@@ -616,22 +666,24 @@ export default function ProspectusPdfEditorPage() {
       const row = table?.rows.find((r) => r.row_id === rowId);
       if (!table || !row) return;
 
-      const snapshot = snapshotRowCells(
-        table,
-        row,
-        textLayer?.items ?? null,
-      );
+      const snapshot = snapshotRow(table, row, textItemsForTable(table));
+      const nextPinnedEmpty = snapshot.pinnedEmpty.filter((r) => r !== role);
       const nextRow: RowBox = {
         ...row,
-        cells: { ...snapshot, ...(row.cells ?? {}), [role]: value },
+        cells: { ...snapshot.cells, [role]: value },
       };
+      // Editing a blank row turns it into a normal, partially-filled row.
+      delete nextRow.blank;
+      if (nextPinnedEmpty.length) nextRow.pinned_empty = nextPinnedEmpty;
+      else delete nextRow.pinned_empty;
+
       setRows(
         tableId,
         table.rows.map((r) => (r.row_id === rowId ? nextRow : r)),
       );
       markDirty(tableId);
     },
-    [tables, setRows, textLayer?.items],
+    [tables, setRows, textItemsForTable],
   );
 
   const handleRowSelectAndFocus = useCallback(
@@ -780,14 +832,9 @@ export default function ProspectusPdfEditorPage() {
     [],
   );
 
-  const selectedTable = useMemo(() => {
-    if (selection.kind === 'none') return null;
-    return tables.find((t) => t.tableId === selection.tableId) ?? null;
-  }, [selection, tables]);
-
   const { rows: selectedExtractedRows } = useExtractedTableData(
     selectedTable,
-    textLayer?.items ?? null,
+    selectedTable ? textItemsForTable(selectedTable) : null,
   );
 
   // ── Sorted tables for quick-nav ──
@@ -1201,7 +1248,9 @@ export default function ProspectusPdfEditorPage() {
 
           <LiveExtractionPreview
             table={selectedTable}
-            textItems={textLayer?.items ?? null}
+            textItems={
+              selectedTable ? textItemsForTable(selectedTable) : null
+            }
             onExpand={
               selectedTable ? () => setTableModalOpen(true) : undefined
             }
@@ -1255,7 +1304,7 @@ export default function ProspectusPdfEditorPage() {
         open={tableModalOpen}
         onClose={() => setTableModalOpen(false)}
         table={selectedTable}
-        textItems={textLayer?.items ?? null}
+        textItems={selectedTable ? textItemsForTable(selectedTable) : null}
       />
 
       {/* How-to modal */}
@@ -1398,7 +1447,7 @@ export default function ProspectusPdfEditorPage() {
         tables={tables}
         programs={programs}
         departmentId={String(pdfRecord.departmentId)}
-        textItems={textLayer?.items ?? null}
+        pdf={pdf}
       />
 
       {/* Unsaved Changes Blocker Modal */}

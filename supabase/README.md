@@ -4,7 +4,7 @@ The tracked schema lives in `migrations/`. There is no demo seed in this directo
 
 ## Tracked migrations
 
-Apply in filename order. There are currently **13 migrations** creating **40 tables** and **9 enum types**.
+Apply in filename order. There are currently **16 migrations** creating **41 tables** and **9 enum types**.
 
 | File | Contents |
 | --- | --- |
@@ -21,6 +21,9 @@ Apply in filename order. There are currently **13 migrations** creating **40 tab
 | `20261111000300_add_idp_change_request.sql` | Inbound IDP change requests, reviewer decision, and acknowledgement state. |
 | `20261112000100_add_elective_subjects.sql` | Elective subject columns and elective PDF-table metadata, including placeholder codes and total-units-only electives. |
 | `20261112000200_add_cap_auth.sql` | `cap_nonce` and `cap_token` for single-use Cap challenge redemption and login-token storage. |
+| `20261114000000_add_user_recovery.sql` | `public.user_recovery` for optional recovery addresses and single-use verification/reset token hashes. |
+| `20261114000100_add_elective_categories.sql` | `subject.elective_category`, `elective_year_level`, and `elective_semester` plus their checks and partial index. |
+| `20261114000200_fix_pdf_row_snapshots.sql` | Data cleanup for empty cell overrides written by the old PDF row-snapshot logic. |
 
 Every change applied to the hosted database also needs a migration file here so `supabase db reset` reproduces it. The matching DDL snapshot lives in `docs/DATABASE STRUCTURE/coe-nnect-database-structure.sql` and is regenerated with `scripts/dump-database-schema.ps1`.
 
@@ -76,7 +79,7 @@ After a reset or deploy, confirm the schema is complete:
 ```sql
 select count(*) from information_schema.tables
 where table_schema = 'public' and table_type = 'BASE TABLE';
--- expected: 40
+-- expected: 41
 
 select count(distinct t.typname)
 from pg_type t

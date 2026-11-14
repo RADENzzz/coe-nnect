@@ -126,6 +126,9 @@ export default function SubjectsPage() {
   const kindFilter = (searchParams.get('kind') ?? 'all') as SubjectKindFilter;
   const compFilter = (searchParams.get('comp') ?? 'all') as ComponentFilter;
   const statusFilter = (searchParams.get('status') ?? 'all') as StatusFilter;
+  const electiveCategoryFilter = searchParams.get('ecat') ?? '';
+  const electiveYearFilter = searchParams.get('eyear') ?? '';
+  const electiveSemesterFilter = searchParams.get('eterm') ?? '';
   const sortKey = (searchParams.get('sort') ?? 'code') as SortKey;
   const sortDir = (searchParams.get('dir') ?? 'asc') as SortDir;
 
@@ -173,6 +176,9 @@ export default function SubjectsPage() {
     next.delete('kind');
     next.delete('comp');
     next.delete('status');
+    next.delete('ecat');
+    next.delete('eyear');
+    next.delete('eterm');
     next.delete('sort');
     next.delete('dir');
     setSearchParams(next, { replace: true });
@@ -185,7 +191,10 @@ export default function SubjectsPage() {
     minorFilter !== 'all' ||
     kindFilter !== 'all' ||
     compFilter !== 'all' ||
-    statusFilter !== 'all';
+    statusFilter !== 'all' ||
+    !!electiveCategoryFilter ||
+    !!electiveYearFilter ||
+    !!electiveSemesterFilter;
 
   const activeFilterCount =
     (searchInput ? 1 : 0) +
@@ -194,7 +203,10 @@ export default function SubjectsPage() {
     (minorFilter !== 'all' ? 1 : 0) +
     (kindFilter !== 'all' ? 1 : 0) +
     (compFilter !== 'all' ? 1 : 0) +
-    (statusFilter !== 'all' ? 1 : 0);
+    (statusFilter !== 'all' ? 1 : 0) +
+    (electiveCategoryFilter ? 1 : 0) +
+    (electiveYearFilter ? 1 : 0) +
+    (electiveSemesterFilter ? 1 : 0);
 
   // ── Queries ──
   const { data: subjects = [], isLoading } = useQuery({
@@ -320,6 +332,17 @@ export default function SubjectsPage() {
     return { all: subjects.length, regular, minor, elective };
   }, [subjects]);
 
+  // Distinct elective categories in use, for filter + form suggestions.
+  const electiveCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of subjects) {
+      if (!s.isElective) continue;
+      const category = s.electiveCategory?.trim();
+      if (category) set.add(category);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [subjects]);
+
   // ── Filtered + sorted ──
   const filtered = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -355,6 +378,35 @@ export default function SubjectsPage() {
 
       if (statusFilter === 'active' && !s.isActive) return false;
       if (statusFilter === 'inactive' && s.isActive) return false;
+
+      // Elective metadata filters only ever match elective subjects.
+      if (electiveCategoryFilter) {
+        if (!s.isElective) return false;
+        const category = (s.electiveCategory ?? '').trim();
+        if (electiveCategoryFilter === '__none__') {
+          if (category) return false;
+        } else if (
+          category.toLowerCase() !== electiveCategoryFilter.toLowerCase()
+        ) {
+          return false;
+        }
+      }
+      if (electiveYearFilter) {
+        if (!s.isElective) return false;
+        if (electiveYearFilter === 'none') {
+          if (s.electiveYearLevel != null) return false;
+        } else if (String(s.electiveYearLevel ?? '') !== electiveYearFilter) {
+          return false;
+        }
+      }
+      if (electiveSemesterFilter) {
+        if (!s.isElective) return false;
+        if (electiveSemesterFilter === 'none') {
+          if (s.electiveSemester != null) return false;
+        } else if (s.electiveSemester !== electiveSemesterFilter) {
+          return false;
+        }
+      }
 
       return true;
     });
@@ -398,6 +450,9 @@ export default function SubjectsPage() {
     kindFilter,
     compFilter,
     statusFilter,
+    electiveCategoryFilter,
+    electiveYearFilter,
+    electiveSemesterFilter,
     sortKey,
     sortDir,
     deptCodeById,
@@ -804,6 +859,38 @@ export default function SubjectsPage() {
         onRemove: () => setFilter('status', 'all'),
       });
     }
+    if (electiveCategoryFilter) {
+      pills.push({
+        label: `Elective category: ${
+          electiveCategoryFilter === '__none__'
+            ? 'Uncategorized'
+            : electiveCategoryFilter
+        }`,
+        onRemove: () => setFilter('ecat', ''),
+      });
+    }
+    if (electiveYearFilter) {
+      pills.push({
+        label: `Elective year: ${
+          electiveYearFilter === 'none'
+            ? 'Unassigned'
+            : `Year ${electiveYearFilter}`
+        }`,
+        onRemove: () => setFilter('eyear', ''),
+      });
+    }
+    if (electiveSemesterFilter) {
+      const termLabel =
+        electiveSemesterFilter === 'none'
+          ? 'Unassigned'
+          : electiveSemesterFilter === 'summer'
+          ? 'Summer'
+          : `${electiveSemesterFilter} semester`;
+      pills.push({
+        label: `Elective term: ${termLabel}`,
+        onRemove: () => setFilter('eterm', ''),
+      });
+    }
     return pills;
   }, [
     searchInput,
@@ -812,6 +899,9 @@ export default function SubjectsPage() {
     minorFilter,
     compFilter,
     statusFilter,
+    electiveCategoryFilter,
+    electiveYearFilter,
+    electiveSemesterFilter,
     departments,
     setFilter,
   ]);
@@ -903,6 +993,36 @@ export default function SubjectsPage() {
     );
   };
 
+  const renderElectiveMeta = (s: SubjectRecord) => {
+    if (!s.isElective) return <span className="text-slate-400">—</span>;
+    const category = s.electiveCategory?.trim();
+    const term =
+      s.electiveSemester === 'summer'
+        ? 'Summer'
+        : s.electiveSemester
+        ? `${s.electiveSemester} sem`
+        : null;
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1 text-[10px]">
+        <span
+          className={`px-1.5 py-0.5 rounded font-semibold ${
+            category
+              ? 'bg-teal-100 text-teal-800'
+              : 'bg-slate-100 text-slate-500'
+          }`}
+        >
+          {category || 'Uncategorized'}
+        </span>
+        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+          {s.electiveYearLevel ? `Year ${s.electiveYearLevel}` : 'Any year'}
+        </span>
+        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+          {term ?? 'Any term'}
+        </span>
+      </span>
+    );
+  };
+
   // ── Columns ──
   const columns: Column<SubjectRecord>[] = [
     {
@@ -974,6 +1094,13 @@ export default function SubjectsPage() {
       cardVariant: 'meta',
       cellClassName: 'text-on-surface-variant text-xs',
       render: renderRoomType,
+    },
+    {
+      key: 'elective',
+      header: 'Elective Meta',
+      cardVariant: 'meta',
+      cellClassName: 'text-on-surface-variant text-xs',
+      render: renderElectiveMeta,
     },
     {
       key: 'status',
@@ -1149,7 +1276,7 @@ export default function SubjectsPage() {
       </div>
 
       {/* ── Stats strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
         <StatCard
           label="Total"
           value={stats.total}
@@ -1193,6 +1320,17 @@ export default function SubjectsPage() {
           loading={isLoading}
           active={minorFilter === 'minor'}
           onClick={() => applyPreset(PRESETS[1])}
+        />
+        <StatCard
+          label="Electives"
+          value={stats.elective}
+          icon="stars"
+          tone="teal"
+          loading={isLoading}
+          active={kindFilter === 'elective'}
+          onClick={() =>
+            setFilter('kind', kindFilter === 'elective' ? 'all' : 'elective')
+          }
         />
         <StatCard
           label="Inactive"
@@ -1269,6 +1407,10 @@ export default function SubjectsPage() {
           minorFilter={minorFilter}
           compFilter={compFilter}
           statusFilter={statusFilter}
+          electiveCategoryFilter={electiveCategoryFilter}
+          electiveYearFilter={electiveYearFilter}
+          electiveSemesterFilter={electiveSemesterFilter}
+          electiveCategories={electiveCategories}
           setFilter={setFilter}
           departments={departments}
           deptCounts={deptCounts}
@@ -1644,7 +1786,7 @@ function StatCard({
   label: string;
   value: number;
   icon: string;
-  tone: 'neutral' | 'blue' | 'amber' | 'purple' | 'rose';
+  tone: 'neutral' | 'blue' | 'amber' | 'purple' | 'rose' | 'teal';
   onClick?: () => void;
   loading?: boolean;
   active?: boolean;
@@ -1655,6 +1797,7 @@ function StatCard({
     amber: 'bg-amber-50 border-amber-200',
     purple: 'bg-purple-50 border-purple-200',
     rose: 'bg-rose-50 border-rose-200',
+    teal: 'bg-teal-50 border-teal-200',
   } as const;
   const iconTones = {
     neutral: 'text-slate-500',
@@ -1662,6 +1805,7 @@ function StatCard({
     amber: 'text-amber-600',
     purple: 'text-purple-600',
     rose: 'text-rose-600',
+    teal: 'text-teal-600',
   } as const;
   const Comp = onClick ? 'button' : 'div';
   return (

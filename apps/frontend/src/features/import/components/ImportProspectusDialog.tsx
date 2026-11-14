@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation } from 'react-router-dom';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import { confirmImport } from '@/api/prospectus-pdfs.api';
@@ -14,7 +14,7 @@ import type {
   UnitsMode,
 } from '../types';
 import { extractTextInRect } from '../hooks/useCellExtraction';
-import type { TextItem } from '../hooks/usePdfTextLayer';
+import { loadPdfPageText, type TextItem } from '../hooks/usePdfTextLayer';
 import { COLUMN_ORDER } from '../types';
 
 interface ImportProspectusDialogProps {
@@ -29,13 +29,24 @@ interface ImportProspectusDialogProps {
     deptId: string;
   }[];
   departmentId: string;
-  textItems: TextItem[] | null; // <--- NEW
+  /** Used to load the text layer of each selected table's own page. */
+  pdf: PDFDocumentProxy | null;
 }
 
 type Step = 'select' | 'review' | 'result';
 
 const SUBJECT_CODE_RE =
   /^[A-Za-z][A-Za-z0-9&.-]{1,11}(?:\s+[A-Za-z0-9&.-]{1,16}){0,4}$/;
+
+const SKIP_REASON_LABELS: Record<string, string> = {
+  no_code: 'No course code',
+  no_title: 'No title',
+  unit_mismatch: 'Units do not add up',
+  user_skip: 'Skipped by user',
+  pattern_mismatch: 'Code pattern mismatch',
+  not_elective: 'Not an elective subject',
+  unknown_subject: 'Elective not found',
+};
 
 interface ReviewRow {
   key: string;
@@ -54,9 +65,34 @@ interface ReviewRow {
   action: 'subject' | 'elective' | 'slot' | 'skip';
   /** Existing elective subject chosen for this row. */
   subjectId: string;
+  /** Category for a newly created elective (e.g. GEC, Major). */
+  electiveCategory: string;
   unitsMode: UnitsMode;
   warning?: string;
   checked: boolean;
+}
+
+interface ElectiveGroup {
+  label: string;
+  items: SubjectRecord[];
+}
+
+function groupElectives(subjects: SubjectRecord[]): ElectiveGroup[] {
+  const groups = new Map<string, SubjectRecord[]>();
+  for (const subject of subjects) {
+    const parts = [
+      subject.electiveCategory?.trim() || 'Uncategorized',
+      subject.electiveYearLevel ? `Year ${subject.electiveYearLevel}` : '',
+      subject.electiveSemester ? `${subject.electiveSemester} sem` : '',
+    ].filter(Boolean);
+    const key = parts.join(' · ');
+    const list = groups.get(key) ?? [];
+    list.push(subject);
+    groups.set(key, list);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, items]) => ({ label, items }));
 }
 
 /**
@@ -64,13 +100,31 @@ interface ReviewRow {
  *   - "gg gg", "test test", "abc" (repeated or trivially short)
  *   - "x", "1", "-", "???" (no meaningful text)
  *   - empty
+ *
+ * Short but legitimate titles/acronyms (PE 1, OJT, NSTP, ROTC) are allowed.
  */
+const SHORT_TITLE_ALLOWLIST = new Set([
+  'pe',
+  'ojt',
+  'nstp',
+  'rotc',
+  'cad',
+  'dsp',
+  'gym',
+]);
+
 function isSuspiciousTitle(title: string): boolean {
   const t = (title ?? '').trim();
   if (!t) return true;
   const words = t.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  if (words.length === 1 && words[0].length < 4) return true;
+  if (
+    words.length === 1 &&
+    words[0].length < 4 &&
+    !SHORT_TITLE_ALLOWLIST.has(words[0])
+  ) {
+    return true;
+  }
   if (words.length >= 2 && new Set(words).size === 1) return true;
   return false;
 }
@@ -84,9 +138,9 @@ function deriveRowStatus(
   if (!row.title) {
     return { status: 'invalid', warning: 'Missing subject title' };
   }
-  const lec = parseIntSafe(row.lec);
-  const lab = parseIntSafe(row.lab);
-  const total = parseIntSafe(row.total);
+  const lec = parseUnits(row.lec);
+  const lab = parseUnits(row.lab);
+  const total = parseUnits(row.total);
 
   if (action === 'elective' && unitsMode === 'total_only') {
     if (total <= 0) {
@@ -97,13 +151,20 @@ function deriveRowStatus(
     }
     return { status: 'new', warning: undefined };
   }
-  if ((action === 'subject' || action === 'elective') && lec + lab !== total) {
+  if (
+    (action === 'subject' || action === 'elective') &&
+    !unitsEqual(lec + lab, total)
+  ) {
     return {
       status: 'invalid',
       warning: `lec+lab≠total (${lec}+${lab}≠${total})`,
     };
   }
   return { status: 'new', warning: undefined };
+}
+
+function unitsEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < 1e-9;
 }
 
 export default function ImportProspectusDialog({
@@ -113,13 +174,9 @@ export default function ImportProspectusDialog({
   tables,
   programs,
   departmentId,
-  textItems,
+  pdf,
 }: ImportProspectusDialogProps) {
   const qc = useQueryClient();
-  const location = useLocation();
-  const programsPath = location.pathname.startsWith('/dean')
-    ? '/dean/programs'
-    : '/programs';
 
   const [step, setStep] = useState<Step>('select');
   const [programId, setProgramId] = useState<string>('');
@@ -128,6 +185,7 @@ export default function ImportProspectusDialog({
   );
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [extracting, setExtracting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -143,11 +201,21 @@ export default function ImportProspectusDialog({
     () => catalogSubjects.filter((s: SubjectRecord) => s.isElective),
     [catalogSubjects],
   );
-  const electiveById = useMemo(() => {
-    const m = new Map<string, SubjectRecord>();
-    for (const s of electiveSubjects) m.set(String(s.subjectId), s);
-    return m;
-  }, [electiveSubjects]);
+  const electiveGroups = useMemo(
+    () => groupElectives(electiveSubjects),
+    [electiveSubjects],
+  );
+  const electiveCategorySuggestions = useMemo(
+    () =>
+      [
+        ...new Set(
+          electiveSubjects
+            .map((s) => s.electiveCategory?.trim())
+            .filter((c): c is string => !!c),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [electiveSubjects],
+  );
 
   const visiblePrograms = useMemo(() => {
     if (!programs || programs.length === 0) return [];
@@ -174,109 +242,172 @@ export default function ImportProspectusDialog({
     });
   };
 
-  // ── NEW: Build review rows locally from the live text layer ──
-  const handleExtractLocal = () => {
+  // The dialog stays mounted while the editor adds/edits tables. Re-sync the
+  // selection whenever it opens so newly created tables are included.
+  useEffect(() => {
+    if (!open) return;
+    setSelectedTableIds(new Set(tables.map((t) => t.tableId)));
+  }, [open, tables]);
+
+  // ── Build review rows from each table's own page text layer ──
+  const handleExtractLocal = async () => {
     setError(null);
-    if (!textItems) {
-      setError("Text layer is still loading. Please wait a moment.");
+    if (!pdf) {
+      setError('The PDF is still loading. Please wait a moment.');
       return;
     }
 
-    const rows: ReviewRow[] = [];
-    const newWarnings: string[] = [];
-
-    for (const table of tables) {
-      if (!selectedTableIds.has(table.tableId)) continue;
-
-      const sortedRows = [...table.rows].sort((a, b) => b.y_top_pt - a.y_top_pt);
-
-      for (const row of sortedRows) {
-        const cells: Record<ColumnRole, string> = {
-          code: '', title: '', prereq: '', lec: '', lab: '', total: ''
-        };
-
-        for (const col of table.columns) {
-          const override = row.cells?.[col.role];
-          cells[col.role] =
-            typeof override === 'string'
-              ? override
-              : extractTextInRect(
-                  textItems,
-                  col.x_start_pt,
-                  row.y_bottom_pt,
-                  col.x_end_pt,
-                  row.y_top_pt
-                );
-        }
-
-        const code = cells.code.trim();
-        const rawTitle = cells.title.trim();
-        
-        // Normalize spacing just like the backend
-        const title = rawTitle
-          .replace(/([a-z])([A-Z])/g, '$1 $2')
-          .replace(/([A-Za-z])([0-9])/g, '$1 $2')
-          .replace(/\s+/g, ' ');
-
-        const lec = parseIntSafe(cells.lec);
-        const lab = parseIntSafe(cells.lab);
-        const total = parseIntSafe(cells.total);
-
-        const isElectiveTable = table.tableKind === 'elective';
-        const defaultAction: ReviewRow['action'] = isElectiveTable
-          ? 'elective'
-          : code
-          ? 'subject'
-          : 'slot';
-
-        // Electives may list only a total. Auto-detect that shape so the
-        // lec+lab=total check does not reject a valid total-only row.
-        const looksTotalOnly =
-          isElectiveTable && lec === 0 && lab === 0 && total > 0;
-        const unitsMode: UnitsMode = looksTotalOnly ? 'total_only' : 'lec_lab';
-
-        let status: ReviewRow['status'] = 'new';
-        let warning: string | undefined;
-
-        if (!title) {
-          status = 'invalid';
-          warning = 'Missing subject title';
-        } else if (lec + lab !== total && unitsMode !== 'total_only') {
-          status = 'invalid';
-          warning = `lec+lab≠total (${lec}+${lab}≠${total})`;
-        }
-
-        const suspicious = isSuspiciousTitle(title);
-        if (suspicious) {
-          newWarnings.push(`Table Y${table.yearLevel} ${table.semester}: suspicious title "${title}" (row ${row.row_id})`);
-        }
-
-        rows.push({
-          key: `${table.tableId}::${row.row_id}`,
-          tableId: table.tableId,
-          yearLevel: table.yearLevel,
-          semester: table.semester,
-          isElectiveTable,
-          code,
-          typedCode: isElectiveTable ? code : '',
-          title,
-          prereq: cells.prereq.trim(),
-          lec: cells.lec.trim(),
-          lab: cells.lab.trim(),
-          total: cells.total.trim(),
-          status,
-          action: defaultAction,
-          subjectId: '',
-          unitsMode,
-          warning,
-          checked: status === 'new' && !suspicious,
-        });
-      }
+    const selectedTables = tables.filter((t) =>
+      selectedTableIds.has(t.tableId),
+    );
+    if (selectedTables.length === 0) {
+      setError('Select at least one table to import.');
+      return;
     }
 
-    setReviewRows(rows);
-    setWarnings(newWarnings);
-    setStep('review');
+    setExtracting(true);
+    try {
+      // A PDF may map tables on several pages. Read each page once and use
+      // the text items belonging to the table's own page, not whichever page
+      // happens to be open in the editor.
+      const pageIndices = [
+        ...new Set(selectedTables.map((t) => t.regionPageIndex)),
+      ];
+      const pageTexts = new Map<number, TextItem[]>();
+      await Promise.all(
+        pageIndices.map(async (pageIndex) => {
+          const data = await loadPdfPageText(pdf, pageIndex);
+          pageTexts.set(pageIndex, data.items);
+        }),
+      );
+
+      const rows: ReviewRow[] = [];
+      const newWarnings: string[] = [];
+
+      for (const table of selectedTables) {
+        const textItems = pageTexts.get(table.regionPageIndex) ?? [];
+        const sortedRows = [...table.rows].sort(
+          (a, b) => b.y_top_pt - a.y_top_pt,
+        );
+
+        for (const row of sortedRows) {
+          // Explicitly blank rows carry no data. Editing any cell clears the
+          // marker, so a still-blank row can safely be omitted from review.
+          if (row.blank) continue;
+
+          const cells: Record<ColumnRole, string> = {
+            code: '',
+            title: '',
+            prereq: '',
+            lec: '',
+            lab: '',
+            total: '',
+          };
+
+          for (const col of table.columns) {
+            const override = row.cells?.[col.role];
+            if (typeof override === 'string') {
+              // An explicit override is authoritative, including an empty
+              // string the user typed to clear a cell.
+              cells[col.role] = override;
+            } else if (row.pinned_empty?.includes(col.role)) {
+              cells[col.role] = '';
+            } else {
+              cells[col.role] = extractTextInRect(
+                textItems,
+                col.x_start_pt,
+                row.y_bottom_pt,
+                col.x_end_pt,
+                row.y_top_pt,
+              );
+            }
+          }
+
+          const code = cells.code.trim();
+          const rawTitle = cells.title.trim();
+
+          // Normalize spacing just like the backend
+          const title = rawTitle
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+            .replace(/\s+/g, ' ');
+
+          const lec = parseUnits(cells.lec);
+          const lab = parseUnits(cells.lab);
+          const total = parseUnits(cells.total);
+
+          const isElectiveTable = table.tableKind === 'elective';
+          const defaultAction: ReviewRow['action'] = isElectiveTable
+            ? 'elective'
+            : code
+              ? 'subject'
+              : 'slot';
+
+          // Electives may list only a total. Auto-detect that shape so the
+          // lec+lab=total check does not reject a valid total-only row.
+          const looksTotalOnly =
+            isElectiveTable && lec === 0 && lab === 0 && total > 0;
+          const unitsMode: UnitsMode = looksTotalOnly
+            ? 'total_only'
+            : 'lec_lab';
+
+          let status: ReviewRow['status'] = 'new';
+          let warning: string | undefined;
+
+          if (!title) {
+            status = 'invalid';
+            warning = 'Missing subject title';
+          } else if (
+            unitsMode !== 'total_only' &&
+            !unitsEqual(lec + lab, total)
+          ) {
+            status = 'invalid';
+            warning = `lec+lab≠total (${lec}+${lab}≠${total})`;
+          }
+
+          const suspicious = isSuspiciousTitle(title);
+          if (suspicious) {
+            newWarnings.push(
+              `Table Y${table.yearLevel} ${table.semester}: suspicious title "${title}" (row ${row.row_id})`,
+            );
+          }
+
+          rows.push({
+            key: `${table.tableId}::${row.row_id}`,
+            tableId: table.tableId,
+            yearLevel: table.yearLevel,
+            semester: table.semester,
+            isElectiveTable,
+            code,
+            typedCode: isElectiveTable ? code : '',
+            title,
+            prereq: cells.prereq.trim(),
+            lec: cells.lec.trim(),
+            lab: cells.lab.trim(),
+            total: cells.total.trim(),
+            status,
+            action: defaultAction,
+            subjectId: '',
+            electiveCategory: '',
+            unitsMode,
+            warning,
+            checked: status === 'new' && !suspicious,
+          });
+        }
+      }
+
+      setReviewRows(rows);
+      setWarnings(newWarnings);
+      setStep('review');
+    } catch (err: any) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not read the PDF text layer.',
+      );
+    } finally {
+      setExtracting(false);
+    }
   };
 
   const handleImport = async () => {
@@ -307,7 +438,12 @@ export default function ImportProspectusDialog({
             ? { subject_id: Number(r.subjectId) }
             : {}),
           ...(r.action === 'elective'
-            ? { units_mode: r.unitsMode }
+            ? {
+                units_mode: r.unitsMode,
+                ...(r.electiveCategory.trim()
+                  ? { elective_category: r.electiveCategory.trim() }
+                  : {}),
+              }
             : {}),
         })),
       }));
@@ -438,10 +574,26 @@ export default function ImportProspectusDialog({
             </button>
             <button
               onClick={handleExtractLocal}
-              disabled={selectedTableIds.size === 0 || !programId || !textItems}
+              disabled={
+                selectedTableIds.size === 0 ||
+                !programId ||
+                !pdf ||
+                extracting
+              }
               className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
-              Read Local Text
+              {extracting ? (
+                <>
+                  <Icon
+                    name="progress_activity"
+                    size={14}
+                    className="animate-spin"
+                  />
+                  Reading…
+                </>
+              ) : (
+                'Read Local Text'
+              )}
             </button>
           </>
         ) : step === 'review' ? (
@@ -576,6 +728,12 @@ export default function ImportProspectusDialog({
             </label>
           </div>
 
+          <datalist id="import-elective-categories">
+            {electiveCategorySuggestions.map((category) => (
+              <option key={category} value={category} />
+            ))}
+          </datalist>
+
           <div className="max-h-[400px] overflow-auto border border-surface-variant rounded-lg">
             {[...rowsByTable.entries()].map(([tableId, rows]) => {
               const table = tables.find((t) => String(t.tableId) === String(tableId));
@@ -666,9 +824,9 @@ export default function ImportProspectusDialog({
                                         .value as ReviewRow['action'];
                                       const autoTotalOnly =
                                         act === 'elective' &&
-                                        parseIntSafe(row.lec) === 0 &&
-                                        parseIntSafe(row.lab) === 0 &&
-                                        parseIntSafe(row.total) > 0;
+                                        parseUnits(row.lec) === 0 &&
+                                        parseUnits(row.lab) === 0 &&
+                                        parseUnits(row.total) > 0;
                                       const nextMode: UnitsMode = autoTotalOnly
                                         ? 'total_only'
                                         : row.unitsMode;
@@ -744,13 +902,20 @@ export default function ImportProspectusDialog({
                                         <option value="">
                                           — New / typed code —
                                         </option>
-                                        {electiveSubjects.map((s) => (
-                                          <option
-                                            key={s.subjectId}
-                                            value={s.subjectId}
+                                        {electiveGroups.map((group) => (
+                                          <optgroup
+                                            key={group.label}
+                                            label={group.label}
                                           >
-                                            {s.subjectCode} — {s.title}
-                                          </option>
+                                            {group.items.map((s) => (
+                                              <option
+                                                key={s.subjectId}
+                                                value={s.subjectId}
+                                              >
+                                                {s.subjectCode} — {s.title}
+                                              </option>
+                                            ))}
+                                          </optgroup>
                                         ))}
                                       </select>
 
@@ -772,6 +937,30 @@ export default function ImportProspectusDialog({
                                             );
                                           }}
                                           className="w-28 px-1 py-0.5 text-[11px] border border-primary/40 rounded focus:outline-none focus:border-primary"
+                                        />
+                                      )}
+
+                                      {!row.subjectId && (
+                                        <input
+                                          type="text"
+                                          list="import-elective-categories"
+                                          placeholder="Category (e.g. GEC)"
+                                          value={row.electiveCategory}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setReviewRows((prev) =>
+                                              prev.map((r) =>
+                                                r.key === row.key
+                                                  ? {
+                                                      ...r,
+                                                      electiveCategory: val,
+                                                    }
+                                                  : r,
+                                              ),
+                                            );
+                                          }}
+                                          className="w-32 px-1 py-0.5 text-[11px] border border-surface-variant rounded focus:outline-none focus:border-primary"
+                                          title="Optional group shown in elective filters and dropdowns"
                                         />
                                       )}
 
@@ -857,7 +1046,18 @@ export default function ImportProspectusDialog({
               );
             })}
           </div>
-          
+
+          {warnings.length > 0 && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+              <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
+              <ul className="list-disc list-inside space-y-0.5">
+                {warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="text-xs text-on-surface-variant flex flex-wrap gap-x-3 gap-y-1">
             <span>
               Ready: <strong className="text-primary">{readyCount}</strong>
@@ -943,6 +1143,62 @@ export default function ImportProspectusDialog({
               )}
             </ul>
           </div>
+
+          {result.warnings?.length > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon
+                  name="warning"
+                  size={20}
+                  className="text-amber-700 shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Import warnings
+                  </p>
+                  <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-amber-800">
+                    {result.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {result.skippedRows?.length > 0 && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+              <div className="flex items-start gap-3">
+                <Icon
+                  name="error"
+                  size={20}
+                  className="text-red-700 shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-red-900">
+                    {result.skippedRows.length} row
+                    {result.skippedRows.length === 1 ? '' : 's'} not imported
+                  </p>
+                  <ul className="mt-2 space-y-1 max-h-48 overflow-y-auto text-xs">
+                    {result.skippedRows.map((row, index) => (
+                      <li
+                        key={`${row.tableId}-${row.rowIndex}-${index}`}
+                        className="flex items-baseline gap-2 text-red-800"
+                      >
+                        <span className="font-mono font-semibold">
+                          {row.code || '(no code)'}
+                        </span>
+                        <span className="truncate">{row.title || '—'}</span>
+                        <span className="ml-auto shrink-0 font-semibold">
+                          {SKIP_REASON_LABELS[row.reason] ?? row.reason}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {result.temporaryCodes?.length > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
@@ -1042,10 +1298,28 @@ export default function ImportProspectusDialog({
   );
 }
 
-function parseIntSafe(v: string | undefined): number {
+/**
+ * Parse the unit strings found in prospectus PDFs.
+ *
+ * Decimals are preserved. A fraction such as "3/3" means three units, while
+ * "2/1" is a squashed "2 1" and sums to three; stripping the slash would
+ * turn both into "33".
+ */
+export function parseUnits(v: string | undefined): number {
   if (!v) return 0;
-  const cleaned = String(v).replace(/[^0-9.-]/g, '');
-  if (!cleaned || cleaned === '.' || cleaned === '-') return 0;
+  const cleaned = String(v).replace(/[^0-9./-]/g, '');
+  if (!cleaned) return 0;
+
+  if (cleaned.includes('/')) {
+    const parts = cleaned
+      .split('/')
+      .map((part) => parseFloat(part))
+      .filter((part) => Number.isFinite(part));
+    if (parts.length === 0) return 0;
+    if (parts.every((part) => part === parts[0])) return parts[0];
+    return parts.reduce((sum, part) => sum + part, 0);
+  }
+
   const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? Math.round(n) : 0;
+  return Number.isFinite(n) ? n : 0;
 }
