@@ -49,6 +49,11 @@ export default function TableRowsEditor({
 
   const cellValue = (role: ColumnRole) =>
     selected?.cells.find((cell) => cell.role === role)?.text ?? '';
+  // Elective tables may not have every role. Only show the cells this table
+  // actually maps so the editor matches the PDF layout.
+  const visibleRoles = COLUMN_ORDER.filter((role) =>
+    table.columns.some((column) => column.role === role),
+  );
 
   return (
     <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-3">
@@ -206,7 +211,7 @@ export default function TableRowsEditor({
           </div>
 
           <div className="mt-2 space-y-2">
-            {COLUMN_ORDER.map((role) => {
+            {visibleRoles.map((role) => {
               const isUnit = role === 'lec' || role === 'lab' || role === 'total';
               return (
                 <label

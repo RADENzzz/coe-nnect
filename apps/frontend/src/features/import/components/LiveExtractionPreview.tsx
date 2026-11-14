@@ -22,6 +22,10 @@ export default function LiveExtractionPreview({
     table,
     textItems,
   );
+  const roles = table?.columns.map((column) => column.role);
+  const legendRoles = roles
+    ? COLUMN_ORDER.filter((role) => roles.includes(role))
+    : COLUMN_ORDER;
 
   return (
     <div className="space-y-3">
@@ -99,7 +103,11 @@ export default function LiveExtractionPreview({
             </div>
           </div>
 
-          <ExtractedTable rows={rows} columnStats={columnStats} />
+          <ExtractedTable
+            rows={rows}
+            columnStats={columnStats}
+            roles={roles}
+          />
 
           {/* Footer summary */}
           {rows.length > 0 && (
@@ -132,7 +140,7 @@ export default function LiveExtractionPreview({
           Column legend
         </div>
         <div className="grid grid-cols-2 gap-1.5">
-          {COLUMN_ORDER.map((role) => (
+          {legendRoles.map((role) => (
             <div key={role} className="flex items-center gap-2 text-xs">
               <span
                 className="inline-block w-3 h-3 rounded-sm shrink-0"

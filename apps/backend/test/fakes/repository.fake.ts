@@ -133,7 +133,8 @@ export function createFakeRepository<T extends Row = Row>(
     const isIdLookup =
       !idOrCriteria ||
       typeof idOrCriteria !== 'object' ||
-      Object.prototype.hasOwnProperty.call(idOrCriteria, idKey);
+      (Object.keys(idOrCriteria).length === 1 &&
+        Object.prototype.hasOwnProperty.call(idOrCriteria, idKey));
 
     if (isIdLookup) {
       const id = idOrCriteria?.[idKey] ?? idOrCriteria;

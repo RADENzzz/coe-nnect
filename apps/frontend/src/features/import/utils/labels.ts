@@ -18,8 +18,12 @@ export function yearTermLabel(
 }
 
 /**
- * Label for a PDF table. Regular tables are always year/term specific;
- * elective tables may be yearless and are marked as such.
+ * Label for a PDF table. Regular tables are always year/term specific.
+ *
+ * Elective tables are groups of optioned subjects, so they use the group
+ * heading printed in the PDF (for example "SOFTWARE DEVELOPMENT") as their
+ * top name. Tables created before names were captured still fall back to the
+ * year/term description.
  */
 export function tableLabel(
   table: Pick<
@@ -29,6 +33,8 @@ export function tableLabel(
 ): string {
   const kind = table.tableKind ?? 'regular';
   if (kind === 'elective') {
+    const stored = table.label?.trim();
+    if (stored) return stored;
     const identity = yearTermLabel(table.yearLevel, table.semester);
     return identity === 'Any year / term'
       ? 'Elective · any year / term'
@@ -39,10 +45,15 @@ export function tableLabel(
 
 /** Short label for compact chips and quick-nav buttons. */
 export function shortTableLabel(
-  table: Pick<ProspectusPdfTable, 'tableKind' | 'yearLevel' | 'semester'>,
+  table: Pick<
+    ProspectusPdfTable,
+    'tableKind' | 'yearLevel' | 'semester' | 'label'
+  >,
 ): string {
   const kind = table.tableKind ?? 'regular';
   if (kind === 'elective') {
+    const stored = table.label?.trim();
+    if (stored) return stored;
     if (table.yearLevel == null && table.semester == null) return 'Elective';
     return `Elective · ${yearTermLabel(table.yearLevel, table.semester)}`;
   }

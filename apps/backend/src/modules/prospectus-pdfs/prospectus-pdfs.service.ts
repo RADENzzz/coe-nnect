@@ -231,16 +231,16 @@ export class ProspectusPdfsService {
     dto: CreateTableDto,
     user: UserProfile,
   ): Promise<ProspectusPdfTable> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
+    await this.assertCanWritePdf(pdfId, user);
 
-    this.assertValidColumns(dto.columns);
+    const tableKind = dto.table_kind ?? 'regular';
+
+    this.assertValidColumns(dto.columns, tableKind);
     this.assertValidRegion(dto);
     if (dto.rows.length > 0) {
       this.assertValidRows(dto.rows);
     }
 
-    const tableKind = dto.table_kind ?? 'regular';
     const yearLevel = dto.year_level ?? null;
     const semester = dto.semester ?? null;
 
@@ -304,8 +304,7 @@ export class ProspectusPdfsService {
     dto: UpdateTableDto,
     user: UserProfile,
   ): Promise<ProspectusPdfTable> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
+    await this.assertCanWritePdf(pdfId, user);
     const table = await this.tableRepo.findOne({
       where: { tableId, pdfId },
     });
@@ -353,7 +352,7 @@ export class ProspectusPdfsService {
     if (nextSemester !== table.semester) table.semester = nextSemester;
 
     if (dto.columns !== undefined) {
-      this.assertValidColumns(dto.columns);
+      this.assertValidColumns(dto.columns, nextKind);
       table.columns = dto.columns as ColumnSliceSpec[];
     }
 
@@ -401,13 +400,17 @@ export class ProspectusPdfsService {
     tableId: string,
     user: UserProfile,
   ): Promise<void> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
-    const table = await this.tableRepo.findOne({
-      where: { tableId, pdfId },
-    });
-    if (!table) throw new NotFoundException(`Table ${tableId} not found`);
-    await this.tableRepo.remove(table);
+    // Only the PDF's ownership fields are needed here. Loading the full
+    // record (with every table's JSONB rows) just to check permissions made
+    // deletion scale with the size of the whole mapping.
+    await this.assertCanWritePdf(pdfId, user);
+
+    // One DELETE statement instead of SELECT + entity removal. `affected`
+    // also tells us whether the table existed and belonged to this PDF.
+    const result = await this.tableRepo.delete({ tableId, pdfId });
+    if (!result.affected) {
+      throw new NotFoundException(`Table ${tableId} not found`);
+    }
   }
 
   // ============================================================
@@ -848,11 +851,24 @@ export class ProspectusPdfsService {
           continue;
         }
 
+        const isElectiveAction = action === 'elective' || action === 'slot';
+
         const parsedLec = this.parseUnits(sub.lec);
         const parsedLab = this.parseUnits(sub.lab);
-        const parsedTotal = this.parseUnits(sub.total);
+        let parsedTotal = this.parseUnits(sub.total);
 
-        const isElectiveAction = action === 'elective' || action === 'slot';
+        // Elective tables may have no total column at all (all-lecture or
+        // all-laboratory layouts) or list lec/lab without a total. Derive the
+        // total from the units that are present instead of rejecting a valid
+        // row with lec+lab≠0.
+        if (
+          isElectiveAction &&
+          sub.units_mode !== 'total_only' &&
+          parsedTotal === 0 &&
+          parsedLec + parsedLab > 0
+        ) {
+          parsedTotal = parsedLec + parsedLab;
+        }
 
         // Electives may list only a total. `total_only` keeps the breakdown
         // columns at zero and is the only mode allowed to skip the
@@ -1239,6 +1255,10 @@ export class ProspectusPdfsService {
   ): string {
     const kind = table.tableKind ?? 'regular';
     if (kind === 'elective') {
+      // Prefer the group heading captured from the PDF ("SOFTWARE
+      // DEVELOPMENT") so import warnings name the group, not just "Elective".
+      const stored = table.label?.trim();
+      if (stored) return stored;
       if (table.yearLevel != null && table.semester != null) {
         return `Elective table (Year ${table.yearLevel} ${table.semester})`;
       }
@@ -1250,18 +1270,43 @@ export class ProspectusPdfsService {
     return table.label?.trim() || `Table ${table.tableId}`;
   }
 
-  private assertValidColumns(cols: { role: string }[]): void {
-    if (cols.length !== 6) {
+  private assertValidColumns(
+    cols: { role: string }[],
+    tableKind: 'regular' | 'elective' = 'regular',
+  ): void {
+    if (cols.length === 0 || cols.length > 6) {
       throw new BadRequestException(
-        'columns must contain exactly 6 entries',
+        'columns must contain between 1 and 6 entries',
       );
     }
-    const roles = new Set(cols.map((c) => c.role));
-    const required = ['code', 'title', 'prereq', 'lec', 'lab', 'total'];
-    for (const r of required) {
-      if (!roles.has(r)) {
-        throw new BadRequestException(`columns missing role: ${r}`);
+
+    const allowed = new Set(['code', 'title', 'prereq', 'lec', 'lab', 'total']);
+    const roles = new Set<string>();
+    for (const column of cols) {
+      if (!allowed.has(column.role)) {
+        throw new BadRequestException(`unknown column role: ${column.role}`);
       }
+      if (roles.has(column.role)) {
+        throw new BadRequestException(`columns repeat role: ${column.role}`);
+      }
+      roles.add(column.role);
+    }
+
+    if (tableKind === 'regular') {
+      for (const r of allowed) {
+        if (!roles.has(r)) {
+          throw new BadRequestException(`columns missing role: ${r}`);
+        }
+      }
+      return;
+    }
+
+    // Elective tables are not tied to one fixed prospectus layout. They may
+    // expose only a total ("No. Units"), a lec/lab/total split, or a single
+    // lecture/laboratory column. The title is the one field every import
+    // needs, so it is the only mandatory elective column.
+    if (!roles.has('title')) {
+      throw new BadRequestException('elective tables require a title column');
     }
   }
 
@@ -1475,6 +1520,24 @@ export class ProspectusPdfsService {
   /** Unit sums are numeric columns; tolerate floating-point noise. */
   private unitsEqual(a: number, b: number): boolean {
     return Math.abs(a - b) < 1e-9;
+  }
+
+  /**
+   * Permission check for table writes. Deliberately selects only the PDF's
+   * ownership fields: the editor saves and deletes individual tables, so
+   * loading every table's JSONB rows first made those actions scale with the
+   * size of the whole mapping.
+   */
+  private async assertCanWritePdf(
+    pdfId: string,
+    user: UserProfile,
+  ): Promise<void> {
+    const pdf = await this.pdfRepo.findOne({
+      where: { pdfId, deletedAt: IsNull() },
+      select: { pdfId: true, departmentId: true },
+    });
+    if (!pdf) throw new NotFoundException(`Prospectus PDF ${pdfId} not found`);
+    this.assertCanWriteDepartment(user, pdf.departmentId);
   }
 
   private assertCanReadDepartment(

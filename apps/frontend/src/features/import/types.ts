@@ -139,6 +139,8 @@ export type DrawingMode =
       yearLevel: number | null;
       semester: SemesterType | null;
       tableKind: TableKind;
+      /** Optional group name typed in Add Table; auto-detected when null. */
+      label: string | null;
     }
   | { kind: 'focusing' };
 

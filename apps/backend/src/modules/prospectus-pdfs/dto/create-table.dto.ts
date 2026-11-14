@@ -98,7 +98,7 @@ export class CreateTableDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  label?: string;
+  label?: string | null;
 
   @IsInt()
   @Min(0)

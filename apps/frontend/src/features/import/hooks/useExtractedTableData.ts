@@ -93,16 +93,20 @@ export function useExtractedTableData(
 }
 
 /** Tab-separated rows — pastes straight into Excel / Google Sheets. */
-export function extractedRowsToTsv(rows: ExtractedRow[]): string {
-  const header = ['#', ...COLUMN_ORDER.map((role) => COLUMN_LABELS[role])];
+export function extractedRowsToTsv(
+  rows: ExtractedRow[],
+  roles: ColumnRole[] = COLUMN_ORDER,
+): string {
+  const visibleRoles = COLUMN_ORDER.filter((role) => roles.includes(role));
+  const header = ['#', ...visibleRoles.map((role) => COLUMN_LABELS[role])];
   const lines = [header.join('\t')];
   for (const row of rows) {
-    lines.push(
-      [
-        String(row.index),
-        ...row.cells.map((cell) => cell.text.replace(/\t/g, ' ')),
-      ].join('\t'),
+    const cells = visibleRoles.map(
+      (role) =>
+        row.cells.find((cell) => cell.role === role)?.text.replace(/\t/g, ' ') ??
+        '',
     );
+    lines.push([String(row.index), ...cells].join('\t'));
   }
   return lines.join('\n');
 }

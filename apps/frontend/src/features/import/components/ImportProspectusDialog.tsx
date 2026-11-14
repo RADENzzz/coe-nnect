@@ -16,7 +16,6 @@ import type {
 import { extractTextInRect } from '../hooks/useCellExtraction';
 import { loadPdfPageText, type TextItem } from '../hooks/usePdfTextLayer';
 import { tableLabel, yearTermLabel } from '../utils/labels';
-import { COLUMN_ORDER } from '../types';
 
 interface ImportProspectusDialogProps {
   open: boolean;
@@ -333,11 +332,20 @@ export default function ImportProspectusDialog({
             .replace(/([A-Za-z])([0-9])/g, '$1 $2')
             .replace(/\s+/g, ' ');
 
+          const isElectiveTable = table.tableKind === 'elective';
           const lec = parseUnits(cells.lec);
           const lab = parseUnits(cells.lab);
-          const total = parseUnits(cells.total);
+          const rawTotal = cells.total.trim();
+          const parsedTotal = parseUnits(rawTotal);
+          // Elective tables may have no total column at all (all-lecture or
+          // all-laboratory layouts) or list lec/lab without a total. Derive
+          // the total so the review row stays importable.
+          const total =
+            isElectiveTable && parsedTotal === 0 && lec + lab > 0
+              ? lec + lab
+              : parsedTotal;
+          const totalText = rawTotal || (total > 0 ? String(total) : '');
 
-          const isElectiveTable = table.tableKind === 'elective';
           const defaultAction: ReviewRow['action'] = isElectiveTable
             ? 'elective'
             : code
@@ -385,7 +393,7 @@ export default function ImportProspectusDialog({
             prereq: cells.prereq.trim(),
             lec: cells.lec.trim(),
             lab: cells.lab.trim(),
-            total: cells.total.trim(),
+            total: totalText,
             status,
             action: defaultAction,
             subjectId: '',
@@ -672,7 +680,12 @@ export default function ImportProspectusDialog({
                     </div>
                     <div className="text-xs text-on-surface-variant">
                       {t.rows.length} row{t.rows.length === 1 ? '' : 's'}
-                      {t.label ? ` · ${t.label}` : ''}
+                      {(t.tableKind ?? 'regular') === 'elective'
+                        ? ` · Elective · ${yearTermLabel(
+                            t.yearLevel,
+                            t.semester,
+                          )}`
+                        : ''}
                     </div>
                   </div>
                 </label>

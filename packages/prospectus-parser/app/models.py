@@ -52,12 +52,16 @@ class RegionSpec(BaseModel):
 
     @field_validator("columns")
     @classmethod
-    def has_all_roles(cls, v: list[ColumnSpec]):
-        roles = {c.role for c in v}
-        required = {"code", "title", "prereq", "lec", "lab", "total"}
-        missing = required - roles
-        if missing:
-            raise ValueError(f"columns missing roles: {sorted(missing)}")
+    def unique_roles(cls, v: list[ColumnSpec]):
+        # Regular curriculum tables use all six roles, but elective tables
+        # may expose only code/title/total, a lec/lab/total split, or a
+        # single lecture/laboratory column. The backend decides which roles
+        # a table kind requires; the parser just needs unique roles.
+        if not v:
+            raise ValueError("columns must not be empty")
+        roles = [c.role for c in v]
+        if len(roles) != len(set(roles)):
+            raise ValueError("columns must not repeat a role")
         return v
 
 

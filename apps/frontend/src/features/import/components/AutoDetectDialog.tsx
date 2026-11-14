@@ -11,6 +11,8 @@ import type {
   SemesterType,
   TableKind,
 } from '../types';
+import { COLUMN_LABELS, COLUMN_ORDER } from '../types';
+import { isElectiveGroupHeading } from '../utils/rowDetection';
 import { MAX_TABLES, SEMESTERS, YEAR_LEVELS } from '../constants';
 
 interface DraftProposal extends DetectedTableProposal {
@@ -18,6 +20,8 @@ interface DraftProposal extends DetectedTableProposal {
   year: number;
   semester: SemesterType;
   tableKind: TableKind;
+  /** Elective group name typed by the user before creating. */
+  name: string;
 }
 
 interface AutoDetectDialogProps {
@@ -51,6 +55,20 @@ function firstFreePair(
   return { year: YEAR_LEVELS[0], semester: '1st' };
 }
 
+/**
+ * Electives are the tables that do not follow the six-column curriculum
+ * contract. A proposal that is missing a role can never be created as a
+ * regular table (the backend requires all six), so default it to elective
+ * even when a year/term heading happened to be printed nearby. A full
+ * six-role proposal without a year/term stays regular and gets a guessed
+ * year/term for the user to confirm.
+ */
+function proposalLooksElective(proposal: DetectedTableProposal): boolean {
+  const roles = new Set(proposal.columns.map((column) => column.role));
+  if (roles.size < 6 || !roles.has('prereq')) return true;
+  return proposal.yearLevel == null && proposal.semester == null;
+}
+
 function seedDrafts(
   proposals: DetectedTableProposal[],
   existing: ProspectusPdfTable[],
@@ -73,10 +91,18 @@ function seedDrafts(
     }));
 
   return proposals.map((proposal) => {
+    const tableKind: TableKind = proposalLooksElective(proposal)
+      ? 'elective'
+      : 'regular';
     let year = proposal.yearLevel;
     let semester = proposal.semester;
 
-    if (year != null && semester != null) {
+    if (tableKind === 'elective') {
+      // Electives are not tied to a year/term. The selects below still need a
+      // value, but it is never sent to the API for an elective table.
+      year = year ?? YEAR_LEVELS[0];
+      semester = semester ?? '1st';
+    } else if (year != null && semester != null) {
       // Keep the parser's inference even when it collides — the user needs
       // to see the conflict, not have it silently replaced.
     } else if (year != null) {
@@ -87,14 +113,21 @@ function seedDrafts(
       semester = free.semester;
     }
 
-    assigned.push({ yearLevel: year, semester });
+    // Only regular tables reserve a year/term; electives may repeat freely.
+    if (tableKind === 'regular') {
+      assigned.push({ yearLevel: year, semester });
+    }
 
     return {
       ...proposal,
       selected: proposal.status === 'new',
       year,
       semester,
-      tableKind: 'regular',
+      tableKind,
+      name:
+        tableKind === 'elective' && isElectiveGroupHeading(proposal.label)
+          ? proposal.label
+          : '',
     };
   });
 }
@@ -171,33 +204,59 @@ export default function AutoDetectDialog({
     const counts = new Map<string, number>();
     for (const draft of drafts) {
       if (!draft.selected || draft.tableKind === 'elective') continue;
+      // A regular table without all six roles cannot be created, so it must
+      // not reserve a year/term and block a valid proposal.
+      const roles = new Set(draft.columns.map((column) => column.role));
+      if (roles.size !== 6) continue;
       const key = pairKey(draft.year, draft.semester);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
   }, [drafts]);
 
-  const conflictFor = (draft: DraftProposal): string | null => {
+  const issueFor = (
+    draft: DraftProposal,
+  ): { kind: 'conflict' | 'invalid'; message: string } | null => {
     // Electives are optioned subjects and may repeat for any year/term.
     if (draft.tableKind === 'elective') return null;
+
+    const roles = new Set(draft.columns.map((column) => column.role));
+    if (roles.size !== 6) {
+      return {
+        kind: 'invalid',
+        message: `This proposal has ${roles.size} column${
+          roles.size === 1 ? '' : 's'
+        }, but regular tables need all six. Keep it elective or draw the table manually.`,
+      };
+    }
+
     const key = pairKey(draft.year, draft.semester);
     if (existingPairs.has(key)) {
-      return `Year ${draft.year} ${draft.semester} is already mapped`;
+      return {
+        kind: 'conflict',
+        message: `Year ${draft.year} ${draft.semester} is already mapped. Pick another semester or year.`,
+      };
     }
     if ((selectedPairCounts.get(key) ?? 0) > 1) {
-      return `Another selected proposal also uses Year ${draft.year} ${draft.semester}`;
+      return {
+        kind: 'conflict',
+        message: `Another selected proposal also uses Year ${draft.year} ${draft.semester}. Pick another semester or year.`,
+      };
     }
     return null;
   };
 
   const ready = drafts.filter(
-    (draft) => draft.selected && !conflictFor(draft),
+    (draft) => draft.selected && issueFor(draft) == null,
   );
 
   const updateDraft = (
     proposalId: string,
     patch: Partial<
-      Pick<DraftProposal, 'selected' | 'year' | 'semester' | 'tableKind'>
+      Pick<
+        DraftProposal,
+        'selected' | 'year' | 'semester' | 'tableKind' | 'name'
+      >
     >,
   ) => {
     setDrafts((prev) =>
@@ -220,7 +279,12 @@ export default function AutoDetectDialog({
           year_level: draft.tableKind === 'elective' ? null : draft.year,
           semester: draft.tableKind === 'elective' ? null : draft.semester,
           table_kind: draft.tableKind,
-          label: draft.label?.slice(0, 200) || undefined,
+          // Only electives use a group name. The parser's proposal label is
+          // year/term text for regular tables, so it is not stored there.
+          label:
+            draft.tableKind === 'elective'
+              ? draft.name.trim().slice(0, 200) || undefined
+              : undefined,
           region_page_index: draft.pageIndex,
           region_x_start_pt: draft.regionXStartPt,
           region_x_end_pt: draft.regionXEndPt,
@@ -375,7 +439,7 @@ export default function AutoDetectDialog({
                   prev.map((draft) => ({
                     ...draft,
                     selected:
-                      draft.status === 'new' && !conflictFor(draft),
+                      draft.status === 'new' && issueFor(draft) == null,
                   })),
                 )
               }
@@ -387,7 +451,8 @@ export default function AutoDetectDialog({
         )}
 
         {drafts.map((draft) => {
-          const conflict = conflictFor(draft);
+          const issue = issueFor(draft);
+          const conflict = issue != null;
           const confidencePct = Math.round(draft.confidence * 100);
           return (
             <div
@@ -430,7 +495,7 @@ export default function AutoDetectDialog({
                       <Icon name="insights" size={11} />
                       {confidencePct}% confidence
                     </span>
-                    {draft.status === 'conflict' && (
+                    {issue?.kind === 'conflict' && (
                       <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
                         <Icon name="warning" size={11} />
                         Already mapped
@@ -455,6 +520,27 @@ export default function AutoDetectDialog({
                       {draft.rows.length} row
                       {draft.rows.length === 1 ? '' : 's'}
                     </span>
+                  </div>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                      Columns
+                    </span>
+                    {COLUMN_ORDER.filter((role) =>
+                      draft.columns.some((column) => column.role === role),
+                    ).map((role) => (
+                      <span
+                        key={role}
+                        className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary"
+                      >
+                        {COLUMN_LABELS[role]}
+                      </span>
+                    ))}
+                    {draft.columns.length === 0 && (
+                      <span className="text-[10px] italic text-on-surface-variant">
+                        none detected
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -530,10 +616,37 @@ export default function AutoDetectDialog({
                     )}
                   </div>
 
-                  {conflict && (
+                  {draft.tableKind === 'elective' && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant">
+                        Group name
+                        <input
+                          type="text"
+                          value={draft.name}
+                          onChange={(e) =>
+                            updateDraft(draft.proposalId, {
+                              name: e.target.value,
+                            })
+                          }
+                          disabled={creating}
+                          maxLength={200}
+                          placeholder="e.g. SOFTWARE DEVELOPMENT"
+                          className="w-56 rounded-md border border-surface-variant bg-white px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
+                        />
+                      </label>
+                      <span className="text-[10px] italic text-on-surface-variant">
+                        Optional. Shown above the table.
+                      </span>
+                    </div>
+                  )}
+
+                  {issue && (
                     <p className="mt-2 text-[11px] font-semibold text-amber-800 flex items-center gap-1">
-                      <Icon name="warning" size={12} />
-                      {conflict}. Pick another semester or year.
+                      <Icon
+                        name={issue.kind === 'invalid' ? 'error' : 'warning'}
+                        size={12}
+                      />
+                      {issue.message}
                     </p>
                   )}
                 </div>

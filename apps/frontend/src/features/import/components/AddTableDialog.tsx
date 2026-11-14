@@ -20,6 +20,7 @@ interface AddTableDialogProps {
     yearLevel: number | null,
     semester: SemesterType | null,
     tableKind: TableKind,
+    label: string | null,
   ) => void;
   /** Tables already present for this PDF — disables taken regular (year, sem) pairs. */
   existingTables: ProspectusPdfTable[];
@@ -34,6 +35,7 @@ export default function AddTableDialog({
   const [year, setYear] = useState(1);
   const [semester, setSemester] = useState<SemesterType>('1st');
   const [tableKind, setTableKind] = useState<TableKind>('regular');
+  const [label, setLabel] = useState('');
 
   const regularTables = useMemo(
     () =>
@@ -64,6 +66,7 @@ export default function AddTableDialog({
     setYear(start?.yearLevel ?? 1);
     setSemester(start?.semester ?? '1st');
     setTableKind('regular');
+    setLabel('');
   }, [open, regularTables]);
 
   const taken = (y: number, s: SemesterType) =>
@@ -74,12 +77,13 @@ export default function AddTableDialog({
 
   const handleConfirm = () => {
     if (conflict || maxTablesReached) return;
+    const trimmedLabel = label.trim().slice(0, 200);
     if (isElective) {
       // Electives are optioned: they are assigned to a year/term later.
-      onConfirm(null, null, 'elective');
+      onConfirm(null, null, 'elective', trimmedLabel || null);
       return;
     }
-    onConfirm(year, semester, 'regular');
+    onConfirm(year, semester, 'regular', null);
   };
 
   return (
@@ -158,14 +162,37 @@ export default function AddTableDialog({
         </div>
 
         {isElective ? (
-          <div className="p-3 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 text-xs flex items-start gap-2">
-            <Icon name="stars" size={16} className="shrink-0 mt-0.5" />
-            <span>
-              Elective tables are not tied to a year or term. Imported
-              electives go into the subject catalog, then you assign them to a
-              year and semester when you build the prospectus.
-            </span>
-          </div>
+          <>
+            <div className="p-3 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 text-xs flex items-start gap-2">
+              <Icon name="stars" size={16} className="shrink-0 mt-0.5" />
+              <span>
+                Elective tables are not tied to a year or term. Imported
+                electives go into the subject catalog, then you assign them to a
+                year and semester when you build the prospectus.
+              </span>
+            </div>
+            <div>
+              <label
+                htmlFor="add-table-label"
+                className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider"
+              >
+                Group name <span className="normal-case font-normal">(optional)</span>
+              </label>
+              <input
+                id="add-table-label"
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                maxLength={200}
+                placeholder="e.g. SOFTWARE DEVELOPMENT"
+                className="w-full rounded-lg border border-surface-variant bg-white px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none"
+              />
+              <p className="mt-1 text-[10px] text-on-surface-variant">
+                Shown above the table and in the import list. Leave blank to use
+                the all-caps heading found inside the region you draw.
+              </p>
+            </div>
+          </>
         ) : (
           <>
             <div>
