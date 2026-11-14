@@ -27,6 +27,8 @@ All application routes except the public landing page, login, maintenance page, 
 | `/` | Public | Landing page with published schedules, college statistics, faculty directory, and IDP integration status. |
 | `/login` | Public | Email/password sign-in with the Cap CAPTCHA widget. |
 | `/maintenance` | Public | Maintenance wall shown when `system_status.maintenance_mode` is enabled. |
+| `/recovery/verify` | Public | Consumes a recovery-email verification token from the emailed link. |
+| `/reset-password` | Public | Consumes a password-reset token and sets a new password. |
 | `/department-deactivated` | Department head | Wall shown when the signed-in head's department is inactive. |
 | `/dashboard` | Department head | Department dashboard: schedule, faculty, room, and attention summaries. |
 | `/timetable` | Department head | Interactive schedule planner and timetable. |
@@ -76,6 +78,8 @@ All application routes except the public landing page, login, maintenance page, 
 6. A `401` response signs out the browser session and redirects to login.
 
 The backend is the authority for authorization. Browser route guards shape navigation and prevent dead-end screens, but they are not a security boundary.
+
+**Forgot password?** posts the entered address to `/api/v1/recovery/request`. The backend sends its own reset link, so this no longer uses Supabase's reset email. The link opens `/reset-password?token=...`, which calls `/api/v1/recovery/reset`. Settings → Security adds the optional recovery address and its verification flow; see [Password recovery email](../operations/email-recovery.md).
 
 `MaintenanceGate` checks the public system status before rendering the app. The landing page remains reachable during maintenance because it is read-only and does not require a session. Development builds can set `VITE_MAINTENANCE_BYPASS=true` to ignore the flag locally.
 

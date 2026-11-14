@@ -12,6 +12,7 @@ import LiquidBackground from '../../components/layout/LiquidBackground';
 import AppearanceSettingsTab from '../settings/components/AppearanceSettingsTab';
 import SystemStatusBanner from './components/SystemStatusBanner';
 import { CAP_API_ENDPOINT, login as loginWithCap } from '../../api/auth.api';
+import { requestPasswordReset } from '../../api/recovery.api';
 import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
 import { useAppearanceStore } from '../../store/appearance.store';
 
@@ -259,14 +260,14 @@ function ForgotPasswordModal({
 
     setSending(true);
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        { redirectTo: `${window.location.origin}/reset-password` },
-      );
-      if (resetError) throw resetError;
+      await requestPasswordReset(email.trim());
       setSent(true);
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to send reset email');
+      setError(
+        err?.response?.data?.message ??
+          err?.message ??
+          'Failed to send reset email',
+      );
     } finally {
       setSending(false);
     }

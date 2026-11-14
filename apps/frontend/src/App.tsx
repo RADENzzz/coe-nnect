@@ -3,6 +3,8 @@ import LoginPage from './features/auth/LoginPage';
 import LandingPage from './features/landing/LandingPage';
 import MaintenancePage from './features/auth/MaintenancePage';
 import DepartmentDeactivatedPage from './features/auth/DepartmentDeactivatedPage';
+import RecoveryVerifyPage from './features/auth/RecoveryVerifyPage';
+import ResetPasswordPage from './features/auth/ResetPasswordPage';
 import DashboardPage from './features/dashboard/DashboardPage';
 import TimetablePage from './features/timetable/TimetablePage';
 import AppShell from './components/layout/AppShell';
@@ -62,6 +64,8 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/maintenance" element={<MaintenancePage />} />
+      <Route path="/recovery/verify" element={<RecoveryVerifyPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* Wall page — reachable only when a DH is walled. Login, AuthProvider,
           and the wall page's "Refresh status" all key off profile.dept_active. */}
