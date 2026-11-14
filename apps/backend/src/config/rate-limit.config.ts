@@ -44,6 +44,23 @@ export function createLoginRateLimiter(env: Env = process.env) {
 }
 
 /**
+ * Password-recovery endpoints send email and accept one-time tokens. Keep a
+ * strict bucket so they cannot be used to flood an inbox or brute-force a
+ * token, even when the caller rotates IPs only slowly.
+ */
+export function createRecoveryRateLimiter(env: Env = process.env) {
+  return rateLimit({
+    windowMs: 15 * 60_000,
+    limit: positiveNumber(env.RECOVERY_THROTTLE_LIMIT, 10),
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skip: (req) => req.method === 'OPTIONS',
+    message: RATE_LIMIT_MESSAGE,
+    validate: { xForwardedForHeader: false },
+  });
+}
+
+/**
  * Challenge/redeem traffic is two requests per login attempt. Keep a separate
  * bucket so a burst on the CAPTCHA routes cannot consume the login budget or
  * the global budget for the rest of the API.

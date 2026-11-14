@@ -30,6 +30,8 @@ import { SystemStatusModule } from './modules/system-status/system-status.module
 import { HealthModule } from './modules/health/health.module';
 import { IdpModule } from './modules/idp/idp.module';
 import { PublicModule } from './modules/public/public.module';
+import { MailModule } from './modules/mail/mail.module';
+import { RecoveryModule } from './modules/recovery/recovery.module';
 
 @Module({
   imports: [
@@ -67,6 +69,8 @@ import { PublicModule } from './modules/public/public.module';
     HealthModule,
     IdpModule,
     PublicModule,
+    MailModule,
+    RecoveryModule,
   ],
   providers: [
     // Every HTTP route requires a verified Supabase JWT unless it is

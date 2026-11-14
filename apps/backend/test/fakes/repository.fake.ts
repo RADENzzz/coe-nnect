@@ -8,9 +8,11 @@ export interface FakeRepositoryOptions {
  * Small in-memory TypeORM repository used by service-level integration tests.
  * It implements only the methods exercised by the tested services.
  *
- * Supported find operators: `isNull`, `in`, `lessThan`, `lessThanOrEqual`,
- * `moreThan`, `moreThanOrEqual`. `find` also honours `order` and `take`.
- * `delete(criteria)` removes every matching row; `delete(id)` removes one.
+ * Supported find operators: `isNull`, `not`, `in`, `lessThan`,
+ * `lessThanOrEqual`, `moreThan`, `moreThanOrEqual`, and a simple
+ * `lower(column) = :param` form of `raw`. `find` also honours `order` and
+ * `take`. `delete(criteria)` removes every matching row; `delete(id)` removes
+ * one.
  */
 export function createFakeRepository<T extends Row = Row>(
   initialRows: T[] = [],
@@ -27,6 +29,20 @@ export function createFakeRepository<T extends Row = Row>(
         switch ((expected as any).type) {
           case 'isNull':
             return row[key] == null;
+          case 'not':
+            return !matchesWhere(row, { [key]: (expected as any).child });
+          case 'raw': {
+            const sql = String(
+              (expected as any).getSql?.(key) ?? '',
+            ).trim();
+            const params = (expected as any).objectLiteralParameters ?? {};
+            const match = /^lower\((\w+)\) = :(\w+)$/i.exec(sql);
+            if (!match) return false;
+            return (
+              String(row[key] ?? '').toLowerCase() ===
+              String(params[match[2]] ?? '').toLowerCase()
+            );
+          }
           case 'in':
             return (value as any[])
               .map((item) => String(item))

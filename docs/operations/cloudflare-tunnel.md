@@ -81,24 +81,37 @@ No environment changes are needed:
 - Outside production the backend accepts `https://*.trycloudflare.com` origins
   automatically. In a deployed/production backend, allow it explicitly with
   `CORS_ALLOW_TUNNEL=true` (demo only).
-- Password reset and other Supabase links use `window.location.origin`, so they
-  point at the tunnel automatically once Supabase allows it (step 4).
+- Password-recovery links are built from the backend's `APP_PUBLIC_URL`, not the
+  browser origin. Point it at the tunnel URL while demoing (step 4).
 
 With plain `pnpm dev`, live-reload (HMR) may not reconnect through the tunnel.
 The app itself, login, API calls, websockets, and notifications all work. Use
 `pnpm dev:online` when you are actively editing while sharing.
 
-## 4. Supabase redirect URLs (password reset)
+## 4. Password-reset links (`APP_PUBLIC_URL`)
 
-In **Supabase Dashboard → Authentication → URL Configuration**, add a wildcard
-entry to _Redirect URLs_:
+Recovery and reset emails are sent by the backend, so the link origin comes
+from `APP_PUBLIC_URL` in `apps/backend/.env`:
+
+```dotenv
+APP_PUBLIC_URL=https://your-tunnel-name.trycloudflare.com
+```
+
+Set it before starting the backend and restart when the tunnel URL changes.
+Without it the backend falls back to the first `FRONTEND_URL` entry, which is
+usually `http://localhost:5173` and will not open from a recipient's device.
+See [Password recovery email](email-recovery.md) for the SMTP setup.
+
+Supabase redirect URLs are only needed if you also use Supabase-generated auth
+mail (invitations, confirmations, magic links). In that case add this wildcard
+to **Supabase Dashboard → Authentication → URL Configuration → Redirect URLs**:
 
 ```text
 https://*.trycloudflare.com/**
 ```
 
-Needed once, safely left in place. Without it the reset email link returns to
-the Supabase default site instead of the tunnel.
+Without it those Supabase links return to the Supabase default site instead of
+the tunnel. The application's own password reset no longer uses Supabase email.
 
 ## Advanced overrides
 
