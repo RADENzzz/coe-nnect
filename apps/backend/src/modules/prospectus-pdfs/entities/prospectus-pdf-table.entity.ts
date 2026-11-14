@@ -34,6 +34,10 @@ export interface RowSpec {
    * used by the editor's duplicate-row and direct cell editing.
    */
   cells?: Partial<Record<ColumnRole, string>>;
+  /** Explicitly empty row created by the editor; never reads PDF text. */
+  blank?: boolean;
+  /** Roles that were empty when the row geometry was pinned. */
+  pinned_empty?: ColumnRole[];
 }
 
 @Entity({ name: 'prospectus_pdf_table' })

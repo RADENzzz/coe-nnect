@@ -31,6 +31,16 @@ export interface RowBox {
    * rows are stored as JSONB, so the extra key rides along.
    */
   cells?: Partial<Record<ColumnRole, string>>;
+  /**
+   * Explicitly empty row, created with "Add row". Unlike an empty `cells`
+   * object, this means the row must never read the PDF text underneath it.
+   */
+  blank?: boolean;
+  /**
+   * Roles that were empty when the row geometry was pinned. Keeps a row from
+   * picking up a neighbouring row's text after it is shifted or resized.
+   */
+  pinned_empty?: ColumnRole[];
 }
 
 /** A table the parser found on its own, before it is committed. */

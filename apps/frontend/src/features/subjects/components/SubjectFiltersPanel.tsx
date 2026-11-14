@@ -48,6 +48,10 @@ export interface SubjectFiltersPanelProps {
   minorFilter: string;
   compFilter: string;
   statusFilter: string;
+  electiveCategoryFilter: string;
+  electiveYearFilter: string;
+  electiveSemesterFilter: string;
+  electiveCategories: string[];
   setFilter: (key: string, value: string) => void;
   departments: Department[];
   deptCounts: Map<string, number>;
@@ -74,6 +78,10 @@ export default function SubjectFiltersPanel({
   minorFilter,
   compFilter,
   statusFilter,
+  electiveCategoryFilter,
+  electiveYearFilter,
+  electiveSemesterFilter,
+  electiveCategories,
   setFilter,
   departments,
   deptCounts,
@@ -288,6 +296,73 @@ export default function SubjectFiltersPanel({
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="border-t border-surface-variant pt-3">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Icon name="stars" size={14} className="text-teal-600" />
+                <span className="text-xs font-semibold text-on-surface uppercase tracking-wider">
+                  Elective filters
+                </span>
+                <span className="text-[10px] text-on-surface-variant">
+                  Category · year level · term
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Category
+                  </label>
+                  <select
+                    value={electiveCategoryFilter}
+                    onChange={(e) => setFilter('ecat', e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All categories</option>
+                    <option value="__none__">Uncategorized</option>
+                    {electiveCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Year level
+                  </label>
+                  <select
+                    value={electiveYearFilter}
+                    onChange={(e) => setFilter('eyear', e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All year levels</option>
+                    <option value="1">Year 1</option>
+                    <option value="2">Year 2</option>
+                    <option value="3">Year 3</option>
+                    <option value="4">Year 4</option>
+                    <option value="none">Unassigned</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Term
+                  </label>
+                  <select
+                    value={electiveSemesterFilter}
+                    onChange={(e) => setFilter('eterm', e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All terms</option>
+                    <option value="1st">1st semester</option>
+                    <option value="2nd">2nd semester</option>
+                    <option value="summer">Summer</option>
+                    <option value="none">Unassigned</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

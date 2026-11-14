@@ -52,6 +52,11 @@ export function useExtractedTableData(
           if (typeof override === 'string') {
             return { role, text: override, overridden: true };
           }
+          // A blank row or an explicitly pinned empty cell must stay empty:
+          // reading the PDF here would show a neighbouring row's text.
+          if (row.blank || row.pinned_empty?.includes(role)) {
+            return { role, text: '', overridden: true };
+          }
           const col = table.columns.find((c) => c.role === role);
           if (!col) return { role, text: '', overridden: false };
           return {

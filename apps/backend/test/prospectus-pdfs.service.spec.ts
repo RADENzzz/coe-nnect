@@ -391,6 +391,35 @@ describe('ProspectusPdfsService elective imports', () => {
     });
   });
 
+  it('stamps imported electives with the table year/term and chosen category', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'GEC 103',
+          title: 'Ethics',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          units_mode: 'lec_lab',
+          elective_category: '  GEC  ',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'GEC 103',
+      isElective: true,
+      electiveCategory: 'GEC',
+      electiveYearLevel: 1,
+      electiveSemester: '1st',
+    });
+  });
+
   it('creates a deterministic temporary code and reports it', async () => {
     const { service, subjectRepo } = createImportService();
 

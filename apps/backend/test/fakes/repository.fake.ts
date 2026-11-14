@@ -90,6 +90,11 @@ export function createFakeRepository<T extends Row = Row>(
     return args?.take ? sorted.slice(0, args.take) : sorted;
   });
 
+  const count = jest.fn(async (args?: any) => {
+    const where = args?.where;
+    return rows.filter((row) => !where || matchesWhere(row, where)).length;
+  });
+
   const create = jest.fn((input: Partial<T>) => ({ ...input }) as T);
 
   const save = jest.fn(async (entity: T) => {
@@ -159,6 +164,7 @@ export function createFakeRepository<T extends Row = Row>(
   return {
     rows,
     find,
+    count,
     findOne,
     create,
     save,

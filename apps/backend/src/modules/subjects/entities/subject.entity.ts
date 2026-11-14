@@ -52,6 +52,21 @@ export class Subject {
   unitsMode!: 'lec_lab' | 'total_only';
 
   /**
+   * Free-text group shown in elective filters and grouped dropdowns
+   * (for example "GEC" or "Major"). Null for regular subjects.
+   */
+  @Column({ name: 'elective_category', type: 'text', nullable: true })
+  electiveCategory: string | null;
+
+  /** Preferred year level (1-6), or null when the elective fits any year. */
+  @Column({ name: 'elective_year_level', type: 'smallint', nullable: true })
+  electiveYearLevel: number | null;
+
+  /** Preferred semester, or null when the elective fits any term. */
+  @Column({ name: 'elective_semester', type: 'text', nullable: true })
+  electiveSemester: '1st' | '2nd' | 'summer' | null;
+
+  /**
    * Room type constraint for the subject.
    *
    * - 'lecture_room' / 'laboratory' / 'computer_lab' / 'drafting_room' / 'other'

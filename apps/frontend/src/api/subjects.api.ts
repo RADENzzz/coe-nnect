@@ -12,6 +12,10 @@ export type SubjectRoomType =
   | 'other'
   | 'any';
 
+export type UnitsMode = 'lec_lab' | 'total_only';
+
+export type ElectiveSemester = '1st' | '2nd' | 'summer';
+
 export interface SubjectRecord {
   subjectId: string;
   subjectCode: string;
@@ -25,10 +29,11 @@ export interface SubjectRecord {
   isMinor: boolean;
   isElective: boolean;
   unitsMode: UnitsMode;
+  electiveCategory: string | null;
+  electiveYearLevel: number | null;
+  electiveSemester: ElectiveSemester | null;
   requiredRoomType: string | null;
 }
-
-export type UnitsMode = 'lec_lab' | 'total_only';
 
 export interface CreateSubjectInput {
   subjectCode: string;
@@ -40,6 +45,9 @@ export interface CreateSubjectInput {
   isMinor?: boolean;
   isElective?: boolean;
   unitsMode?: UnitsMode;
+  electiveCategory?: string | null;
+  electiveYearLevel?: number | null;
+  electiveSemester?: ElectiveSemester | null;
   deptId: string;
 }
 

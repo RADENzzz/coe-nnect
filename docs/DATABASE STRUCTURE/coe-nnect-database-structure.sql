@@ -1,5 +1,5 @@
 -- CoE-NNECT database schema
--- Generated: 2026-11-13T01:18:51.644Z
+-- Generated: 2026-11-14T02:40:58.303Z
 --
 -- This file contains the public schema only (tables, types, functions,
 -- triggers, RLS policies, indexes, and grants). It does not contain row data.
@@ -1344,6 +1344,13 @@ CREATE TABLE public.subject (
     is_placeholder boolean DEFAULT false NOT NULL,
     is_elective boolean DEFAULT false NOT NULL,
     units_mode text DEFAULT 'lec_lab'::text NOT NULL,
+    elective_category text,
+    elective_year_level smallint,
+    elective_semester text,
+    CONSTRAINT subject_elective_category_nonempty_check CHECK (((elective_category IS NULL) OR (btrim(elective_category) <> ''::text))),
+    CONSTRAINT subject_elective_metadata_only_check CHECK ((is_elective OR ((elective_category IS NULL) AND (elective_year_level IS NULL) AND (elective_semester IS NULL)))),
+    CONSTRAINT subject_elective_semester_check CHECK (((elective_semester IS NULL) OR (elective_semester = ANY (ARRAY['1st'::text, '2nd'::text, 'summer'::text])))),
+    CONSTRAINT subject_elective_year_level_check CHECK (((elective_year_level IS NULL) OR ((elective_year_level >= 1) AND (elective_year_level <= 6)))),
     CONSTRAINT subject_lab_units_check CHECK ((lab_units >= (0)::numeric)),
     CONSTRAINT subject_lecture_units_check CHECK ((lecture_units >= (0)::numeric)),
     CONSTRAINT subject_total_only_units_check CHECK (((units_mode = 'lec_lab'::text) OR ((lecture_units = (0)::numeric) AND (lab_units = (0)::numeric)))),
@@ -1365,6 +1372,27 @@ COMMENT ON COLUMN public.subject.is_elective IS 'True when the catalog entry is 
 --
 
 COMMENT ON COLUMN public.subject.units_mode IS 'lec_lab = total is lecture + lab; total_only = only total units are known (electives only).';
+
+
+--
+-- Name: COLUMN subject.elective_category; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.subject.elective_category IS 'Free-text elective group (for example GEC or Major), used by filters and grouped dropdowns.';
+
+
+--
+-- Name: COLUMN subject.elective_year_level; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.subject.elective_year_level IS 'Preferred year level for this elective (1-6), or NULL when it applies to any year.';
+
+
+--
+-- Name: COLUMN subject.elective_semester; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.subject.elective_semester IS 'Preferred semester for this elective (1st, 2nd, summer), or NULL when it applies to any term.';
 
 
 --
@@ -2264,6 +2292,13 @@ CREATE INDEX idx_schedule_unscheduled_term_dept ON public.schedule_unscheduled U
 --
 
 CREATE INDEX idx_schedule_version_term ON public.schedule_version USING btree (term_id, version_number DESC);
+
+
+--
+-- Name: idx_subject_elective_metadata; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_subject_elective_metadata ON public.subject USING btree (elective_category, elective_year_level, elective_semester) WHERE is_elective;
 
 
 --
