@@ -73,8 +73,9 @@ export interface DetectTablesResponse {
 export interface ProspectusPdfTable {
   tableId: string;
   pdfId: string;
-  yearLevel: number;
-  semester: SemesterType;
+  /** Null for elective tables that are not tied to a year/term. */
+  yearLevel: number | null;
+  semester: SemesterType | null;
   label: string | null;
   tableKind: TableKind;
   regionPageIndex: number;
@@ -134,9 +135,12 @@ export type DrawingMode =
   | { kind: 'idle' }
   | {
       kind: 'drawing-region';
-      yearLevel: number;
-      semester: SemesterType;
+      /** Null for elective tables, which are not year/term specific. */
+      yearLevel: number | null;
+      semester: SemesterType | null;
       tableKind: TableKind;
+      /** Optional group name typed in Add Table; auto-detected when null. */
+      label: string | null;
     }
   | { kind: 'focusing' };
 
@@ -235,8 +239,8 @@ export interface SlotCreated {
   subjectCode: string;
   slotLabel: string;
   title: string;
-  yearLevel: number;
-  semester: string;
+  yearLevel: number | null;
+  semester: SemesterType | null;
   isElective: boolean;
   isPlaceholder: boolean;
   unitsMode: UnitsMode;
@@ -247,8 +251,8 @@ export interface TemporaryCode {
   subjectId: string;
   subjectCode: string;
   title: string;
-  yearLevel: number;
-  semester: string;
+  yearLevel: number | null;
+  semester: SemesterType | null;
 }
 
 export interface ImportResult {

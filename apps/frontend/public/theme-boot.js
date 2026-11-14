@@ -7,6 +7,17 @@
  * use `script-src 'self'` without `'unsafe-inline'`.
  */
 (function () {
+  // The production server injects a fresh nonce into <meta name="csp-nonce">
+  // for every HTML response. cap-widget needs it for the inline script in its
+  // instrumentation iframe; without it a strict script-src blocks the frame.
+  try {
+    var nonceMeta = document.querySelector('meta[name="csp-nonce"]');
+    var nonce = nonceMeta && nonceMeta.getAttribute('content');
+    if (nonce) window.CAP_SCRIPT_NONCE = nonce;
+  } catch {
+    /* Ignore a missing meta tag (e.g. Vite dev server). */
+  }
+
   try {
     var stored = localStorage.getItem('coe-nnect:theme');
     var dark = stored === 'dark';

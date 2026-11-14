@@ -49,11 +49,16 @@ export class ProspectusPdfTable {
   @Column({ name: 'pdf_id', type: 'bigint' })
   pdfId!: string;
 
-  @Column({ name: 'year_level', type: 'smallint' })
-  yearLevel!: number;
+  @Column({ name: 'year_level', type: 'smallint', nullable: true })
+  yearLevel!: number | null;
 
-  @Column({ name: 'semester', type: 'text' })
-  semester!: '1st' | '2nd' | 'summer';
+  /**
+   * Elective tables are optioned subjects and may not be tied to a term.
+   * Regular tables always have a year and semester (enforced by the service
+   * and a database check constraint).
+   */
+  @Column({ name: 'semester', type: 'text', nullable: true })
+  semester!: '1st' | '2nd' | 'summer' | null;
 
   @Column({ name: 'label', type: 'text', nullable: true })
   label!: string | null;

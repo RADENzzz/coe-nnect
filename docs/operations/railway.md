@@ -100,13 +100,21 @@ entered in the dashboard survive future applies.
 | ------------------------ | -------- | ------------------------------------------------ |
 | `VITE_SUPABASE_URL`      | Yes      | Same value as the backend's `SUPABASE_URL`.      |
 | `VITE_SUPABASE_ANON_KEY` | Yes      | Same value as the backend's `SUPABASE_ANON_KEY`. |
+| `BACKEND_FALLBACK_URL`   | No       | Public backend origin used when the private probe fails. Defaults to the production backend domain in `server.mjs`. |
 
 These are **build-time** variables. After entering them, redeploy the frontend
 so Vite can inline them into the bundle. Railway stages variable changes, so
 review and deploy the staged changes (or click **Redeploy**) for the backend
 after adding its variables too.
 
-`VITE_API_BASE_URL=/api` is set by the IaC file.
+`VITE_API_BASE_URL=/api` is set by the IaC file. If the dashboard still has an
+older absolute value such as
+`https://coe-nnectbackend-production.up.railway.app/api`, change it to `/api`
+or re-apply the IaC before redeploying. The browser cannot reach Railway's
+private network, and the production CSP intentionally blocks cross-origin API
+calls. `resolveApiBaseUrl()` also falls back to `/api` at runtime for a
+cross-origin `*.up.railway.app` API URL, but the build-time value should still
+be corrected.
 
 ## Public domain
 
@@ -140,6 +148,28 @@ The frontend receives `BACKEND_HOST` and `BACKEND_PORT` as typed references to
 the backend service. Railway resolves these at deploy time. If you rename a
 service, update the references in `.railway/railway.ts`.
 
+At startup `server.mjs` probes `GET /api/v1/health` on the private target. If
+the probe fails, it proxies `/api` and `/socket.io` to
+`BACKEND_FALLBACK_URL` instead (the backend's public origin) and re-probes the
+private target every 60 seconds. A proxy error also forces a re-probe on the
+next request. This keeps the frontend working when private networking is
+misconfigured while still preferring the private route when it is healthy.
+
+## Troubleshooting
+
+- **`/api/...` returns 502 through the frontend.** Check the frontend logs for
+  `backend target: ...`. If the private probe failed, confirm the backend
+  service is running and that `BACKEND_HOST`/`BACKEND_PORT` match its private
+  domain and port. As a safety net, set `BACKEND_FALLBACK_URL` to the
+  backend's public origin.
+- **Browser reports `ERR_NETWORK` or a CSP `connect-src` violation for the
+  backend.** The frontend bundle was built with an absolute
+  `VITE_API_BASE_URL`. Set it to `/api` and redeploy the frontend.
+- **CAP widget fails with `instr_csp_blocked` or cannot load WASM.** The
+  production CSP must include `'wasm-unsafe-eval'` and a per-request nonce;
+  `server.mjs` injects both. The WASM and pako files are self-hosted under
+  `apps/frontend/public/cap/`, so no CDN source is required.
+
 ## Checks
 
 ```bash
@@ -153,6 +183,7 @@ Local production-server smoke test (PowerShell):
 
 ```powershell
 $env:PORT='4173'; $env:BACKEND_HOST='127.0.0.1'; $env:BACKEND_PORT='3000'
+$env:BACKEND_FALLBACK_URL=''
 node apps/frontend/server.mjs
 ```
 

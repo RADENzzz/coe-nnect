@@ -72,13 +72,19 @@ export class RowDto {
 }
 
 export class CreateTableDto {
+  /**
+   * Required for regular tables. Elective tables may omit both year_level and
+   * semester because electives are optioned and assigned to a year/term later.
+   */
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(6)
-  year_level!: number;
+  year_level?: number | null;
 
+  @IsOptional()
   @IsIn(['1st', '2nd', 'summer'])
-  semester!: '1st' | '2nd' | 'summer';
+  semester?: '1st' | '2nd' | 'summer' | null;
 
   /**
    * `regular` (default) is the curriculum table for a year/semester.
@@ -92,7 +98,7 @@ export class CreateTableDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  label?: string;
+  label?: string | null;
 
   @IsInt()
   @Min(0)

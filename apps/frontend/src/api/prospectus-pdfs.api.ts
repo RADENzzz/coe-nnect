@@ -75,9 +75,12 @@ export async function deleteProspectusPdf(id: string): Promise<void> {
 // ─────────────── Tables ───────────────
 
 export interface CreateTableInput {
-  year_level: number;
-  semester: SemesterType;
-  label?: string;
+  /** Required for regular tables; omitted/null for elective tables. */
+  year_level?: number | null;
+  /** Required for regular tables; omitted/null for elective tables. */
+  semester?: SemesterType | null;
+  /** Null clears a previously stored elective group name. */
+  label?: string | null;
   table_kind?: TableKind;
   region_page_index: number;
   region_x_start_pt: number;
@@ -193,8 +196,8 @@ export interface SlotCreated {
   subjectCode: string;
   slotLabel: string;
   title: string;
-  yearLevel: number;
-  semester: string;
+  yearLevel: number | null;
+  semester: SemesterType | null;
   isElective: boolean;
   isPlaceholder: boolean;
   unitsMode: UnitsMode;

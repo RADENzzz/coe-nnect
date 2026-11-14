@@ -1,4 +1,5 @@
 import type { ProspectusPdfTable } from '../types';
+import { tableLabel } from '../utils/labels';
 import { COLUMN_COLORS, COLUMN_LABELS, COLUMN_ORDER } from '../types';
 import type { TextItem } from '../hooks/usePdfTextLayer';
 import Icon from '@/components/ui/Icon';
@@ -21,6 +22,10 @@ export default function LiveExtractionPreview({
     table,
     textItems,
   );
+  const roles = table?.columns.map((column) => column.role);
+  const legendRoles = roles
+    ? COLUMN_ORDER.filter((role) => roles.includes(role))
+    : COLUMN_ORDER;
 
   return (
     <div className="space-y-3">
@@ -72,7 +77,7 @@ export default function LiveExtractionPreview({
         >
           <div className="px-3 py-2 border-b border-surface-variant bg-surface-container-low flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-on-surface truncate">
-              Year {table.yearLevel} · {table.semester}
+              {tableLabel(table)}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[10px] text-on-surface-variant font-mono">
@@ -98,7 +103,11 @@ export default function LiveExtractionPreview({
             </div>
           </div>
 
-          <ExtractedTable rows={rows} columnStats={columnStats} />
+          <ExtractedTable
+            rows={rows}
+            columnStats={columnStats}
+            roles={roles}
+          />
 
           {/* Footer summary */}
           {rows.length > 0 && (
@@ -131,7 +140,7 @@ export default function LiveExtractionPreview({
           Column legend
         </div>
         <div className="grid grid-cols-2 gap-1.5">
-          {COLUMN_ORDER.map((role) => (
+          {legendRoles.map((role) => (
             <div key={role} className="flex items-center gap-2 text-xs">
               <span
                 className="inline-block w-3 h-3 rounded-sm shrink-0"

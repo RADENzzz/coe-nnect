@@ -1,5 +1,6 @@
 import type { ProspectusPdfTable, RowBox } from '../types';
 import { pdfRectToScreen, type PageView } from '../utils/coords';
+import { tableLabel } from '../utils/labels';
 import ColumnSlices from './ColumnSlices';
 import SubjectRow from './SubjectRow';
 
@@ -63,7 +64,7 @@ export default function TableRegion({
     pageView,
   );
 
-  const label = `Year ${table.yearLevel} · ${table.semester}`;
+  const label = tableLabel(table);
   const sortedRows = [...table.rows].sort(
     (a, b) => b.y_top_pt - a.y_top_pt,
   );

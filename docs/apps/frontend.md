@@ -104,7 +104,7 @@ See [Chat and presence](../features/chat.md) for the full behavior and API contr
 - **Socket.IO** carries notification and chat push events; Supabase Realtime carries presence and new-message table events.
 - **URL search params** hold filter state for pages such as the subject tabs (`/subjects?kind=elective`).
 
-`resolveApiBaseUrl` keeps local, tunnel, and deployed use on one origin. If the page is opened from a non-loopback host while `VITE_API_BASE_URL` still points at `localhost`, the app falls back to the same-origin `/api` path so the Vite proxy or production Node server can forward the request.
+`resolveApiBaseUrl` keeps local, tunnel, and deployed use on one origin. If the page is opened from a non-loopback host while `VITE_API_BASE_URL` still points at `localhost`, the app falls back to the same-origin `/api` path so the Vite proxy or production Node server can forward the request. The same fallback applies when the configured API is a cross-origin `*.up.railway.app` URL: browsers cannot reach Railway's private network, and the production CSP only allows same-origin API calls.
 
 ## Environment variables
 
@@ -159,8 +159,16 @@ The frontend has no unit or component test runner and no `test` script. Its auto
 Railway builds the Vite bundle and starts `apps/frontend/server.mjs` as a Node server. That server:
 
 - serves the static build output;
-- proxies `/api` to `BACKEND_HOST:BACKEND_PORT`;
-- proxies `/socket.io` with websocket support;
+- stamps every HTML response with a fresh CSP nonce and sends a strict
+  `Content-Security-Policy` (`script-src 'self' 'wasm-unsafe-eval' 'nonce-...'`);
+- proxies `/api` to `BACKEND_HOST:BACKEND_PORT`, probing `/api/v1/health` and
+  falling back to `BACKEND_FALLBACK_URL` when the private route is unreachable;
+- proxies `/socket.io` with websocket support, using the same backend selection;
 - falls back to `index.html` for client-side routes.
+
+The Cap solver WASM and pako fallback are self-hosted under `public/cap/` and
+pointed to by `public/cap-config.js`, so the CSP does not need a CDN source.
+`public/theme-boot.js` copies the per-request nonce into
+`window.CAP_SCRIPT_NONCE` for Cap's instrumentation iframe.
 
 Because the browser sees a single origin, production needs no `VITE_API_BASE_URL` pointing at a public backend and no CORS preflight from the frontend. `VITE_API_BASE_URL=/api` is set by the Railway IaC file. See the [Railway deployment guide](../operations/railway.md).

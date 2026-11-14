@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
 import type { ProspectusPdfTable } from '../types';
+import { tableLabel } from '../utils/labels';
 import type { TextItem } from '../hooks/usePdfTextLayer';
 import ExtractedTable from './ExtractedTable';
 import {
@@ -31,6 +32,7 @@ export default function ExtractedTableModal({
     table,
     textItems,
   );
+  const roles = table?.columns.map((column) => column.role);
   const [copiedAll, setCopiedAll] = useState(false);
 
   const missingRows = rows.filter((row) =>
@@ -42,7 +44,7 @@ export default function ExtractedTableModal({
 
   const copyAll = async () => {
     try {
-      await navigator.clipboard.writeText(extractedRowsToTsv(rows));
+      await navigator.clipboard.writeText(extractedRowsToTsv(rows, roles));
       setCopiedAll(true);
       setTimeout(() => setCopiedAll(false), 1500);
     } catch {
@@ -51,7 +53,7 @@ export default function ExtractedTableModal({
   };
 
   const title = table
-    ? `Extracted · Year ${table.yearLevel} · ${table.semester}`
+    ? `Extracted · ${tableLabel(table)}`
     : 'Extracted table';
 
   return (
@@ -127,6 +129,7 @@ export default function ExtractedTableModal({
           <ExtractedTable
             rows={rows}
             columnStats={columnStats}
+            roles={roles}
             variant="full"
           />
         </div>

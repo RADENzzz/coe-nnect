@@ -9,9 +9,15 @@
     <meta name="theme-color" content="#5c1219" />
     <meta name="color-scheme" content="light" />
     <!--
+      Self-hosted Cap solver assets. Must run before cap-widget is imported.
+      See public/cap-config.js.
+    -->
+    <script src="/cap-config.js"></script>
+    <!--
       Apply the saved theme, accent palette, and glass flag before first
       paint. External (not inline) so the production CSP can forbid inline
-      scripts. See public/theme-boot.js.
+      scripts. Also exposes the per-request CSP nonce to cap-widget.
+      See public/theme-boot.js.
     -->
     <script src="/theme-boot.js"></script>
     <meta

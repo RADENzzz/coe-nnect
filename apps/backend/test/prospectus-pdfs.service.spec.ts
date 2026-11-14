@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ProspectusPdfsService,
   inferRoomTypeFromUnits,
@@ -282,7 +286,7 @@ describe('ProspectusPdfsService confirmImport room types', () => {
 });
 
 describe('ProspectusPdfsService elective imports', () => {
-  function createImportService() {
+  function createImportService(tableOverrides: Record<string, any> = {}) {
     const pdfRepo = createFakeRepository(
       [{ pdfId: 'pdf-1', departmentId: '1', deletedAt: null }],
       { idKey: 'pdfId' },
@@ -295,6 +299,7 @@ describe('ProspectusPdfsService elective imports', () => {
           yearLevel: 1,
           semester: '1st',
           tableKind: 'elective',
+          ...tableOverrides,
         },
       ],
       { idKey: 'tableId' },
@@ -388,6 +393,87 @@ describe('ProspectusPdfsService elective imports', () => {
       totalUnits: 3,
       lectureUnits: 0,
       labUnits: 0,
+    });
+  });
+
+  it('derives the total when an elective lists only lecture units', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'CPE RPA 1',
+          title: 'Robotics Process Automation',
+          lec: '3',
+          lab: '0',
+          total: '',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'CPE RPA 1',
+      unitsMode: 'lec_lab',
+      totalUnits: 3,
+      lectureUnits: 3,
+      labUnits: 0,
+    });
+  });
+
+  it('derives the total when an elective lists only laboratory units', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'CPE SD 1',
+          title: 'Software Development',
+          lec: '0',
+          lab: '2',
+          total: '',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'CPE SD 1',
+      unitsMode: 'lec_lab',
+      totalUnits: 2,
+      lectureUnits: 0,
+      labUnits: 2,
+    });
+  });
+
+  it('derives the total when lec and lab are present without a total column', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'MST 101',
+          title: 'Mathematics for Computing',
+          lec: '2',
+          lab: '1',
+          total: '',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'MST 101',
+      unitsMode: 'lec_lab',
+      totalUnits: 3,
+      lectureUnits: 2,
+      labUnits: 1,
     });
   });
 
@@ -542,6 +628,47 @@ describe('ProspectusPdfsService elective imports', () => {
     expect(result.skippedRows).toHaveLength(1);
     expect(result.skippedRows[0].reason).toBe('not_elective');
   });
+
+  it('imports a yearless elective into the catalog without a prospectus row', async () => {
+    const { service, subjectRepo, prospectusRepo } = createImportService({
+      yearLevel: null,
+      semester: null,
+    });
+
+    const result = await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: '',
+          title: 'Free Elective',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          units_mode: 'lec_lab',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(subjectRepo.rows[0]).toMatchObject({
+      isElective: true,
+      isPlaceholder: true,
+      electiveYearLevel: null,
+      electiveSemester: null,
+    });
+    expect(subjectRepo.rows[0].subjectCode).toMatch(
+      /^ELEC-YXSX-[A-F0-9]{6}$/,
+    );
+    // The catalog entry exists, but there is no year/term slot to attach it
+    // to yet.
+    expect(prospectusRepo.rows).toHaveLength(0);
+    expect(result.slots).toHaveLength(1);
+    expect(result.slots[0].yearLevel).toBeNull();
+    expect(result.slots[0].semester).toBeNull();
+    expect(result.warnings.join(' ')).toContain('without a year/term');
+  });
 });
 
 describe('ProspectusPdfsService table kinds', () => {
@@ -589,6 +716,236 @@ describe('ProspectusPdfsService table kinds', () => {
     );
 
     expect(tableRepo.rows).toHaveLength(2);
+  });
+
+  it('creates a yearless elective table', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await service.createTable(
+      'pdf-1',
+      {
+        ...tableDto([]),
+        year_level: null,
+        semester: null,
+        table_kind: 'elective',
+      } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows).toHaveLength(1);
+    expect(tableRepo.rows[0]).toMatchObject({
+      tableKind: 'elective',
+      yearLevel: null,
+      semester: null,
+    });
+  });
+
+  it('accepts an elective table with only code, title, and total columns', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    const columns = [
+      { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+      { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+      { role: 'total', x_start_pt: 400, x_end_pt: 520 },
+    ];
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective', columns } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows[0].columns).toEqual(columns);
+  });
+
+  it('accepts an elective table with a lec/lab/total split', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    const columns = [
+      { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+      { role: 'title', x_start_pt: 120, x_end_pt: 360 },
+      { role: 'lec', x_start_pt: 360, x_end_pt: 410 },
+      { role: 'lab', x_start_pt: 410, x_end_pt: 460 },
+      { role: 'total', x_start_pt: 460, x_end_pt: 520 },
+    ];
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective', columns } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows[0].columns).toEqual(columns);
+  });
+
+  it('accepts an elective table with a single lecture column', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    const columns = [
+      { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+      { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+      { role: 'lec', x_start_pt: 400, x_end_pt: 520 },
+    ];
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective', columns } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows[0].columns).toEqual(columns);
+  });
+
+  it('still requires all six columns for regular tables', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await expect(
+      service.createTable(
+        'pdf-1',
+        {
+          ...tableDto([]),
+          columns: [
+            { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+            { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+            { role: 'total', x_start_pt: 400, x_end_pt: 520 },
+          ],
+        } as any,
+        ADMIN_USER,
+      ),
+    ).rejects.toThrow(/columns missing role/);
+    expect(tableRepo.rows).toHaveLength(0);
+  });
+
+  it('rejects duplicate elective column roles', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await expect(
+      service.createTable(
+        'pdf-1',
+        {
+          ...tableDto([]),
+          table_kind: 'elective',
+          columns: [
+            { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+            { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+            { role: 'title', x_start_pt: 400, x_end_pt: 520 },
+          ],
+        } as any,
+        ADMIN_USER,
+      ),
+    ).rejects.toThrow(/repeat role/);
+    expect(tableRepo.rows).toHaveLength(0);
+  });
+
+  it('rejects a regular table without a year and semester', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await expect(
+      service.createTable(
+        'pdf-1',
+        { ...tableDto([]), year_level: null, semester: null } as any,
+        ADMIN_USER,
+      ),
+    ).rejects.toThrow(/require a year level and semester/);
+    expect(tableRepo.rows).toHaveLength(0);
+  });
+});
+
+describe('ProspectusPdfsService deleteTable', () => {
+  it('deletes the table with a PDF-scoped DELETE and a lightweight access lookup', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    tableRepo.rows.push({ tableId: '7', pdfId: 'pdf-1', rows: [] });
+
+    await service.deleteTable('pdf-1', '7', ADMIN_USER);
+
+    expect(tableRepo.rows).toHaveLength(0);
+    expect(tableRepo.delete).toHaveBeenCalledWith({
+      tableId: '7',
+      pdfId: 'pdf-1',
+    });
+    expect(pdfRepo.findOne).toHaveBeenCalledWith({
+      where: { pdfId: 'pdf-1', deletedAt: expect.anything() },
+      select: { pdfId: true, departmentId: true },
+    });
+  });
+
+  it('does not delete a table that belongs to another PDF', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    tableRepo.rows.push({ tableId: '7', pdfId: 'pdf-2', rows: [] });
+
+    await expect(
+      service.deleteTable('pdf-1', '7', ADMIN_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(tableRepo.rows).toHaveLength(1);
+  });
+
+  it('rejects a department head from another department', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    tableRepo.rows.push({ tableId: '7', pdfId: 'pdf-1', rows: [] });
+
+    await expect(
+      service.deleteTable('pdf-1', '7', {
+        userId: 'user-dh',
+        role: 'department_head',
+        deptId: '2',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tableRepo.rows).toHaveLength(1);
+  });
+});
+
+describe('ProspectusPdfsService table detection conflicts', () => {
+  it('does not treat an existing elective table as a regular conflict', async () => {
+    const { service, parser, pdfRepo } = createService();
+    seedPdf(pdfRepo, {
+      tables: [
+        {
+          tableId: 'e1',
+          pdfId: 'pdf-1',
+          tableKind: 'elective',
+          yearLevel: 1,
+          semester: '1st',
+        },
+      ],
+    });
+    parser.detect.mockResolvedValueOnce({
+      page_count: 1,
+      proposals: [
+        {
+          page_index: 0,
+          year_level: 1,
+          semester: '1st',
+          confidence: 0.9,
+          label: 'First Year First Semester',
+          header_text: 'Code Title Lec Lab Total',
+          signals: [],
+          region_x_start_pt: 40,
+          region_x_end_pt: 520,
+          region_y_start_pt: 100,
+          region_y_end_pt: 700,
+          columns: COLUMNS,
+          rows: [],
+        },
+      ],
+      warnings: [],
+    });
+
+    const result = await service.detectTables(
+      'pdf-1',
+      ADMIN_USER,
+      {} as any,
+    );
+
+    expect(result.proposals).toHaveLength(1);
+    expect(result.proposals[0].status).toBe('new');
+    expect(result.proposals[0].existingTableId).toBeNull();
   });
 });
 

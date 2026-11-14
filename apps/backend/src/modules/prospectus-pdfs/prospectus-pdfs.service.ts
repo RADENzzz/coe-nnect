@@ -231,39 +231,47 @@ export class ProspectusPdfsService {
     dto: CreateTableDto,
     user: UserProfile,
   ): Promise<ProspectusPdfTable> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
+    await this.assertCanWritePdf(pdfId, user);
 
-    this.assertValidColumns(dto.columns);
+    const tableKind = dto.table_kind ?? 'regular';
+
+    this.assertValidColumns(dto.columns, tableKind);
     this.assertValidRegion(dto);
     if (dto.rows.length > 0) {
       this.assertValidRows(dto.rows);
     }
 
-    const tableKind = dto.table_kind ?? 'regular';
+    const yearLevel = dto.year_level ?? null;
+    const semester = dto.semester ?? null;
 
-    // Regular curriculum tables are unique per year/semester. Elective tables
-    // may repeat, so they skip this check.
+    // Regular curriculum tables are year/term specific and unique per
+    // combination. Elective tables are optioned subjects: they may be
+    // yearless and may repeat.
     if (tableKind === 'regular') {
+      if (yearLevel == null || semester == null) {
+        throw new BadRequestException(
+          'Regular tables require a year level and semester',
+        );
+      }
       const exists = await this.tableRepo.findOne({
         where: {
           pdfId,
-          yearLevel: dto.year_level,
-          semester: dto.semester,
+          yearLevel,
+          semester,
           tableKind: 'regular',
         },
       });
       if (exists) {
         throw new ConflictException(
-          `A regular table for Year ${dto.year_level} ${dto.semester} already exists for this PDF`,
+          `A regular table for Year ${yearLevel} ${semester} already exists for this PDF`,
         );
       }
     }
 
     const entity = this.tableRepo.create({
       pdfId,
-      yearLevel: dto.year_level,
-      semester: dto.semester,
+      yearLevel,
+      semester,
       label: dto.label ?? null,
       tableKind,
       regionPageIndex: dto.region_page_index,
@@ -296,8 +304,7 @@ export class ProspectusPdfsService {
     dto: UpdateTableDto,
     user: UserProfile,
   ): Promise<ProspectusPdfTable> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
+    await this.assertCanWritePdf(pdfId, user);
     const table = await this.tableRepo.findOne({
       where: { tableId, pdfId },
     });
@@ -307,27 +314,36 @@ export class ProspectusPdfsService {
       );
     }
 
-    const nextYear = dto.year_level ?? table.yearLevel;
-    const nextSemester = dto.semester ?? table.semester;
+    const nextYear =
+      dto.year_level !== undefined ? dto.year_level : table.yearLevel;
+    const nextSemester =
+      dto.semester !== undefined ? dto.semester : table.semester;
     const nextKind = dto.table_kind ?? table.tableKind ?? 'regular';
     const identityChanged =
       nextYear !== table.yearLevel ||
       nextSemester !== table.semester ||
       nextKind !== table.tableKind;
 
-    if (identityChanged && nextKind === 'regular') {
-      const conflict = await this.tableRepo.findOne({
-        where: {
-          pdfId,
-          yearLevel: nextYear,
-          semester: nextSemester,
-          tableKind: 'regular',
-        },
-      });
-      if (conflict && String(conflict.tableId) !== String(tableId)) {
-        throw new ConflictException(
-          `A regular table for Year ${nextYear} ${nextSemester} already exists`,
+    if (nextKind === 'regular') {
+      if (nextYear == null || nextSemester == null) {
+        throw new BadRequestException(
+          'Regular tables require a year level and semester',
         );
+      }
+      if (identityChanged) {
+        const conflict = await this.tableRepo.findOne({
+          where: {
+            pdfId,
+            yearLevel: nextYear,
+            semester: nextSemester,
+            tableKind: 'regular',
+          },
+        });
+        if (conflict && String(conflict.tableId) !== String(tableId)) {
+          throw new ConflictException(
+            `A regular table for Year ${nextYear} ${nextSemester} already exists`,
+          );
+        }
       }
     }
 
@@ -336,7 +352,7 @@ export class ProspectusPdfsService {
     if (nextSemester !== table.semester) table.semester = nextSemester;
 
     if (dto.columns !== undefined) {
-      this.assertValidColumns(dto.columns);
+      this.assertValidColumns(dto.columns, nextKind);
       table.columns = dto.columns as ColumnSliceSpec[];
     }
 
@@ -384,13 +400,17 @@ export class ProspectusPdfsService {
     tableId: string,
     user: UserProfile,
   ): Promise<void> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
-    const table = await this.tableRepo.findOne({
-      where: { tableId, pdfId },
-    });
-    if (!table) throw new NotFoundException(`Table ${tableId} not found`);
-    await this.tableRepo.remove(table);
+    // Only the PDF's ownership fields are needed here. Loading the full
+    // record (with every table's JSONB rows) just to check permissions made
+    // deletion scale with the size of the whole mapping.
+    await this.assertCanWritePdf(pdfId, user);
+
+    // One DELETE statement instead of SELECT + entity removal. `affected`
+    // also tells us whether the table existed and belonged to this PDF.
+    const result = await this.tableRepo.delete({ tableId, pdfId });
+    if (!result.affected) {
+      throw new NotFoundException(`Table ${tableId} not found`);
+    }
   }
 
   // ============================================================
@@ -456,6 +476,7 @@ export class ProspectusPdfsService {
       const existingTable = key
         ? existing.find(
             (table) =>
+              (table.tableKind ?? 'regular') === 'regular' &&
               table.yearLevel === yearLevel &&
               table.semester === semester,
           )
@@ -582,7 +603,7 @@ export class ProspectusPdfsService {
     const regionsOut = result.regions.map((r) => {
       const table = tables.find((t) => Number(t.tableId) === r.table_id);
       const label = table
-        ? `Year ${table.yearLevel} ${table.semester}`
+        ? this.describeTable(table)
         : `Table ${r.table_id}`;
       r.subjects.forEach((s, i) => {
         const code = (s.code ?? '').trim();
@@ -661,8 +682,8 @@ export class ProspectusPdfsService {
       subjectCode: string;
       slotLabel: string;
       title: string;
-      yearLevel: number;
-      semester: string;
+      yearLevel: number | null;
+      semester: string | null;
       isElective: boolean;
       isPlaceholder: boolean;
       unitsMode: 'lec_lab' | 'total_only';
@@ -672,8 +693,8 @@ export class ProspectusPdfsService {
       subjectId: string;
       subjectCode: string;
       title: string;
-      yearLevel: number;
-      semester: string;
+      yearLevel: number | null;
+      semester: string | null;
     }[];
   }> {
     const pdf = await this.findOne(pdfId, user);
@@ -751,8 +772,8 @@ export class ProspectusPdfsService {
       subjectCode: string;
       slotLabel: string;
       title: string;
-      yearLevel: number;
-      semester: string;
+      yearLevel: number | null;
+      semester: string | null;
       isElective: boolean;
       isPlaceholder: boolean;
       unitsMode: 'lec_lab' | 'total_only';
@@ -761,8 +782,8 @@ export class ProspectusPdfsService {
       subjectId: string;
       subjectCode: string;
       title: string;
-      yearLevel: number;
-      semester: string;
+      yearLevel: number | null;
+      semester: string | null;
     }[] = [];
     const byTable: {
       table_id: string;
@@ -830,11 +851,24 @@ export class ProspectusPdfsService {
           continue;
         }
 
+        const isElectiveAction = action === 'elective' || action === 'slot';
+
         const parsedLec = this.parseUnits(sub.lec);
         const parsedLab = this.parseUnits(sub.lab);
-        const parsedTotal = this.parseUnits(sub.total);
+        let parsedTotal = this.parseUnits(sub.total);
 
-        const isElectiveAction = action === 'elective' || action === 'slot';
+        // Elective tables may have no total column at all (all-lecture or
+        // all-laboratory layouts) or list lec/lab without a total. Derive the
+        // total from the units that are present instead of rejecting a valid
+        // row with lec+lab≠0.
+        if (
+          isElectiveAction &&
+          sub.units_mode !== 'total_only' &&
+          parsedTotal === 0 &&
+          parsedLec + parsedLab > 0
+        ) {
+          parsedTotal = parsedLec + parsedLab;
+        }
 
         // Electives may list only a total. `total_only` keeps the breakdown
         // columns at zero and is the only mode allowed to skip the
@@ -862,7 +896,7 @@ export class ProspectusPdfsService {
               reason: 'unit_mismatch',
             });
             warnings.push(
-              `Year ${table.yearLevel} ${table.semester}: "${rawCode || title}" is total-only but has no total units.`,
+              `${this.describeTable(table)}: "${rawCode || title}" is total-only but has no total units.`,
             );
             rowIndexInTable++;
             continue;
@@ -883,7 +917,7 @@ export class ProspectusPdfsService {
             reason: 'unit_mismatch',
           });
           warnings.push(
-            `Year ${table.yearLevel} ${table.semester}: "${rawCode || title}" lec+lab≠total (${lec}+${lab}≠${total})`,
+            `${this.describeTable(table)}: "${rawCode || title}" lec+lab≠total (${lec}+${lab}≠${total})`,
           );
           rowIndexInTable++;
           continue;
@@ -911,7 +945,7 @@ export class ProspectusPdfsService {
                 reason: 'unknown_subject',
               });
               warnings.push(
-                `Year ${table.yearLevel} ${table.semester}: "${title}" references an elective subject that no longer exists.`,
+                `${this.describeTable(table)}: "${title}" references an elective subject that no longer exists.`,
               );
               rowIndexInTable++;
               continue;
@@ -927,7 +961,7 @@ export class ProspectusPdfsService {
                 reason: 'not_elective',
               });
               warnings.push(
-                `Year ${table.yearLevel} ${table.semester}: "${subject.subjectCode}" is not an elective subject.`,
+                `${this.describeTable(table)}: "${subject.subjectCode}" is not an elective subject.`,
               );
               rowIndexInTable++;
               continue;
@@ -947,7 +981,7 @@ export class ProspectusPdfsService {
                 reason: 'not_elective',
               });
               warnings.push(
-                `Year ${table.yearLevel} ${table.semester}: "${rawCode}" is a regular subject; choose an elective or use a new code.`,
+                `${this.describeTable(table)}: "${rawCode}" is a regular subject; choose an elective or use a new code.`,
               );
               rowIndexInTable++;
               continue;
@@ -1011,17 +1045,26 @@ export class ProspectusPdfsService {
               semester: table.semester,
             });
             warnings.push(
-              `Year ${table.yearLevel} ${table.semester}: "${title}" imported with temporary code ${subject.subjectCode}. Resolve it before plotting or auto-generating.`,
+              `${this.describeTable(table)}: "${title}" imported with temporary code ${subject.subjectCode}. Resolve it before plotting or auto-generating.`,
             );
           }
 
-          await this.upsertProspectusRow({
-            programId,
-            subjectId: subject.subjectId,
-            table,
-            slotLabel: title,
-          });
-          prospectusCreated++;
+          if (table.yearLevel != null && table.semester != null) {
+            const outcome = await this.upsertProspectusRow({
+              programId,
+              subjectId: subject.subjectId,
+              table,
+              slotLabel: title,
+            });
+            if (outcome.created) prospectusCreated++;
+            else prospectusSkipped++;
+          } else {
+            // Yearless elective tables are catalog-only: the subject exists,
+            // but there is no prospectus slot to attach it to yet.
+            warnings.push(
+              `${this.describeTable(table)}: "${title}" was added to the elective catalog without a year/term. Assign it when you build the prospectus.`,
+            );
+          }
           created++;
           rowIndexInTable++;
           continue;
@@ -1046,7 +1089,7 @@ export class ProspectusPdfsService {
         if (!SUBJECT_CODE_RE.test(rawCode)) {
           code = rawCode.toUpperCase();
           warnings.push(
-            `Year ${table.yearLevel} ${table.semester}: "${rawCode}" doesn't match the code pattern but was imported as "${code}". Verify the code.`,
+            `${this.describeTable(table)}: "${rawCode}" doesn't match the code pattern but was imported as "${code}". Verify the code.`,
           );
         }
 
@@ -1199,18 +1242,71 @@ export class ProspectusPdfsService {
     };
   }
 
-  private assertValidColumns(cols: { role: string }[]): void {
-    if (cols.length !== 6) {
+  /**
+   * Human label for warnings and results. Elective tables may not have a
+   * year/term, so they are described as "Elective table" instead of
+   * "Year null null".
+   */
+  private describeTable(
+    table: Pick<
+      ProspectusPdfTable,
+      'tableId' | 'tableKind' | 'yearLevel' | 'semester' | 'label'
+    >,
+  ): string {
+    const kind = table.tableKind ?? 'regular';
+    if (kind === 'elective') {
+      // Prefer the group heading captured from the PDF ("SOFTWARE
+      // DEVELOPMENT") so import warnings name the group, not just "Elective".
+      const stored = table.label?.trim();
+      if (stored) return stored;
+      if (table.yearLevel != null && table.semester != null) {
+        return `Elective table (Year ${table.yearLevel} ${table.semester})`;
+      }
+      return 'Elective table';
+    }
+    if (table.yearLevel != null && table.semester != null) {
+      return `Year ${table.yearLevel} ${table.semester}`;
+    }
+    return table.label?.trim() || `Table ${table.tableId}`;
+  }
+
+  private assertValidColumns(
+    cols: { role: string }[],
+    tableKind: 'regular' | 'elective' = 'regular',
+  ): void {
+    if (cols.length === 0 || cols.length > 6) {
       throw new BadRequestException(
-        'columns must contain exactly 6 entries',
+        'columns must contain between 1 and 6 entries',
       );
     }
-    const roles = new Set(cols.map((c) => c.role));
-    const required = ['code', 'title', 'prereq', 'lec', 'lab', 'total'];
-    for (const r of required) {
-      if (!roles.has(r)) {
-        throw new BadRequestException(`columns missing role: ${r}`);
+
+    const allowed = new Set(['code', 'title', 'prereq', 'lec', 'lab', 'total']);
+    const roles = new Set<string>();
+    for (const column of cols) {
+      if (!allowed.has(column.role)) {
+        throw new BadRequestException(`unknown column role: ${column.role}`);
       }
+      if (roles.has(column.role)) {
+        throw new BadRequestException(`columns repeat role: ${column.role}`);
+      }
+      roles.add(column.role);
+    }
+
+    if (tableKind === 'regular') {
+      for (const r of allowed) {
+        if (!roles.has(r)) {
+          throw new BadRequestException(`columns missing role: ${r}`);
+        }
+      }
+      return;
+    }
+
+    // Elective tables are not tied to one fixed prospectus layout. They may
+    // expose only a total ("No. Units"), a lec/lab/total split, or a single
+    // lecture/laboratory column. The title is the one field every import
+    // needs, so it is the only mandatory elective column.
+    if (!roles.has('title')) {
+      throw new BadRequestException('elective tables require a title column');
     }
   }
 
@@ -1298,7 +1394,13 @@ export class ProspectusPdfsService {
         ? '1'
         : params.table.semester === '2nd'
         ? '2'
-        : 'S';
+        : params.table.semester === 'summer'
+        ? 'S'
+        : 'X';
+    // Yearless elective tables still need a deterministic, valid code. `X`
+    // marks the missing identity so the code stays unique and readable.
+    const year =
+      params.table.yearLevel != null ? String(params.table.yearLevel) : 'X';
     const hashInput = params.legacySlot
       ? params.title.toLowerCase().trim()
       : `${params.title.toLowerCase().trim()}|${params.table.tableId}|${params.rowIndex}`;
@@ -1308,7 +1410,7 @@ export class ProspectusPdfsService {
       .slice(0, 6)
       .toUpperCase();
     const prefix = params.legacySlot ? 'SLOT' : 'ELEC';
-    return `${prefix}-Y${params.table.yearLevel}S${sem}-${hash}`;
+    return `${prefix}-Y${year}S${sem}-${hash}`;
   }
 
   private async upsertProspectusRow(params: {
@@ -1317,12 +1419,19 @@ export class ProspectusPdfsService {
     table: ProspectusPdfTable;
     slotLabel?: string;
   }): Promise<{ created: boolean }> {
+    const { yearLevel, semester } = params.table;
+    // A yearless elective table has no prospectus slot yet. The caller still
+    // creates the catalog subject; it is assigned to a year/term later.
+    if (yearLevel == null || semester == null) {
+      return { created: false };
+    }
+
     const existing = await this.prospectusRepo.findOne({
       where: {
         programId: params.programId,
         subjectId: params.subjectId,
-        yearLevel: params.table.yearLevel,
-        semester: params.table.semester,
+        yearLevel,
+        semester,
       },
     });
 
@@ -1357,8 +1466,8 @@ export class ProspectusPdfsService {
     const entry = this.prospectusRepo.create({
       programId: params.programId,
       subjectId: params.subjectId,
-      yearLevel: params.table.yearLevel,
-      semester: params.table.semester,
+      yearLevel,
+      semester,
       slotLabel: params.slotLabel ?? null,
       isActive: true,
       lectureSessionsPerWeek: 1,
@@ -1411,6 +1520,24 @@ export class ProspectusPdfsService {
   /** Unit sums are numeric columns; tolerate floating-point noise. */
   private unitsEqual(a: number, b: number): boolean {
     return Math.abs(a - b) < 1e-9;
+  }
+
+  /**
+   * Permission check for table writes. Deliberately selects only the PDF's
+   * ownership fields: the editor saves and deletes individual tables, so
+   * loading every table's JSONB rows first made those actions scale with the
+   * size of the whole mapping.
+   */
+  private async assertCanWritePdf(
+    pdfId: string,
+    user: UserProfile,
+  ): Promise<void> {
+    const pdf = await this.pdfRepo.findOne({
+      where: { pdfId, deletedAt: IsNull() },
+      select: { pdfId: true, departmentId: true },
+    });
+    if (!pdf) throw new NotFoundException(`Prospectus PDF ${pdfId} not found`);
+    this.assertCanWriteDepartment(user, pdf.departmentId);
   }
 
   private assertCanReadDepartment(

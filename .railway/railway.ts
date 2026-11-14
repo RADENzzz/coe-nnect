@@ -150,6 +150,12 @@ export default defineRailway((ctx) => {
       // Runtime proxy targets, resolved from the backend service by Railway.
       BACKEND_HOST: backend.env.RAILWAY_PRIVATE_DOMAIN,
       BACKEND_PORT: backend.env.PORT,
+      // server.mjs probes the private target and uses this public origin when
+      // Railway's private network is unreachable. Update it if the backend's
+      // generated public domain changes; set it to an empty string to disable
+      // the fallback.
+      BACKEND_FALLBACK_URL:
+        "https://coe-nnectbackend-production.up.railway.app",
     },
   });
 

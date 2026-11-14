@@ -1,6 +1,7 @@
 import Icon from '@/components/ui/Icon';
 import type { ColumnRole, ProspectusPdfTable } from '../types';
 import type { ExtractedRow } from '../hooks/useExtractedTableData';
+import { tableLabel } from '../utils/labels';
 import {
   COLUMN_COLORS,
   COLUMN_LABELS,
@@ -48,13 +49,18 @@ export default function TableRowsEditor({
 
   const cellValue = (role: ColumnRole) =>
     selected?.cells.find((cell) => cell.role === role)?.text ?? '';
+  // Elective tables may not have every role. Only show the cells this table
+  // actually maps so the editor matches the PDF layout.
+  const visibleRoles = COLUMN_ORDER.filter((role) =>
+    table.columns.some((column) => column.role === role),
+  );
 
   return (
     <div className="rounded-lg border border-surface-variant bg-surface-container-lowest p-3">
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-on-surface">
-            Rows — Year {table.yearLevel} · {table.semester}
+            Rows — {tableLabel(table)}
           </div>
           <p className="text-[10px] text-on-surface-variant">
             Select a row to edit its cells or reorder it.
@@ -205,7 +211,7 @@ export default function TableRowsEditor({
           </div>
 
           <div className="mt-2 space-y-2">
-            {COLUMN_ORDER.map((role) => {
+            {visibleRoles.map((role) => {
               const isUnit = role === 'lec' || role === 'lab' || role === 'total';
               return (
                 <label
