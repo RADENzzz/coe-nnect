@@ -32,6 +32,7 @@ import TableRowsEditor from './components/TableRowsEditor';
 import AutoDetectDialog from './components/AutoDetectDialog';
 import { useExtractedTableData } from './hooks/useExtractedTableData';
 import {
+  defaultRowHeight,
   insertRow,
   moveRow,
   rowHeight,
@@ -39,6 +40,13 @@ import {
   sortRowsTopDown,
   type RowSnapshot,
 } from './utils/rows';
+import {
+  detectTextLines,
+  insertionRowHeight,
+  nextRowHeightBelow,
+  rowsFromTextLines,
+} from './utils/rowDetection';
+import { shortTableLabel, yearTermLabel } from './utils/labels';
 import { fetchPrograms } from '@/api/programs.api';
 import { useUiStore } from '@/store/ui.store';
 import { MAX_TABLES, SEMESTER_ORDER } from './constants';
@@ -440,15 +448,6 @@ export default function ProspectusPdfEditorPage() {
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  // ── Row height formula ──
-  const computeNewRowHeight = useCallback(
-    (regionHeight: number, currentRowCount: number): number => {
-      const N = currentRowCount + 1;
-      return regionHeight / Math.max(N + 2, 6);
-    },
-    [],
-  );
-
   // ── Handlers ──
   const handleRegionDrawn = useCallback(
     async (rect: {
@@ -463,19 +462,37 @@ export default function ProspectusPdfEditorPage() {
       const columns = makeDefaultColumns(rect.x_start_pt, rect.x_end_pt);
       const regionHeight = rect.y_end_pt - rect.y_start_pt;
 
-      const firstRowHeight = computeNewRowHeight(regionHeight, 0);
-      const firstRow: RowBox = {
-        row_id: `r_${Date.now().toString(36)}_${Math.random()
-          .toString(36)
-          .slice(2, 8)}`,
-        y_top_pt: rect.y_end_pt,
-        y_bottom_pt: rect.y_end_pt - firstRowHeight,
-      };
+      // Create one row per text baseline in the drawn region. The old editor
+      // only created a single row, so every later "Add row" landed on
+      // geometry that did not line up with the PDF text.
+      const lines = textLayer
+        ? detectTextLines(
+            textLayer.items,
+            rect.x_start_pt,
+            rect.x_end_pt,
+            rect.y_start_pt,
+            rect.y_end_pt,
+          )
+        : [];
+      let rows = rowsFromTextLines(lines, rect.y_start_pt, rect.y_end_pt);
+
+      if (rows.length === 0) {
+        const firstRowHeight = defaultRowHeight(regionHeight, 0);
+        rows = [
+          {
+            row_id: `r_${Date.now().toString(36)}_${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+            y_top_pt: rect.y_end_pt,
+            y_bottom_pt: rect.y_end_pt - firstRowHeight,
+          },
+        ];
+      }
 
       try {
         const created = await createProspectusPdfTable(id!, {
-          year_level: yearLevel,
-          semester,
+          year_level: tableKind === 'elective' ? null : yearLevel,
+          semester: tableKind === 'elective' ? null : semester,
           table_kind: tableKind,
           region_page_index: pageIndex,
           region_x_start_pt: rect.x_start_pt,
@@ -483,7 +500,7 @@ export default function ProspectusPdfEditorPage() {
           region_y_start_pt: rect.y_start_pt,
           region_y_end_pt: rect.y_end_pt,
           columns,
-          rows: [firstRow],
+          rows,
         });
         upsertTable(created);
         setSelection({ kind: 'table', tableId: created.tableId });
@@ -503,7 +520,6 @@ export default function ProspectusPdfEditorPage() {
       }
     },
     [
-      computeNewRowHeight,
       drawingMode,
       id,
       pageIndex,
@@ -512,6 +528,7 @@ export default function ProspectusPdfEditorPage() {
       setDrawingMode,
       setEditing,
       setSelection,
+      textLayer,
       upsertTable,
     ],
   );
@@ -580,18 +597,45 @@ export default function ProspectusPdfEditorPage() {
     [tables, setRows, setRegion, textItemsForTable],
   );
 
+  const detectedLinesForTable = useCallback(
+    (table: ProspectusPdfTable) => {
+      const items = textItemsForTable(table);
+      if (!items) return [];
+      return detectTextLines(
+        items,
+        Number(table.regionXStartPt),
+        Number(table.regionXEndPt),
+        Number(table.regionYStartPt),
+        Number(table.regionYEndPt),
+      );
+    },
+    [textItemsForTable],
+  );
+
   const handleAddRow = useCallback(
     (tableId: string) => {
       const table = tables.find((t) => t.tableId === tableId);
       if (!table) return;
-      const inserted = applyRowInsert(tableId, table.rows.length, {
-        blank: true,
-      });
+
+      // Snap the new row to the next unclaimed PDF text line instead of
+      // making it blank. Without this, every row added after the first one
+      // showed empty cells even though the PDF text was right underneath.
+      const height = nextRowHeightBelow(
+        detectedLinesForTable(table),
+        table.rows,
+        Number(table.regionYStartPt),
+        Number(table.regionYEndPt),
+      );
+      const inserted = applyRowInsert(
+        tableId,
+        table.rows.length,
+        height != null ? { height } : {},
+      );
       if (inserted) {
         setSelection({ kind: 'row', tableId, rowId: inserted });
       }
     },
-    [tables, applyRowInsert, setSelection],
+    [tables, applyRowInsert, detectedLinesForTable, setSelection],
   );
 
   const handleAddRowAt = useCallback(
@@ -601,16 +645,24 @@ export default function ProspectusPdfEditorPage() {
       const sorted = sortRowsTopDown(table.rows);
       const index = sorted.findIndex((row) => row.row_id === rowId);
       if (index === -1) return;
+      const insertionIndex = where === 'above' ? index : index + 1;
+      const height = insertionRowHeight(
+        detectedLinesForTable(table),
+        table.rows,
+        insertionIndex,
+        Number(table.regionYStartPt),
+        Number(table.regionYEndPt),
+      );
       const inserted = applyRowInsert(
         tableId,
-        where === 'above' ? index : index + 1,
-        { blank: true },
+        insertionIndex,
+        height != null ? { height } : {},
       );
       if (inserted) {
         setSelection({ kind: 'row', tableId, rowId: inserted });
       }
     },
-    [tables, applyRowInsert, setSelection],
+    [tables, applyRowInsert, detectedLinesForTable, setSelection],
   );
 
   const handleDuplicateRow = useCallback(
@@ -841,10 +893,15 @@ export default function ProspectusPdfEditorPage() {
   const sortedTablesForNav = useMemo(
     () =>
       [...tables].sort((a, b) => {
-        if (a.yearLevel !== b.yearLevel) return a.yearLevel - b.yearLevel;
+        const aElective = (a.tableKind ?? 'regular') === 'elective';
+        const bElective = (b.tableKind ?? 'regular') === 'elective';
+        if (aElective !== bElective) return aElective ? 1 : -1;
+        const aYear = a.yearLevel ?? 99;
+        const bYear = b.yearLevel ?? 99;
+        if (aYear !== bYear) return aYear - bYear;
         return (
-          (SEMESTER_ORDER[a.semester] ?? 9) -
-          (SEMESTER_ORDER[b.semester] ?? 9)
+          (a.semester ? SEMESTER_ORDER[a.semester] ?? 9 : 9) -
+          (b.semester ? SEMESTER_ORDER[b.semester] ?? 9 : 9)
         );
       }),
     [tables],
@@ -983,9 +1040,14 @@ export default function ProspectusPdfEditorPage() {
                 Drag a rectangle on the PDF to mark the{' '}
                 <strong>
                   {drawingMode.tableKind === 'elective'
-                    ? `Elective table for Year ${drawingMode.yearLevel} ${drawingMode.semester}`
-                    : `Year ${drawingMode.yearLevel} ${drawingMode.semester} table`}
-                </strong>. Row 1 will be created automatically. Press{' '}
+                    ? 'elective table (any year / term)'
+                    : `${yearTermLabel(
+                        drawingMode.yearLevel,
+                        drawingMode.semester,
+                      )} table`}
+                </strong>
+                . Rows will be created automatically from the PDF text
+                lines. Press{' '}
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white/60 rounded">
                   Esc
                 </kbd>{' '}
@@ -1227,13 +1289,7 @@ export default function ProspectusPdfEditorPage() {
                       }`}
                     >
                       <div className="font-bold flex items-center gap-1 flex-wrap">
-                        Y{t.yearLevel} · {t.semester}
-                        {t.tableKind === 'elective' && (
-                          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800">
-                            <Icon name="stars" size={8} />
-                            Elective
-                          </span>
-                        )}
+                        {shortTableLabel(t)}
                       </div>
                       <div className="text-[10px] opacity-70">
                         p.{t.regionPageIndex + 1} · {t.rows.length} row
@@ -1330,8 +1386,11 @@ export default function ProspectusPdfEditorPage() {
           </li>
           <li>
             Or click <strong className="text-on-surface">Add Table</strong> →
-            pick Year + Semester, then drag a rectangle over that table in the
-            PDF. One table is allowed per combination, up to 18.
+            pick the table type (regular tables need a year and semester;
+            electives are not tied to a year/term), then drag a rectangle over
+            that table in the PDF. Rows are created from every text line in the
+            region. One regular table is allowed per year/semester, up to{' '}
+            {MAX_TABLES} tables in total.
           </li>
           <li>
             Select a table to open its{' '}

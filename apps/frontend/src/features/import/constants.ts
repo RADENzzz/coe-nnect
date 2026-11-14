@@ -23,11 +23,15 @@ export const SEMESTER_ORDER: Record<SemesterType, number> = {
 };
 
 export function nextFreeCombination(
-  existing: { yearLevel: number; semester: SemesterType }[],
+  existing: { yearLevel: number | null; semester: SemesterType | null }[],
 ): { yearLevel: number; semester: SemesterType } | null {
   for (const yearLevel of YEAR_LEVELS) {
     for (const { value: semester } of SEMESTERS) {
-      if (!existing.some((t) => t.yearLevel === yearLevel && t.semester === semester)) {
+      if (
+        !existing.some(
+          (t) => t.yearLevel === yearLevel && t.semester === semester,
+        )
+      ) {
         return { yearLevel, semester };
       }
     }
