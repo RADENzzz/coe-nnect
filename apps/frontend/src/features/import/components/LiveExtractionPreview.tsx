@@ -1,4 +1,5 @@
 import type { ProspectusPdfTable } from '../types';
+import { tableLabel } from '../utils/labels';
 import { COLUMN_COLORS, COLUMN_LABELS, COLUMN_ORDER } from '../types';
 import type { TextItem } from '../hooks/usePdfTextLayer';
 import Icon from '@/components/ui/Icon';
@@ -72,7 +73,7 @@ export default function LiveExtractionPreview({
         >
           <div className="px-3 py-2 border-b border-surface-variant bg-surface-container-low flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-on-surface truncate">
-              Year {table.yearLevel} · {table.semester}
+              {tableLabel(table)}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[10px] text-on-surface-variant font-mono">

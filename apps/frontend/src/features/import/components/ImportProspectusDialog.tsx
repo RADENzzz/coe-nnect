@@ -15,6 +15,7 @@ import type {
 } from '../types';
 import { extractTextInRect } from '../hooks/useCellExtraction';
 import { loadPdfPageText, type TextItem } from '../hooks/usePdfTextLayer';
+import { tableLabel, yearTermLabel } from '../utils/labels';
 import { COLUMN_ORDER } from '../types';
 
 interface ImportProspectusDialogProps {
@@ -51,8 +52,8 @@ const SKIP_REASON_LABELS: Record<string, string> = {
 interface ReviewRow {
   key: string;
   tableId: string;
-  yearLevel: number;
-  semester: SemesterType;
+  yearLevel: number | null;
+  semester: SemesterType | null;
   isElectiveTable: boolean;
   code: string;
   typedCode: string;
@@ -368,7 +369,7 @@ export default function ImportProspectusDialog({
           const suspicious = isSuspiciousTitle(title);
           if (suspicious) {
             newWarnings.push(
-              `Table Y${table.yearLevel} ${table.semester}: suspicious title "${title}" (row ${row.row_id})`,
+              `Table ${tableLabel(table)}: suspicious title "${title}" (row ${row.row_id})`,
             );
           }
 
@@ -667,13 +668,7 @@ export default function ImportProspectusDialog({
                   />
                   <div className="flex-1">
                     <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
-                      Year {t.yearLevel} · {t.semester} Semester
-                      {t.tableKind === 'elective' && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800">
-                          <Icon name="stars" size={9} />
-                          Elective
-                        </span>
-                      )}
+                      {tableLabel(t)}
                     </div>
                     <div className="text-xs text-on-surface-variant">
                       {t.rows.length} row{t.rows.length === 1 ? '' : 's'}
@@ -752,14 +747,8 @@ export default function ImportProspectusDialog({
                       className="text-slate-500"
                     />
                     <span className="text-xs font-bold text-slate-900">
-                      Year {table?.yearLevel ?? '?'} · {table?.semester ?? '?'}
+                      {table ? tableLabel(table) : 'Table'}
                     </span>
-                    {table?.tableKind === 'elective' && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-teal-100 text-teal-800">
-                        <Icon name="stars" size={9} />
-                        Elective table
-                      </span>
-                    )}
                     <span className="text-[10px] text-slate-500 font-normal">
                       {rows.length} row{rows.length === 1 ? '' : 's'}
                     </span>
@@ -1231,7 +1220,7 @@ export default function ImportProspectusDialog({
                               {temp.subjectCode}
                             </span>
                             <span className="text-[10px] text-on-surface-variant font-mono">
-                              Y{temp.yearLevel} · {temp.semester}
+                              {yearTermLabel(temp.yearLevel, temp.semester)}
                             </span>
                           </div>
                           <p className="text-xs text-on-surface truncate mt-0.5">
@@ -1273,7 +1262,7 @@ export default function ImportProspectusDialog({
                               {slot.subjectCode}
                             </span>
                             <span className="text-[10px] text-on-surface-variant font-mono">
-                              Y{slot.yearLevel} · {slot.semester}
+                              {yearTermLabel(slot.yearLevel, slot.semester)}
                             </span>
                             <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500">
                               {slot.unitsMode === 'total_only'

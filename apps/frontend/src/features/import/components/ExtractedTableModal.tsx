@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
 import type { ProspectusPdfTable } from '../types';
+import { tableLabel } from '../utils/labels';
 import type { TextItem } from '../hooks/usePdfTextLayer';
 import ExtractedTable from './ExtractedTable';
 import {
@@ -51,7 +52,7 @@ export default function ExtractedTableModal({
   };
 
   const title = table
-    ? `Extracted · Year ${table.yearLevel} · ${table.semester}`
+    ? `Extracted · ${tableLabel(table)}`
     : 'Extracted table';
 
   return (

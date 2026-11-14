@@ -1,6 +1,7 @@
 import Icon from '@/components/ui/Icon';
 import type { ColumnRole, ProspectusPdfTable } from '../types';
 import type { ExtractedRow } from '../hooks/useExtractedTableData';
+import { tableLabel } from '../utils/labels';
 import {
   COLUMN_COLORS,
   COLUMN_LABELS,
@@ -54,7 +55,7 @@ export default function TableRowsEditor({
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-on-surface">
-            Rows — Year {table.yearLevel} · {table.semester}
+            Rows — {tableLabel(table)}
           </div>
           <p className="text-[10px] text-on-surface-variant">
             Select a row to edit its cells or reorder it.

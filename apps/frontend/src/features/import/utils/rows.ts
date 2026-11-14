@@ -24,13 +24,20 @@ export function rowHeight(row: RowBox): number {
   return Math.max(0, row.y_top_pt - row.y_bottom_pt);
 }
 
-/** Same formula the editor uses for its first/extra row. */
+/**
+ * Fallback height when the PDF text layer has no usable baselines.
+ *
+ * Divide the whole region by the number of rows it should hold instead of
+ * reserving two phantom rows (the old `N + 2` formula). The old formula made
+ * every added row too short to reach the next text line, which is why only
+ * the first row ever extracted anything.
+ */
 export function defaultRowHeight(
   regionHeight: number,
   currentRowCount: number,
 ): number {
-  const n = currentRowCount + 1;
-  return regionHeight / Math.max(n + 2, 6);
+  const n = Math.max(1, currentRowCount + 1);
+  return Math.max(8, regionHeight / n);
 }
 
 export interface RowSnapshot {

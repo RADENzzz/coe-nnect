@@ -9,6 +9,7 @@ import type {
   DetectedTableProposal,
   ProspectusPdfTable,
   SemesterType,
+  TableKind,
 } from '../types';
 import { MAX_TABLES, SEMESTERS, YEAR_LEVELS } from '../constants';
 
@@ -16,6 +17,7 @@ interface DraftProposal extends DetectedTableProposal {
   selected: boolean;
   year: number;
   semester: SemesterType;
+  tableKind: TableKind;
 }
 
 interface AutoDetectDialogProps {
@@ -53,12 +55,22 @@ function seedDrafts(
   proposals: DetectedTableProposal[],
   existing: ProspectusPdfTable[],
 ): DraftProposal[] {
-  const assigned: { yearLevel: number; semester: SemesterType }[] = [
-    ...existing.map((table) => ({
+  const assigned: { yearLevel: number; semester: SemesterType }[] = existing
+    .filter(
+      (
+        table,
+      ): table is ProspectusPdfTable & {
+        yearLevel: number;
+        semester: SemesterType;
+      } =>
+        (table.tableKind ?? 'regular') === 'regular' &&
+        table.yearLevel != null &&
+        table.semester != null,
+    )
+    .map((table) => ({
       yearLevel: table.yearLevel,
       semester: table.semester,
-    })),
-  ];
+    }));
 
   return proposals.map((proposal) => {
     let year = proposal.yearLevel;
@@ -82,6 +94,7 @@ function seedDrafts(
       selected: proposal.status === 'new',
       year,
       semester,
+      tableKind: 'regular',
     };
   });
 }
@@ -137,9 +150,19 @@ export default function AutoDetectDialog({
   const existingPairs = useMemo(
     () =>
       new Set(
-        existingTables.map((table) =>
-          pairKey(table.yearLevel, table.semester),
-        ),
+        existingTables
+          .filter(
+            (
+              table,
+            ): table is ProspectusPdfTable & {
+              yearLevel: number;
+              semester: SemesterType;
+            } =>
+              (table.tableKind ?? 'regular') === 'regular' &&
+              table.yearLevel != null &&
+              table.semester != null,
+          )
+          .map((table) => pairKey(table.yearLevel, table.semester)),
       ),
     [existingTables],
   );
@@ -147,7 +170,7 @@ export default function AutoDetectDialog({
   const selectedPairCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const draft of drafts) {
-      if (!draft.selected) continue;
+      if (!draft.selected || draft.tableKind === 'elective') continue;
       const key = pairKey(draft.year, draft.semester);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
@@ -155,6 +178,8 @@ export default function AutoDetectDialog({
   }, [drafts]);
 
   const conflictFor = (draft: DraftProposal): string | null => {
+    // Electives are optioned subjects and may repeat for any year/term.
+    if (draft.tableKind === 'elective') return null;
     const key = pairKey(draft.year, draft.semester);
     if (existingPairs.has(key)) {
       return `Year ${draft.year} ${draft.semester} is already mapped`;
@@ -171,7 +196,9 @@ export default function AutoDetectDialog({
 
   const updateDraft = (
     proposalId: string,
-    patch: Partial<Pick<DraftProposal, 'selected' | 'year' | 'semester'>>,
+    patch: Partial<
+      Pick<DraftProposal, 'selected' | 'year' | 'semester' | 'tableKind'>
+    >,
   ) => {
     setDrafts((prev) =>
       prev.map((draft) =>
@@ -190,8 +217,9 @@ export default function AutoDetectDialog({
     for (const draft of ready) {
       try {
         const table = await createProspectusPdfTable(pdfId, {
-          year_level: draft.year,
-          semester: draft.semester,
+          year_level: draft.tableKind === 'elective' ? null : draft.year,
+          semester: draft.tableKind === 'elective' ? null : draft.semester,
+          table_kind: draft.tableKind,
           label: draft.label?.slice(0, 200) || undefined,
           region_page_index: draft.pageIndex,
           region_x_start_pt: draft.regionXStartPt,
@@ -431,48 +459,75 @@ export default function AutoDetectDialog({
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant">
-                      Year
+                      Type
                       <select
-                        value={draft.year}
+                        value={draft.tableKind}
                         onChange={(e) =>
                           updateDraft(draft.proposalId, {
-                            year: Number(e.target.value),
+                            tableKind: e.target.value as TableKind,
                           })
                         }
                         disabled={creating}
                         className="rounded-md border border-surface-variant bg-white px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
                       >
-                        {YEAR_LEVELS.map((year) => (
-                          <option key={year} value={year}>
-                            {year}
-                          </option>
-                        ))}
+                        <option value="regular">Regular</option>
+                        <option value="elective">Elective</option>
                       </select>
                     </label>
-                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant">
-                      Semester
-                      <select
-                        value={draft.semester}
-                        onChange={(e) =>
-                          updateDraft(draft.proposalId, {
-                            semester: e.target.value as SemesterType,
-                          })
-                        }
-                        disabled={creating}
-                        className="rounded-md border border-surface-variant bg-white px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
-                      >
-                        {SEMESTERS.map((semester) => (
-                          <option key={semester.value} value={semester.value}>
-                            {semester.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {draft.yearLevel == null || draft.semester == null ? (
+                    {draft.tableKind === 'elective' ? (
                       <span className="text-[10px] italic text-on-surface-variant">
-                        not printed near the table — confirm before creating
+                        Not tied to a year/term — assign it later.
                       </span>
-                    ) : null}
+                    ) : (
+                      <>
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant">
+                          Year
+                          <select
+                            value={draft.year}
+                            onChange={(e) =>
+                              updateDraft(draft.proposalId, {
+                                year: Number(e.target.value),
+                              })
+                            }
+                            disabled={creating}
+                            className="rounded-md border border-surface-variant bg-white px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
+                          >
+                            {YEAR_LEVELS.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant">
+                          Semester
+                          <select
+                            value={draft.semester}
+                            onChange={(e) =>
+                              updateDraft(draft.proposalId, {
+                                semester: e.target.value as SemesterType,
+                              })
+                            }
+                            disabled={creating}
+                            className="rounded-md border border-surface-variant bg-white px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
+                          >
+                            {SEMESTERS.map((semester) => (
+                              <option
+                                key={semester.value}
+                                value={semester.value}
+                              >
+                                {semester.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {draft.yearLevel == null || draft.semester == null ? (
+                          <span className="text-[10px] italic text-on-surface-variant">
+                            not printed near the table — confirm before creating
+                          </span>
+                        ) : null}
+                      </>
+                    )}
                   </div>
 
                   {conflict && (
