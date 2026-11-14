@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import type { ExtractedRow } from '../hooks/useExtractedTableData';
+import type { ColumnRole } from '../types';
 import { COLUMN_COLORS, COLUMN_LABELS, COLUMN_ORDER } from '../types';
 import Icon from '@/components/ui/Icon';
 
 interface ExtractedTableProps {
   rows: ExtractedRow[];
   columnStats: Record<string, number>;
+  /**
+   * Roles the table actually maps. Elective tables may only have code,
+   * title, and total, so the preview must not show phantom columns.
+   */
+  roles?: ColumnRole[];
   /**
    * `compact` truncates cells to keep the sticky side panel narrow.
    * `full` wraps text so nothing is hidden — used in the modal.
@@ -16,10 +22,14 @@ interface ExtractedTableProps {
 export default function ExtractedTable({
   rows,
   columnStats,
+  roles,
   variant = 'compact',
 }: ExtractedTableProps) {
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
   const full = variant === 'full';
+  const visibleRoles = roles
+    ? COLUMN_ORDER.filter((role) => roles.includes(role))
+    : COLUMN_ORDER;
 
   const copyCell = async (key: string, text: string) => {
     if (!text) return;
@@ -47,7 +57,7 @@ export default function ExtractedTable({
             >
               #
             </th>
-            {COLUMN_ORDER.map((role) => (
+            {visibleRoles.map((role) => (
               <th
                 key={role}
                 className={`text-left ${cellPadding} font-semibold text-[10px] uppercase tracking-wide ${
@@ -70,7 +80,7 @@ export default function ExtractedTable({
           {rows.length === 0 && (
             <tr>
               <td
-                colSpan={COLUMN_ORDER.length + 1}
+                colSpan={visibleRoles.length + 1}
                 className="text-center py-6 text-on-surface-variant text-xs"
               >
                 No rows yet. Add a row to see extraction.
@@ -90,6 +100,7 @@ export default function ExtractedTable({
                 {row.index}
               </td>
               {row.cells.map((cell) => {
+                if (!visibleRoles.includes(cell.role)) return null;
                 const key = `${row.row_id}:${cell.role}`;
                 const copied = copiedCell === key;
                 const isEmpty = !cell.text.trim();

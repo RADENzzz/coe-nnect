@@ -114,17 +114,21 @@ function lineHasUnitsInColumns(
 }
 
 /**
- * Section headings such as "FOURTH YEAR" or "2nd Semester" often sit inside
+ * Year/term headings such as "FOURTH YEAR" or "2nd Semester" often sit inside
  * a generously drawn region. They are not subject rows, but their baselines
  * still act as a boundary so their text never leaks into the first row.
  *
  * The patterns are anchored to the whole line: a subject titled
  * "Fourth Year Seminar" must stay a data row, not become a heading.
  */
-function isSectionHeading(text: string): boolean {
+function isYearTermHeading(text: string): boolean {
   const trimmed = text.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
-  if (words.length === 0 || words.length > 7 || looksLikeCourseCode(trimmed)) {
+  if (
+    words.length === 0 ||
+    words.length > 10 ||
+    looksLikeCourseCode(trimmed)
+  ) {
     return false;
   }
 
@@ -154,6 +158,91 @@ function isSectionHeading(text: string): boolean {
 }
 
 /**
+ * Elective pools often group rows under an all-caps heading such as
+ * "ROBOTICS PROCESS AUTOMATION (RPA)" or "SOFTWARE DEVELOPMENT". Course codes
+ * and lines containing digits are excluded so "CPE RPA 1" stays a data row.
+ */
+function isAllCapsHeading(text: string): boolean {
+  const trimmed = text.trim();
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (
+    words.length < 2 ||
+    words.length > 10 ||
+    looksLikeCourseCode(trimmed)
+  ) {
+    return false;
+  }
+  const hasDigit = /\d/.test(trimmed);
+  const hasLowercase = /[a-z]/.test(trimmed);
+  return !hasDigit && !hasLowercase;
+}
+
+/** Words that only exist to join a column label ("No. Units", "Course Code"). */
+const HEADER_CONNECTOR_TOKENS = new Set([
+  'no',
+  'number',
+  'of',
+  'per',
+  'week',
+  'weeks',
+  'hr',
+  'hrs',
+  'hour',
+  'hours',
+  'course',
+  'subject',
+]);
+
+/**
+ * True when a line is made only of column-label words. This keeps an
+ * all-caps header such as "COURSE CODE COURSE TITLE" or "NO. UNITS" from
+ * being mistaken for an elective group heading.
+ */
+function isColumnLabelLine(text: string): boolean {
+  const tokens = text
+    .split(/\s+/)
+    .map(normaliseToken)
+    .filter(Boolean);
+  if (tokens.length === 0) return false;
+
+  let roleTokens = 0;
+  for (const token of tokens) {
+    if (HEADER_CONNECTOR_TOKENS.has(token)) continue;
+    const isRole = Object.values(HEADER_ROLE_TOKENS).some((words) =>
+      words.includes(token),
+    );
+    if (isRole || token.startsWith('prereq')) {
+      roleTokens += 1;
+      continue;
+    }
+    return false;
+  }
+  return roleTokens >= 1;
+}
+
+/** All-caps elective group heading, excluding column labels and year/term. */
+export function isElectiveGroupHeading(text: string): boolean {
+  return (
+    isAllCapsHeading(text) &&
+    !isColumnLabelLine(text) &&
+    !isYearTermHeading(text)
+  );
+}
+
+function isSectionHeading(text: string): boolean {
+  return isYearTermHeading(text) || isAllCapsHeading(text);
+}
+
+/** A baseline inside a PDF-space rectangle, before header/row classification. */
+export interface TextBaseline {
+  /** Baseline y in PDF points. */
+  y: number;
+  /** Approximate font height in PDF points. */
+  height: number;
+  items: TextItem[];
+}
+
+/**
  * Group the text layer into distinct baselines inside a PDF-space rectangle.
  *
  * Mirrors the Python parser's line grouping: items whose vertical overlap is
@@ -161,26 +250,23 @@ function isSectionHeading(text: string): boolean {
  * baseline-left, which is exactly what `extractTextInRect` tests, so a line
  * found here is guaranteed to be readable by the extractor.
  *
- * `columns` (when known) lets the detector recognise unit values in the
- * lec/lab/total slices. Lines without units or a course code are treated as
- * wrapped description lines and folded into the row above by
- * `groupTextLines`.
+ * Shared by row detection and column-header detection so both agree on what
+ * counts as one header line.
  */
-export function detectTextLines(
+export function groupTextItemsByBaseline(
   items: TextItem[],
   xStart: number,
   xEnd: number,
   yStart: number,
   yEnd: number,
-  columns?: ColumnSlice[],
-): DetectedTextLine[] {
+): TextBaseline[] {
   const left = Math.min(xStart, xEnd);
   const right = Math.max(xStart, xEnd);
   const bottom = Math.min(yStart, yEnd);
   const top = Math.max(yStart, yEnd);
   if (right <= left || top <= bottom) return [];
 
-  const lines: { y: number; height: number; items: TextItem[] }[] = [];
+  const lines: TextBaseline[] = [];
 
   for (const item of items) {
     if (!item.str.trim()) continue;
@@ -206,7 +292,26 @@ export function detectTextLines(
     }
   }
 
-  lines.sort((a, b) => b.y - a.y);
+  return lines.sort((a, b) => b.y - a.y);
+}
+
+/**
+ * Group the text layer into distinct baselines inside a PDF-space rectangle.
+ *
+ * `columns` (when known) lets the detector recognise unit values in the
+ * lec/lab/total slices. Lines without units or a course code are treated as
+ * wrapped description lines and folded into the row above by
+ * `groupTextLines`.
+ */
+export function detectTextLines(
+  items: TextItem[],
+  xStart: number,
+  xEnd: number,
+  yStart: number,
+  yEnd: number,
+  columns?: ColumnSlice[],
+): DetectedTextLine[] {
+  const lines = groupTextItemsByBaseline(items, xStart, xEnd, yStart, yEnd);
 
   return lines.map((line) => {
     const text = [...line.items]
@@ -400,4 +505,97 @@ export function insertionRowHeight(
 
   if (!target) return null;
   return Math.max(0.5, insertionTop - target.bottom);
+}
+
+/**
+ * Find the elective group name printed above a drawn table region.
+ *
+ * Elective pools group their optioned subjects under an all-caps heading:
+ *
+ *   Course Code | Course Title | Lec | Lab | Total
+ *   ROBOTICS PROCESS AUTOMATION (RPA)
+ *   CPE RPA 1   | Robotics ... | 2   | 1   | 3
+ *
+ * The heading is usually the closest all-caps line above the first subject
+ * row. A small amount of space above the region is searched too, because a
+ * user may draw only the data rows and leave the heading outside the region.
+ * Column labels and year/term headings are ignored, and a table header (when
+ * present) keeps a distant page title such as "COLLEGE OF ENGINEERING" from
+ * being selected.
+ */
+export function detectTableName(
+  items: TextItem[],
+  rect: {
+    x_start_pt: number;
+    x_end_pt: number;
+    y_start_pt: number;
+    y_end_pt: number;
+  },
+  options: { searchAbovePt?: number } = {},
+): string | null {
+  const left = Math.min(rect.x_start_pt, rect.x_end_pt);
+  const right = Math.max(rect.x_start_pt, rect.x_end_pt);
+  const bottom = Math.min(rect.y_start_pt, rect.y_end_pt);
+  const top = Math.max(rect.y_start_pt, rect.y_end_pt);
+  if (right <= left || top <= bottom) return null;
+
+  const regionHeight = top - bottom;
+  const searchAbove =
+    options.searchAbovePt ??
+    Math.max(24, Math.min(72, regionHeight * 0.6));
+  const lines = detectTextLines(
+    items,
+    left,
+    right,
+    bottom,
+    top + searchAbove,
+  );
+  const inside = lines.filter((line) => line.y >= bottom && line.y <= top);
+
+  const headings = lines.filter(
+    (line) =>
+      line.kind === 'heading' &&
+      line.y <= top + searchAbove + 0.01 &&
+      isElectiveGroupHeading(line.text),
+  );
+  if (headings.length === 0) return null;
+
+  const firstRow = inside.find(
+    (line) => line.kind === 'data' && line.isRowStart,
+  );
+  const headerLines = inside
+    .filter((line) => line.kind === 'header')
+    .sort((a, b) => b.y - a.y);
+  const headerTop = headerLines[0]?.y ?? null;
+  const headerBottom = headerLines[headerLines.length - 1]?.y ?? null;
+
+  // A heading may sit below the column header (the common layout) or just
+  // above it. Anything higher is a page/degree title, not a group name.
+  const candidates = headings.filter((line) => {
+    if (headerTop == null || headerBottom == null) return true;
+    if (line.y <= headerBottom + 0.01) return true;
+    const headerHeight = Math.max(1, headerTop - headerBottom);
+    return (
+      line.y >= headerTop - 0.01 &&
+      line.y - headerTop <= Math.max(18, headerHeight * 2.5)
+    );
+  });
+  if (candidates.length === 0) return null;
+
+  if (firstRow) {
+    const above = candidates
+      .filter((line) => line.y >= firstRow.y - 0.01)
+      .sort((a, b) => a.y - b.y);
+    return above.length > 0 ? above[0].text : null;
+  }
+
+  const insideHeadings = candidates
+    .filter((line) => line.y >= bottom && line.y <= top)
+    .sort((a, b) => b.y - a.y);
+  if (insideHeadings.length > 0) return insideHeadings[0].text;
+
+  const aboveHeadings = candidates
+    .filter((line) => line.y > top)
+    .sort((a, b) => a.y - b.y);
+  return aboveHeadings.length > 0 ? aboveHeadings[0].text : null;
 }

@@ -79,7 +79,8 @@ export interface CreateTableInput {
   year_level?: number | null;
   /** Required for regular tables; omitted/null for elective tables. */
   semester?: SemesterType | null;
-  label?: string;
+  /** Null clears a previously stored elective group name. */
+  label?: string | null;
   table_kind?: TableKind;
   region_page_index: number;
   region_x_start_pt: number;

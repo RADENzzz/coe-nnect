@@ -26,6 +26,7 @@ interface UseRegionStateResult {
   removeTable: (tableId: string) => void;
   setRows: (tableId: string, rows: RowBox[]) => void;
   setColumns: (tableId: string, columns: ColumnSlice[]) => void;
+  setLabel: (tableId: string, label: string | null) => void;
   setRegion: (
     tableId: string,
     region: {
@@ -83,6 +84,12 @@ export function useRegionState(
     [],
   );
 
+  const setLabel = useCallback((tableId: string, label: string | null) => {
+    setTables((prev) =>
+      prev.map((t) => (t.tableId === tableId ? { ...t, label } : t)),
+    );
+  }, []);
+
   const setRegion = useCallback(
     (
       tableId: string,
@@ -125,6 +132,7 @@ export function useRegionState(
     removeTable,
     setRows,
     setColumns,
+    setLabel,
     setRegion,
   };
 }

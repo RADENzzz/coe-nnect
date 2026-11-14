@@ -396,6 +396,87 @@ describe('ProspectusPdfsService elective imports', () => {
     });
   });
 
+  it('derives the total when an elective lists only lecture units', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'CPE RPA 1',
+          title: 'Robotics Process Automation',
+          lec: '3',
+          lab: '0',
+          total: '',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'CPE RPA 1',
+      unitsMode: 'lec_lab',
+      totalUnits: 3,
+      lectureUnits: 3,
+      labUnits: 0,
+    });
+  });
+
+  it('derives the total when an elective lists only laboratory units', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'CPE SD 1',
+          title: 'Software Development',
+          lec: '0',
+          lab: '2',
+          total: '',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'CPE SD 1',
+      unitsMode: 'lec_lab',
+      totalUnits: 2,
+      lectureUnits: 0,
+      labUnits: 2,
+    });
+  });
+
+  it('derives the total when lec and lab are present without a total column', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'MST 101',
+          title: 'Mathematics for Computing',
+          lec: '2',
+          lab: '1',
+          total: '',
+          action: 'elective',
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'MST 101',
+      unitsMode: 'lec_lab',
+      totalUnits: 3,
+      lectureUnits: 2,
+      labUnits: 1,
+    });
+  });
+
   it('stamps imported electives with the table year/term and chosen category', async () => {
     const { service, subjectRepo } = createImportService();
 
@@ -658,6 +739,105 @@ describe('ProspectusPdfsService table kinds', () => {
       yearLevel: null,
       semester: null,
     });
+  });
+
+  it('accepts an elective table with only code, title, and total columns', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    const columns = [
+      { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+      { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+      { role: 'total', x_start_pt: 400, x_end_pt: 520 },
+    ];
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective', columns } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows[0].columns).toEqual(columns);
+  });
+
+  it('accepts an elective table with a lec/lab/total split', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    const columns = [
+      { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+      { role: 'title', x_start_pt: 120, x_end_pt: 360 },
+      { role: 'lec', x_start_pt: 360, x_end_pt: 410 },
+      { role: 'lab', x_start_pt: 410, x_end_pt: 460 },
+      { role: 'total', x_start_pt: 460, x_end_pt: 520 },
+    ];
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective', columns } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows[0].columns).toEqual(columns);
+  });
+
+  it('accepts an elective table with a single lecture column', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    const columns = [
+      { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+      { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+      { role: 'lec', x_start_pt: 400, x_end_pt: 520 },
+    ];
+
+    await service.createTable(
+      'pdf-1',
+      { ...tableDto([]), table_kind: 'elective', columns } as any,
+      ADMIN_USER,
+    );
+
+    expect(tableRepo.rows[0].columns).toEqual(columns);
+  });
+
+  it('still requires all six columns for regular tables', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await expect(
+      service.createTable(
+        'pdf-1',
+        {
+          ...tableDto([]),
+          columns: [
+            { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+            { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+            { role: 'total', x_start_pt: 400, x_end_pt: 520 },
+          ],
+        } as any,
+        ADMIN_USER,
+      ),
+    ).rejects.toThrow(/columns missing role/);
+    expect(tableRepo.rows).toHaveLength(0);
+  });
+
+  it('rejects duplicate elective column roles', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await expect(
+      service.createTable(
+        'pdf-1',
+        {
+          ...tableDto([]),
+          table_kind: 'elective',
+          columns: [
+            { role: 'code', x_start_pt: 40, x_end_pt: 120 },
+            { role: 'title', x_start_pt: 120, x_end_pt: 400 },
+            { role: 'title', x_start_pt: 400, x_end_pt: 520 },
+          ],
+        } as any,
+        ADMIN_USER,
+      ),
+    ).rejects.toThrow(/repeat role/);
+    expect(tableRepo.rows).toHaveLength(0);
   });
 
   it('rejects a regular table without a year and semester', async () => {

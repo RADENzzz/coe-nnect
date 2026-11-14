@@ -243,10 +243,6 @@ def header_roles(line: Line) -> dict[str, float]:
     return {role: sum(xs) / len(xs) for role, xs in found.items()}
 
 
-def header_score(line: Line) -> int:
-    return len(header_roles(line))
-
-
 def _default_columns(x0: float, x1: float) -> list[ColumnSpec]:
     weights = [0.12, 0.45, 0.15, 0.09, 0.09, 0.1]
     roles = ["code", "title", "prereq", "lec", "lab", "total"]
@@ -271,8 +267,16 @@ def columns_from_header(
     x0: float,
     x1: float,
 ) -> list[ColumnSpec]:
-    required = {"code", "title", "prereq", "lec", "lab", "total"}
-    if set(anchors) != required:
+    """Build column slices from the labels found on the header line.
+
+    Elective tables are not fixed to six roles. A total-only table names
+    code/title/total, a lec+lab table names code/title/lec/lab/total, and an
+    all-lecture or all-laboratory table names a single unit column. Use
+    whatever labels exist instead of falling back to the six-column default.
+    """
+    # Two labels are the minimum needed to draw a boundary, and a course
+    # table always has a title column.
+    if len(anchors) < 2 or "title" not in anchors:
         return _default_columns(x0, x1)
 
     ordered = sorted(anchors.items(), key=lambda item: item[1])
@@ -285,7 +289,11 @@ def columns_from_header(
     for index, (role, _) in enumerate(ordered):
         start = max(x0, min(x1, boundaries[index]))
         end = max(x0, min(x1, boundaries[index + 1]))
-        if end - start < 2:
+        # Collapsed boundaries can happen when two labels sit almost on top of
+        # each other. Keep a 1pt slice so the layout stays valid.
+        if end - start < 1:
+            end = min(x1, start + 1)
+        if end <= start:
             return _default_columns(x0, x1)
         columns.append(
             ColumnSpec(
@@ -336,15 +344,26 @@ def is_code_like(line: Line) -> bool:
         return True
     if CODE_SPLIT_RE.match(words[0]):
         return True
-    if len(words) >= 3 and re.fullmatch(r"[A-Z]{2,6}", first):
+    if len(words) >= 2 and re.fullmatch(r"[A-Z]{2,6}", first):
         second = re.sub(r"[^A-Za-z0-9]", "", words[1])
         if re.fullmatch(r"\d{2,4}[A-Z]?", second):
             return True
-        if any(
-            "elective" in w.lower() or "free" in w.lower()
-            for w in words[:3]
+        # Multi-word elective codes such as "CPE RPA 1" or "CPE SD 1".
+        if (
+            len(words) >= 3
+            and re.fullmatch(r"[A-Z]{2,6}", second)
+            and re.fullmatch(r"\d{1,4}[A-Z]?", words[2].strip())
         ):
             return True
+    if (
+        len(words) >= 3
+        and re.search(r"\d", line.text)
+        and any(
+            "elective" in w.lower() or "free" in w.lower()
+            for w in words[:3]
+        )
+    ):
+        return True
     return False
 
 
@@ -434,6 +453,59 @@ def infer_year_semester(
 # ── Main detection ─────────────────────────────────────────────────
 
 
+def _is_section_heading(line: Line) -> bool:
+    """True for year/term headings and all-caps elective group headings."""
+    text = line.text.strip()
+    if not text:
+        return False
+    if infer_year(text) is not None or infer_semester(text) is not None:
+        return True
+
+    # "ROBOTICS PROCESS AUTOMATION (RPA)", "SOFTWARE DEVELOPMENT", etc.
+    # Course codes and rows with units contain digits, so they are excluded.
+    if re.search(r"\d", text) or is_code_like(line):
+        return False
+    words = text.split()
+    if len(words) < 2 or len(words) > 10:
+        return False
+    if not re.search(r"[A-Za-z]", text):
+        return False
+    return text == text.upper()
+
+
+def _line_has_units(line: Line, columns: list[ColumnSpec]) -> bool:
+    """True when a numeric word sits inside a lec/lab/total column."""
+    unit_columns = [
+        column
+        for column in columns
+        if column.role in {"lec", "lab", "total"}
+    ]
+    if not unit_columns:
+        return False
+    for word in line.words:
+        if not re.search(r"\d", word.text):
+            continue
+        if any(
+            column.x_start_pt <= word.cx <= column.x_end_pt
+            for column in unit_columns
+        ):
+            return True
+    return False
+
+
+def _line_starts_row(line: Line, columns: list[ColumnSpec]) -> bool:
+    """A subject row starts with a code or with units, never with prose."""
+    if is_code_like(line):
+        return True
+    if _line_has_units(line, columns):
+        return True
+    # Fallback for slightly misaligned columns: a line ending in two numeric
+    # values is a lec/lab/total row, while a wrapped title ends in a word.
+    return bool(
+        re.search(r"\d+(?:[./]\d+)*\s+\d+(?:[./]\d+)*\s*$", line.text)
+    )
+
+
 def _median_line_height(lines: list[Line]) -> float:
     heights = [line.height for line in lines if line.height > 0]
     return statistics.median(heights) if heights else 10.0
@@ -453,10 +525,13 @@ def _detect_on_page(
         anchors: dict[str, float] = {}
         for i in range(cursor, len(lines)):
             line = lines[i]
-            if len(line.words) < 3:
+            if len(line.words) < 2:
                 continue
             roles = header_roles(line)
-            if len(roles) >= 3:
+            # A three-label header is a strong signal. Elective tables may
+            # print only code + title, so a title-bearing two-label header is
+            # accepted too. Data rows never name a "title" column.
+            if len(roles) >= 3 or (len(roles) == 2 and "title" in roles):
                 header_index = i
                 anchors = roles
                 break
@@ -465,18 +540,51 @@ def _detect_on_page(
             break
 
         header = lines[header_index]
-        body: list[Line] = []
-        last_bottom = header.y0
+        header_lines = [header]
+        header_bottom = header.y0
+        consumed_headers = 1
 
-        for line in lines[header_index + 1 :]:
-            if line.y1 > header.y0 - 1:
+        # Multi-line headers put a second batch of labels on the next
+        # baseline (for example "Lec Lab" above "Total"). Merge those labels
+        # before the body starts so they do not become a subject row.
+        for candidate in lines[header_index + 1 :]:
+            if candidate.y1 > header_bottom + 1:
+                continue
+            gap = header_bottom - candidate.y1
+            if gap > max(6.0, median_height * 1.5):
+                break
+            if re.search(r"\d", candidate.text) or is_code_like(candidate):
+                break
+            extra = header_roles(candidate)
+            if not extra:
+                break
+            added = False
+            for role, x in extra.items():
+                if role not in anchors:
+                    anchors[role] = x
+                    added = True
+            if not added:
+                break
+            header_bottom = candidate.y0
+            header_lines.append(candidate)
+            consumed_headers += 1
+
+        body: list[Line] = []
+        last_bottom = header_bottom
+
+        for line in lines[header_index + consumed_headers :]:
+            if line.y1 > header_bottom - 1:
                 continue
             if body:
                 gap = last_bottom - line.y1
                 if gap > max_gap:
                     break
                 # A second header directly below means a new table.
-                if len(line.words) >= 3 and header_score(line) >= 3:
+                second_roles = header_roles(line)
+                if len(line.words) >= 2 and (
+                    len(second_roles) >= 3
+                    or (len(second_roles) == 2 and "title" in second_roles)
+                ):
                     break
                 # A "SECOND YEAR / 1st SEMESTER" heading below the rows
                 # belongs to the next table on the page, not this one.
@@ -505,15 +613,10 @@ def _detect_on_page(
             if len(body) >= 80:
                 break
 
-        code_like = sum(1 for line in body if is_code_like(line))
-        code_ratio = code_like / len(body) if body else 0.0
-
-        if len(body) < 2 or code_ratio < 0.2:
-            cursor = header_index + 1
-            continue
-
-        # Region is the union of the header and the accepted body lines.
-        all_words = [w for line in [header, *body] for w in line.words]
+        # Region is the union of the header line(s) and the accepted body.
+        all_words = [
+            w for line in [*header_lines, *body] for w in line.words
+        ]
         x0 = min(w.x0 for w in all_words) - 2.0
         x1 = max(w.x1 for w in all_words) + 2.0
         y_top = header.y1 + 2.0
@@ -525,16 +628,56 @@ def _detect_on_page(
 
         columns = columns_from_header(anchors, x0, x1)
 
+        # Group body lines into subject rows. A line starts a new row when it
+        # carries a course code or units in the lec/lab/total columns; wrapped
+        # title lines stay with the row above. Section headings bound rows but
+        # never become rows themselves.
+        groups: list[list[Line]] = []
+        current: list[Line] | None = None
+        for line in body:
+            if _is_section_heading(line):
+                if current:
+                    groups.append(current)
+                    current = None
+                continue
+            if _line_starts_row(line, columns) or current is None:
+                if current:
+                    groups.append(current)
+                current = [line]
+            else:
+                current.append(line)
+        if current:
+            groups.append(current)
+
+        code_like = sum(1 for group in groups if is_code_like(group[0]))
+        code_ratio = code_like / len(groups) if groups else 0.0
+
+        if len(groups) < 2 or code_ratio < 0.2:
+            cursor = header_index + 1
+            continue
+
+        positions = {id(line): index for index, line in enumerate(body)}
+        y_bottom = min(group[-1].y0 for group in groups) - 2.0
+
         rows: list[RowSpec] = []
-        for i, line in enumerate(body):
-            if i == 0:
-                top = (line.y1 + header.y0) / 2
+        for i, group in enumerate(groups):
+            first = group[0]
+            last = group[-1]
+            first_index = positions.get(id(first), 0)
+            last_index = positions.get(id(last), first_index)
+
+            if first_index > 0:
+                above = body[first_index - 1]
+                top = (first.y1 + above.y0) / 2
             else:
-                top = (line.y1 + body[i - 1].y0) / 2
-            if i == len(body) - 1:
-                bottom = line.y0 - 2.0
+                top = (first.y1 + header_bottom) / 2
+
+            if last_index + 1 < len(body):
+                below = body[last_index + 1]
+                bottom = (last.y0 + below.y1) / 2
             else:
-                bottom = (line.y0 + body[i + 1].y1) / 2
+                bottom = last.y0 - 2.0
+
             if bottom >= top:
                 continue
             rows.append(

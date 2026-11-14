@@ -19,10 +19,7 @@ import type {
 } from './types';
 import { usePdfDocument } from './hooks/usePdfDocument';
 import { usePdfTextLayer, type TextItem } from './hooks/usePdfTextLayer';
-import {
-  makeDefaultColumns,
-  useRegionState,
-} from './hooks/useRegionState';
+import { useRegionState } from './hooks/useRegionState';
 import PdfCanvas from './components/PdfCanvas';
 import MappingOverlay from './components/MappingOverlay';
 import AddTableDialog from './components/AddTableDialog';
@@ -30,6 +27,8 @@ import LiveExtractionPreview from './components/LiveExtractionPreview';
 import ExtractedTableModal from './components/ExtractedTableModal';
 import ImportProspectusDialog from './components/ImportProspectusDialog';
 import TableRowsEditor from './components/TableRowsEditor';
+import ElectiveColumnsEditor from './components/ElectiveColumnsEditor';
+import TableNameEditor from './components/TableNameEditor';
 import AutoDetectDialog from './components/AutoDetectDialog';
 import { useExtractedTableData } from './hooks/useExtractedTableData';
 import {
@@ -42,11 +41,13 @@ import {
   type RowSnapshot,
 } from './utils/rows';
 import {
+  detectTableName,
   detectTextLines,
   insertionRowHeight,
   nextRowHeightBelow,
   rowsFromTextLines,
 } from './utils/rowDetection';
+import { detectColumns } from './utils/columnDetection';
 import { shortTableLabel, yearTermLabel } from './utils/labels';
 import { fetchPrograms } from '@/api/programs.api';
 import { useUiStore } from '@/store/ui.store';
@@ -125,6 +126,7 @@ export default function ProspectusPdfEditorPage() {
     removeTable,
     setRows,
     setColumns,
+    setLabel,
     setRegion,
   } = useRegionState(initialTables);
 
@@ -179,6 +181,22 @@ export default function ProspectusPdfEditorPage() {
     ],
   );
 
+  // The heading printed above the selected elective rows. Used as the default
+  // for the table-name editor's "Use heading" action.
+  const selectedTableHeading = useMemo(() => {
+    if (!selectedTable || (selectedTable.tableKind ?? 'regular') !== 'elective') {
+      return null;
+    }
+    const items = textItemsForTable(selectedTable);
+    if (!items) return null;
+    return detectTableName(items, {
+      x_start_pt: Number(selectedTable.regionXStartPt),
+      x_end_pt: Number(selectedTable.regionXEndPt),
+      y_start_pt: Number(selectedTable.regionYStartPt),
+      y_end_pt: Number(selectedTable.regionYEndPt),
+    });
+  }, [selectedTable, textItemsForTable]);
+
   // Hide sidebar when editing
   const prevEditingRef = useRef<string>('none');
   useEffect(() => {
@@ -210,6 +228,32 @@ export default function ProspectusPdfEditorPage() {
 
   // ── Navigation Blocking & Unsaved Changes Prompt ──
   const isDirty = dirtyTableIds.size > 0;
+  // Add Table / Auto-detect both change the table list. Running them while a
+  // table is being edited would leave its Save/Cancel flow pointing at a
+  // stale table, so they stay locked until the user saves or cancels.
+  //
+  // The lock only applies while the edited table/row still exists and is
+  // still selected. Otherwise deleting the edited table (or moving to a
+  // different table) would leave an invisible edit session blocking Add
+  // Table. Leaving edit mode this way does not discard local changes: they
+  // stay in `tables` and in `dirtyTableIds` until saved or cancelled.
+  const editingTable =
+    editing.kind === 'none'
+      ? null
+      : tables.find((t) => t.tableId === editing.tableId) ?? null;
+  const editingLocked =
+    editing.kind !== 'none' &&
+    editingTable !== null &&
+    (editing.kind !== 'row' ||
+      editingTable.rows.some((row) => row.row_id === editing.rowId)) &&
+    selection.kind !== 'none' &&
+    selection.tableId === editing.tableId;
+
+  useEffect(() => {
+    if (editing.kind !== 'none' && !editingLocked) {
+      setEditing({ kind: 'none' });
+    }
+  }, [editing, editingLocked, setEditing]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -232,6 +276,7 @@ export default function ProspectusPdfEditorPage() {
           return updateProspectusPdfTable(id!, tableId, {
             rows: table.rows,
             columns: table.columns,
+            label: table.label ?? null,
             region_page_index: table.regionPageIndex,
             region_x_start_pt: Number(table.regionXStartPt),
             region_x_end_pt: Number(table.regionXEndPt),
@@ -459,8 +504,21 @@ export default function ProspectusPdfEditorPage() {
     }) => {
       if (!pdfRecord || drawingMode.kind !== 'drawing-region') return;
       const { yearLevel, semester, tableKind } = drawingMode;
+      const typedLabel = drawingMode.label?.trim().slice(0, 200) ?? '';
 
-      const columns = makeDefaultColumns(rect.x_start_pt, rect.x_end_pt);
+      // Read the header labels inside the drawn region and build columns that
+      // line up with this table's actual layout. Electives may have only a
+      // total column, a lec/lab/total split, or a single lec/lab column.
+      const columns = detectColumns(textLayer?.items ?? [], rect, tableKind);
+
+      // Elective pools print their group heading above the rows. Use a typed
+      // name first, otherwise adopt the nearest all-caps heading so the table
+      // is named "SOFTWARE DEVELOPMENT" instead of only "Elective".
+      const label =
+        typedLabel ||
+        (tableKind === 'elective'
+          ? detectTableName(textLayer?.items ?? [], rect)
+          : null);
       const regionHeight = rect.y_end_pt - rect.y_start_pt;
 
       // Create one row per text baseline in the drawn region. The old editor
@@ -496,6 +554,7 @@ export default function ProspectusPdfEditorPage() {
           year_level: tableKind === 'elective' ? null : yearLevel,
           semester: tableKind === 'elective' ? null : semester,
           table_kind: tableKind,
+          label: label ?? undefined,
           region_page_index: pageIndex,
           region_x_start_pt: rect.x_start_pt,
           region_x_end_pt: rect.x_end_pt,
@@ -765,6 +824,56 @@ export default function ProspectusPdfEditorPage() {
     [setColumns],
   );
 
+  const handleLabelChange = useCallback(
+    (tableId: string, label: string | null) => {
+      setLabel(tableId, label);
+      markDirty(tableId);
+    },
+    [setLabel],
+  );
+
+  /**
+   * Re-read the header inside an existing table region. This is the manual
+   * correction path for auto-detect: unlike region draw it never falls back
+   * to a guessed layout, so a failed read leaves the current columns intact.
+   */
+  const handleRedetectColumns = useCallback(
+    (tableId: string) => {
+      const table = tables.find((t) => t.tableId === tableId);
+      if (!table) return;
+      const items = textItemsForTable(table);
+      if (!items) {
+        setTableError(
+          'The PDF text layer is still loading. Try again in a moment.',
+        );
+        return;
+      }
+
+      const columns = detectColumns(
+        items,
+        {
+          x_start_pt: Number(table.regionXStartPt),
+          x_end_pt: Number(table.regionXEndPt),
+          y_start_pt: Number(table.regionYStartPt),
+          y_end_pt: Number(table.regionYEndPt),
+        },
+        table.tableKind ?? 'regular',
+        { fallbackToDefault: false },
+      );
+
+      if (columns.length === 0) {
+        setTableError(
+          'Could not read a column header inside this table. Adjust the region or pick a layout preset instead.',
+        );
+        return;
+      }
+
+      setTableError(null);
+      handleColumnsChange(tableId, columns);
+    },
+    [tables, textItemsForTable, handleColumnsChange],
+  );
+
   const handleAutoDetected = useCallback(
     (created: ProspectusPdfTable[]) => {
       created.forEach(upsertTable);
@@ -823,6 +932,7 @@ export default function ProspectusPdfEditorPage() {
       const saved = await updateProspectusPdfTable(id!, tableId, {
         rows: table.rows,
         columns: table.columns,
+        label: table.label ?? null,
         region_page_index: table.regionPageIndex,
         region_x_start_pt: Number(table.regionXStartPt),
         region_x_end_pt: Number(table.regionXEndPt),
@@ -885,6 +995,15 @@ export default function ProspectusPdfEditorPage() {
     // when the API round trip is slow.
     setDeleteTableId(null);
     removeTable(tableId);
+    // A deleted table cannot be saved later, so drop it from the dirty set.
+    // Otherwise the unsaved-changes prompt would fire for a table that no
+    // longer exists.
+    setDirtyTableIds((prev) => {
+      if (!prev.has(tableId)) return prev;
+      const next = new Set(prev);
+      next.delete(tableId);
+      return next;
+    });
     qc.setQueryData<ProspectusPdf | undefined>(
       ['prospectus-pdf', id],
       (prev) =>
@@ -920,8 +1039,32 @@ export default function ProspectusPdfEditorPage() {
     const nextRows = table.rows.filter((r) => r.row_id !== rowId);
     setRows(tableId, nextRows);
     setDeleteRowTarget(null);
+    // Deleting the row that is currently being edited must also end that
+    // edit session; otherwise the stale row target keeps Add Table locked.
+    if (
+      editing.kind === 'row' &&
+      editing.tableId === tableId &&
+      editing.rowId === rowId
+    ) {
+      setEditing({ kind: 'none' });
+    }
+    if (
+      selection.kind === 'row' &&
+      selection.tableId === tableId &&
+      selection.rowId === rowId
+    ) {
+      setSelection({ kind: 'none' });
+    }
     markDirty(tableId);
-  }, [deleteRowTarget, setRows, tables]);
+  }, [
+    deleteRowTarget,
+    editing,
+    selection,
+    setEditing,
+    setRows,
+    setSelection,
+    tables,
+  ]);
 
   const handleCanvasRendered = useCallback(
     (dims: { width: number; height: number }) => setRenderedDims(dims),
@@ -1023,9 +1166,13 @@ export default function ProspectusPdfEditorPage() {
 
           <button
             onClick={() => setAutoDetectOpen(true)}
-            disabled={drawingMode.kind !== 'idle'}
+            disabled={drawingMode.kind !== 'idle' || editingLocked}
             className="px-3 py-2 rounded-lg border border-primary/40 bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 transition disabled:opacity-50 flex items-center gap-1.5"
-            title="Let the parser find tables, columns, and rows automatically"
+            title={
+              editingLocked
+                ? 'Save or cancel the table you are editing first'
+                : 'Let the parser find tables, columns, and rows automatically'
+            }
           >
             <Icon name="auto_awesome" size={16} />
             Auto-detect
@@ -1033,8 +1180,13 @@ export default function ProspectusPdfEditorPage() {
 
           <button
             onClick={() => setAddTableOpen(true)}
-            disabled={drawingMode.kind !== 'idle'}
+            disabled={drawingMode.kind !== 'idle' || editingLocked}
             className="px-3 py-2 rounded-lg border border-surface-variant text-sm font-semibold hover:bg-surface-container-low transition disabled:opacity-50 flex items-center gap-1.5"
+            title={
+              editingLocked
+                ? 'Save or cancel the table you are editing first'
+                : undefined
+            }
           >
             <Icon name="add" size={16} />
             Add Table
@@ -1346,6 +1498,29 @@ export default function ProspectusPdfEditorPage() {
             </div>
           )}
 
+          {selectedTable && (selectedTable.tableKind ?? 'regular') === 'elective' && (
+            <TableNameEditor
+              key={selectedTable.tableId}
+              table={selectedTable}
+              disabled={isSaving}
+              suggestedName={selectedTableHeading}
+              onChange={(label) =>
+                handleLabelChange(selectedTable.tableId, label)
+              }
+            />
+          )}
+
+          {selectedTable && (selectedTable.tableKind ?? 'regular') === 'elective' && (
+            <ElectiveColumnsEditor
+              table={selectedTable}
+              disabled={isSaving}
+              onChange={(columns) =>
+                handleColumnsChange(selectedTable.tableId, columns)
+              }
+              onDetect={() => handleRedetectColumns(selectedTable.tableId)}
+            />
+          )}
+
           <LiveExtractionPreview
             table={selectedTable}
             textItems={
@@ -1483,9 +1658,15 @@ export default function ProspectusPdfEditorPage() {
         open={addTableOpen}
         onClose={() => setAddTableOpen(false)}
         existingTables={tables}
-        onConfirm={(yearLevel, semester, tableKind) => {
+        onConfirm={(yearLevel, semester, tableKind, label) => {
           setAddTableOpen(false);
-          setDrawingMode({ kind: 'drawing-region', yearLevel, semester, tableKind });
+          setDrawingMode({
+            kind: 'drawing-region',
+            yearLevel,
+            semester,
+            tableKind,
+            label,
+          });
         }}
       />
 

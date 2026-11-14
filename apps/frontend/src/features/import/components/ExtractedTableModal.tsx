@@ -32,6 +32,7 @@ export default function ExtractedTableModal({
     table,
     textItems,
   );
+  const roles = table?.columns.map((column) => column.role);
   const [copiedAll, setCopiedAll] = useState(false);
 
   const missingRows = rows.filter((row) =>
@@ -43,7 +44,7 @@ export default function ExtractedTableModal({
 
   const copyAll = async () => {
     try {
-      await navigator.clipboard.writeText(extractedRowsToTsv(rows));
+      await navigator.clipboard.writeText(extractedRowsToTsv(rows, roles));
       setCopiedAll(true);
       setTimeout(() => setCopiedAll(false), 1500);
     } catch {
@@ -128,6 +129,7 @@ export default function ExtractedTableModal({
           <ExtractedTable
             rows={rows}
             columnStats={columnStats}
+            roles={roles}
             variant="full"
           />
         </div>
