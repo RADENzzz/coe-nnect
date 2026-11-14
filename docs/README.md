@@ -38,6 +38,7 @@ Use these guides to set up the applications, understand workspace packages, and 
 ## Operations
 
 - [Backup and restore](operations/backup-restore.md) — database, storage, verification, and production restore procedure.
+- [Password recovery email](operations/email-recovery.md) — optional verified recovery address, Mox SMTP setup, token limits, endpoints, and troubleshooting.
 - [Railway deployment](operations/railway.md) — Infrastructure as Code, four services, manual variables, domains, and smoke tests.
 - [Temporary public link with Cloudflare Tunnel](operations/cloudflare-tunnel.md) — share the local app through a quick `trycloudflare.com` URL for demos.
 

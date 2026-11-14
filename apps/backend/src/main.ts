@@ -10,6 +10,7 @@ import {
   createCapRateLimiter,
   createGlobalRateLimiter,
   createLoginRateLimiter,
+  createRecoveryRateLimiter,
 } from './config/rate-limit.config';
 import {
   buildCorsOptions,
@@ -153,6 +154,11 @@ async function createApp() {
   app.use(`/${apiPrefix}/v1/auth/login`, createLoginRateLimiter());
   app.use(`/${apiPrefix}/v1/auth/reauth`, createLoginRateLimiter());
   app.use(`/${apiPrefix}/v1/auth/cap`, createCapRateLimiter());
+  // Only the public, email-sending/token-consuming recovery routes get the
+  // strict bucket; authenticated settings reads/writes keep the global limit.
+  app.use(`/${apiPrefix}/v1/recovery/request`, createRecoveryRateLimiter());
+  app.use(`/${apiPrefix}/v1/recovery/verify`, createRecoveryRateLimiter());
+  app.use(`/${apiPrefix}/v1/recovery/reset`, createRecoveryRateLimiter());
 
   app.useGlobalPipes(
     new ValidationPipe({

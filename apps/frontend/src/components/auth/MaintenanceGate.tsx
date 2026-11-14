@@ -11,7 +11,13 @@ import {
  * These routes stay reachable during maintenance: the public landing page is
  * read-only, and the dev still needs to sign in / out and see the wall.
  */
-const PUBLIC_DURING_MAINTENANCE = new Set(['/', '/login', '/maintenance']);
+const PUBLIC_DURING_MAINTENANCE = new Set([
+  '/',
+  '/login',
+  '/maintenance',
+  '/recovery/verify',
+  '/reset-password',
+]);
 
 /**
  * App-wide maintenance gate.

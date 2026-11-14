@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import Icon from '../../components/ui/Icon';
 import AppearanceSettingsTab from './components/AppearanceSettingsTab';
 import NotificationSettingsTab from './components/NotificationSettingsTab';
+import RecoveryEmailSection from './components/RecoveryEmailSection';
 import SecuritySection from './components/SecuritySection';
 
 type TabKey = 'appearance' | 'notifications' | 'security';
@@ -96,7 +97,12 @@ export default function SettingsPage() {
       >
         {active === 'appearance' && <AppearanceSettingsTab />}
         {active === 'notifications' && <NotificationSettingsTab />}
-        {active === 'security' && <SecuritySection />}
+        {active === 'security' && (
+          <div className="space-y-6">
+            <RecoveryEmailSection />
+            <SecuritySection />
+          </div>
+        )}
       </div>
     </div>
   );
