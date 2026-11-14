@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ProspectusPdfsService,
   inferRoomTypeFromUnits,
@@ -668,6 +672,52 @@ describe('ProspectusPdfsService table kinds', () => {
       ),
     ).rejects.toThrow(/require a year level and semester/);
     expect(tableRepo.rows).toHaveLength(0);
+  });
+});
+
+describe('ProspectusPdfsService deleteTable', () => {
+  it('deletes the table with a PDF-scoped DELETE and a lightweight access lookup', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    tableRepo.rows.push({ tableId: '7', pdfId: 'pdf-1', rows: [] });
+
+    await service.deleteTable('pdf-1', '7', ADMIN_USER);
+
+    expect(tableRepo.rows).toHaveLength(0);
+    expect(tableRepo.delete).toHaveBeenCalledWith({
+      tableId: '7',
+      pdfId: 'pdf-1',
+    });
+    expect(pdfRepo.findOne).toHaveBeenCalledWith({
+      where: { pdfId: 'pdf-1', deletedAt: expect.anything() },
+      select: { pdfId: true, departmentId: true },
+    });
+  });
+
+  it('does not delete a table that belongs to another PDF', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    tableRepo.rows.push({ tableId: '7', pdfId: 'pdf-2', rows: [] });
+
+    await expect(
+      service.deleteTable('pdf-1', '7', ADMIN_USER),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(tableRepo.rows).toHaveLength(1);
+  });
+
+  it('rejects a department head from another department', async () => {
+    const { service, pdfRepo, tableRepo } = createService();
+    seedPdf(pdfRepo);
+    tableRepo.rows.push({ tableId: '7', pdfId: 'pdf-1', rows: [] });
+
+    await expect(
+      service.deleteTable('pdf-1', '7', {
+        userId: 'user-dh',
+        role: 'department_head',
+        deptId: '2',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tableRepo.rows).toHaveLength(1);
   });
 });
 

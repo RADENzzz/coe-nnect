@@ -13,6 +13,7 @@ import {
 import type {
   ColumnRole,
   ColumnSlice,
+  ProspectusPdf,
   ProspectusPdfTable,
   RowBox,
 } from './types';
@@ -819,7 +820,7 @@ export default function ProspectusPdfEditorPage() {
     if (!table) return;
     setIsSaving(true);
     try {
-      await updateProspectusPdfTable(id!, tableId, {
+      const saved = await updateProspectusPdfTable(id!, tableId, {
         rows: table.rows,
         columns: table.columns,
         region_page_index: table.regionPageIndex,
@@ -828,14 +829,31 @@ export default function ProspectusPdfEditorPage() {
         region_y_start_pt: Number(table.regionYStartPt),
         region_y_end_pt: Number(table.regionYEndPt),
       });
-      await qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
+
+      // Use the response to update the cached PDF directly. Refetching the
+      // whole record here made Save wait on every table's JSONB rows.
+      qc.setQueryData<ProspectusPdf | undefined>(
+        ['prospectus-pdf', id],
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                tables: (prev.tables ?? []).map((cached) =>
+                  cached.tableId === tableId ? saved : cached,
+                ),
+              }
+            : prev,
+      );
+
       setEditing({ kind: 'none' });
       setSelection({ kind: 'none' });
-      setDirtyTableIds(prev => {
+      setDirtyTableIds((prev) => {
         const next = new Set(prev);
         next.delete(tableId);
         return next;
       });
+      // Per-PDF counts on the list page change when rows are saved.
+      void qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
     } catch (err) {
       console.error(err);
       alert('Failed to save table');
@@ -859,14 +877,38 @@ export default function ProspectusPdfEditorPage() {
   };
 
   const confirmDeleteTable = useCallback(async () => {
-    if (!deleteTableId || !id) return;
+    const tableId = deleteTableId;
+    if (!tableId || !id) return;
+
+    // Close the dialog and drop the table locally right away. The request
+    // below only persists the deletion; the editor stays responsive even
+    // when the API round trip is slow.
+    setDeleteTableId(null);
+    removeTable(tableId);
+    qc.setQueryData<ProspectusPdf | undefined>(
+      ['prospectus-pdf', id],
+      (prev) =>
+        prev
+          ? {
+              ...prev,
+              tables: (prev.tables ?? []).filter(
+                (table) => table.tableId !== tableId,
+              ),
+            }
+          : prev,
+    );
+
     try {
-      await deleteProspectusPdfTable(id, deleteTableId);
-      removeTable(deleteTableId);
-      setDeleteTableId(null);
-      qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
+      await deleteProspectusPdfTable(id, tableId);
+      // The list page shows per-PDF table counts; refresh it in the
+      // background without blocking the editor.
+      void qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
     } catch (err) {
       console.error('Failed to delete table', err);
+      // The server still owns the table, so pull the authoritative state
+      // back into the editor.
+      void qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
+      alert('Failed to delete table');
     }
   }, [deleteTableId, id, qc, removeTable]);
 

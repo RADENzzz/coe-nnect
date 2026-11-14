@@ -231,8 +231,7 @@ export class ProspectusPdfsService {
     dto: CreateTableDto,
     user: UserProfile,
   ): Promise<ProspectusPdfTable> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
+    await this.assertCanWritePdf(pdfId, user);
 
     this.assertValidColumns(dto.columns);
     this.assertValidRegion(dto);
@@ -304,8 +303,7 @@ export class ProspectusPdfsService {
     dto: UpdateTableDto,
     user: UserProfile,
   ): Promise<ProspectusPdfTable> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
+    await this.assertCanWritePdf(pdfId, user);
     const table = await this.tableRepo.findOne({
       where: { tableId, pdfId },
     });
@@ -401,13 +399,17 @@ export class ProspectusPdfsService {
     tableId: string,
     user: UserProfile,
   ): Promise<void> {
-    const pdf = await this.findOne(pdfId, user);
-    this.assertCanWriteDepartment(user, pdf.departmentId);
-    const table = await this.tableRepo.findOne({
-      where: { tableId, pdfId },
-    });
-    if (!table) throw new NotFoundException(`Table ${tableId} not found`);
-    await this.tableRepo.remove(table);
+    // Only the PDF's ownership fields are needed here. Loading the full
+    // record (with every table's JSONB rows) just to check permissions made
+    // deletion scale with the size of the whole mapping.
+    await this.assertCanWritePdf(pdfId, user);
+
+    // One DELETE statement instead of SELECT + entity removal. `affected`
+    // also tells us whether the table existed and belonged to this PDF.
+    const result = await this.tableRepo.delete({ tableId, pdfId });
+    if (!result.affected) {
+      throw new NotFoundException(`Table ${tableId} not found`);
+    }
   }
 
   // ============================================================
@@ -1475,6 +1477,24 @@ export class ProspectusPdfsService {
   /** Unit sums are numeric columns; tolerate floating-point noise. */
   private unitsEqual(a: number, b: number): boolean {
     return Math.abs(a - b) < 1e-9;
+  }
+
+  /**
+   * Permission check for table writes. Deliberately selects only the PDF's
+   * ownership fields: the editor saves and deletes individual tables, so
+   * loading every table's JSONB rows first made those actions scale with the
+   * size of the whole mapping.
+   */
+  private async assertCanWritePdf(
+    pdfId: string,
+    user: UserProfile,
+  ): Promise<void> {
+    const pdf = await this.pdfRepo.findOne({
+      where: { pdfId, deletedAt: IsNull() },
+      select: { pdfId: true, departmentId: true },
+    });
+    if (!pdf) throw new NotFoundException(`Prospectus PDF ${pdfId} not found`);
+    this.assertCanWriteDepartment(user, pdf.departmentId);
   }
 
   private assertCanReadDepartment(
