@@ -109,7 +109,7 @@ export default function ApprovalsExportToolbar({
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!filenameOpen || !filename.trim()) return;
     const base = filename.trim().replace(/\.xlsx$/i, '');
     const finalName = `${base}.xlsx`;
@@ -117,7 +117,7 @@ export default function ApprovalsExportToolbar({
     setBusy('excel' as ExportKind);
     setFilenameOpen(null);
     try {
-      exportApprovalsExcel(
+      await exportApprovalsExcel(
         { rows, deptCode, deptName, termLabel },
         finalName,
       );

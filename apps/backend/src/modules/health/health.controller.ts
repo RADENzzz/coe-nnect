@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator';
 
 /**
  * Lightweight liveness probe for Railway (and any other orchestrator).
@@ -9,6 +10,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
  * the existing /v1/system-status endpoint.
  */
 @ApiTags('Health')
+@Public()
 @Controller('v1/health')
 export class HealthController {
   @Get()

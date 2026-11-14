@@ -5,17 +5,34 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { SupabaseService } from '../../database/supabase.service';
 import { SystemStatusService } from '../../modules/system-status/system-status.service';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private supabase: SupabaseService,
     private systemStatus: SystemStatusService,
+    private reflector: Reflector,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
+    // This guard is registered globally for HTTP requests. WebSocket
+    // handshakes are authenticated in NotificationsGateway instead.
+    if (ctx.getType() !== 'http') {
+      return true;
+    }
+
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+
     const req = ctx.switchToHttp().getRequest();
 
     //Skip OPTIONS preflight — let CORS middleware handle it

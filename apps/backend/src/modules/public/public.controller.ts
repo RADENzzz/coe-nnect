@@ -1,6 +1,7 @@
 import { Controller, Get, Header, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../../common/decorators/public.decorator';
 import { PublicService } from './public.service';
 
 /**
@@ -11,6 +12,7 @@ import { PublicService } from './public.service';
  * Global rate limiting still applies.
  */
 @ApiTags('Public')
+@Public()
 @Controller('v1/public')
 export class PublicController {
   constructor(private readonly publicService: PublicService) {}

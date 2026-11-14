@@ -1,4 +1,7 @@
-import * as XLSX from 'xlsx';
+import writeXlsxFile, {
+  type Row,
+  type SheetData,
+} from 'write-excel-file/browser';
 import type { ScheduleEntry } from '../types';
 
 const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -12,6 +15,9 @@ const DAY_LABELS: Record<string, string> = {
   SUN: 'Sunday',
 };
 
+const COLUMN_COUNT = 10;
+const COLUMN_WIDTHS = [11, 7, 7, 14, 32, 11, 24, 8, 11, 10];
+
 interface ExcelOptions {
   entries: ScheduleEntry[];
   sheetName?: string;
@@ -20,11 +26,19 @@ interface ExcelOptions {
   scopeLabel?: string;
 }
 
+/** A merged title/meta row spanning the full table width. */
+function metaRow(text: string, span = COLUMN_COUNT): Row {
+  return [
+    { value: text, columnSpan: span },
+    ...Array.from({ length: span - 1 }, () => null),
+  ];
+}
+
 /**
  * Generates an .xlsx workbook for the given entries and triggers a download.
  * Layout: title rows at top, then a flat table sorted by Day → Start Time.
  */
-export function exportScheduleExcel(opts: ExcelOptions): void {
+export async function exportScheduleExcel(opts: ExcelOptions): Promise<void> {
   const { entries, sheetName = 'Timetable', title, termLabel, scopeLabel } = opts;
 
   // ── Sort rows: Day order → Start time → Subject ──
@@ -37,16 +51,16 @@ export function exportScheduleExcel(opts: ExcelOptions): void {
   });
 
   // ── Metadata rows ──
-  const metaRows = [
-    [title],
-    ['Western Mindanao State University — College of Engineering'],
-    [`Term: ${termLabel}${scopeLabel ? `  ·  Scope: ${scopeLabel}` : ''}`],
-    [`Generated: ${new Date().toLocaleString('en-PH')}`],
+  const metaRows: SheetData = [
+    metaRow(title),
+    metaRow('Western Mindanao State University — College of Engineering'),
+    metaRow(`Term: ${termLabel}${scopeLabel ? `  ·  Scope: ${scopeLabel}` : ''}`),
+    metaRow(`Generated: ${new Date().toLocaleString('en-PH')}`),
     [],
   ];
 
   // ── Table header ──
-  const headerRow = [
+  const headerRow: Row = [
     'Day',
     'Start',
     'End',
@@ -57,10 +71,14 @@ export function exportScheduleExcel(opts: ExcelOptions): void {
     'Room',
     'Type',
     'Status',
-  ];
+  ].map((value) => ({
+    value,
+    fontWeight: 'bold' as const,
+    backgroundColor: '#f1f5f9',
+  }));
 
   // ── Data rows ──
-  const dataRows = sorted.map((e) => [
+  const dataRows: SheetData = sorted.map((e) => [
     DAY_LABELS[e.day] ?? e.day,
     e.startTime,
     e.endTime,
@@ -73,36 +91,7 @@ export function exportScheduleExcel(opts: ExcelOptions): void {
     e.status ?? 'draft',
   ]);
 
-  const aoa = [...metaRows, headerRow, ...dataRows];
-
-  // ── Build sheet ──
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-  // Column widths
-  ws['!cols'] = [
-    { wch: 11 },  // Day
-    { wch: 7 },   // Start
-    { wch: 7 },   // End
-    { wch: 14 },  // Code
-    { wch: 32 },  // Title
-    { wch: 11 },  // Section
-    { wch: 24 },  // Faculty
-    { wch: 8 },   // Room
-    { wch: 11 },  // Type
-    { wch: 10 },  // Status
-  ];
-
-  // Merge title rows across all columns
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 9 } },
-    { s: { r: 3, c: 0 }, e: { r: 3, c: 9 } },
-  ];
-
-  // ── Workbook ──
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
+  const sheetData: SheetData = [...metaRows, headerRow, ...dataRows];
 
   // ── Filename ──
   const filename = opts.title
@@ -110,5 +99,8 @@ export function exportScheduleExcel(opts: ExcelOptions): void {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  await writeXlsxFile(sheetData, {
+    sheet: sheetName.slice(0, 31),
+    columns: COLUMN_WIDTHS.map((width) => ({ width })),
+  }).toFile(`${filename}.xlsx`);
 }

@@ -1,5 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator';
 import { CapRedeemBody, CapService } from './cap.service';
 
 /**
@@ -10,6 +11,7 @@ import { CapRedeemBody, CapService } from './cap.service';
  * why the route prefix is `/v1/auth/cap/` on the frontend.
  */
 @ApiTags('Auth')
+@Public()
 @Controller('v1/auth/cap')
 export class CapController {
   constructor(private readonly cap: CapService) {}
