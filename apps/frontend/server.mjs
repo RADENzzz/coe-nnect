@@ -27,7 +27,72 @@ if (!Number.isInteger(backendPort) || backendPort <= 0) {
   throw new Error(`Invalid BACKEND_PORT: ${process.env.BACKEND_PORT}`);
 }
 
+/**
+ * Supabase may live on a project subdomain (*.supabase.co) or a custom
+ * domain. The browser uses HTTPS for REST/auth and WSS for Realtime, so add
+ * both schemes for whichever origin this deployment was built against.
+ */
+function supabaseCspOrigins() {
+  const raw = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  if (!raw) return { http: [], ws: [] };
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return { http: [], ws: [] };
+    }
+    const wsProtocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return {
+      http: [url.origin],
+      ws: [`${wsProtocol}//${url.host}`],
+    };
+  } catch {
+    return { http: [], ws: [] };
+  }
+}
+
+const SUPABASE_ORIGINS = supabaseCspOrigins();
+
+/**
+ * Production Content-Security-Policy for the SPA.
+ *
+ * - `script-src 'self'`: no inline scripts. Theme bootstrap lives in
+ *   public/theme-boot.js.
+ * - `style-src 'unsafe-inline'`: React inline styles and the pre-paint
+ *   appearance <style> block need it; Google Fonts serves the stylesheet.
+ * - `connect-src`: same-origin API/socket proxy plus Supabase REST/Realtime.
+ * - `worker-src blob:`: PDF.js, export workers, and the Cap proof-of-work
+ *   widget create workers from blobs.
+ * - `img-src blob:` and `media-src blob:`: generated previews/audio clips.
+ */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  [
+    "img-src 'self' data: blob: https://*.supabase.co",
+    ...SUPABASE_ORIGINS.http,
+  ]
+    .filter(Boolean)
+    .join(" "),
+  "media-src 'self' data: blob:",
+  [
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+    ...SUPABASE_ORIGINS.http,
+    ...SUPABASE_ORIGINS.ws,
+  ]
+    .filter(Boolean)
+    .join(" "),
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+].join("; ");
+
 const SECURITY_HEADERS = {
+  "Content-Security-Policy": CONTENT_SECURITY_POLICY,
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",

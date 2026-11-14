@@ -2,14 +2,21 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard';
+import { IS_PUBLIC_KEY } from '../src/common/decorators/public.decorator';
 
-function createContext(authorization?: string) {
+class TestController {}
+
+function createContext(authorization?: string, handler?: () => void) {
   const req: any = {
     method: 'GET',
     headers: authorization ? { authorization } : {},
   };
   const ctx: any = {
+    getType: () => 'http',
+    getHandler: () => handler ?? TestController,
+    getClass: () => TestController,
     switchToHttp: () => ({ getRequest: () => req }),
   };
   return { ctx, req };
@@ -26,7 +33,11 @@ function createGuard(
     getMaintenanceNotice: jest.fn().mockResolvedValue(maintenance),
   };
   return {
-    guard: new JwtAuthGuard(supabase as any, systemStatus as any),
+    guard: new JwtAuthGuard(
+      supabase as any,
+      systemStatus as any,
+      new Reflector(),
+    ),
     supabase,
     systemStatus,
   };
@@ -114,7 +125,11 @@ describe('JwtAuthGuard', () => {
         message: 'Down for upgrades',
       }),
     };
-    const guard = new JwtAuthGuard(supabase as any, systemStatus as any);
+    const guard = new JwtAuthGuard(
+      supabase as any,
+      systemStatus as any,
+      new Reflector(),
+    );
     const { ctx } = createContext('Bearer token');
 
     expect.assertions(2);
@@ -126,5 +141,18 @@ describe('JwtAuthGuard', () => {
         code: 'MAINTENANCE_MODE',
       });
     }
+  });
+
+  it('skips authentication for routes marked @Public()', async () => {
+    const { guard, supabase } = createGuard({
+      status: 'invalid',
+      message: 'n/a',
+    });
+    function publicHandler() {}
+    Reflect.defineMetadata(IS_PUBLIC_KEY, true, publicHandler);
+    const { ctx } = createContext(undefined, publicHandler);
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(supabase.verifyAccessToken).not.toHaveBeenCalled();
   });
 });

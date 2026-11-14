@@ -72,11 +72,11 @@ Out of scope:
 The current codebase includes:
 
 - **Authentication:** Supabase Auth email/password sign-in with a Cap CAPTCHA challenge. Cap is fail-closed when `CAP_SECRET` is missing or shorter than 16 bytes. Challenges and redeem tokens expire after 10 minutes, and `cap_nonce` / `cap_token` make each solution single-use.
-- **Authorization:** `JwtAuthGuard` verifies Supabase access tokens; `RolesGuard` loads the active application profile and enforces role checks on the API. Browser route guards are navigation aids, not the security boundary.
+- **Authorization:** `JwtAuthGuard` is registered globally and verifies Supabase access tokens; routes opt out explicitly with `@Public()`. `RolesGuard` loads the active application profile and enforces role checks on the API. Browser route guards are navigation aids, not the security boundary.
 - **Role model:** `college_dean`, `college_secretary`, `department_head`, `viewer`, and the hidden `administrator`. The administrator account is restricted to Dev Tools and excluded from user-facing chat.
 - **Database access:** TypeORM uses a trusted server-side connection. Direct Supabase clients are governed by RLS; `REVOKE USAGE ON SCHEMA public FROM PUBLIC` limits schema reachability. API-internal tables (`cap_nonce`, `cap_token`, `user_presence`, and the IDP state tables) enable RLS with no client policies and no `anon`/`authenticated` grants.
 - **Input handling:** global Nest validation with DTO whitelisting; unknown properties are rejected. PDF uploads are size-limited and parser requests validate region geometry.
-- **Transport and headers:** Helmet, a Content-Security-Policy, HSTS in production, no-referrer policy, frame-ancestor denial, and an explicit CORS allowlist. `TRUST_PROXY` is set only behind the trusted frontend proxy.
+- **Transport and headers:** Helmet on the API and a strict Content-Security-Policy on the production frontend server (`script-src 'self'`, no inline scripts), HSTS in production, no-referrer policy, frame-ancestor denial, and an explicit CORS allowlist. `TRUST_PROXY` is set only behind the trusted frontend proxy.
 - **Rate limiting:** global HTTP throttling, a stricter login bucket, and a separate Cap bucket.
 - **Webhook security:** IDP webhooks use HMAC-SHA256 over the raw request body with a timestamp tolerance; Pattern C device endpoints require a device bearer key.
 - **Secret handling:** secrets live in environment variables or the Railway dashboard, never in tracked files. `VITE_*` values are treated as public. The service-role key is backend-only.
@@ -91,6 +91,7 @@ The current codebase includes:
 - Dev Tools exposes destructive reset and seed operations to the hidden administrator account. Keep that account restricted, use a strong password, and do not enable development bypasses in production.
 - Supabase, Railway, Cloudflare, and the university IDP are external trust boundaries. Their own security advisories and configuration guidance apply.
 - The frontend bundle is public by design. Do not place secrets in any `VITE_*` variable.
+- `supabase-js` persists the access and refresh tokens in browser `localStorage`. A successful XSS could therefore steal a session. The production CSP and dependency hygiene reduce that risk, but an httpOnly-cookie backend-for-frontend remains the stronger long-term architecture.
 
 ## Safe harbor
 

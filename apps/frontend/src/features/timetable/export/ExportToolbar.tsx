@@ -283,12 +283,12 @@ export default function ExportToolbar({
     }
   };
 
-  const runExportExcel = (filename: string) => {
+  const runExportExcel = async (filename: string) => {
     setError(null);
     setBusy('excel');
     try {
       const stem = filename.replace(/\.xlsx$/i, '');
-      exportScheduleExcel({
+      await exportScheduleExcel({
         entries,
         title: stem,
         termLabel: versionSubtitle
