@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../../../components/ui/Icon';
 import type { UnplottedMinor } from '../../../api/schedule.api';
 
@@ -14,9 +16,25 @@ export default function UnplottedMinorsPanel({
   minors,
   onPlot,
 }: Props) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
-  return (
+  // Portal out of the route wrapper so the retained page-roll transform cannot
+  // anchor the fixed panel to the scrolled page.
+  return createPortal(
     <div className="fixed inset-0 z-40 flex">
       <div
         className="absolute inset-0 bg-black/30"
@@ -100,6 +118,7 @@ export default function UnplottedMinorsPanel({
           </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

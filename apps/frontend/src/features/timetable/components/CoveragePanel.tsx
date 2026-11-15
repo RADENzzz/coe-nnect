@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../../../components/ui/Icon';
 import type {
   CoverageReport,
@@ -33,10 +34,11 @@ export default function CoveragePanel({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [open, onClose]);
 
@@ -81,7 +83,9 @@ export default function CoveragePanel({
 
   if (!open) return null;
 
-  return (
+  // Portal out of the route wrapper so the retained page-roll transform cannot
+  // anchor the fixed panel to the scrolled page.
+  return createPortal(
     <div className="fixed inset-0 z-40 flex">
       <div
         className="absolute inset-0 bg-black/30 animate-backdrop-in"
@@ -292,7 +296,8 @@ export default function CoveragePanel({
           </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

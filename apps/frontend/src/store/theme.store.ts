@@ -34,6 +34,37 @@ export function applyTheme(theme: Theme) {
     ?.setAttribute('content', theme === 'dark' ? '#0a0a0a' : '#5c1219');
 }
 
+let themeTransitionTimer: number | undefined;
+
+/**
+ * Flips the theme with a short color transition. The initial hydration path
+ * stays instant, and reduced-motion users keep the immediate switch.
+ */
+function applyThemeWithTransition(theme: Theme) {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    applyTheme(theme);
+    return;
+  }
+
+  const reduceMotion = window.matchMedia?.(
+    '(prefers-reduced-motion: reduce)',
+  ).matches;
+
+  if (reduceMotion) {
+    applyTheme(theme);
+    return;
+  }
+
+  const root = document.documentElement;
+  root.classList.add('theme-transition');
+  applyTheme(theme);
+
+  window.clearTimeout(themeTransitionTimer);
+  themeTransitionTimer = window.setTimeout(() => {
+    root.classList.remove('theme-transition');
+  }, 280);
+}
+
 function getInitialTheme(): Theme {
   if (typeof document === 'undefined') return 'light';
 
@@ -58,7 +89,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   theme: initialTheme,
 
   setTheme: (theme) => {
-    applyTheme(theme);
+    if (theme === get().theme) return;
+    applyThemeWithTransition(theme);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch {
