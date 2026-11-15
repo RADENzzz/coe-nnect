@@ -31,8 +31,9 @@ import { IdpProcessedEvent } from './entities/idp-processed-event.entity';
  *
  * Pattern C (primary): the offline-capable IDP desktop app pushes faculty
  * snapshots to `/api/idp/v1/inbox/faculty` and polls
- * `/api/idp/v1/outbox/schedules` for published schedules, authenticated with
- * `IDP_DEVICE_API_KEY`.
+ * `/api/idp/v1/outbox/schedules` for published schedules. It can also query
+ * `/api/idp/v1/schedules/classes` for department-scoped class references.
+ * Pattern C routes authenticate with `IDP_DEVICE_API_KEY`.
  *
  * Pattern A (fallback): outbound REST pulls to IDP for faculty,
  * qualifications, unavailability, and the published-schedule push, plus

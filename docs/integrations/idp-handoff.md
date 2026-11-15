@@ -173,7 +173,11 @@ A bare array is also accepted. Per-record failures do not abort the snapshot:
 
 ### 4.2 Poll published schedules
 
-`GET /api/idp/v1/outbox/schedules?since=<iso>&limit=<1-200>`
+`GET /api/idp/v1/outbox/schedules?since=<iso>&limit=<1-200>&deptCode=<code>`
+
+`deptCode` is optional. For example, `deptCode=CPE` returns only CPE entries
+within each published term payload. Track a separate `next_since` cursor per
+department filter.
 
 ```json
 {
@@ -207,7 +211,14 @@ Rules:
 3. Keep polling while `items` is non-empty.
 4. Schedule items are frozen at publish time and never change.
 
-### 4.3 Poll faculty-request statuses
+### 4.3 Fetch department class references
+
+`GET /api/idp/v1/schedules/classes?deptCode=CPE` returns finalized or published,
+unflagged class rows for the selected department. The response includes
+`subject_code`, `section_code`, `course_title`, and `class_code` (the
+CoE-NNECT schedule row ID). Department codes are case-insensitive.
+
+### 4.4 Poll faculty-request statuses
 
 `GET /api/idp/v1/outbox/faculty-requests?since=<iso>&limit=<1-200>`
 
@@ -242,7 +253,7 @@ Rules:
 Unlike schedules, each request has **one row that is refreshed in place**.
 Dedupe on `payload.coe_nnect_request_id` plus `status`; the latest status wins.
 
-### 4.4 Poll change-request acknowledgements
+### 4.5 Poll change-request acknowledgements
 
 `GET /api/idp/v1/outbox/change-request-acks?since=<iso>&limit=<1-200>`
 

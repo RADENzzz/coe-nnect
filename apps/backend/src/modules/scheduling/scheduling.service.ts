@@ -73,6 +73,7 @@ export class SchedulingService {
   async findByTerm(
     termId: string,
     includeInactiveDepts = false,
+    deptCode?: string,
   ): Promise<Schedule[]> {
     const qb = this.scheduleRepo
       .createQueryBuilder('s')
@@ -82,6 +83,16 @@ export class SchedulingService {
       .leftJoinAndSelect('s.timeSlot', 'timeSlot')
       .where('s.term_id = :termId', { termId })
       .orderBy('s.schedule_id', 'ASC');
+
+    if (deptCode) {
+      qb.andWhere(
+        `s.dept_id = (
+          SELECT d.dept_id FROM department d
+          WHERE UPPER(d.dept_code) = UPPER(:deptCode)
+        )`,
+        { deptCode },
+      );
+    }
 
     if (!includeInactiveDepts) {
       // Only include rows whose dept is active OR has no dept (shared/
@@ -97,7 +108,10 @@ export class SchedulingService {
     return qb.getMany();
   }
 
-  async findAll(includeInactiveDepts = false): Promise<Schedule[]> {
+  async findAll(
+    includeInactiveDepts = false,
+    deptCode?: string,
+  ): Promise<Schedule[]> {
     const qb = this.scheduleRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.subject', 'subject')
@@ -105,6 +119,16 @@ export class SchedulingService {
       .leftJoinAndSelect('s.room', 'room')
       .leftJoinAndSelect('s.timeSlot', 'timeSlot')
       .orderBy('s.schedule_id', 'ASC');
+
+    if (deptCode) {
+      qb.andWhere(
+        `s.dept_id = (
+          SELECT d.dept_id FROM department d
+          WHERE UPPER(d.dept_code) = UPPER(:deptCode)
+        )`,
+        { deptCode },
+      );
+    }
 
     if (!includeInactiveDepts) {
       qb.andWhere(

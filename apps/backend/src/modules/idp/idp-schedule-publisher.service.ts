@@ -12,8 +12,10 @@ import { Schedule } from '../scheduling/entities/schedule.entity';
 import { ScheduleVersion } from '../scheduling/entities/schedule-version.entity';
 import { IdpOutboxItem } from './entities/idp-outbox.entity';
 import { IdpClientService, IdpUpstreamError } from './idp-client.service';
+import { idpErrors } from './idp.errors';
 import { IdpOutboxService } from './idp-outbox.service';
 import type {
+  IdpClassReference,
   IdpPublishedScheduleEntry,
   IdpPublishedSchedulePayload,
   IdpSchedulePushResult,
@@ -57,6 +59,43 @@ export class IdpSchedulePublisherService {
     const term = await this.resolveTerm(termCode);
     const version = await this.resolveVersion(String(term.termId), term);
     return this.buildPayloadFor(term, version);
+  }
+
+  async listClassReferences(
+    deptCode: string,
+  ): Promise<IdpClassReference[]> {
+    const code = String(deptCode ?? '').trim();
+    if (!code) {
+      throw idpErrors.validation('deptCode is required.', {
+        field: 'deptCode',
+      });
+    }
+
+    const departments = await this.departmentRepo.find({
+      select: ['deptId', 'deptCode'],
+    });
+    const department = departments.find(
+      (row) => row.deptCode.toUpperCase() === code.toUpperCase(),
+    );
+    if (!department) throw idpErrors.unknownDepartment(code);
+
+    const rows = await this.scheduleRepo.find({
+      where: {
+        deptId: String(department.deptId),
+        status: In(['finalized', 'published']),
+        flagged: false,
+        pendingFacultyRequestId: IsNull(),
+      },
+      relations: ['subject', 'sectionRef'],
+      order: { scheduleId: 'ASC' },
+    });
+
+    return rows.map((row) => ({
+      subject_code: row.subject.subjectCode,
+      section_code: row.sectionRef?.sectionCode ?? row.section ?? null,
+      course_title: row.subject.title,
+      class_code: String(row.scheduleId),
+    }));
   }
 
   private async buildPayloadFor(

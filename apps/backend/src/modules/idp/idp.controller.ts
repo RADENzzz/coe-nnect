@@ -47,6 +47,7 @@ import type {
  *   POST /api/idp/v1/webhooks/faculty-changed
  *   POST /api/idp/v1/inbox/faculty
  *   GET  /api/idp/v1/outbox/schedules?since=&limit=
+ *   GET  /api/idp/v1/schedules/classes?deptCode=
  *
  * The inbox/outbox routes implement Pattern C: the IDP desktop app pushes
  * faculty snapshots and polls for published schedules whenever it is online.
@@ -60,6 +61,7 @@ export class IdpController {
     private readonly sync: IdpSyncService,
     private readonly outbox: IdpOutboxService,
     private readonly changeRequests: IdpChangeRequestService,
+    private readonly publisher: IdpSchedulePublisherService,
   ) {}
 
   @Get('health')
@@ -148,6 +150,7 @@ export class IdpController {
    * `since` is inclusive; clients dedupe on `payload.coe_nnect_version_id`.
    * `next_since` may repeat the last item so rows sharing a timestamp are not
    * skipped. Use `limit` to bound catch-up after a long offline period.
+   * `deptCode` optionally restricts entries to one department.
    */
   @Get('outbox/schedules')
   @UseGuards(IdpDeviceGuard)
@@ -167,14 +170,43 @@ export class IdpController {
     required: false,
     description: 'Page size, 1-200. Defaults to 50.',
   })
+  @ApiQuery({
+    name: 'deptCode',
+    required: false,
+    description: 'Optional department-code filter, e.g. CPE.',
+  })
   @ApiOperation({
     summary: 'Poll published schedules for the IDP desktop client',
   })
   async outboxSchedules(
     @Query('since') since?: string,
     @Query('limit') limit?: string,
+    @Query('deptCode') deptCode?: string,
   ) {
-    return { data: await this.outbox.listSchedules({ since, limit }) };
+    return {
+      data: await this.outbox.listSchedules({ since, limit, deptCode }),
+    };
+  }
+
+  /** Look up published class identifiers and labels for one department. */
+  @Get('schedules/classes')
+  @UseGuards(IdpDeviceGuard)
+  @ApiBearerAuth('idp-device-key')
+  @ApiHeader({
+    name: 'X-Request-ID',
+    required: false,
+    description: 'Optional correlation id echoed back in logs and errors.',
+  })
+  @ApiQuery({
+    name: 'deptCode',
+    required: true,
+    description: 'Department code to filter by, e.g. CPE.',
+  })
+  @ApiOperation({
+    summary: 'List class references for a department',
+  })
+  async scheduleClasses(@Query('deptCode') deptCode?: string) {
+    return { data: await this.publisher.listClassReferences(deptCode ?? '') };
   }
 
   /** Pattern C — latest status for every faculty request (contract 4.5). */

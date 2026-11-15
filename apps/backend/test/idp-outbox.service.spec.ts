@@ -99,6 +99,29 @@ describe('IdpOutboxService', () => {
     expect(page.server_time).toBeDefined();
   });
 
+  it('filters schedule payload entries by department code', async () => {
+    const cpeAndEe = payload({
+      entries: [
+        ...payload().entries,
+        {
+          ...payload().entries[0],
+          coe_nnect_schedule_id: '2',
+          department_code: 'EE',
+        },
+      ],
+    });
+    const queued = await service.enqueueSchedule(cpeAndEe);
+    repo.find.mockResolvedValue([queued]);
+
+    const page = await service.listSchedules({ deptCode: 'cpe' });
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].payload.entries).toHaveLength(1);
+    expect(page.items[0].payload.entries[0].department_code).toBe('CPE');
+    const where = repo.find.mock.calls[0][0].where;
+    expect(where.payload).toBeDefined();
+  });
+
   it('honours limit and repeats the last cursor', async () => {
     for (const [index, hour] of ['01', '02', '03'].entries()) {
       const item = await service.enqueueSchedule(

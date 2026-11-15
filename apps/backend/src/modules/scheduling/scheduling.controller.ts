@@ -12,7 +12,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { SchedulingService } from './scheduling.service';
 import { PlotSubjectDto } from './dto/plot-subject.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -238,19 +238,30 @@ export class SchedulingController {
   /**
    * List schedules.
    *
+   * Optionally filter by the owning department's code (for example `CPE`).
    * By default excludes rows whose dept is inactive. Dean can pass
-   * `?includeInactive=true` (in addition to `?termId=`) to audit
-   * or clean up inactive-dept data.
+   * `?includeInactive=true` to audit or clean up inactive-dept data.
    */
   @Get()
+  @ApiQuery({
+    name: 'deptCode',
+    required: false,
+    description: 'Filter schedules by owning department code, e.g. CPE.',
+  })
   async findAll(
     @Query('termId') termId?: string,
     @Query('includeInactive') includeInactive?: string,
+    @Query('deptCode') deptCode?: string,
   ) {
     const includeInactiveDepts = includeInactive === 'true';
+    const departmentCode = deptCode?.trim() || undefined;
     const data = termId
-      ? await this.service.findByTerm(termId, includeInactiveDepts)
-      : await this.service.findAll(includeInactiveDepts);
+      ? await this.service.findByTerm(
+          termId,
+          includeInactiveDepts,
+          departmentCode,
+        )
+      : await this.service.findAll(includeInactiveDepts, departmentCode);
     return { data };
   }
 
