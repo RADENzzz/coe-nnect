@@ -5,6 +5,7 @@ import {
   updateScheduleStatus,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { publishIdpSchedule } from '../../api/idp.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchDepartments } from '../../api/departments.api';
@@ -63,6 +64,7 @@ export default function DeanApprovalsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [idpPublishPending, setIdpPublishPending] = useState(false);
 
   // ── Batch selection ──
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -223,6 +225,34 @@ export default function DeanApprovalsPage() {
     setFacultyFilter('');
   };
 
+  const sendActiveTermToIdp = async () => {
+    if (!activeTerm?.semester) {
+      setActionError(
+        'The active term has no semester configured, so the IDP schedule could not be queued.',
+      );
+      return;
+    }
+
+    setIdpPublishPending(true);
+    setActionError(null);
+    try {
+      const result = await publishIdpSchedule(
+        `${activeTerm.schoolYear}-${activeTerm.semester}`,
+      );
+      setActionSuccess(
+        `Term schedule queued for IDP (${result.entryCount} entries).`,
+      );
+    } catch (err: any) {
+      setActionError(
+        err?.response?.data?.message ??
+          err?.message ??
+          'The IDP schedule could not be queued.',
+      );
+    } finally {
+      setIdpPublishPending(false);
+    }
+  };
+
   // ── Batch / single action handlers ──
   const openConfirm = (action: BatchAction | 'return-to-draft', ids: string[]) => {
     if (ids.length === 0) return;
@@ -264,6 +294,28 @@ export default function DeanApprovalsPage() {
 
       qc.invalidateQueries({ queryKey: ['schedules'] });
 
+      let idpPublishResult:
+        | Awaited<ReturnType<typeof publishIdpSchedule>>
+        | undefined;
+      let idpPublishError: string | undefined;
+      if (action === 'publish' && succeeded.length > 0) {
+        if (!activeTerm?.semester) {
+          idpPublishError =
+            'The active term has no semester configured, so the IDP schedule could not be queued.';
+        } else {
+          try {
+            idpPublishResult = await publishIdpSchedule(
+              `${activeTerm.schoolYear}-${activeTerm.semester}`,
+            );
+          } catch (err: any) {
+            idpPublishError =
+              err?.response?.data?.message ??
+              err?.message ??
+              'The IDP schedule could not be queued.';
+          }
+        }
+      }
+
       // Clear the successful ones from the selection.
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -281,20 +333,30 @@ export default function DeanApprovalsPage() {
         setActionSuccess(
           `${verb} ${succeeded.length} schedule${
             succeeded.length === 1 ? '' : 's'
-          }.`,
+          }.${
+            idpPublishResult?.queued
+              ? ` Term schedule queued for IDP (${idpPublishResult.entryCount} entries).`
+              : ''
+          }`,
         );
-        setActionError(null);
+        setActionError(
+          idpPublishError
+            ? `Schedules were published in CoE-NNECT, but IDP queueing failed: ${idpPublishError}`
+            : null,
+        );
       } else {
         setActionError(
           `${succeeded.length} succeeded, ${failures.length} failed. ${
             failures[0].reason?.response?.data?.message ??
             failures[0].reason?.message ??
             ''
+          }${
+            idpPublishError ? ` IDP queueing failed: ${idpPublishError}` : ''
           }`.trim(),
         );
       }
     },
-    [qc],
+    [qc, activeTerm],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -443,7 +505,7 @@ export default function DeanApprovalsPage() {
       case 'publish':
         return {
           title: `Publish ${count} ${noun}?`,
-          body: `This will publish ${count} ${noun}. All departments will see them. Publishing cannot be undone.`,
+          body: `This will publish ${count} ${noun} for all departments and queue the term's finalized schedule for IDP. Publishing cannot be undone.`,
           confirmLabel: count === 1 ? 'Publish' : `Publish ${count}`,
           tone: 'primary' as const,
         };
@@ -475,11 +537,24 @@ export default function DeanApprovalsPage() {
             {activeTerm && ` · ${activeTerm.termName} ${activeTerm.schoolYear}`}
           </p>
         </div>
-        {reviewCount > 0 && (
-          <span className="text-sm font-bold px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200">
-            {reviewCount} pending
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {reviewCount > 0 && (
+            <span className="text-sm font-bold px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200">
+              {reviewCount} pending
+            </span>
+          )}
+          {activeTerm && (
+            <button
+              type="button"
+              onClick={sendActiveTermToIdp}
+              disabled={idpPublishPending}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 text-xs font-semibold"
+            >
+              <Icon name="publish" size={14} />
+              {idpPublishPending ? 'Sending to IDP…' : 'Send to IDP'}
+            </button>
+          )}
+        </div>
       </div>
 
       {actionError && (

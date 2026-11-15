@@ -85,6 +85,22 @@ export interface IdpChangeRequestAckResult {
   error?: string;
 }
 
+export interface IdpSchedulePublishResult {
+  termCode: string;
+  versionId: string;
+  versionNumber: number;
+  entryCount: number;
+  queued: boolean;
+  outboxId: string | null;
+  queuedAt: string | null;
+  attempted: boolean;
+  delivered: boolean;
+  status: number | null;
+  attempts: number;
+  skipped?: 'disabled' | 'not_configured';
+  error?: string;
+}
+
 export interface IdpHealth {
   status: 'ok' | 'degraded' | 'disabled';
   service: 'coe-nnect-idp-integration';
@@ -127,6 +143,14 @@ export async function acknowledgeIdpChangeRequest(
     `/v1/idp/change-requests/${encodeURIComponent(idpRequestId)}/ack`,
     input,
   );
+  return data.data;
+}
+
+/** Queue a finalized term schedule for IDP polling (Pattern C). */
+export async function publishIdpSchedule(
+  termCode: string,
+): Promise<IdpSchedulePublishResult> {
+  const { data } = await api.post('/v1/idp/schedules/publish', { termCode });
   return data.data;
 }
 

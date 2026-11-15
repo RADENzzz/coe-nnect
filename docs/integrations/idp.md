@@ -415,10 +415,15 @@ must include the contract namespace (`/api/idp/v1`), so the paths above resolve
 to `/api/idp/v1/faculty`, `/api/idp/v1/schedules/published`, and so on. Do not
 point it at the bare server root.
 
-`POST /api/v1/idp/schedules/publish` always queues the payload to the outbox
-first. When Pattern A is configured, it also pushes immediately. A push failure
-does not roll back the local publish or remove the queued item; the result
-reports `queued: true`, `delivered: false`, and the upstream error.
+The Dean Approvals page's **Publish** action updates the selected schedules and
+then queues the active term's finalized schedule through
+`POST /api/v1/idp/schedules/publish`. Its **Send to IDP** action can queue or
+retry the active term without changing schedule statuses. A schedule's
+`published` status by itself does not create an outbox item. The endpoint
+always queues the payload first. When Pattern A is configured, it also pushes
+immediately. A push failure does not roll back the local publish or remove the
+queued item; the result reports `queued: true`, `delivered: false`, and the
+upstream error.
 
 Faculty-request statuses and change-request acks follow the same
 queue-first rule. Approval responses are never blocked by an IDP outage.
