@@ -21,6 +21,7 @@ inventory, and handoff notes.
 | Change-request webhook (IDP → CoE-NNECT) | 4.7 / 5.7 | Done |
 | Change-request validation against local reference data | 4.7.1 | Done |
 | Change-request review queue (list/read) | 4.7 | Done |
+| Change-request review UI (Dean/secretary) | 4.7 / 4.8 | Done |
 | Exactly-once change-request acknowledgement | 4.8 / 5.7 | Done |
 | Change-request ack outbox poll | 4.8 / 6.4 | Done |
 | Faculty-request status publishing | 4.5 / 5.5 | Done |
@@ -98,10 +99,19 @@ and notes is idempotent (`duplicate: true`); a different decision returns
 | `dto/list-change-requests.dto.ts` | Status/type/limit filters |
 | `../../../supabase/migrations/20261111000300_add_idp_change_request.sql` | `public.idp_change_request` table, indexes, RLS |
 
+### New — `apps/frontend/src/`
+
+| File | Responsibility |
+|---|---|
+| `api/idp.api.ts` | Change-request list/get/ack client, wire types, and health fetch |
+| `features/idp/IdpChangeRequestsPage.tsx` | Review queue, detail modal, decision modal, readiness indicator |
+
 ### Changed
 
 | File | Change |
 |---|---|
+| `apps/frontend/src/App.tsx` | Registers `/dean/idp/change-requests` under the Dean shell |
+| `apps/frontend/src/lib/constants/nav-config.ts` | Adds “IDP Requests” to Dean and secretary navigation |
 | `apps/backend/src/modules/idp/idp-outbox.service.ts` | Three kinds: `schedule.published`, `faculty_request.status`, `change_request.ack`; in-place faculty refresh |
 | `apps/backend/src/modules/idp/entities/idp-outbox.entity.ts` | Payload widened to `Record<string, any>`; docs describe per-kind semantics |
 | `apps/backend/src/modules/idp/idp-client.service.ts` | `pushFacultyRequest`, `pushChangeRequestAck` |
@@ -220,6 +230,23 @@ The new suites cover change-request validation and dedupe, exactly-once acks,
 Pattern A ack fallback, faculty-request payload mapping, in-place status
 refresh, and the non-blocking approvals hook.
 
+### Frontend review UI
+
+Verified locally against the hosted Supabase project with a signed
+`schedule_override` webhook:
+
+1. Dean signs in and opens `/dean/idp/change-requests`.
+2. The request appears in the Pending tab; the detail modal shows the payload.
+3. Recording `accepted` with notes updates the row to Acknowledged and writes
+   `kind='change_request.ack'` to `idp_outbox`.
+4. The secretary account sees the nav entry and can open the same queue.
+5. Deep links (`?request=<id>`), search, status/type filters, and the health
+   indicator render without console errors.
+
+The three IDP migrations (`idp_processed_event`, `idp_outbox`,
+`idp_change_request`) must be applied to the target Supabase project before the
+webhook or review API can work.
+
 ---
 
 ## 7. Known limitations / follow-ups
@@ -228,9 +255,8 @@ refresh, and the non-blocking approvals hook.
    reviewer records the decision and applies the change manually. If the IDP
    team expects automatic application, that needs a separate design with
    conflict checks and an audit trail.
-2. **No review UI yet.** The review API is available, but the Dean/secretary
-   screens still need a change-request list and ack dialog. That work belongs
-   with the frontend follow-up.
+2. **Review UI uses a bounded list.** The page loads up to 500 recent requests
+   and filters client-side; there is no pagination or server-side search yet.
 3. **Change requests are not swept.** Unlike `idp_processed_event`, rows are
    retained indefinitely for audit. Add a retention policy once the review
    workflow is settled.
@@ -264,11 +290,10 @@ refresh, and the non-blocking approvals hook.
 
 ## 9. Suggested next steps
 
-1. Build the Dean/secretary change-request review UI against the new API.
-2. Add a background outbox retry worker if Pattern A delivery must not depend
+1. Add a background outbox retry worker if Pattern A delivery must not depend
    on client polling.
-3. Run a manual end-to-end test with an IDP sandbox: change-request webhook →
+2. Run a manual end-to-end test with an IDP sandbox: change-request webhook →
    review → ack → ack outbox poll.
-4. Milestone 4: IDP settings UI (enable flag, base URL, device-key rotation
+3. Milestone 4: IDP settings UI (enable flag, base URL, device-key rotation
    dates).
-5. Merge `idp/integration` into `main` after review.
+4. Merge `idp/integration` into `main` after review.
