@@ -29,6 +29,7 @@ FastAPI's interactive schema is available at `/docs` while the service is runnin
 | `timeSlots` | Yes | Available day/start/end slots. |
 | `config` | Yes | Operating hours, lunch window, block durations, consecutive-hour limits, visiting-lecturer cap, default required hours, and optional soft-objective weights. |
 | `existingSchedule` | No | Blocks already on the timetable that must not be double-booked. |
+| `existingSubjectLoadCounts` | No | Existing meeting counts by section, subject, and lecture/lab type; the solver generates only the remaining required sessions. |
 | `roomPreferences` | No | Department priority for shared rooms. |
 
 The Pydantic models in `solver.py` are authoritative for field names and defaults. Keep them in sync with the backend problem builder when the contract changes.

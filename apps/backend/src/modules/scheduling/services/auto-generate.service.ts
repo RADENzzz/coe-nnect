@@ -679,7 +679,7 @@ export class AutoGenerateService {
     const { data: existingScheduleRows, error: existErr } = await db
       .from('schedule')
       .select(
-        'schedule_id, faculty_id, room_id, section_id, day_of_week, start_time, end_time',
+        'schedule_id, subject_id, load_type, faculty_id, room_id, section_id, day_of_week, start_time, end_time',
       )
       .eq('term_id', termId);
 
@@ -847,6 +847,38 @@ export class AutoGenerateService {
         startTime: row.start_time ?? '00:00',
         endTime: row.end_time ?? '00:00',
       })),
+      existingSubjectLoadCounts: (() => {
+        const counts = new Map<
+          string,
+          {
+            sectionId: string;
+            subjectId: string;
+            loadType: 'lecture' | 'laboratory';
+            count: number;
+          }
+        >();
+        for (const row of existingScheduleRows ?? []) {
+          if (
+            !row.section_id ||
+            !row.subject_id ||
+            (row.load_type !== 'lecture' && row.load_type !== 'laboratory')
+          ) {
+            continue;
+          }
+          const sectionId = String(row.section_id);
+          const subjectId = String(row.subject_id);
+          const loadType = row.load_type;
+          const key = `${sectionId}:${subjectId}:${loadType}`;
+          const current = counts.get(key);
+          counts.set(key, {
+            sectionId,
+            subjectId,
+            loadType,
+            count: (current?.count ?? 0) + 1,
+          });
+        }
+        return Array.from(counts.values());
+      })(),
 
       // ── H-14: faculty unavailability (solver hard constraint) ──
       unavailability: (unavailabilityRows ?? []).map((u) => ({
