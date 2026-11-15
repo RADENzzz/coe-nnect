@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import TimetableGrid from '../components/TimetableGrid';
 import Icon from '../../../components/ui/Icon';
 import type { ScheduleEntry } from '../types';
@@ -32,6 +33,16 @@ export default function AutoSchedulePreview({
   const [revealedBlocks, setRevealedBlocks] = useState<ScheduleEntry[]>([]);
   const [state, setState] = useState<PreviewState>('idle');
   const [accepting, setAccepting] = useState(false);
+
+  // The route wrapper keeps a transform after its entrance animation, so a
+  // `fixed` child would size itself to the page instead of the viewport.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   const total = solvedSchedule.length;
 
@@ -86,8 +97,8 @@ export default function AutoSchedulePreview({
     }
   }, [state, revealedBlocks.length, total]);
 
-  return (
-    <div className="flex flex-col h-full min-h-0 bg-surface-container-lowest">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex flex-col min-h-0 bg-surface-container-lowest">
       {/* Header */}
       <div className="px-4 md:px-6 py-4 border-b border-surface-variant bg-surface-container-low">
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -250,6 +261,7 @@ export default function AutoSchedulePreview({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -65,6 +65,9 @@ import AutoGenerateButton, {
   extractApiError,
   hintsForMessage,
 } from './auto-schedule/auto-generate.utils';
+import SolverLiveBoard, {
+  type SolverBlock,
+} from './auto-schedule/SolverLiveBoard';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -573,6 +576,31 @@ export default function TimetablePage({ readOnly = false }: Props) {
       return String(sDept) === myDeptId;
     });
   }, [sections, myDeptId]);
+
+  /**
+   * Real subject codes and section labels for the live solver animation.
+   * The fallback lives inside the board, so an empty list still renders.
+   */
+  const solverBlocks = useMemo<SolverBlock[]>(() => {
+    if (!myDeptId) return [];
+    const deptSubjects = subjects.filter(
+      (subject) => String(subject.deptId) === myDeptId,
+    );
+    const pool = (deptSubjects.length > 0 ? deptSubjects : subjects)
+      .filter((subject) => !subject.isPlaceholder)
+      .slice(0, 12);
+    const sectionCodes = deptSections
+      .map((section) => section.sectionCode)
+      .filter(Boolean);
+    return pool.map((subject, index) => ({
+      id: String(subject.subjectId),
+      code: String(subject.subjectCode),
+      section:
+        sectionCodes.length > 0
+          ? sectionCodes[index % sectionCodes.length]
+          : undefined,
+    }));
+  }, [subjects, deptSections, myDeptId]);
 
   /** Can the button even be clicked? */
   const canAutoGenerate = useMemo(() => {
@@ -1153,31 +1181,18 @@ export default function TimetablePage({ readOnly = false }: Props) {
   // ── Layout: full-height flex ──
   return (
     <>
-      {/* ── FULL SCREEN BLOCKING OVERLAY ── */}
+      {/* ── FULL SCREEN SOLVER OVERLAY ── */}
       {isGenerating && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center space-y-6 animate-fade-up">
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-              <Icon name="auto_awesome" size={32} className="text-primary animate-pulse" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Generating Schedule</h2>
-              <p className="text-sm text-slate-500 mt-2">
-                {serverSideGenerating && !autoGenerating
-                  ? 'Someone else in your department is currently generating a schedule. Please wait for them to finish.'
-                  : 'The solver is currently placing subjects. This may take up to a minute. Do not refresh or close this page.'}
-              </p>
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-semibold text-primary">Solving...</span>
-            </div>
-            <div className="pt-4 border-t border-slate-100 text-xs text-slate-400 flex items-center justify-center gap-1.5">
-              <Icon name="lock" size={14} />
-              Navigation is locked until generation completes.
-            </div>
-          </div>
-        </div>
+        <SolverLiveBoard
+          serverSide={serverSideGenerating && !autoGenerating}
+          elapsedMs={generationElapsedMs}
+          blocks={solverBlocks}
+          scopeLabel={
+            activeTerm
+              ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+              : undefined
+          }
+        />
       )}
 
       <div className="flex flex-col h-full min-h-0 p-4 md:p-6">
@@ -1816,19 +1831,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
         </Modal>
 
         {autoPreview && (
-          <div className="fixed inset-0 z-50 bg-surface-container-lowest">
-            <AutoSchedulePreview
-              solvedSchedule={autoPreview}
-              unscheduledBlocks={autoUnscheduled}
-              scopeLabel={
-                activeTerm
-                  ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
-                  : undefined
-              }
-              onAccept={handleAcceptPreview}
-              onCancel={handleDiscardPreview}
-            />
-          </div>
+          <AutoSchedulePreview
+            solvedSchedule={autoPreview}
+            unscheduledBlocks={autoUnscheduled}
+            scopeLabel={
+              activeTerm
+                ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+                : undefined
+            }
+            onAccept={handleAcceptPreview}
+            onCancel={handleDiscardPreview}
+          />
         )}
 
         <Modal
