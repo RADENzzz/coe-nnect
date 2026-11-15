@@ -100,6 +100,13 @@ class ExistingScheduleBlock(BaseModel):
     endTime: str
 
 
+class ExistingSubjectLoadCount(BaseModel):
+    sectionId: str
+    subjectId: str
+    loadType: str
+    count: int
+
+
 class Config(BaseModel):
     operatingHoursStart: str = "07:00"
     operatingHoursEnd: str = "19:00"
@@ -136,6 +143,7 @@ class SolveRequest(BaseModel):
     timeSlots: List[TimeSlot]
     config: Config
     existingSchedule: List[ExistingScheduleBlock] = []
+    existingSubjectLoadCounts: List[ExistingSubjectLoadCount] = []
     roomPreferences: List[RoomPreference] = []
 
 
@@ -276,6 +284,10 @@ def solve_schedule(req: SolveRequest) -> dict:
         )
         for subj in req.subjects
     }
+    existing_subject_load_counts = {
+        (row.sectionId, row.subjectId, row.loadType): row.count
+        for row in req.existingSubjectLoadCounts
+    }
 
     subject_faculty: Dict[str, List[Faculty]] = {}
     subject_rooms_by_kind: Dict[Tuple[str, str], List[Room]] = {}
@@ -345,6 +357,8 @@ def solve_schedule(req: SolveRequest) -> dict:
     room_pref_terms: List[Tuple[cp_model.IntVar, int]] = []
 
     var_counter = 0
+    has_subject_blocks = False
+    has_unsatisfied_blocks = False
 
     # ── Variable creation + index building (SINGLE PASS) ──
     for sec in req.sections:
@@ -354,8 +368,26 @@ def solve_schedule(req: SolveRequest) -> dict:
             if not subj:
                 continue
             blocks = subject_blocks.get(subj_id, [])
+            if blocks:
+                has_subject_blocks = True
+                blocks = [
+                    block
+                    for block in blocks
+                    if block["sessionIndex"]
+                    >= existing_subject_load_counts.get(
+                        (
+                            sec_id,
+                            subj_id,
+                            "laboratory"
+                            if block["kind"] == "lab"
+                            else "lecture",
+                        ),
+                        0,
+                    )
+                ]
             if not blocks:
                 continue
+            has_unsatisfied_blocks = True
             possible_faculty = subject_faculty.get(subj_id, [])
             if not possible_faculty:
                 print(f"[solver] WARN: no qualified faculty for {subj.subjectCode}")
@@ -456,6 +488,14 @@ def solve_schedule(req: SolveRequest) -> dict:
     print(f"[solver] variables created: {len(X)}")
 
     if not X:
+        if has_subject_blocks and not has_unsatisfied_blocks:
+            return {
+                "status": "success",
+                "solveTimeSeconds": 0,
+                "schedule": [],
+                "unscheduled": [],
+                "solveStatus": "NO_NEW_BLOCKS",
+            }
         return {
             "status": "infeasible",
             "message": "No viable assignments — check faculty qualifications and room types.",
