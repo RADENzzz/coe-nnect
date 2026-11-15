@@ -266,7 +266,7 @@ The `IdpModule` under `src/modules/idp` implements the CoE-NNECT ↔ IDP v2.0 co
 | --- | --- | --- | --- |
 | `GET` | `/api/idp/v1/health` | Public | Integration and configuration health. |
 | `POST` | `/api/idp/v1/webhooks/faculty-changed` | HMAC-SHA256 | Faculty change event from IDP. |
-| `POST` | `/api/idp/v1/webhooks/change-request` | HMAC-SHA256 | Change request from IDP. |
+| `POST` | `/api/idp/v1/webhooks/change-request` | HMAC-SHA256 or integration key | Change request from IDP. |
 | `POST` | `/api/idp/v1/inbox/faculty` | Device bearer key | Faculty snapshot pushed by the IDP desktop. |
 | `GET` | `/api/idp/v1/outbox/schedules` | Device bearer key | Published schedules polled by the IDP desktop. |
 | `GET` | `/api/idp/v1/outbox/faculty-requests` | Device bearer key | Faculty-request statuses polled by the IDP desktop. |
@@ -278,14 +278,18 @@ The `IdpModule` under `src/modules/idp` implements the CoE-NNECT ↔ IDP v2.0 co
 | `GET` | `/api/v1/idp/change-requests/:id` | Bearer JWT + role guard | Read one inbound change request. |
 | `POST` | `/api/v1/idp/change-requests/:id/ack` | Bearer JWT + role guard | Record the reviewer decision and queue the ack. |
 
-The sync applies faculty identity, qualifications, and unavailability, matches records by `wmsu_id` then `employee_id`, and maintains `faculty.sync_status` / `last_synced_at`. Local identity edits mark a row pending and block incoming IDP updates with `409 local_edit_pending`. Webhooks are signed with HMAC-SHA256 over the raw request body; `main.ts` enables `rawBody: true` for this reason. Webhook idempotency, change requests, and outbound schedules, faculty-request statuses, and acks are stored in `idp_processed_event`, `idp_change_request`, and `idp_outbox` so an offline desktop client can catch up safely. A change-request acknowledgement is a reviewer decision, not an automatic mutation of live schedule or faculty data.
+The sync applies faculty identity, qualifications, and unavailability, matches records by `wmsu_id` then `employee_id`, and maintains `faculty.sync_status` / `last_synced_at`. Local identity edits mark a row pending and block incoming IDP updates with `409 local_edit_pending`. Webhooks are signed with HMAC-SHA256 over the raw request body; `main.ts` enables `rawBody: true` for this reason. The guard also accepts the `X-COE-NNECT-Signature` / `X-COE-NNECT-Timestamp` aliases, and the change-request webhook alone accepts the integration key through `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or `Authorization: Bearer`.
+
+Change requests follow contract 4.5: only `idp_request_id` and `type` are required, and the receiver defaults `severity` to `info`, `details` to `{}`, `created_at` to receive time, and `requires_ack` to `false` for auto-accepted types / `true` for pending types. `faculty_create`, `faculty_update`, `faculty_deactivate`, `qualification_add`, and `qualification_remove` are stored as `acknowledged` with no reviewer and no live mutation; a system ack is queued only when the sender explicitly requests one. `unavailability_change`, `schedule_override`, and `faculty_transfer` stay pending for Dean/secretary/administrator review. `schedule_override` may omit faculty keys. Published schedule entries use the contract v2.0 `day` field, not `day_of_week`.
+
+Webhook idempotency, change requests, and outbound schedules, faculty-request statuses, and acks are stored in `idp_processed_event`, `idp_change_request`, and `idp_outbox` so an offline desktop client can catch up safely. A change-request acknowledgement is a reviewer decision, not an automatic mutation of live schedule or faculty data.
 
 Configure the integration in `apps/backend/.env`:
 
 ```dotenv
 # Pattern A fallback
 IDP_ENABLED=false
-IDP_BASE_URL=
+IDP_BASE_URL=https://adp-server-3m0u.onrender.com/api/idp/v1
 IDP_API_KEY=
 
 # Pattern C desktop access
@@ -296,6 +300,8 @@ IDP_WEBHOOK_SECRET=
 IDP_REQUEST_TIMEOUT_MS=15000
 IDP_WEBHOOK_TOLERANCE_MS=300000
 ```
+
+`IDP_BASE_URL` must include the `/api/idp/v1` namespace and must not end with a slash. Hosted Railway deployments must set the same value in the service variables.
 
 See the [IDP integration guide](../integrations/idp.md) for payloads, sync semantics, error codes, and the open items with the IDP team.
 
@@ -349,7 +355,7 @@ Copy `apps/backend/.env.example` to `apps/backend/.env`. The API must run with t
 | `SWAGGER_USER`, `SWAGGER_PASSWORD` | — | Basic-auth credentials for production Swagger. |
 | `MAINTENANCE_BYPASS` | — | Development-only maintenance bypass. Never set in production. |
 | `IDP_ENABLED` | `false` | Enable Pattern A outbound pulls and the refresh action. |
-| `IDP_BASE_URL`, `IDP_API_KEY` | — | Pattern A endpoint and bearer token. |
+| `IDP_BASE_URL`, `IDP_API_KEY` | — | Pattern A namespace (include `/api/idp/v1`) and bearer token. The key is also the change-request webhook fallback. |
 | `IDP_DEVICE_API_KEY` | — | Pattern C device bearer key. |
 | `IDP_WEBHOOK_SECRET` | — | HMAC secret for inbound webhooks. |
 | `IDP_REQUEST_TIMEOUT_MS` | `15000` | Outbound IDP request timeout. |

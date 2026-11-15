@@ -242,6 +242,7 @@ describe('IdpChangeRequestService', () => {
         type: 'faculty_create',
         faculty_wmsu_id: null,
         faculty_employee_id: null,
+        requires_ack: undefined,
         details: {
           first_name: 'Juan',
           last_name: 'Dela Cruz',
@@ -253,8 +254,166 @@ describe('IdpChangeRequestService', () => {
     );
 
     expect(result).toMatchObject({
-      status: 'pending',
+      status: 'acknowledged',
       faculty_id: '1',
+      requires_ack: false,
+    });
+    expect(changeRepo.rows[0]).toMatchObject({
+      status: 'acknowledged',
+      ackAction: 'accepted',
+      acknowledgedBy: null,
+    });
+  });
+
+  it('accepts a minimal change request and applies contract defaults', async () => {
+    const before = Date.now();
+    const result = await service.receive({
+      idp_request_id: 'IDP-REQ-MIN',
+      type: 'schedule_override',
+    });
+    const after = Date.now();
+
+    expect(result).toMatchObject({
+      idp_request_id: 'IDP-REQ-MIN',
+      status: 'pending',
+      requires_ack: true,
+      faculty_id: null,
+    });
+    const row = changeRepo.rows[0];
+    expect(row).toMatchObject({
+      severity: 'info',
+      requiresAck: true,
+      facultyWmsuId: null,
+      facultyEmployeeId: null,
+      affectedDates: null,
+    });
+    expect(row.payload).toMatchObject({
+      details: {},
+      severity: 'info',
+      requires_ack: true,
+    });
+    const requestedAt = new Date(row.requestedAt).getTime();
+    expect(requestedAt).toBeGreaterThanOrEqual(before);
+    expect(requestedAt).toBeLessThanOrEqual(after);
+  });
+
+  it('auto-accepts faculty updates without creating a reviewer ack', async () => {
+    const result = await service.receive(
+      changeRequest({
+        type: 'faculty_update',
+        requires_ack: undefined,
+        details: { classification: 'regular' },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'acknowledged',
+      requires_ack: false,
+      faculty_id: '1',
+    });
+    expect(changeRepo.rows[0]).toMatchObject({
+      status: 'acknowledged',
+      ackAction: 'accepted',
+      acknowledgedBy: null,
+    });
+    expect(outboxRepo.rows).toHaveLength(0);
+  });
+
+  it('queues a system ack when an auto-accepted request requires one', async () => {
+    const result = await service.receive(
+      changeRequest({
+        type: 'qualification_add',
+        details: { subject_code: 'CPE 131' },
+        requires_ack: true,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'acknowledged',
+      requires_ack: true,
+    });
+    expect(outboxRepo.rows).toHaveLength(1);
+    expect(outboxRepo.rows[0]).toMatchObject({
+      kind: 'change_request.ack',
+      idempotencyKey: 'IDP-REQ-0001',
+      payload: {
+        idp_request_id: 'IDP-REQ-0001',
+        acknowledged_by_coe_nnect_user_id: '0',
+        action: 'accepted',
+      },
+    });
+  });
+
+  it('accepts a minimal auto-accepted request without a faculty key', async () => {
+    const result = await service.receive({
+      idp_request_id: 'IDP-REQ-MIN-AUTO',
+      type: 'faculty_create',
+    });
+
+    expect(result).toMatchObject({
+      idp_request_id: 'IDP-REQ-MIN-AUTO',
+      status: 'acknowledged',
+      requires_ack: false,
+      faculty_id: null,
+    });
+    expect(changeRepo.rows[0]).toMatchObject({
+      status: 'acknowledged',
+      ackAction: 'accepted',
+      acknowledgedBy: null,
+      severity: 'info',
+    });
+    expect(outboxRepo.rows).toHaveLength(0);
+  });
+
+  it('keeps a minimal request idempotent when created_at is omitted', async () => {
+    const body = {
+      idp_request_id: 'IDP-REQ-MIN-RETRY',
+      type: 'schedule_override',
+    };
+    const first = await service.receive(body);
+    const second = await service.receive(body);
+
+    expect(first.status).toBe('pending');
+    expect(second.status).toBe('duplicate');
+    expect(changeRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a schedule override without faculty keys', async () => {
+    const result = await service.receive(
+      changeRequest({
+        type: 'schedule_override',
+        faculty_wmsu_id: null,
+        faculty_employee_id: null,
+        details: {
+          term_code: '2026-2027-1st',
+          subject_code: 'CPE 131',
+          day_of_week: 'Monday',
+          start_time: '08:00',
+          end_time: '09:30',
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'pending',
+      faculty_id: null,
+      requires_ack: true,
+    });
+  });
+
+  it('rejects an invalid severity and a non-object details value', async () => {
+    await expect(
+      service.receive(changeRequest({ severity: 'urgent' })),
+    ).rejects.toMatchObject({
+      response: { error: { code: 'validation_error' } },
+      status: 422,
+    });
+
+    await expect(
+      service.receive(changeRequest({ details: ['not', 'an', 'object'] })),
+    ).rejects.toMatchObject({
+      response: { error: { code: 'validation_error' } },
+      status: 422,
     });
   });
 
@@ -390,7 +549,9 @@ describe('IdpChangeRequestService', () => {
     await service.receive(
       changeRequest({
         idp_request_id: 'IDP-REQ-0002',
-        type: 'qualification_add',
+        type: 'schedule_override',
+        faculty_wmsu_id: null,
+        faculty_employee_id: null,
         details: { subject_code: 'CPE 131' },
         created_at: '2026-10-24T09:40:00Z',
       }),
@@ -403,7 +564,7 @@ describe('IdpChangeRequestService', () => {
       'IDP-REQ-0001',
     ]);
     expect(result.items[0]).toMatchObject({
-      type: 'qualification_add',
+      type: 'schedule_override',
       status: 'pending',
       requires_ack: true,
       details: { subject_code: 'CPE 131' },

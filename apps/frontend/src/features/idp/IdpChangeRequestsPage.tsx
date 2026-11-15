@@ -1081,7 +1081,9 @@ export default function IdpChangeRequestsPage() {
                   </div>
                   <div className="sm:col-span-2">
                     <p className="text-[11px] text-on-surface-variant">
-                      Recorded by a CoE-NNECT reviewer and queued for IDP.
+                      {detailTarget.ack.acknowledged_by
+                        ? 'Recorded by a CoE-NNECT reviewer and queued for IDP.'
+                        : 'Auto-accepted under contract 4.5. No reviewer was required and no live data was changed.'}
                     </p>
                   </div>
                 </div>

@@ -2,8 +2,8 @@
  * Wire types for the CoE-NNECT <-> IDP integration (contract v2.0).
  *
  * These describe the JSON payloads IDP sends to us and the payloads we
- * expect back from the IDP REST API. Keep them in sync with sections 4.1,
- * 4.2, 4.3, and 4.6 of the contract.
+ * expect back from the IDP REST API. Keep them in sync with sections 4.1
+ * through 4.5 of the contract.
  *
  * All IDs are strings in JSON, including bigint values.
  */
@@ -142,7 +142,8 @@ export interface IdpPublishedScheduleEntry {
   external_faculty_name: string | null;
   room_number: string | null;
   external_room_name: string | null;
-  day_of_week: string;
+  /** Contract v2.0 names this field `day` (not `day_of_week`). */
+  day: string;
   start_time: string;
   end_time: string;
   load_type: string | null;
@@ -221,7 +222,7 @@ export interface IdpFacultyRequestPushResult {
   error?: string;
 }
 
-/** Contract 4.7 — the eight change-request types. */
+/** Contract 4.5 — the eight change-request types. */
 export type IdpChangeRequestType =
   | 'faculty_create'
   | 'faculty_update'
@@ -232,26 +233,48 @@ export type IdpChangeRequestType =
   | 'unavailability_change'
   | 'schedule_override';
 
+/** Contract 4.5 — accepted without entering the human review queue. */
+export const IDP_AUTO_ACCEPTED_CHANGE_REQUEST_TYPES = [
+  'faculty_create',
+  'faculty_update',
+  'faculty_deactivate',
+  'qualification_add',
+  'qualification_remove',
+] as const satisfies readonly IdpChangeRequestType[];
+
+/** Contract 4.5 — these stay pending until a reviewer decides. */
+export const IDP_PENDING_CHANGE_REQUEST_TYPES = [
+  'unavailability_change',
+  'schedule_override',
+  'faculty_transfer',
+] as const satisfies readonly IdpChangeRequestType[];
+
 export type IdpChangeRequestSeverity = 'info' | 'warning' | 'critical';
 
 export type IdpChangeRequestAckAction = 'accepted' | 'rejected' | 'modified';
 
 export type IdpChangeRequestStatus = 'pending' | 'acknowledged' | 'rejected';
 
-/** Contract 4.7 — Change Request (IDP -> CoE-NNECT). */
+/**
+ * Contract 4.5 — Change Request (IDP -> CoE-NNECT).
+ *
+ * Only `idp_request_id` and `type` are required by the v2.0 contract. The
+ * receiver applies defaults for the remaining fields before storing the
+ * request.
+ */
 export interface IdpChangeRequestPayload {
   idp_request_id: string;
   type: IdpChangeRequestType | string;
   faculty_wmsu_id?: string | null;
   faculty_employee_id?: string | null;
   affected_dates?: string[] | null;
-  details: Record<string, unknown>;
-  severity: IdpChangeRequestSeverity | string;
-  requires_ack: boolean;
-  created_at: string;
+  details?: Record<string, unknown> | null;
+  severity?: IdpChangeRequestSeverity | string | null;
+  requires_ack?: boolean | null;
+  created_at?: string | null;
 }
 
-/** Contract 4.8 — Change Request Ack (CoE-NNECT -> IDP). */
+/** Contract 4.5 — Change Request Ack (CoE-NNECT -> IDP). */
 export interface IdpChangeRequestAckPayload {
   idp_request_id: string;
   acknowledged_by_coe_nnect_user_id: string;
@@ -262,7 +285,7 @@ export interface IdpChangeRequestAckPayload {
 
 export interface IdpChangeRequestReceipt {
   idp_request_id: string;
-  status: 'pending' | 'duplicate';
+  status: 'pending' | 'acknowledged' | 'duplicate';
   requires_ack: boolean;
   faculty_id: string | null;
 }

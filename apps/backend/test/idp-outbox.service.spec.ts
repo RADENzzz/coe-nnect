@@ -18,7 +18,7 @@ function payload(overrides: Partial<IdpPublishedSchedulePayload> = {}) {
         external_faculty_name: null,
         room_number: '101',
         external_room_name: null,
-        day_of_week: 'Monday',
+        day: 'Monday',
         start_time: '08:00',
         end_time: '09:00',
         load_type: 'lecture',

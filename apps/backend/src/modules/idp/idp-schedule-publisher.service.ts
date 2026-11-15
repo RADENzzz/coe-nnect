@@ -132,7 +132,7 @@ export class IdpSchedulePublisherService {
         external_faculty_name: externalFacultyName,
         room_number: row.room?.roomNumber ?? null,
         external_room_name: row.externalRoomName ?? null,
-        day_of_week: dayOfWeek,
+        day: dayOfWeek,
         start_time: startTime,
         end_time: endTime,
         load_type: row.loadType ?? null,
