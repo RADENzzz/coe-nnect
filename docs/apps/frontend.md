@@ -97,6 +97,12 @@ Presence uses Supabase Realtime on the `presence:online-users` channel for the l
 
 See [Chat and presence](../features/chat.md) for the full behavior and API contract.
 
+## Timetable auto-generation feedback
+
+While the department timetable is auto-generating, `SolverLiveBoard` shows a live mini weekly board instead of a generic spinner. Real subject and section labels move between a queue tray and timetable cells as the animation simulates checks, placements, moves, and backtracking; a scan line, target ghost, counters, and short log keep the progress legible. The board portals to `document.body` because the route wrapper keeps a transform that would otherwise break `position: fixed`.
+
+The animation follows the same motion preference as other loading animations: it is disabled when the user turns off loading animations or when `prefers-reduced-motion: reduce` is set, in which case the board renders a complete static placement and no pause control. Pause and hide/show controls are available while the animation runs; hiding it keeps the solve running and the counters honest. The overlay never changes scheduling data — it only visualizes the request that is already in flight.
+
 ## Data fetching and state
 
 - **React Query** owns server state: queries are keyed by feature and invalidated after mutations, and chat/notification sockets invalidate the relevant keys.

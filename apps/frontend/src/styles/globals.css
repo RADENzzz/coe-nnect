@@ -734,6 +734,48 @@
     }
   }
 
+  /* Auto-generate: a scan line sweeps the mini timetable while the solver
+     tests placements. The blocks themselves move with CSS transitions. */
+  @keyframes solver-scan {
+    0% {
+      left: -2%;
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.8;
+    }
+    90% {
+      opacity: 0.8;
+    }
+    100% {
+      left: 100%;
+      opacity: 0;
+    }
+  }
+
+  @keyframes solver-target {
+    0% {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+    35% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0.4;
+      transform: scale(1);
+    }
+  }
+
+  .animate-solver-scan {
+    animation: solver-scan 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  .animate-solver-target {
+    animation: solver-target 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .rolling-digit-track {
     transition: transform 720ms cubic-bezier(0.22, 1, 0.36, 1);
   }
@@ -1197,7 +1239,9 @@
     .animate-ping-slow,
     .animate-roll-in,
     .animate-roll-out,
-    .animate-page-roll {
+    .animate-page-roll,
+    .animate-solver-scan,
+    .animate-solver-target {
       animation: none !important;
     }
 
