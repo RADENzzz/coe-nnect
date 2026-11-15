@@ -16,6 +16,7 @@ import DeanDashboardPage from './features/dean/DeanDashboardPage';
 import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
 import DeanDepartmentsManagePage from './features/dean/DeanDepartmentsManagePage';
 import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
+import IdpChangeRequestsPage from './features/idp/IdpChangeRequestsPage';
 import AdminUsersPage from './features/admin/AdminUsersPage';
 import SectionsPage from './features/sections/SectionsPage';
 import ApprovalsPage from './features/approvals/ApprovalsPage';
@@ -102,6 +103,7 @@ function App() {
             />
             <Route path="approvals" element={<DeanApprovalsPage />} />
             <Route path="requests" element={<ApprovalsPage />} />
+            <Route path="idp/change-requests" element={<IdpChangeRequestsPage />} />
             <Route path="timetable" element={<TimetablePage readOnly />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="faculty" element={<FacultyPage />} />

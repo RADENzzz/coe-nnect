@@ -150,6 +150,7 @@ const DEAN_NAV: RoleNav = {
     // ── Work ──
     { label: 'Schedule Approvals', path: '/dean/approvals',       icon: 'pending_actions',   group: 'Planning', primary: true, attention: ['schedule', 'scheduling'] },
     { label: 'Faculty Requests',   path: '/dean/requests',        icon: 'swap_horiz',        group: 'Planning', primary: true, attention: ['approvals'] },
+    { label: 'IDP Requests',       path: '/dean/idp/change-requests', icon: 'cloud_sync',     group: 'Planning', primary: true },
     { label: 'Timetable',          path: '/dean/timetable',       icon: 'calendar_view_month', group: 'Planning' },
 
     // ── Academics ──
@@ -191,6 +192,8 @@ const SECRETARY_NAV: RoleNav = {
     { label: 'Rooms',             path: '/dean/rooms',           icon: 'meeting_room',     group: 'Organization', attention: ['facility'] },
     { label: 'Faculty',           path: '/dean/faculty',         icon: 'groups',           group: 'Organization', primary: true, attention: ['faculty'] },
     { label: 'Users',             path: '/dean/users',           icon: 'manage_accounts',  group: 'Organization', primary: true, attention: ['admin'] },
+
+    { label: 'IDP Requests',      path: '/dean/idp/change-requests', icon: 'cloud_sync',    group: 'Planning', primary: true },
 
     { label: 'Import Prospectus', path: '/dean/import',          icon: 'upload_file',      group: 'Academics', attention: ['academic'] },
 
