@@ -41,7 +41,7 @@ function scheduleRow(overrides: Record<string, any> = {}) {
     status: 'published',
     flagged: false,
     pendingFacultyRequestId: null,
-    subject: { subjectCode: 'CPE 111' },
+    subject: { subjectCode: 'CPE 111', title: 'Introduction to Computing' },
     faculty: { wmsuId: '2019-00123', employeeId: null },
     room: { roomNumber: '101' },
     sectionRef: { sectionCode: 'A' },
@@ -118,6 +118,43 @@ describe('IdpSchedulePublisherService — Pattern C outbox', () => {
       }),
     ]);
     expect(payload.entries[0]).not.toHaveProperty('day_of_week');
+  });
+
+  it('lists class references for one department code', async () => {
+    departmentRepo.rows.push({ deptId: '2', deptCode: 'EE' });
+    scheduleRepo.rows.push(scheduleRow({ scheduleId: '2', deptId: '2' }));
+
+    await expect(service.listClassReferences('cpe')).resolves.toEqual([
+      {
+        subject_code: 'CPE 111',
+        section_code: 'A',
+        course_title: 'Introduction to Computing',
+        class_code: '1',
+      },
+    ]);
+
+    expect(scheduleRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          deptId: '1',
+          flagged: false,
+        }),
+        relations: ['subject', 'sectionRef'],
+      }),
+    );
+  });
+
+  it('rejects a missing or unknown department code', async () => {
+    await expect(service.listClassReferences(' ')).rejects.toMatchObject({
+      response: { error: { code: 'validation_error' } },
+      status: 422,
+    });
+    await expect(service.listClassReferences('UNKNOWN')).rejects.toMatchObject(
+      {
+        response: { error: { code: 'unknown_department' } },
+        status: 422,
+      },
+    );
   });
 
   it('queues even when Pattern A is disabled', async () => {

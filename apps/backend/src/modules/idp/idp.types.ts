@@ -158,6 +158,14 @@ export interface IdpPublishedSchedulePayload {
   entries: IdpPublishedScheduleEntry[];
 }
 
+/** Department-scoped class lookup returned to the IDP desktop client. */
+export interface IdpClassReference {
+  subject_code: string;
+  section_code: string | null;
+  course_title: string;
+  class_code: string;
+}
+
 /** Result of a single publish attempt, surfaced to the caller. */
 export interface IdpSchedulePushResult {
   termCode: string;

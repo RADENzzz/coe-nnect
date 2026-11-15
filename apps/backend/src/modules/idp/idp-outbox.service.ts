@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { MoreThanOrEqual, Raw, Repository } from 'typeorm';
 import { IdpOutboxItem } from './entities/idp-outbox.entity';
 import { idpErrors } from './idp.errors';
 import { isUniqueViolation } from './idp-persistence.util';
@@ -180,15 +180,33 @@ export class IdpOutboxService {
    */
   async list<T = unknown>(
     kind: string,
-    options: { since?: string; limit?: number | string } = {},
+    options: {
+      since?: string;
+      limit?: number | string;
+      deptCode?: string;
+    } = {},
   ): Promise<IdpOutboxPage<T>> {
     const since = parseSince(options.since);
     const limit = parseLimit(options.limit);
+    const deptCode = options.deptCode?.trim();
 
     const items = await this.outboxRepo.find({
       where: {
         kind,
         ...(since ? { createdAt: MoreThanOrEqual(since) } : {}),
+        ...(kind === IDP_OUTBOX_SCHEDULE_KIND && deptCode
+          ? {
+              payload: Raw(
+                (alias) =>
+                  `EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements(${alias}->'entries') AS schedule_entry
+                    WHERE UPPER(schedule_entry->>'department_code') = UPPER(:deptCode)
+                  )`,
+                { deptCode },
+              ),
+            }
+          : {}),
       },
       order: { createdAt: 'ASC', outboxId: 'ASC' },
       take: limit,
@@ -196,14 +214,33 @@ export class IdpOutboxService {
 
     const last = items.length > 0 ? items[items.length - 1].createdAt : since;
     return {
-      items: items.map((item) => toOutboxItem<T>(item)),
+      items: items.map((item) => {
+        const view = toOutboxItem<T>(item);
+        if (kind !== IDP_OUTBOX_SCHEDULE_KIND || !deptCode) return view;
+
+        const payload = item.payload as unknown as IdpPublishedSchedulePayload;
+        return {
+          ...view,
+          payload: {
+            ...payload,
+            entries: payload.entries.filter(
+              (entry) =>
+                entry.department_code.toUpperCase() === deptCode.toUpperCase(),
+            ),
+          } as T,
+        };
+      }),
       next_since: last ? new Date(last).toISOString() : null,
       server_time: new Date().toISOString(),
     };
   }
 
   async listSchedules(
-    options: { since?: string; limit?: number | string } = {},
+    options: {
+      since?: string;
+      limit?: number | string;
+      deptCode?: string;
+    } = {},
   ): Promise<IdpOutboxSchedulePage> {
     return this.list<IdpPublishedSchedulePayload>(
       IDP_OUTBOX_SCHEDULE_KIND,

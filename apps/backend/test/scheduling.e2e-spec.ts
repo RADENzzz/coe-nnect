@@ -17,6 +17,8 @@ describe('SchedulingController (e2e)', () => {
   let app: INestApplication;
   const userRepo = { findOne: jest.fn() };
   const schedulingService = {
+    findAll: jest.fn(),
+    findByTerm: jest.fn(),
     plot: jest.fn(),
     update: jest.fn(),
     updateStatus: jest.fn(),
@@ -41,6 +43,8 @@ describe('SchedulingController (e2e)', () => {
     userRepo.findOne.mockReset();
     userRepo.findOne.mockResolvedValue(departmentHeadProfile);
     schedulingService.plot.mockReset();
+    schedulingService.findAll.mockReset();
+    schedulingService.findByTerm.mockReset();
     schedulingService.update.mockReset();
     schedulingService.updateStatus.mockReset();
     schedulingService.remove.mockReset();
@@ -51,6 +55,26 @@ describe('SchedulingController (e2e)', () => {
   });
 
   const api = () => request(app.getHttpServer());
+
+  it('filters schedule listings by department code', async () => {
+    schedulingService.findByTerm.mockResolvedValue([
+      { scheduleId: 'sched-cpe', deptId: '3' },
+    ]);
+
+    const response = await api()
+      .get('/v1/schedules?termId=1&deptCode=CPE')
+      .set('Authorization', 'Bearer valid-token')
+      .expect(200);
+
+    expect(response.body.data).toEqual([
+      { scheduleId: 'sched-cpe', deptId: '3' },
+    ]);
+    expect(schedulingService.findByTerm).toHaveBeenCalledWith(
+      '1',
+      false,
+      'CPE',
+    );
+  });
 
   it('plots a schedule entry with a valid payload', async () => {
     schedulingService.plot.mockResolvedValue({

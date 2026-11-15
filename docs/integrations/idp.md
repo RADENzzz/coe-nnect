@@ -96,7 +96,8 @@ The module has these responsibilities:
 | `POST` | `/api/idp/v1/webhooks/faculty-changed`       | HMAC-SHA256       | Faculty change event             |
 | `POST` | `/api/idp/v1/webhooks/change-request`        | HMAC-SHA256 or API key | Change request (contract 4.5)    |
 | `POST` | `/api/idp/v1/inbox/faculty`                  | Device bearer key | Pattern C faculty snapshot       |
-| `GET`  | `/api/idp/v1/outbox/schedules?since=&limit=` | Device bearer key | Pattern C schedule poll          |
+| `GET`  | `/api/idp/v1/outbox/schedules?since=&limit=&deptCode=` | Device bearer key | Pattern C schedule poll          |
+| `GET`  | `/api/idp/v1/schedules/classes?deptCode=`    | Device bearer key | Department class-reference lookup |
 | `GET`  | `/api/idp/v1/outbox/faculty-requests?since=&limit=` | Device bearer key | Pattern C faculty-request poll |
 | `GET`  | `/api/idp/v1/outbox/change-request-acks?since=&limit=` | Device bearer key | Pattern C change-request-ack poll |
 
@@ -172,8 +173,11 @@ record's error entry, not as a request-level failure.
 
 ### Pattern C schedule outbox
 
-`GET /api/idp/v1/outbox/schedules?since=<iso>&limit=<n>` returns published
-schedules oldest first. `since` is inclusive and `limit` is 1-200 (default 50).
+`GET /api/idp/v1/outbox/schedules?since=<iso>&limit=<n>&deptCode=<code>` returns
+published schedules oldest first. `since` is inclusive and `limit` is 1-200
+(default 50). `deptCode` is optional and filters each returned payload's
+`entries` by department code (case-insensitive), for example
+`?deptCode=CPE`. Keep a separate `next_since` cursor for each department filter.
 
 ```json
 {
@@ -231,6 +235,27 @@ Outbox items are append-only and frozen at first publish. Re-publishing the same
 `schedule_version` returns the original payload and the same `outbox_id`, even
 if live schedule rows changed afterwards. This guarantees that an offline
 client receives exactly what the Dean published.
+
+### Department class-reference lookup
+
+`GET /api/idp/v1/schedules/classes?deptCode=CPE` returns class references for
+finalized or published, unflagged schedules in the requested department:
+
+```json
+{
+  "data": [
+    {
+      "subject_code": "CPE 111",
+      "section_code": "CPE 1-A",
+      "course_title": "Introduction to Computing",
+      "class_code": "123"
+    }
+  ]
+}
+```
+
+`class_code` is the CoE-NNECT schedule row ID. Department codes are matched
+case-insensitively; an unknown code returns `unknown_department`.
 
 ### Pattern C faculty-request status outbox
 

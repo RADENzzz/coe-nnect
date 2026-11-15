@@ -8,7 +8,7 @@ Requests require a valid authenticated session. Individual route roles and depar
 
 | Method and path                               | Purpose                                     | Query                                                   |
 | --------------------------------------------- | ------------------------------------------- | ------------------------------------------------------- |
-| `GET /api/v1/schedules`                       | List schedules; returns `{ "data": [...] }` | `termId` is optional; when omitted, lists all schedules |
+| `GET /api/v1/schedules`                       | List schedules; returns `{ "data": [...] }` | Optional `termId`, `deptCode` (e.g. `CPE`), `includeInactive` |
 | `GET /api/v1/schedules/active-term`           | Get the active term                         | —                                                       |
 | `GET /api/v1/schedules/unscheduled`           | Get unscheduled records                     | `termId`                                                |
 | `GET /api/v1/schedules/flagged`               | List flagged schedule entries               | `termId`                                                |
@@ -19,6 +19,9 @@ Requests require a valid authenticated session. Individual route roles and depar
 | `GET /api/v1/schedules/auto-generate/pending` | Read the current auto-generation state      | `termId`                                                |
 
 Static paths such as `versions/compare` and `active-term` are declared before parameterized schedule-ID routes in the controller.
+`deptCode` filters by the department assigned to the schedule. For example,
+`GET /api/v1/schedules?termId=1&deptCode=CPE` returns schedules assigned to
+Computer Engineering; department codes are matched case-insensitively.
 
 ## Create, validate, and generate
 

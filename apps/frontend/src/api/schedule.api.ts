@@ -308,8 +308,14 @@ export async function fetchActiveTerm(): Promise<Term | null> {
   return data.data;
 }
 
-export async function fetchSchedules(termId?: string): Promise<RawSchedule[]> {
-  const params = termId ? { termId } : {};
+export async function fetchSchedules(
+  termId?: string,
+  filters: { deptCode?: string } = {},
+): Promise<RawSchedule[]> {
+  const params = {
+    ...(termId ? { termId } : {}),
+    ...(filters.deptCode ? { deptCode: filters.deptCode } : {}),
+  };
   const { data } = await api.get('/v1/schedules', { params });
   return data.data;
 }
