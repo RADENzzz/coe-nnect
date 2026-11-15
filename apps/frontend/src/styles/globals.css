@@ -216,6 +216,31 @@
   --orange-300: 98 56 24;
 }
 
+/* ── Theme switch transition ──
+   The theme store adds `.theme-transition` for ~280ms while `.dark` flips.
+   Opting in temporarily keeps hover states, drag animations, and the route
+   entrance from acquiring permanent color transitions. */
+html.theme-transition,
+html.theme-transition body,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition-property: background-color, border-color, color, fill, stroke !important;
+  transition-duration: 240ms !important;
+  transition-timing-function: ease !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition,
+  html.theme-transition body,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition: none !important;
+  }
+}
+
 /* Glass opacity for a light subtree nested inside a dark page — the
    Settings preview renders both themes side by side. */
 .light {
@@ -789,7 +814,10 @@
   }
 
   .animate-page-roll {
-    animation: page-roll-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    /* `backwards`, not `both`: retaining the final translateY(0) keeps a
+       transform on the whole route, which creates a containing block for
+       fixed overlays and forces the page into its own composited layer. */
+    animation: page-roll-in 360ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   /* Brand marks: a stamped seal and a badge that assembles itself. */

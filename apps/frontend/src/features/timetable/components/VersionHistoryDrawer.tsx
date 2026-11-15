@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import {
@@ -54,6 +55,16 @@ export default function VersionHistoryDrawer({
     }
   }, [open]);
 
+  // Lock the page behind the drawer and restore the previous value on close.
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   const { data: versions = [], isLoading, error } = useQuery({
     queryKey: ['schedule-versions', termId],
     queryFn: () => fetchVersions(termId!),
@@ -90,7 +101,9 @@ export default function VersionHistoryDrawer({
     }
   };
 
-  return (
+  // Portal out of the route wrapper so the retained page-roll transform cannot
+  // anchor the fixed drawer to the scrolled page.
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -297,6 +310,7 @@ export default function VersionHistoryDrawer({
           </div>
         )}
       </aside>
-    </>
+    </>,
+    document.body,
   );
 }

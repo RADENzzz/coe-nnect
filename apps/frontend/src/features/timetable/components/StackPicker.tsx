@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
@@ -27,10 +28,11 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [entries, onClose]);
 
@@ -42,7 +44,9 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
 
   const flaggedCount = entries.filter((e) => e.flagged).length;
 
-  return (
+  // Portal out of the route wrapper so the retained page-roll transform cannot
+  // anchor the fixed picker to the scrolled page.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <div
         className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-backdrop-in"
@@ -190,6 +194,7 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

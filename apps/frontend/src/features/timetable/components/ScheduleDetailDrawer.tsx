@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   deleteSchedule,
@@ -81,6 +82,7 @@ export default function ScheduleDetailDrawer({
   }, [entry?.id, entry?.remarks]);
 
   useEffect(() => {
+    if (!entry) return;
     const onKey = (e: KeyboardEvent) => {
       if (
         e.key === 'Escape' &&
@@ -91,13 +93,12 @@ export default function ScheduleDetailDrawer({
       )
         onClose();
     };
-    if (entry) {
-      document.addEventListener('keydown', onKey);
-      document.body.style.overflow = 'hidden';
-    }
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen, flagOpen]);
 
@@ -216,7 +217,10 @@ export default function ScheduleDetailDrawer({
   const isExternalRoom = !!entry.externalRoomName;
   const hasInternalRoom = !!(entry.roomNumber && entry.roomNumber !== '—');
 
-  return (
+  // Portal out of the route wrapper: its retained page-roll transform would
+  // otherwise anchor `position: fixed` to the scrolled page instead of the
+  // viewport, pushing the drawer out of view.
+  return createPortal(
     <>
       <div className="fixed inset-0 z-50">
         <div
@@ -755,7 +759,8 @@ export default function ScheduleDetailDrawer({
           {flagReason.length}/500
         </p>
       </Modal>
-    </>
+    </>,
+    document.body,
   );
 }
 
