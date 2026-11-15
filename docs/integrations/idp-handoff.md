@@ -55,7 +55,9 @@ only enabled when `IDP_ENABLED=true` and `IDP_BASE_URL` is set on CoE-NNECT.
 
 ### For Pattern A (optional fallback)
 
-1. IDP REST base URL (staging and production), without a trailing slash.
+1. IDP REST namespace base URL (staging and production), including
+   `/api/idp/v1`, without a trailing slash. Hosted:
+   `https://adp-server-3m0u.onrender.com/api/idp/v1`.
 2. Bearer API key for CoE-NNECT outbound calls.
 3. Confirmation that these paths exist (or the agreed alternatives):
    - `GET /faculty?department_code=&updated_since=`
@@ -77,7 +79,7 @@ Set these in `apps/backend/.env` (template: `apps/backend/.env.example`):
 ```dotenv
 # Pattern A fallback (leave IDP_ENABLED=false for Pattern C-only)
 IDP_ENABLED=false
-IDP_BASE_URL=
+IDP_BASE_URL=https://adp-server-3m0u.onrender.com/api/idp/v1
 IDP_API_KEY=
 
 # Pattern C desktop access
@@ -301,6 +303,10 @@ same id and body returns a duplicate result, while a different body returns
 
 `POST /api/idp/v1/webhooks/change-request`
 
+Contract 4.5 requires only `idp_request_id` and `type`. Everything else is
+optional; CoE-NNECT applies `severity: "info"`, `details: {}`, `created_at` at
+receive time, and `requires_ack` based on the type.
+
 Example (`unavailability_change`):
 
 ```json
@@ -323,23 +329,41 @@ Example (`unavailability_change`):
 }
 ```
 
-Accepted types and their `details` shapes are in contract 4.7.1:
-`faculty_create`, `faculty_update`, `faculty_deactivate`, `faculty_transfer`,
-`qualification_add`, `qualification_remove`, `unavailability_change`,
-`schedule_override`.
+The eight types split into two groups:
+
+- **Auto-accepted:** `faculty_create`, `faculty_update`, `faculty_deactivate`,
+  `qualification_add`, `qualification_remove`. CoE-NNECT stores them as
+  `acknowledged` for audit but does not apply them and does not put them in the
+  review queue. If you need a return acknowledgement, set
+  `requires_ack: true`; CoE-NNECT then queues a system ack
+  (`acknowledged_by_coe_nnect_user_id: "0"`).
+- **Pending review:** `unavailability_change`, `schedule_override`,
+  `faculty_transfer`. These wait for a Dean, college secretary, or administrator
+  to record `accepted`, `rejected`, or `modified`.
+
+`schedule_override` may omit `faculty_wmsu_id` / `faculty_employee_id`;
+`unavailability_change` and `faculty_transfer` must identify an existing
+faculty record.
 
 Idempotency:
 
 | Case | Response |
 |---|---|
-| New `idp_request_id` | `200`, `status: "pending"` |
-| Same id + same body | `200`, `status: "duplicate"` |
+| New pending `idp_request_id` | `200`, `status: "pending"` |
+| New auto-accepted `idp_request_id` | `200`, `status: "acknowledged"` |
+| Same id + same effective body | `200`, `status: "duplicate"` |
 | Same id + different body | `409 duplicate_key` |
 
-CoE-NNECT **does not apply the change automatically**. A Dean/college
-secretary/administrator reviews it and records an acknowledgement; the
-underlying schedule or faculty change is applied manually through CoE-NNECT
-screens. This is deliberate: CoE-NNECT is authoritative for schedules.
+CoE-NNECT **does not apply the change automatically**. For pending types, a
+Dean/college secretary/administrator reviews the request and records an
+acknowledgement; the underlying schedule or faculty change is applied manually
+through CoE-NNECT screens. This is deliberate: CoE-NNECT is authoritative for
+schedules.
+
+The webhook accepts HMAC-SHA256 headers or, as a fallback, the shared
+integration key in `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or
+`Authorization: Bearer`. `X-COE-NNECT-Signature` / `X-COE-NNECT-Timestamp` are
+accepted aliases for the HMAC headers.
 
 ### 5.3 Signing examples
 
@@ -391,7 +415,9 @@ Invoke-RestMethod -Method Post `
 ## 6. Pattern A endpoints (CoE-NNECT → IDP, optional)
 
 CoE-NNECT calls these with `Authorization: Bearer <IDP_API_KEY>` and an
-`X-Request-ID` per attempt.
+`X-Request-ID` per attempt. `IDP_BASE_URL` includes `/api/idp/v1`, so the
+paths below resolve to `/api/idp/v1/faculty`, `/api/idp/v1/schedules/published`,
+and so on.
 
 | Method | Path | Purpose |
 |---|---|---|

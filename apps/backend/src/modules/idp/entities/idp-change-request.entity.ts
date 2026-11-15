@@ -6,7 +6,7 @@ import type {
 } from '../idp.types';
 
 /**
- * Durable inbound change request from IDP (contract 4.7 / 5.7).
+ * Durable inbound change request from IDP (contract 4.5).
  *
  * `idp_request_id` is the contract idempotency key. The body hash lets a
  * retried delivery with the same key and body answer `duplicate`, while a

@@ -25,10 +25,10 @@ export class IdpUpstreamError extends Error {
 }
 
 /**
- * Outbound Pattern A client (contract 6.1 / 9.2).
+ * Outbound Pattern A client (contract 4.1–4.5).
  *
- * Paths are the agreed ones from contract 9.2; the IDP team implements the
- * receiving side. All calls are server-to-server over HTTPS with a bearer
+ * `IDP_BASE_URL` includes the `/api/idp/v1` namespace; the paths below are
+ * relative to it. All calls are server-to-server over HTTPS with a bearer
  * API key and an `X-Request-ID` per attempt.
  */
 @Injectable()
@@ -119,7 +119,7 @@ export class IdpClientService {
     return { status: response.status, attempts: response.attempts };
   }
 
-  /** Contract 5.7 / 4.8 — `POST {IDP_BASE}/change-requests/{id}/ack`. */
+  /** Contract 4.5 - `POST {IDP_BASE}/change-requests/{id}/ack`. */
   async pushChangeRequestAck(
     idpRequestId: string,
     payload: IdpChangeRequestAckPayload,

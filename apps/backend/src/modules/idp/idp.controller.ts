@@ -81,7 +81,7 @@ export class IdpController {
   }
 
   /**
-   * Milestone 3 — signed change request (contract 4.7 / 5.7).
+   * Milestone 3 - signed change request (contract 4.5).
    *
    * `idp_request_id` is the idempotency key. The request is persisted and
    * surfaced to Dean/secretary reviewers; the acknowledgement is returned
@@ -91,7 +91,7 @@ export class IdpController {
   @HttpCode(200)
   @UseGuards(IdpSignatureGuard)
   @ApiOperation({
-    summary: 'Receive a signed change request from IDP (HMAC-SHA256)',
+    summary: 'Receive a change request from IDP (HMAC-SHA256 or API key)',
   })
   async changeRequest(
     @Body() body: IdpChangeRequestPayload,
@@ -201,7 +201,7 @@ export class IdpController {
     return { data: await this.outbox.listFacultyRequests({ since, limit }) };
   }
 
-  /** Pattern C — acknowledgements CoE-NNECT has issued (contract 4.8). */
+  /** Pattern C - acknowledgements CoE-NNECT has issued (contract 4.5). */
   @Get('outbox/change-request-acks')
   @UseGuards(IdpDeviceGuard)
   @ApiBearerAuth('idp-device-key')

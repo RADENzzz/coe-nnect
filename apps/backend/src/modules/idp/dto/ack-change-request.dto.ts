@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
-/** Contract 4.8 — the decision recorded by a CoE-NNECT reviewer. */
+/** Contract 4.5 - the decision recorded by a CoE-NNECT reviewer. */
 export class AckChangeRequestDto {
   @ApiProperty({
     enum: ['accepted', 'rejected', 'modified'],

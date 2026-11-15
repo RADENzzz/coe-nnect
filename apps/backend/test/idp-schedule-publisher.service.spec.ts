@@ -112,10 +112,12 @@ describe('IdpSchedulePublisherService — Pattern C outbox', () => {
         subject_code: 'CPE 111',
         faculty_wmsu_id: '2019-00123',
         room_number: '101',
+        day: 'Monday',
         start_time: '08:00',
         end_time: '09:00',
       }),
     ]);
+    expect(payload.entries[0]).not.toHaveProperty('day_of_week');
   });
 
   it('queues even when Pattern A is disabled', async () => {

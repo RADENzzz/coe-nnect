@@ -9,11 +9,17 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { idpErrors } from './idp.errors';
 
 /**
- * Contract 6.5 / 8.3 — HMAC-SHA256 webhook verification.
+ * Contract 2 / 4.5 / 6.5 — HMAC-SHA256 webhook verification.
  *
  * Signed content : raw JSON body, unmodified
  * Headers        : X-IDP-Signature (`sha256=<hex>`), X-IDP-Timestamp (ISO 8601)
+ * Aliases        : X-COE-NNECT-Signature, X-COE-NNECT-Timestamp
  * Tolerance      : 5 minutes for server-to-server (configurable)
+ *
+ * `POST /api/idp/v1/webhooks/change-request` additionally accepts the shared
+ * integration key through `X-IDP-API-Key` or `X-COE-NNECT-Key` (and the
+ * generic `X-API-Key` / `Authorization: Bearer` forms). The other webhook
+ * stays HMAC-only.
  *
  * Requires `rawBody: true` on the Nest application so `req.rawBody` exists.
  */
@@ -32,6 +38,34 @@ export class IdpSignatureGuard implements CanActivate {
     // Stash the caller's request id for the error envelope / audit logs.
     req.idpRequestId = req.headers['x-request-id'] ?? null;
 
+    const path = String(req.path ?? req.originalUrl ?? req.url ?? '').split(
+      '?',
+    )[0];
+    const changeRequestWebhook = /\/webhooks\/change-request\/?$/i.test(path);
+
+    // Contract 4.5 — the change-request webhook allows an API-key fallback.
+    if (changeRequestWebhook) {
+      const providedApiKey = firstHeader(
+        req.headers['x-idp-api-key'],
+        req.headers['x-coe-nnect-key'],
+        req.headers['x-api-key'],
+        bearerToken(req.headers.authorization),
+      );
+      const expectedApiKey = this.config.get<string>('IDP_API_KEY')?.trim();
+      if (
+        providedApiKey &&
+        expectedApiKey &&
+        isEqualSecret(expectedApiKey, providedApiKey.trim())
+      ) {
+        this.logger.log(
+          'Accepted IDP change-request webhook via API key fallback.',
+        );
+        return true;
+      }
+      // A supplied key that does not match is not a reason to skip HMAC when
+      // a signature is also present; fall through and let HMAC decide.
+    }
+
     const secret = this.config.get<string>('IDP_WEBHOOK_SECRET');
     if (!secret) {
       this.logger.error(
@@ -42,8 +76,14 @@ export class IdpSignatureGuard implements CanActivate {
       );
     }
 
-    const signatureHeader = firstHeader(req.headers['x-idp-signature']);
-    const timestampHeader = firstHeader(req.headers['x-idp-timestamp']);
+    const signatureHeader = firstHeader(
+      req.headers['x-idp-signature'],
+      req.headers['x-coe-nnect-signature'],
+    );
+    const timestampHeader = firstHeader(
+      req.headers['x-idp-timestamp'],
+      req.headers['x-coe-nnect-timestamp'],
+    );
 
     if (!signatureHeader || !timestampHeader) {
       throw idpErrors.unauthorized(
@@ -96,8 +136,35 @@ export class IdpSignatureGuard implements CanActivate {
   }
 }
 
-function firstHeader(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
+function firstHeader(
+  ...values: Array<string | string[] | undefined>
+): string | undefined {
+  for (const value of values) {
+    const first = Array.isArray(value) ? value[0] : value;
+    if (typeof first === 'string' && first.trim()) return first;
+  }
+  return undefined;
+}
+
+function bearerToken(
+  value: string | string[] | undefined,
+): string | undefined {
+  const header = firstHeader(value);
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  const prefix = 'bearer ';
+  if (trimmed.slice(0, prefix.length).toLowerCase() !== prefix) {
+    return undefined;
+  }
+  return trimmed.slice(prefix.length).trim() || undefined;
+}
+
+/** Constant-time comparison for the shared integration key. */
+function isEqualSecret(expected: string, provided: string): boolean {
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(provided, 'utf8');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 function isEqualHex(expected: string, provided: string): boolean {

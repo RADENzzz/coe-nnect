@@ -19,27 +19,41 @@ import { IdpClientService, IdpUpstreamError } from './idp-client.service';
 import { IdpOutboxService } from './idp-outbox.service';
 import { idpErrors } from './idp.errors';
 import { isUniqueViolation } from './idp-persistence.util';
-import type {
-  IdpChangeRequestAckAction,
-  IdpChangeRequestAckPayload,
-  IdpChangeRequestAckResult,
-  IdpChangeRequestAckView,
-  IdpChangeRequestPayload,
-  IdpChangeRequestReceipt,
-  IdpChangeRequestStatus,
-  IdpChangeRequestView,
+import {
+  IDP_AUTO_ACCEPTED_CHANGE_REQUEST_TYPES,
+  IDP_PENDING_CHANGE_REQUEST_TYPES,
+  type IdpChangeRequestAckAction,
+  type IdpChangeRequestAckPayload,
+  type IdpChangeRequestAckResult,
+  type IdpChangeRequestAckView,
+  type IdpChangeRequestPayload,
+  type IdpChangeRequestReceipt,
+  type IdpChangeRequestStatus,
+  type IdpChangeRequestView,
 } from './idp.types';
 
-const CHANGE_REQUEST_TYPES = new Set([
-  'faculty_create',
-  'faculty_update',
-  'faculty_deactivate',
-  'faculty_transfer',
-  'qualification_add',
-  'qualification_remove',
-  'unavailability_change',
-  'schedule_override',
+const CHANGE_REQUEST_TYPES = new Set<string>([
+  ...IDP_AUTO_ACCEPTED_CHANGE_REQUEST_TYPES,
+  ...IDP_PENDING_CHANGE_REQUEST_TYPES,
 ]);
+
+/**
+ * Contract 4.5 — these types are accepted as soon as they arrive. They are
+ * stored as acknowledged for audit, but no live schedule/faculty row is
+ * changed and no reviewer decision is required.
+ */
+const AUTO_ACCEPTED_TYPES = new Set<string>(
+  IDP_AUTO_ACCEPTED_CHANGE_REQUEST_TYPES,
+);
+
+/**
+ * Reserved actor recorded on a system-generated ack. `idp_change_request`
+ * stores a real user id in `acknowledged_by`; auto-accepted rows leave that
+ * column NULL and put this sentinel in the outbound ack payload instead.
+ */
+const AUTO_ACCEPT_ACTOR_ID = '0';
+const AUTO_ACCEPT_NOTE =
+  'Auto-accepted by CoE-NNECT under contract 4.5; no live data was changed.';
 
 const SEVERITIES = new Set(['info', 'warning', 'critical']);
 const ACK_ACTIONS = new Set(['accepted', 'rejected', 'modified']);
@@ -73,7 +87,7 @@ type NormalizedChangeRequest = {
 /**
  * Milestone 3 — inbound change requests and their acknowledgements.
  *
- * Contract 4.7 / 5.7: IDP raises a change request when it needs CoE-NNECT to
+ * Contract 4.5: IDP raises a change request when it needs CoE-NNECT to
  * review a schedule- or faculty-affecting change. The request is persisted
  * with `idp_request_id` as its idempotency key. A reviewer (Dean, college
  * secretary, or administrator) records exactly one acknowledgement, which is
@@ -109,7 +123,7 @@ export class IdpChangeRequestService {
   ) {}
 
   // ────────────────────────────────────────────────────────────
-  // Inbound webhook (contract 4.7 / 5.7)
+  // Inbound webhook (contract 4.5)
   // ────────────────────────────────────────────────────────────
 
   async receive(
@@ -126,39 +140,54 @@ export class IdpChangeRequestService {
       );
     }
 
-    const severity = requireString(payload.severity, 'severity');
+    const severity = normalizeKey(payload.severity) ?? 'info';
     if (!SEVERITIES.has(severity)) {
       throw idpErrors.validation(
         `severity '${severity}' must be info, warning, or critical.`,
         { field: 'severity', value: severity },
       );
     }
-    if (typeof payload.requires_ack !== 'boolean') {
-      throw idpErrors.validation('requires_ack must be a boolean.', {
-        field: 'requires_ack',
-      });
-    }
-    const requestedAt = parseDate(payload.created_at, 'created_at');
-    if (!payload.details || typeof payload.details !== 'object' || Array.isArray(payload.details)) {
+
+    if (
+      payload.details !== undefined &&
+      payload.details !== null &&
+      !isPlainObject(payload.details)
+    ) {
       throw idpErrors.validation('details must be a JSON object.', {
         field: 'details',
       });
     }
-    if (
-      payload.affected_dates !== undefined &&
-      payload.affected_dates !== null &&
-      (!Array.isArray(payload.affected_dates) ||
-        payload.affected_dates.some((value) => typeof value !== 'string'))
-    ) {
-      throw idpErrors.validation(
-        'affected_dates must be an array of ISO date strings.',
-        { field: 'affected_dates' },
-      );
-    }
+    const details = isPlainObject(payload.details) ? payload.details : {};
 
-    const normalized = await this.normalizeChangeRequest(payload, type);
+    const affectedDates = normalizeAffectedDates(payload.affected_dates);
+    const autoAccepted = AUTO_ACCEPTED_TYPES.has(type);
+    const requiresAck = normalizeRequiresAck(payload.requires_ack, autoAccepted);
+    const createdAt = normalizeKey(payload.created_at);
+    const requestedAt = createdAt
+      ? parseDate(createdAt, 'created_at')
+      : new Date();
+
+    const normalized = await this.normalizeChangeRequest(payload, type, details);
+
+    // Store the effective request (defaults applied) so a retry that omits an
+    // optional field is still recognised as the same body.
+    const storedPayload: IdpChangeRequestPayload = {
+      ...payload,
+      idp_request_id: idpRequestId,
+      type,
+      faculty_wmsu_id: normalized.wmsuId,
+      faculty_employee_id: normalized.employeeId,
+      affected_dates: affectedDates,
+      details,
+      severity,
+      requires_ack: requiresAck,
+      created_at: requestedAt.toISOString(),
+    };
+    // `created_at` defaults to "now", which cannot be reproduced by a retry.
+    // Hash the value the sender actually supplied (or null) so a minimal
+    // request stays idempotent while the row keeps the effective timestamp.
     const hash = createHash('sha256')
-      .update(stableStringify(payload))
+      .update(stableStringify({ ...storedPayload, created_at: createdAt }))
       .digest('hex');
 
     const previous = await this.findRaw(idpRequestId);
@@ -178,26 +207,30 @@ export class IdpChangeRequestService {
       facultyWmsuId: normalized.wmsuId,
       facultyEmployeeId: normalized.employeeId,
       severity,
-      requiresAck: payload.requires_ack,
-      status: 'pending',
-      payload,
-      affectedDates: payload.affected_dates ?? null,
+      requiresAck,
+      status: autoAccepted ? 'acknowledged' : 'pending',
+      payload: storedPayload,
+      affectedDates,
       requestedAt,
       receivedAt: now,
       updatedAt: now,
-      ackAction: null,
-      ackNotes: null,
+      ackAction: autoAccepted ? 'accepted' : null,
+      ackNotes: autoAccepted ? AUTO_ACCEPT_NOTE : null,
       acknowledgedBy: null,
-      acknowledgedAt: null,
+      acknowledgedAt: autoAccepted ? now : null,
     });
 
     try {
       const saved = await this.changeRequestRepo.save(entity);
       this.logger.log(
         `Received IDP change request ${idpRequestId} (${type})` +
+          ` as ${autoAccepted ? 'auto-accepted' : 'pending'}` +
           (requestId ? ` [request ${requestId}]` : ''),
       );
-      return this.receipt(saved, 'pending');
+      if (autoAccepted && saved.requiresAck) {
+        await this.queueAutoAck(saved);
+      }
+      return this.receipt(saved, autoAccepted ? 'acknowledged' : 'pending');
     } catch (err) {
       // A concurrent delivery won the insert race. Same body is a duplicate;
       // a different body is a contract conflict.
@@ -243,7 +276,7 @@ export class IdpChangeRequestService {
   }
 
   // ────────────────────────────────────────────────────────────
-  // Acknowledgement (contract 4.8 / 5.7)
+  // Acknowledgement (contract 4.5)
   // ────────────────────────────────────────────────────────────
 
   async acknowledge(
@@ -328,6 +361,31 @@ export class IdpChangeRequestService {
     return this.deliverAck(item, payload, row, true);
   }
 
+  /**
+   * Auto-accepted requests normally need no outbound ack. When the sender
+   * explicitly sets `requires_ack: true`, queue a system ack and attempt the
+   * Pattern A push. A failure leaves the ack in the durable outbox.
+   */
+  private async queueAutoAck(row: IdpChangeRequest): Promise<void> {
+    try {
+      const payload = this.buildAckPayload(row);
+      const item = await this.outbox.enqueueChangeRequestAck(payload);
+      const result = await this.deliverAck(item, payload, row, false);
+      if (result.attempted && !result.delivered) {
+        this.logger.warn(
+          `Auto-ack ${row.idpRequestId} remains queued: ` +
+            `${result.error ?? 'delivery failed'}`,
+        );
+      }
+    } catch (err) {
+      // The request row is already durable; a retry can repair the outbox.
+      this.logger.error(
+        `Could not queue auto-ack ${row.idpRequestId}: ` +
+          `${err instanceof Error ? err.message : 'unknown error'}`,
+      );
+    }
+  }
+
   private async deliverAck(
     item: { outboxId: string; createdAt: Date },
     payload: IdpChangeRequestAckPayload,
@@ -409,7 +467,8 @@ export class IdpChangeRequestService {
   private buildAckPayload(row: IdpChangeRequest): IdpChangeRequestAckPayload {
     return {
       idp_request_id: row.idpRequestId,
-      acknowledged_by_coe_nnect_user_id: row.acknowledgedBy as string,
+      acknowledged_by_coe_nnect_user_id:
+        row.acknowledgedBy ?? AUTO_ACCEPT_ACTOR_ID,
       action: row.ackAction as IdpChangeRequestAckAction,
       notes: row.ackNotes ?? null,
       acknowledged_at: new Date(row.acknowledgedAt as Date).toISOString(),
@@ -423,8 +482,8 @@ export class IdpChangeRequestService {
   private async normalizeChangeRequest(
     payload: IdpChangeRequestPayload,
     type: string,
+    details: Record<string, unknown>,
   ): Promise<NormalizedChangeRequest> {
-    const details = payload.details as Record<string, unknown>;
     let wmsuId = normalizeKey(payload.faculty_wmsu_id);
     let employeeId = normalizeKey(payload.faculty_employee_id);
 
@@ -434,7 +493,15 @@ export class IdpChangeRequestService {
       employeeId = normalizeKey(details.employee_id);
     }
 
-    if (!wmsuId && !employeeId) {
+    const autoAccepted = AUTO_ACCEPTED_TYPES.has(type);
+    const scheduleOverride = type === 'schedule_override';
+    const hasFacultyKey = Boolean(wmsuId || employeeId);
+
+    // Contract 4.5 only requires idp_request_id and type. A schedule override
+    // may be department/term-wide and therefore has no faculty key. The
+    // auto-accepted types are recorded for audit only, so a missing key is
+    // acceptable there too. The remaining pending types need a person.
+    if (!hasFacultyKey && !scheduleOverride && !autoAccepted) {
       throw idpErrors.validation(
         'At least one of faculty_wmsu_id or faculty_employee_id is required.',
         { field: 'faculty_wmsu_id' },
@@ -442,7 +509,7 @@ export class IdpChangeRequestService {
     }
 
     const faculty = await this.resolveFaculty(wmsuId, employeeId);
-    if (!faculty && type !== 'faculty_create') {
+    if (!faculty && hasFacultyKey && !autoAccepted) {
       throw idpErrors.unknownFaculty({
         wmsu_id: wmsuId,
         employee_id: employeeId,
@@ -465,23 +532,27 @@ export class IdpChangeRequestService {
   ): Promise<void> {
     switch (type) {
       case 'faculty_create': {
-        requireString(details.first_name, 'details.first_name');
-        requireString(details.last_name, 'details.last_name');
-        const departmentCode = requireString(
-          details.department_code,
-          'details.department_code',
-        );
-        await this.resolveDepartment(departmentCode);
-        optionalBoolean(details.is_active, 'details.is_active');
-        return;
-      }
-      case 'faculty_update': {
-        if (details.department_code !== undefined && details.department_code !== null) {
+        if (hasValue(details.first_name)) {
+          requireString(details.first_name, 'details.first_name');
+        }
+        if (hasValue(details.last_name)) {
+          requireString(details.last_name, 'details.last_name');
+        }
+        if (hasValue(details.department_code)) {
           await this.resolveDepartment(
             requireString(details.department_code, 'details.department_code'),
           );
         }
-        if (details.classification !== undefined && details.classification !== null) {
+        optionalBoolean(details.is_active, 'details.is_active');
+        return;
+      }
+      case 'faculty_update': {
+        if (hasValue(details.department_code)) {
+          await this.resolveDepartment(
+            requireString(details.department_code, 'details.department_code'),
+          );
+        }
+        if (hasValue(details.classification)) {
           const classification = requireString(
             details.classification,
             'details.classification',
@@ -512,69 +583,71 @@ export class IdpChangeRequestService {
         return;
       }
       case 'faculty_transfer': {
-        const from = requireString(
+        const from = optionalString(
           details.from_department_code,
           'details.from_department_code',
         );
-        const to = requireString(
+        const to = optionalString(
           details.to_department_code,
           'details.to_department_code',
         );
-        if (from === to) {
+        if (from && to && from === to) {
           throw idpErrors.validation(
             'details.from_department_code and details.to_department_code must differ.',
             { field: 'details.to_department_code', value: to },
           );
         }
-        await Promise.all([
-          this.resolveDepartment(from),
-          this.resolveDepartment(to),
-        ]);
-        if (details.effective_date !== undefined && details.effective_date !== null) {
+        if (from) await this.resolveDepartment(from);
+        if (to) await this.resolveDepartment(to);
+        if (hasValue(details.effective_date)) {
           parseDate(details.effective_date, 'details.effective_date');
         }
         return;
       }
       case 'qualification_add':
       case 'qualification_remove': {
-        const subjectCode = requireString(
+        const subjectCode = optionalString(
           details.subject_code,
           'details.subject_code',
         );
-        await this.resolveSubject(subjectCode);
+        if (subjectCode) await this.resolveSubject(subjectCode);
         return;
       }
       case 'unavailability_change': {
-        const termCode = requireString(details.term_code, 'details.term_code');
-        await this.resolveTerm(termCode);
-        validateDay(details.day_of_week);
-        validateWindow(details.start_time, details.end_time);
+        const termCode = optionalString(details.term_code, 'details.term_code');
+        if (termCode) await this.resolveTerm(termCode);
+        if (hasValue(details.day_of_week)) validateDay(details.day_of_week);
+        if (hasValue(details.start_time) || hasValue(details.end_time)) {
+          validateWindow(details.start_time, details.end_time);
+        }
         optionalString(details.reason, 'details.reason');
         optionalString(details.external_id, 'details.external_id');
         return;
       }
       case 'schedule_override': {
-        const termCode = requireString(details.term_code, 'details.term_code');
-        await this.resolveTerm(termCode);
-        const subjectCode = requireString(
+        const termCode = optionalString(details.term_code, 'details.term_code');
+        if (termCode) await this.resolveTerm(termCode);
+        const subjectCode = optionalString(
           details.subject_code,
           'details.subject_code',
         );
-        await this.resolveSubject(subjectCode);
-        if (details.section_code !== undefined && details.section_code !== null) {
-          const sectionCode = requireString(
-            details.section_code,
-            'details.section_code',
-          );
+        if (subjectCode) await this.resolveSubject(subjectCode);
+        const sectionCode = optionalString(
+          details.section_code,
+          'details.section_code',
+        );
+        if (sectionCode) {
           const section = await this.sectionRepo.findOne({
             where: { sectionCode },
             select: ['sectionId', 'sectionCode'],
           });
           if (!section) throw idpErrors.unknownSection(sectionCode);
         }
-        validateDay(details.day_of_week);
-        validateWindow(details.start_time, details.end_time);
-        if (details.load_type !== undefined && details.load_type !== null) {
+        if (hasValue(details.day_of_week)) validateDay(details.day_of_week);
+        if (hasValue(details.start_time) || hasValue(details.end_time)) {
+          validateWindow(details.start_time, details.end_time);
+        }
+        if (hasValue(details.load_type)) {
           const loadType = requireString(details.load_type, 'details.load_type');
           if (!LOAD_TYPES.has(loadType)) {
             throw idpErrors.validation(
@@ -662,7 +735,7 @@ export class IdpChangeRequestService {
 
   private receipt(
     row: IdpChangeRequest,
-    status: 'pending' | 'duplicate',
+    status: 'pending' | 'acknowledged' | 'duplicate',
   ): IdpChangeRequestReceipt {
     return {
       idp_request_id: row.idpRequestId,
@@ -707,6 +780,38 @@ function assertObject(value: unknown): Record<string, any> {
     throw idpErrors.validation('Request body must be a JSON object.');
   }
   return value as Record<string, any>;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
+function normalizeAffectedDates(value: unknown): string[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw idpErrors.validation(
+      'affected_dates must be an array of ISO date strings.',
+      { field: 'affected_dates' },
+    );
+  }
+  return value;
+}
+
+function normalizeRequiresAck(
+  value: unknown,
+  autoAccepted: boolean,
+): boolean {
+  if (value === undefined || value === null) return !autoAccepted;
+  if (typeof value !== 'boolean') {
+    throw idpErrors.validation('requires_ack must be a boolean.', {
+      field: 'requires_ack',
+    });
+  }
+  return value;
 }
 
 function requireString(value: unknown, field: string): string {
@@ -765,15 +870,22 @@ function validateDay(value: unknown): void {
 }
 
 function validateWindow(startValue: unknown, endValue: unknown): void {
-  const start = requireString(startValue, 'details.start_time');
-  const end = requireString(endValue, 'details.end_time');
-  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(start) || !/^\d{2}:\d{2}(:\d{2})?$/.test(end)) {
-    throw idpErrors.validation(
-      'details.start_time and details.end_time must be HH:MM.',
-      { field: 'details.start_time', value: start },
-    );
+  const start = optionalString(startValue, 'details.start_time');
+  const end = optionalString(endValue, 'details.end_time');
+  const timePattern = /^\d{2}:\d{2}(:\d{2})?$/;
+  if (start && !timePattern.test(start)) {
+    throw idpErrors.validation('details.start_time must be HH:MM.', {
+      field: 'details.start_time',
+      value: start,
+    });
   }
-  if (start >= end) {
+  if (end && !timePattern.test(end)) {
+    throw idpErrors.validation('details.end_time must be HH:MM.', {
+      field: 'details.end_time',
+      value: end,
+    });
+  }
+  if (start && end && start >= end) {
     throw idpErrors.validation(
       'details.end_time must be later than details.start_time.',
       { field: 'details.end_time', value: end },

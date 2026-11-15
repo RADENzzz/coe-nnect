@@ -76,10 +76,13 @@ The module has these responsibilities:
   payload, queues it, and optionally pushes it.
 - `IdpFacultyRequestPublisherService` — maps a faculty request to the contract
   4.5 payload and refreshes its status in the outbox.
-- `IdpChangeRequestService` — validates and stores inbound change requests and
-  records exactly one reviewer acknowledgement per `idp_request_id`.
+- `IdpChangeRequestService` — validates and stores inbound change requests.
+  Auto-accepted contract types are recorded as acknowledged for audit; the
+  remaining pending types wait for exactly one reviewer acknowledgement per
+  `idp_request_id`. No inbound request mutates live schedule or faculty data.
 - `IdpDeviceGuard` — per-device bearer authentication for Pattern C routes.
-- `IdpSignatureGuard` — HMAC-SHA256 verification for inbound webhooks.
+- `IdpSignatureGuard` — HMAC-SHA256 verification for inbound webhooks, with the
+  contract's header aliases and the change-request API-key fallback.
 - `IdpController` / `IdpSyncController` — the public IDP namespace and the
   authenticated user triggers.
 
@@ -91,7 +94,7 @@ The module has these responsibilities:
 | ------ | -------------------------------------------- | ----------------- | -------------------------------- |
 | `GET`  | `/api/idp/v1/health`                         | Public            | Integration/configuration health |
 | `POST` | `/api/idp/v1/webhooks/faculty-changed`       | HMAC-SHA256       | Faculty change event             |
-| `POST` | `/api/idp/v1/webhooks/change-request`        | HMAC-SHA256       | Change request (contract 4.7)    |
+| `POST` | `/api/idp/v1/webhooks/change-request`        | HMAC-SHA256 or API key | Change request (contract 4.5)    |
 | `POST` | `/api/idp/v1/inbox/faculty`                  | Device bearer key | Pattern C faculty snapshot       |
 | `GET`  | `/api/idp/v1/outbox/schedules?since=&limit=` | Device bearer key | Pattern C schedule poll          |
 | `GET`  | `/api/idp/v1/outbox/faculty-requests?since=&limit=` | Device bearer key | Pattern C faculty-request poll |
@@ -115,6 +118,11 @@ X-Request-ID:    <uuid>            (optional; echoed in logs and errors)
 X-IDP-Signature: sha256=<hex>      (HMAC-SHA256 over the raw JSON body)
 X-IDP-Timestamp: <ISO 8601>        (5-minute online tolerance by default)
 ```
+
+`X-COE-NNECT-Signature` and `X-COE-NNECT-Timestamp` are accepted aliases.
+`POST /api/idp/v1/webhooks/change-request` additionally accepts the shared
+integration key through `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or
+`Authorization: Bearer`. The faculty-change webhook stays HMAC-only.
 
 ### Pattern C faculty inbox
 
@@ -181,7 +189,22 @@ schedules oldest first. `since` is inclusive and `limit` is 1-200 (default 50).
           "version_number": 3,
           "term_code": "2026-2027-1st",
           "published_at": "2026-11-11T09:59:58.000Z",
-          "entries": []
+          "entries": [
+            {
+              "coe_nnect_schedule_id": "1",
+              "department_code": "CPE",
+              "section_code": "CpE-1A",
+              "subject_code": "CPE 111",
+              "faculty_wmsu_id": "2019-00123",
+              "external_faculty_name": null,
+              "room_number": "CET 205",
+              "external_room_name": null,
+              "day": "Monday",
+              "start_time": "08:00",
+              "end_time": "09:00",
+              "load_type": "lecture"
+            }
+          ]
         }
       }
     ],
@@ -190,6 +213,9 @@ schedules oldest first. `since` is inclusive and `limit` is 1-200 (default 50).
   }
 }
 ```
+
+Published entries use the contract v2.0 field `day` (for example `"day":
+"Monday"`). Do not send the legacy `day_of_week` name in a schedule payload.
 
 Client rules:
 
@@ -252,21 +278,53 @@ survives and is delivered on the next poll or replay.
 
 ### Change requests and acknowledgements
 
-Change requests implement contract 4.7, 4.7.1, 4.8, and 5.7.
+Change requests implement contract 4.5. The webhook accepts either an
+HMAC-signed body or the integration-key fallback described above.
 
-**Inbound webhook.** `POST /api/idp/v1/webhooks/change-request` accepts the
-signed change-request body. `idp_request_id` is the idempotency key:
+**Inbound webhook.** `POST /api/idp/v1/webhooks/change-request` requires only
+`idp_request_id` and `type`. Optional fields are `faculty_wmsu_id`,
+`faculty_employee_id`, `affected_dates`, `details`, `severity`, `requires_ack`,
+and `created_at`. The receiver applies contract defaults before storing:
 
-- same `idp_request_id` and same body → `200` with `status: "duplicate"`;
+| Field          | Default                                                        |
+| -------------- | -------------------------------------------------------------- |
+| `severity`     | `info`                                                         |
+| `details`      | `{}`                                                           |
+| `created_at`   | receive time                                                   |
+| `requires_ack` | `false` for auto-accepted types, `true` for pending types      |
+
+`idp_request_id` is the idempotency key:
+
+- same `idp_request_id` and same effective body → `200` with
+  `status: "duplicate"`;
 - same `idp_request_id` and different body → `409 duplicate_key`;
-- new id → `200` with `status: "pending"`.
+- new pending type → `200` with `status: "pending"`;
+- new auto-accepted type → `200` with `status: "acknowledged"`.
 
-The request is stored in `public.idp_change_request` and is not applied
-automatically. The eight contract types are validated against local reference
-data: `faculty_create`, `faculty_update`, `faculty_deactivate`,
-`faculty_transfer`, `qualification_add`, `qualification_remove`,
-`unavailability_change`, and `schedule_override`. Unknown faculty, department,
-subject, term, or section references fail with the matching `422` code.
+The request is stored in `public.idp_change_request` and is **never applied
+automatically**.
+
+**Auto-accepted vs pending.** Contract 4.5 splits the eight types:
+
+- **Auto-accepted:** `faculty_create`, `faculty_update`, `faculty_deactivate`,
+  `qualification_add`, `qualification_remove`. These are stored as
+  `acknowledged` with `ack_action='accepted'` and no reviewer. They stay out of
+  the pending queue and do not mutate live data. An unknown faculty key is
+  tolerated. If the sender explicitly sets `requires_ack: true`, a system ack
+  (`acknowledged_by_coe_nnect_user_id: "0"`) is queued in the outbox.
+- **Pending review:** `unavailability_change`, `schedule_override`,
+  `faculty_transfer`. These remain `pending` until a Dean, college secretary,
+  or administrator records one acknowledgement.
+
+`schedule_override` may omit both faculty keys because it can describe a
+department- or term-wide change. `unavailability_change` and
+`faculty_transfer` still require a faculty key that resolves locally.
+
+Detail validation is best-effort: fields that are present are checked against
+local reference data (department, subject, term, section, designation, day, and
+time window), but no type-specific `details` field is mandatory. Unknown
+faculty, department, subject, term, section, or designation references fail
+with the matching `422` code.
 
 **Review API.** Dean, college secretary, and administrator roles can list,
 read, and acknowledge requests:
@@ -294,16 +352,20 @@ review.
 same action and notes returns the stored ack with `duplicate: true`. A
 different decision returns `409 duplicate_key`. The ack is written to the
 durable outbox under `kind='change_request.ack'` and, when Pattern A is
-configured, pushed to `POST {IDP_BASE}/change-requests/{id}/ack`.
+configured, pushed to `POST {IDP_BASE_URL}/change-requests/{id}/ack`. The
+upstream payload is `action`, `notes`, and
+`acknowledged_by_coe_nnect_user_id`; the response echoes `idp_request_id`,
+`action`, `acknowledged_by_coe_nnect_user_id`, and `acknowledged_at`.
 
 **Review UI.** Dean and college-secretary accounts see the queue at
 `/dean/idp/change-requests`. The page lists incoming requests, filters by
 status, type, and free-text search, shows the full `details` payload and
 affected dates, and records `accepted`, `rejected`, or `modified` with optional
 notes. It also shows Pattern C / Pattern A readiness from
-`GET /api/idp/v1/health`. Recording a decision never applies the underlying
-change; the reviewer still edits the schedule or faculty record through the
-existing screens.
+`GET /api/idp/v1/health`. Auto-accepted rows appear as acknowledged with an
+auto-accept note and no reviewer. Recording a decision never applies the
+underlying change; the reviewer still edits the schedule or faculty record
+through the existing screens.
 
 ### Pattern C change-request ack outbox
 
@@ -348,9 +410,10 @@ Ack items are written once per `idp_request_id`. Dedupe on
 | `POST` | `{IDP_BASE_URL}/faculty-requests`                        | Faculty-request status  |
 | `POST` | `{IDP_BASE_URL}/change-requests/{id}/ack`                | Change-request ack      |
 
-`{key}` is `wmsu_id` when present, otherwise `employee_id`. The path names are
-the indicative ones from the contract; confirm them with the IDP team before
-pointing `IDP_BASE_URL` at a real deployment.
+`{key}` is `wmsu_id` when present, otherwise `employee_id`. `IDP_BASE_URL`
+must include the contract namespace (`/api/idp/v1`), so the paths above resolve
+to `/api/idp/v1/faculty`, `/api/idp/v1/schedules/published`, and so on. Do not
+point it at the bare server root.
 
 `POST /api/v1/idp/schedules/publish` always queues the payload to the outbox
 first. When Pattern A is configured, it also pushes immediately. A push failure
@@ -395,7 +458,7 @@ Set these in `apps/backend/.env` (the template is in `.env.example`):
 ```dotenv
 # Pattern A fallback
 IDP_ENABLED=false
-IDP_BASE_URL=
+IDP_BASE_URL=https://adp-server-3m0u.onrender.com/api/idp/v1
 IDP_API_KEY=
 
 # Pattern C desktop access
@@ -410,8 +473,8 @@ IDP_WEBHOOK_TOLERANCE_MS=300000
 | Variable                   | Meaning                                                                    |
 | -------------------------- | -------------------------------------------------------------------------- |
 | `IDP_ENABLED`              | Master switch for Pattern A outbound pulls, pushes, and the refresh action |
-| `IDP_BASE_URL`             | IDP REST base URL, without a trailing slash                                |
-| `IDP_API_KEY`              | Bearer token for outbound Pattern A requests                               |
+| `IDP_BASE_URL`             | IDP REST namespace including `/api/idp/v1`, without a trailing slash       |
+| `IDP_API_KEY`              | Bearer token for outbound Pattern A requests; also the change-request API-key fallback |
 | `IDP_DEVICE_API_KEY`       | Per-device bearer key the IDP desktop presents on inbox/outbox calls       |
 | `IDP_WEBHOOK_SECRET`       | Shared secret for inbound HMAC verification                                |
 | `IDP_REQUEST_TIMEOUT_MS`   | Outbound timeout, default `15000`                                          |
@@ -425,7 +488,14 @@ Readiness:
   set.
 - With `IDP_ENABLED` false or `IDP_BASE_URL` empty, the refresh action returns
   `503`.
-- With no `IDP_WEBHOOK_SECRET`, every webhook is rejected with `401`.
+- With no `IDP_WEBHOOK_SECRET`, HMAC-signed webhooks are rejected with `401`.
+  The change-request API-key fallback still works when `IDP_API_KEY` is set.
+
+For hosted deployments, set
+`IDP_BASE_URL=https://adp-server-3m0u.onrender.com/api/idp/v1` in the Railway
+service variables (or the equivalent deployment secret store). The repository
+cannot update the hosted value; changing `.env.example` only documents the
+required format.
 
 Store real values in the deployment environment, never in git. Rotate the
 device key by replacing `IDP_DEVICE_API_KEY` and distributing the new value to
@@ -493,9 +563,16 @@ CoE-NNECT applies each record idempotently.
 
 The webhook guard verifies:
 
-1. `X-IDP-Timestamp` is valid ISO 8601 and within the tolerance window.
-2. `X-IDP-Signature` equals `sha256=` + HMAC-SHA256 of the **raw** request body.
+1. `X-IDP-Timestamp` (or `X-COE-NNECT-Timestamp`) is valid ISO 8601 and within
+   the tolerance window.
+2. `X-IDP-Signature` (or `X-COE-NNECT-Signature`) equals `sha256=` +
+   HMAC-SHA256 of the **raw** request body.
 3. The comparison is constant-time.
+
+The change-request webhook also accepts the shared integration key through
+`X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or
+`Authorization: Bearer`. A valid API key bypasses HMAC for that route only;
+the faculty-change webhook remains HMAC-only.
 
 `NestFactory.create(..., { rawBody: true })` is required in `main.ts`; without
 it the guard fails closed.
@@ -672,21 +749,23 @@ Invoke-RestMethod -Uri 'http://localhost:3000/api/idp/v1/outbox/change-request-a
 Still to confirm with the IDP team before a live sync:
 
 1. Device-key distribution and rotation process.
-2. HMAC-SHA256 support and header format for desktop-originated webhooks.
-3. Faculty key coverage for every record.
-4. Department code mapping.
-5. Subject code format / mapping.
-6. Section code format / mapping.
-7. Term code format (`YYYY-YYYY-semester`).
-8. Whether IDP tracks qualifications and their shape.
-9. Whether IDP tracks unavailability and whether it is weekly recurring.
-10. Which change-request types IDP will actually send (all eight are accepted).
-11. Retry/ack expectations and the offline timestamp tolerance (contract allows
-    up to 24 hours).
-12. Whether IDP expects CoE-NNECT to apply a change automatically or only
-    acknowledge it (current behaviour: reviewer decision, manual application).
-13. PII retention requirements.
-14. Sandbox/staging URL and test credentials.
+2. Faculty key coverage for every record.
+3. Department code mapping.
+4. Subject code format / mapping.
+5. Section code format / mapping.
+6. Term code format (`YYYY-YYYY-semester`).
+7. Whether IDP tracks qualifications and their shape.
+8. Whether IDP tracks unavailability and whether it is weekly recurring.
+9. Retry/ack expectations and the offline timestamp tolerance (contract allows
+   up to 24 hours).
+10. PII retention requirements.
+11. Sandbox/staging URL and test credentials.
+
+The contract's pending-change-request pull
+(`GET /api/idp/v1/integration/change-requests/pending`) is intentionally not
+implemented yet because the response schema is not specified. Reviewers use
+the local review queue, and the IDP desktop collects acks from the Pattern C
+outbox.
 
 ## Related documentation
 

@@ -2,22 +2,27 @@ import { createHmac } from 'crypto';
 import { IdpSignatureGuard } from '../src/modules/idp/idp-signature.guard';
 
 const SECRET = 'test-webhook-secret';
+const API_KEY = 'test-integration-key';
 
 function buildContext(opts: {
   body?: unknown;
   rawBody?: Buffer;
   signature?: string | null;
   timestamp?: string | null;
+  path?: string;
+  headers?: Record<string, string | undefined>;
 }) {
   const rawBody =
     opts.rawBody ??
     Buffer.from(JSON.stringify(opts.body ?? { hello: 'world' }), 'utf8');
   const req: any = {
     method: 'POST',
+    path: opts.path ?? '/api/idp/v1/webhooks/faculty-changed',
     rawBody,
     headers: {
       'x-idp-signature': opts.signature ?? undefined,
       'x-idp-timestamp': opts.timestamp ?? undefined,
+      ...opts.headers,
     },
   };
   return {
@@ -57,6 +62,7 @@ describe('IdpSignatureGuard', () => {
     config = {
       get: jest.fn((key: string) => {
         if (key === 'IDP_WEBHOOK_SECRET') return SECRET;
+        if (key === 'IDP_API_KEY') return API_KEY;
         if (key === 'IDP_WEBHOOK_TOLERANCE_MS') return '300000';
         return undefined;
       }),
@@ -74,6 +80,20 @@ describe('IdpSignatureGuard', () => {
       rawBody: body,
       signature: sign(body),
       timestamp: now.toISOString(),
+    });
+
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('accepts the CoE-NNECT signature header aliases', () => {
+    const body = Buffer.from(JSON.stringify({ event_id: 'evt-1' }), 'utf8');
+    const ctx = buildContext({
+      rawBody: body,
+      path: '/api/idp/v1/webhooks/change-request',
+      headers: {
+        'x-coe-nnect-signature': sign(body),
+        'x-coe-nnect-timestamp': now.toISOString(),
+      },
     });
 
     expect(guard.canActivate(ctx)).toBe(true);
@@ -138,5 +158,72 @@ describe('IdpSignatureGuard', () => {
       'unauthorized',
       /not configured/,
     );
+  });
+
+  it('accepts X-IDP-API-Key on the change-request webhook', () => {
+    const ctx = buildContext({
+      path: '/api/idp/v1/webhooks/change-request',
+      headers: { 'x-idp-api-key': API_KEY },
+    });
+
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('accepts X-COE-NNECT-Key on the change-request webhook', () => {
+    const ctx = buildContext({
+      path: '/api/idp/v1/webhooks/change-request',
+      headers: { 'x-coe-nnect-key': API_KEY },
+    });
+
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('accepts a bearer integration key on the change-request webhook', () => {
+    const ctx = buildContext({
+      path: '/api/idp/v1/webhooks/change-request',
+      headers: { authorization: `Bearer ${API_KEY}` },
+    });
+
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('does not accept an API key on the faculty-change webhook', () => {
+    const ctx = buildContext({
+      path: '/api/idp/v1/webhooks/faculty-changed',
+      headers: { 'x-idp-api-key': API_KEY },
+    });
+
+    expectIdpError(
+      () => guard.canActivate(ctx),
+      'unauthorized',
+      /Missing X-IDP-Signature/,
+    );
+  });
+
+  it('rejects an invalid API key when no signature is present', () => {
+    const ctx = buildContext({
+      path: '/api/idp/v1/webhooks/change-request',
+      headers: { 'x-idp-api-key': 'wrong-key' },
+    });
+
+    expectIdpError(
+      () => guard.canActivate(ctx),
+      'unauthorized',
+      /Missing X-IDP-Signature/,
+    );
+  });
+
+  it('accepts a valid API key even when the webhook secret is missing', () => {
+    config.get = jest.fn((key: string) => {
+      if (key === 'IDP_API_KEY') return API_KEY;
+      if (key === 'IDP_WEBHOOK_TOLERANCE_MS') return '300000';
+      return undefined;
+    });
+    const ctx = buildContext({
+      path: '/api/idp/v1/webhooks/change-request',
+      headers: { 'x-idp-api-key': API_KEY },
+    });
+
+    expect(guard.canActivate(ctx)).toBe(true);
   });
 });
