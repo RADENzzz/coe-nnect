@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash, createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { idpErrors } from './idp.errors';
 
 /**
@@ -151,14 +151,19 @@ function bearerToken(
 ): string | undefined {
   const header = firstHeader(value);
   if (!header) return undefined;
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  return match?.[1]?.trim();
+  const trimmed = header.trim();
+  const prefix = 'bearer ';
+  if (trimmed.slice(0, prefix.length).toLowerCase() !== prefix) {
+    return undefined;
+  }
+  return trimmed.slice(prefix.length).trim() || undefined;
 }
 
 /** Constant-time comparison for the shared integration key. */
 function isEqualSecret(expected: string, provided: string): boolean {
-  const a = createHash('sha256').update(expected).digest();
-  const b = createHash('sha256').update(provided).digest();
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(provided, 'utf8');
+  if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
 
