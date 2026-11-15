@@ -296,6 +296,15 @@ different decision returns `409 duplicate_key`. The ack is written to the
 durable outbox under `kind='change_request.ack'` and, when Pattern A is
 configured, pushed to `POST {IDP_BASE}/change-requests/{id}/ack`.
 
+**Review UI.** Dean and college-secretary accounts see the queue at
+`/dean/idp/change-requests`. The page lists incoming requests, filters by
+status, type, and free-text search, shows the full `details` payload and
+affected dates, and records `accepted`, `rejected`, or `modified` with optional
+notes. It also shows Pattern C / Pattern A readiness from
+`GET /api/idp/v1/health`. Recording a decision never applies the underlying
+change; the reviewer still edits the schedule or faculty record through the
+existing screens.
+
 ### Pattern C change-request ack outbox
 
 `GET /api/idp/v1/outbox/change-request-acks?since=<iso>&limit=<n>` returns the

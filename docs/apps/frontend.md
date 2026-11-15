@@ -51,6 +51,7 @@ All application routes except the public landing page, login, maintenance page, 
 | `/dean/users` | Dean, secretary | User lifecycle management. |
 | `/dean/approvals` | Dean | Schedule approvals and finalization. |
 | `/dean/requests` | Dean | Cross-department faculty requests. |
+| `/dean/idp/change-requests` | Dean, secretary | IDP change-request review queue; records accepted/rejected/modified decisions without applying the underlying change automatically. |
 | `/dean/timetable` | Dean | Read-only college timetable. |
 | `/dean/import`, `/dean/import/:id` | Dean, secretary | Prospectus PDF import. |
 | `/dean/reports/*` | Dean | Reports hub and reports. |
@@ -95,6 +96,12 @@ Chat is mounted for eligible roles as a floating widget backed by a two-pane dra
 Presence uses Supabase Realtime on the `presence:online-users` channel for the live online dot. `usePresenceHeartbeat` calls `POST /api/v1/users/me/heartbeat` every 60 seconds and skips the beat while the tab is hidden; the backend writes `user_presence.last_seen_at`. The UI combines the live channel state with the persisted timestamp, showing "Active just now" or a relative last-seen label when the live dot is off.
 
 See [Chat and presence](../features/chat.md) for the full behavior and API contract.
+
+## Timetable auto-generation feedback
+
+While the department timetable is auto-generating, `SolverLiveBoard` shows a live mini weekly board instead of a generic spinner. Real subject and section labels move between a queue tray and timetable cells as the animation simulates checks, placements, moves, and backtracking; a scan line, target ghost, counters, and short log keep the progress legible. The board portals to `document.body` because the route wrapper keeps a transform that would otherwise break `position: fixed`.
+
+The animation follows the same motion preference as other loading animations: it is disabled when the user turns off loading animations or when `prefers-reduced-motion: reduce` is set, in which case the board renders a complete static placement and no pause control. Pause and hide/show controls are available while the animation runs; hiding it keeps the solve running and the counters honest. The overlay never changes scheduling data — it only visualizes the request that is already in flight.
 
 ## Data fetching and state
 

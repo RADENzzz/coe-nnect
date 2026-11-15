@@ -720,21 +720,21 @@ const INTEGRATION_STATE: Record<
     label: 'Integration is live',
     body: 'Outbound calls and signed webhooks are configured for this environment.',
     icon: 'task_alt',
-    tone: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200',
+    tone: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10',
     dot: 'bg-emerald-500',
   },
   configured_disabled: {
     label: 'Configured, currently switched off',
     body: 'Credentials are present, but the integration kill switch is off. No outbound calls are made.',
     icon: 'warning',
-    tone: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200',
+    tone: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10',
     dot: 'bg-amber-500',
   },
   incomplete: {
     label: 'Switched on, configuration incomplete',
     body: 'The integration is enabled but a base URL or API key is missing, so no outbound call can succeed.',
     icon: 'warning',
-    tone: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200',
+    tone: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10',
     dot: 'bg-amber-500',
   },
   not_configured: {
@@ -753,13 +753,13 @@ const MILESTONE_BADGE: Record<
   done: {
     label: 'Shipped',
     className:
-      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10',
     icon: 'check_circle',
   },
   in_progress: {
     label: 'In progress',
     className:
-      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10',
     icon: 'pending_actions',
   },
   planned: {
