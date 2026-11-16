@@ -172,7 +172,7 @@ The notification gateway authenticates the Supabase token at connection time and
 | `GET` | `/v1/stats/overview`, `/v1/stats/repo-contributors`, `/v1/stats/repo-commits` | Dashboard and landing statistics. |
 | `GET` | `/v1/audit`, `/v1/audit/actions`, `/v1/audit/sources` | Audit history and filter metadata. |
 | `GET/PATCH` | `/v1/system-status` | Public banner read; privileged update. |
-| `GET` | `/v1/health` | Liveness probe; no auth or database access. |
+| `GET` | `/v1/health` | Liveness probe; no auth or database access. Includes the Railway commit SHA when deployed from GitHub. |
 | `GET` | `/v1/dev-tools/state` | Dev account state. |
 | `POST` | `/v1/dev-tools/reset`, `/seed`, `/seed-demo-full` | Guarded reset/seed jobs. |
 | `GET` | `/v1/dev-tools/jobs/:jobId` | Job status. |
