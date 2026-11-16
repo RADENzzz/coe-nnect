@@ -1,45 +1,96 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
-import LoginPage from './features/auth/LoginPage';
 import LandingPage from './features/landing/LandingPage';
-import MaintenancePage from './features/auth/MaintenancePage';
-import DepartmentDeactivatedPage from './features/auth/DepartmentDeactivatedPage';
-import RecoveryVerifyPage from './features/auth/RecoveryVerifyPage';
-import ResetPasswordPage from './features/auth/ResetPasswordPage';
-import DashboardPage from './features/dashboard/DashboardPage';
-import TimetablePage from './features/timetable/TimetablePage';
-import AppShell from './components/layout/AppShell';
-import DeanShell from './components/layout/DeanShell';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import DepartmentActiveGate from './components/auth/DepartmentActiveGate';
 import MaintenanceGate from './components/auth/MaintenanceGate';
-import DeanDashboardPage from './features/dean/DeanDashboardPage';
-import DeanDepartmentsPage from './features/dean/DeanDepartmentsPage';
-import DeanDepartmentsManagePage from './features/dean/DeanDepartmentsManagePage';
-import DeanApprovalsPage from './features/dean/DeanApprovalsPage';
-import IdpChangeRequestsPage from './features/idp/IdpChangeRequestsPage';
-import AdminUsersPage from './features/admin/AdminUsersPage';
-import SectionsPage from './features/sections/SectionsPage';
-import ApprovalsPage from './features/approvals/ApprovalsPage';
-import SubjectsPage from './features/subjects/SubjectsPage';
-import FacultyPage from './features/faculty/FacultyPage';
-import RoomsPage from './features/rooms/RoomsPage';
-import ProspectusPage from './features/prospectus/ProspectusPage';
-import ProgramsPage from './features/programs/ProgramsPage';
-import SystemConfigPage from './features/system-config/SystemConfigPage';
-import AuditTrailPage from './features/audit-trail/AuditTrailPage';
-import FacultyWorkloadPage from './features/reports/FacultyWorkloadPage';
-import ReportsHubPage from './features/reports/ReportsHubPage';
-import ApprovalsReportPage from './features/reports/ApprovalsReportPage';
-import RoomSufficiencyPage from './features/reports/RoomSufficiencyPage';
-import ProspectusPdfListPage from './features/import/ProspectusPdfListPage';
-import ProspectusPdfEditorPage from './features/import/ProspectusPdfEditorPage';
 import RequireDesktop from './features/import/components/RequireDesktop';
-import NotificationsInboxPage from './features/notifications/NotificationsInboxPage';
-import SettingsPage from './features/settings/SettingsPage';
-import HelpPage from './features/help/HelpPage';
-import DevToolsPage from './features/dev-tools/DevToolsPage';
 import PresenceProvider from './components/presence/PresenceProvider';
 import { useAuthStore } from './store/auth.store';
+
+// The public landing page is the entry point, so it stays in the initial
+// bundle. Authenticated pages and their shells are split into chunks and
+// fetched on first visit instead of shipping one multi-megabyte bundle.
+const AppShell = lazy(() => import('./components/layout/AppShell'));
+const DeanShell = lazy(() => import('./components/layout/DeanShell'));
+const LoginPage = lazy(() => import('./features/auth/LoginPage'));
+const MaintenancePage = lazy(() => import('./features/auth/MaintenancePage'));
+const DepartmentDeactivatedPage = lazy(
+  () => import('./features/auth/DepartmentDeactivatedPage'),
+);
+const RecoveryVerifyPage = lazy(
+  () => import('./features/auth/RecoveryVerifyPage'),
+);
+const ResetPasswordPage = lazy(
+  () => import('./features/auth/ResetPasswordPage'),
+);
+const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'));
+const TimetablePage = lazy(() => import('./features/timetable/TimetablePage'));
+const DeanDashboardPage = lazy(
+  () => import('./features/dean/DeanDashboardPage'),
+);
+const DeanDepartmentsPage = lazy(
+  () => import('./features/dean/DeanDepartmentsPage'),
+);
+const DeanDepartmentsManagePage = lazy(
+  () => import('./features/dean/DeanDepartmentsManagePage'),
+);
+const DeanApprovalsPage = lazy(
+  () => import('./features/dean/DeanApprovalsPage'),
+);
+const IdpChangeRequestsPage = lazy(
+  () => import('./features/idp/IdpChangeRequestsPage'),
+);
+const AdminUsersPage = lazy(() => import('./features/admin/AdminUsersPage'));
+const SectionsPage = lazy(() => import('./features/sections/SectionsPage'));
+const ApprovalsPage = lazy(() => import('./features/approvals/ApprovalsPage'));
+const SubjectsPage = lazy(() => import('./features/subjects/SubjectsPage'));
+const FacultyPage = lazy(() => import('./features/faculty/FacultyPage'));
+const RoomsPage = lazy(() => import('./features/rooms/RoomsPage'));
+const ProspectusPage = lazy(() => import('./features/prospectus/ProspectusPage'));
+const ProgramsPage = lazy(() => import('./features/programs/ProgramsPage'));
+const SystemConfigPage = lazy(
+  () => import('./features/system-config/SystemConfigPage'),
+);
+const AuditTrailPage = lazy(
+  () => import('./features/audit-trail/AuditTrailPage'),
+);
+const FacultyWorkloadPage = lazy(
+  () => import('./features/reports/FacultyWorkloadPage'),
+);
+const ReportsHubPage = lazy(() => import('./features/reports/ReportsHubPage'));
+const ApprovalsReportPage = lazy(
+  () => import('./features/reports/ApprovalsReportPage'),
+);
+const RoomSufficiencyPage = lazy(
+  () => import('./features/reports/RoomSufficiencyPage'),
+);
+const ProspectusPdfListPage = lazy(
+  () => import('./features/import/ProspectusPdfListPage'),
+);
+const ProspectusPdfEditorPage = lazy(
+  () => import('./features/import/ProspectusPdfEditorPage'),
+);
+const NotificationsInboxPage = lazy(
+  () => import('./features/notifications/NotificationsInboxPage'),
+);
+const SettingsPage = lazy(() => import('./features/settings/SettingsPage'));
+const HelpPage = lazy(() => import('./features/help/HelpPage'));
+const DevToolsPage = lazy(() => import('./features/dev-tools/DevToolsPage'));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background text-on-background">
+      <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+        <span
+          className="h-4 w-4 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
+          aria-hidden="true"
+        />
+        Loading…
+      </div>
+    </div>
+  );
+}
 
 function DeanRouteGuard() {
   const profile = useAuthStore((s) => s.profile);
@@ -61,6 +112,7 @@ function App() {
       {/* Session-scoped Realtime presence + last-seen heartbeat. Sits above
           the router so changing pages never untracks the signed-in user. */}
       <PresenceProvider />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
@@ -187,6 +239,7 @@ function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </MaintenanceGate>
   );
 }

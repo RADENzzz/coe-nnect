@@ -1164,10 +1164,7 @@ export default function StudentPlannerPanel({
       <div className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
-              Student planner
-            </p>
-            <h3 className="mt-1 text-lg font-semibold text-on-surface">
+            <h3 className="text-lg font-semibold text-on-surface">
               Build your weekly schedule
             </h3>
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-on-surface-variant">
@@ -1431,13 +1428,13 @@ export default function StudentPlannerPanel({
                 onAction={hasActiveFilters ? resetFilters : undefined}
               />
             ) : (
-              <div className="space-y-2">
+              <div>
                 {catalogGroups.map((group) => {
                   const expanded = expandedSections.has(group.code);
                   return (
                     <div
                       key={group.code}
-                      className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low/40"
+                      className="border-b border-outline-variant last:border-b-0"
                     >
                       <div className="flex items-center gap-2 px-2.5 py-2">
                         <button
@@ -1457,7 +1454,7 @@ export default function StudentPlannerPanel({
                           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                             {yearLabel(group.yearLevel)}
                           </span>
-                          <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[10px] font-semibold text-on-surface-variant">
+                          <span className="shrink-0 rounded-full bg-surface-container-low px-2 py-0.5 text-[10px] font-semibold text-on-surface-variant">
                             {group.entries.length}
                           </span>
                         </button>
@@ -1484,11 +1481,11 @@ export default function StudentPlannerPanel({
                       </div>
 
                       {expanded && (
-                        <div className="space-y-2 border-t border-outline-variant/60 p-2">
+                        <div className="border-t border-outline-variant/60 bg-surface-container-low/20 p-2">
                           {group.subjects.map((subject) => (
                             <div
                               key={`${group.code}-${subject.key}`}
-                              className="overflow-hidden rounded-lg border border-outline-variant bg-surface"
+                              className="border-t border-outline-variant/50 first:border-t-0"
                             >
                               <div className="flex items-start justify-between gap-2 px-2.5 py-2">
                                 <div className="min-w-0">
@@ -1617,10 +1614,7 @@ export default function StudentPlannerPanel({
           <header className="border-b border-outline-variant p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
-                  Your weekly plan
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-on-surface">
+                <h3 className="text-lg font-semibold text-on-surface">
                   {termLabel}
                 </h3>
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1744,9 +1738,13 @@ export default function StudentPlannerPanel({
           </header>
 
           <div className="p-3 sm:p-4">
+            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant sm:hidden">
+              <Icon name="swipe" size={14} />
+              Swipe to see the full week
+            </p>
             <DragDropProvider onDragEnd={handlePlannerDragEnd}>
             <div className="relative overflow-hidden rounded-xl border border-outline-variant">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto [scrollbar-width:thin]">
                 <div className="min-w-[720px]">
                   <div className="flex border-b border-outline-variant bg-surface-container-low">
                     <div className="flex w-14 shrink-0 items-center justify-center border-r border-outline-variant px-1 py-2 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">

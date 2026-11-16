@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
@@ -30,7 +30,11 @@ import {
   scheduleRoomKey,
   WEEK_DAYS,
 } from './schedule-utils';
-import StudentPlannerPanel from './StudentPlannerPanel';
+
+// The planner is the heaviest interactive surface on this page (drag and drop,
+// week grid, export pipeline). Load it only when the student opens that tab so
+// the public schedule view stays light.
+const StudentPlannerPanelLazy = lazy(() => import('./StudentPlannerPanel'));
 
 type LandingTab = 'schedules' | 'planner' | 'faculty' | 'integration';
 
@@ -112,48 +116,69 @@ function StatCard({
 
 function FeatureCard({
   icon,
-  eyebrow,
   title,
   body,
   actionLabel,
   onAction,
   to,
+  featured = false,
+  className = '',
 }: {
   icon: string;
-  eyebrow: string;
   title: string;
   body: string;
   actionLabel: string;
   onAction?: () => void;
   to?: string;
+  featured?: boolean;
+  className?: string;
 }) {
   const actionClasses =
     'mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary transition-colors hover:text-primary/80';
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-outline-variant bg-surface p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+    <div
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md ${
+        featured
+          ? 'border-primary/20 bg-gradient-to-br from-primary/[0.07] via-surface to-surface'
+          : 'border-outline-variant bg-surface'
+      } ${className}`}
+    >
       <div className="absolute inset-x-0 top-0 h-0.5 origin-left scale-x-0 bg-primary transition-transform duration-500 group-hover:scale-x-100" />
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-105">
-        <Icon name={icon} size={19} />
+      <span
+        className={`flex items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-105 ${
+          featured ? 'h-12 w-12' : 'h-10 w-10'
+        }`}
+      >
+        <Icon name={icon} size={featured ? 22 : 19} />
       </span>
-      <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
-        {eyebrow}
-      </p>
-      <h3 className="mt-1 text-base font-semibold text-on-surface">{title}</h3>
-      <p className="mt-1.5 text-sm leading-relaxed text-on-surface-variant">
+      <h3
+        className={`mt-4 font-semibold text-on-surface ${
+          featured ? 'text-xl' : 'text-base'
+        }`}
+      >
+        {title}
+      </h3>
+      <p
+        className={`mt-1.5 text-sm leading-relaxed text-on-surface-variant ${
+          featured ? 'max-w-md' : ''
+        }`}
+      >
         {body}
       </p>
-      {to ? (
-        <Link to={to} className={actionClasses}>
-          {actionLabel}
-          <Icon name="arrow_forward" size={14} />
-        </Link>
-      ) : (
-        <button type="button" onClick={onAction} className={actionClasses}>
-          {actionLabel}
-          <Icon name="arrow_forward" size={14} />
-        </button>
-      )}
+      <div className="mt-auto">
+        {to ? (
+          <Link to={to} className={actionClasses}>
+            {actionLabel}
+            <Icon name="arrow_forward" size={14} />
+          </Link>
+        ) : (
+          <button type="button" onClick={onAction} className={actionClasses}>
+            {actionLabel}
+            <Icon name="arrow_forward" size={14} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -168,8 +193,8 @@ function HeroStat({
   loading?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
+    <div className="border-t border-white/10 pt-3">
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-white/55">
         {label}
       </dt>
       <dd className="mt-1 text-2xl font-extrabold text-white tabular-nums">
@@ -251,7 +276,7 @@ function TabButton({
       aria-selected={active}
       aria-controls="public-panel"
       onClick={onClick}
-      className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+      className={`inline-flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
         active
           ? 'border-primary text-primary'
           : 'border-transparent text-on-surface-variant hover:text-on-surface'
@@ -282,7 +307,7 @@ function PanelState({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-on-surface-variant">
+      <div className="flex items-center justify-center gap-2 py-10 text-sm text-on-surface-variant">
         <Icon name="progress_activity" size={18} spin />
         Loading public data…
       </div>
@@ -291,8 +316,8 @@ function PanelState({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <Icon name="warning" size={28} className="text-amber-500" />
+      <div className="flex flex-col items-center gap-3 py-10 text-center">
+        <Icon name="warning" size={26} className="text-amber-500" />
         <div>
           <p className="text-sm font-semibold text-on-surface">
             Public data is temporarily unavailable.
@@ -314,8 +339,8 @@ function PanelState({
 
   if (empty) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16 text-center">
-        <Icon name="search_off" size={28} className="text-on-surface-variant" />
+      <div className="flex flex-col items-center gap-2 py-10 text-center">
+        <Icon name="search_off" size={26} className="text-on-surface-variant" />
         <p className="text-sm font-semibold text-on-surface">{emptyTitle}</p>
         <p className="max-w-sm text-xs text-on-surface-variant">
           {emptyHint}
@@ -485,6 +510,19 @@ function SchedulesPanel({
     [filtered],
   );
 
+  // Bucket the filtered rows once per day/time slot instead of scanning the
+  // whole list for every grid cell.
+  const slotEntries = useMemo(() => {
+    const map = new Map<string, typeof filtered>();
+    for (const entry of filtered) {
+      const key = `${entry.dayOfWeek}|${entry.startTime}`;
+      const bucket = map.get(key);
+      if (bucket) bucket.push(entry);
+      else map.set(key, [entry]);
+    }
+    return map;
+  }, [filtered]);
+
   const hasActiveFilters = Boolean(
     search.trim() || facultyFilter || roomFilter,
   );
@@ -630,10 +668,10 @@ function SchedulesPanel({
           emptyHint="Published class blocks will appear here once the college publishes them."
         />
       ) : !department ? (
-        <div className="no-print mt-5 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-outline-variant bg-surface-container-low/50 px-6 py-12 text-center">
+        <div className="no-print mt-5 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-outline-variant bg-surface-container-low/50 px-6 py-8 text-center">
           <Icon
             name="account_balance"
-            size={30}
+            size={26}
             className="text-on-surface-variant"
           />
           <p className="text-sm font-semibold text-on-surface">
@@ -730,11 +768,8 @@ function SchedulesPanel({
                           {time}
                         </th>
                         {dayColumns.map((day) => {
-                          const cellEntries = filtered.filter(
-                            (entry) =>
-                              entry.dayOfWeek === day &&
-                              entry.startTime === time,
-                          );
+                          const cellEntries =
+                            slotEntries.get(`${day}|${time}`) ?? [];
                           return (
                             <td
                               key={day}
@@ -1550,12 +1585,16 @@ export default function LandingPage() {
     queryKey: ['public-faculty'],
     queryFn: () => fetchPublicFaculty(),
     staleTime: 5 * 60_000,
+    // The directory lives in its own tab; do not spend a request on it until
+    // the visitor actually opens it.
+    enabled: tab === 'faculty',
   });
 
   const integration = useQuery({
     queryKey: ['public-integration'],
     queryFn: fetchPublicIntegration,
     staleTime: 30_000,
+    enabled: tab === 'integration',
   });
 
   const dashboardPath = !user
@@ -1749,11 +1788,20 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/15 bg-white/10 p-6 backdrop-blur-sm">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-              At a glance
-            </p>
-            <dl className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-white/15 bg-white/[0.07] p-6 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                At a glance
+              </p>
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+                  aria-hidden="true"
+                />
+                Live
+              </span>
+            </div>
+            <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4">
               <HeroStat
                 label="Published class blocks"
                 value={overview.data?.publishedEntries ?? '—'}
@@ -1775,7 +1823,7 @@ export default function LandingPage() {
                 loading={overview.isLoading}
               />
             </dl>
-            <p className="mt-4 text-[11px] leading-relaxed text-white/60">
+            <p className="mt-5 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-white/60">
               Only published schedules are shown. Drafts, flagged rows, and
               entries awaiting faculty approval stay internal.
             </p>
@@ -1793,55 +1841,52 @@ export default function LandingPage() {
 
         <section aria-labelledby="portal-highlights" className="no-print mb-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-                Explore the portal
-              </p>
-              <h2
-                id="portal-highlights"
-                className="mt-1 text-2xl font-semibold text-on-surface"
-              >
-                What you can do here
-              </h2>
-            </div>
+            <h2
+              id="portal-highlights"
+              className="text-2xl font-semibold text-on-surface"
+            >
+              What you can do here
+            </h2>
             <p className="max-w-md text-xs leading-relaxed text-on-surface-variant">
               Public schedules and faculty records, no account needed. Sign in
               when you are ready to manage your department.
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
             <FeatureCard
               icon="schedule"
-              eyebrow="Schedules"
               title="Find a class"
               body="Filter by term or department, then search by subject, section, instructor, or room."
               actionLabel="Browse schedules"
               onAction={() => goToTab('schedules')}
+              featured
+              className="lg:col-span-7"
             />
             <FeatureCard
               icon="calendar_month"
-              eyebrow="Planner"
               title="Build your week"
               body="Add published classes by year and section, create personal blocks, and export your plan as PDF or PNG."
               actionLabel="Open planner"
               onAction={() => goToTab('planner')}
+              className="lg:col-span-5"
             />
             <FeatureCard
               icon="groups"
-              eyebrow="Directory"
               title="Look up faculty"
               body="See active faculty by department, with their designation and department assignment."
               actionLabel="Open directory"
               onAction={() => goToTab('faculty')}
+              className="lg:col-span-5"
             />
             <FeatureCard
               icon="dashboard"
-              eyebrow="Workspace"
               title="Manage your department"
               body="Department heads build and publish timetables; the dean and secretary oversee the college."
               actionLabel={user ? 'Open dashboard' : 'Sign in to manage'}
               to={dashboardPath}
+              featured
+              className="lg:col-span-7"
             />
           </div>
         </section>
@@ -1853,12 +1898,9 @@ export default function LandingPage() {
         >
           <div className="no-print mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
-                Public data
-              </p>
               <h2
                 id="public-data-title"
-                className="mt-1 text-2xl font-semibold text-on-surface"
+                className="text-2xl font-semibold text-on-surface"
               >
                 Browse the college
               </h2>
@@ -1883,11 +1925,11 @@ export default function LandingPage() {
               )}
           </div>
 
-          <div className="no-print flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
+          <div className="no-print relative flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
             <div
               role="tablist"
               aria-label="Public data views"
-              className="flex max-w-full gap-5 overflow-x-auto [scrollbar-width:thin]"
+              className="-mx-4 flex max-w-full snap-x gap-5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
             >
               <TabButton
                 id="tab-schedules"
@@ -1922,6 +1964,10 @@ export default function LandingPage() {
                 IDP integration
               </TabButton>
             </div>
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-background to-transparent sm:hidden"
+              aria-hidden="true"
+            />
           </div>
 
           <div
@@ -1940,19 +1986,28 @@ export default function LandingPage() {
               />
             )}
             {tab === 'planner' && (
-              <StudentPlannerPanel
-                data={schedules.data}
-                isLoading={schedules.isLoading}
-                isError={schedules.isError}
-                onRetry={() => void schedules.refetch()}
-                selectedTermId={selectedTermId}
-                onTermChange={(next) => setTermId(next)}
-              />
+              <Suspense
+                fallback={
+                  <div className="mt-5 flex items-center justify-center gap-2 rounded-2xl border border-outline-variant bg-surface py-16 text-sm text-on-surface-variant">
+                    <Icon name="progress_activity" size={18} spin />
+                    Loading planner…
+                  </div>
+                }
+              >
+                <StudentPlannerPanelLazy
+                  data={schedules.data}
+                  isLoading={schedules.isLoading}
+                  isError={schedules.isError}
+                  onRetry={() => void schedules.refetch()}
+                  selectedTermId={selectedTermId}
+                  onTermChange={(next) => setTermId(next)}
+                />
+              </Suspense>
             )}
             {tab === 'faculty' && (
               <FacultyPanel
                 data={faculty.data}
-                isLoading={faculty.isLoading}
+                isLoading={faculty.isPending}
                 isError={faculty.isError}
                 onRetry={() => void faculty.refetch()}
               />
@@ -1960,7 +2015,7 @@ export default function LandingPage() {
             {tab === 'integration' && (
               <IntegrationPanel
                 data={integration.data}
-                isLoading={integration.isLoading}
+                isLoading={integration.isPending}
                 isError={integration.isError}
                 onRetry={() => void integration.refetch()}
               />
