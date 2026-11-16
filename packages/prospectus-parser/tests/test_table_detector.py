@@ -185,5 +185,271 @@ class TwoColumnElectiveTest(unittest.TestCase):
         self.assertEqual(len(proposals[0].rows), 2)
 
 
+class SideBySideSemesterTest(unittest.TestCase):
+    """Two full semester tables printed side by side on one page."""
+
+    def setUp(self) -> None:
+        self.lines = [
+            line(772, [("FIRST", 270, 300), ("YEAR", 302, 330)]),
+            line(
+                752,
+                [
+                    ("First", 110, 135),
+                    ("Semester", 137, 175),
+                    ("Second", 420, 455),
+                    ("Semester", 457, 495),
+                ],
+            ),
+            line(740, [("Units", 250, 270), ("Units", 530, 550)]),
+            line(
+                735,
+                [
+                    ("Grade", 40, 60),
+                    ("Code", 62, 80),
+                    ("Descriptive", 100, 140),
+                    ("Title", 142, 160),
+                    ("Prereq", 190, 210),
+                    ("Grade", 320, 340),
+                    ("Code", 342, 360),
+                    ("Descriptive", 380, 420),
+                    ("Title", 422, 440),
+                    ("Prereq", 470, 495),
+                ],
+            ),
+            line(
+                731,
+                [
+                    ("Lec", 220, 235),
+                    ("Lab", 240, 255),
+                    ("Total", 260, 280),
+                    ("Lec", 500, 515),
+                    ("Lab", 520, 535),
+                    ("Total", 540, 560),
+                ],
+            ),
+            line(
+                720,
+                [
+                    ("BEM", 40, 62),
+                    ("111", 64, 80),
+                    ("Engineering", 100, 140),
+                    ("Calculus", 142, 175),
+                    ("1", 177, 183),
+                    ("None", 190, 210),
+                    ("3", 220, 225),
+                    ("0", 240, 245),
+                    ("3", 260, 265),
+                    ("BEM", 320, 342),
+                    ("112", 344, 360),
+                    ("Engineering", 380, 420),
+                    ("Calculus", 422, 455),
+                    ("2", 457, 463),
+                    ("BEM", 470, 485),
+                    ("111", 487, 495),
+                    ("3", 500, 505),
+                    ("0", 520, 525),
+                    ("3", 540, 545),
+                ],
+            ),
+            line(
+                700,
+                [
+                    ("BES", 40, 62),
+                    ("111", 64, 80),
+                    ("Chemistry", 100, 145),
+                    ("for", 147, 160),
+                    ("Engineers", 162, 205),
+                    ("None", 190, 210),
+                    ("3", 220, 225),
+                    ("1", 240, 245),
+                    ("4", 260, 265),
+                    ("BES", 320, 342),
+                    ("112", 344, 360),
+                    ("Physics", 380, 415),
+                    ("for", 417, 430),
+                    ("Engineers", 432, 475),
+                    ("BEM", 470, 485),
+                    ("111", 487, 495),
+                    ("3", 500, 505),
+                    ("1", 520, 525),
+                    ("4", 540, 545),
+                ],
+            ),
+        ]
+
+    def test_splits_into_one_proposal_per_semester(self) -> None:
+        proposals = _detect_on_page(0, self.lines)
+        self.assertEqual(len(proposals), 2)
+
+        left, right = proposals
+        self.assertEqual((left.year_level, left.semester), (1, "1st"))
+        self.assertEqual((right.year_level, right.semester), (1, "2nd"))
+        self.assertEqual(
+            role_list(left),
+            ["code", "title", "prereq", "lec", "lab", "total"],
+        )
+        self.assertEqual(role_list(right), role_list(left))
+        self.assertEqual(len(left.rows), 2)
+        self.assertEqual(len(right.rows), 2)
+        self.assertLess(left.region_x_end_pt, right.region_x_start_pt)
+
+
+class AmbiguousPageFallbackTest(unittest.TestCase):
+    def _table(self, heading_entries: list[tuple[str, float, float]]):
+        return [
+            line(
+                700,
+                [
+                    ("Grade", 40, 60),
+                    ("Code", 62, 80),
+                    ("Descriptive", 100, 140),
+                    ("Title", 142, 160),
+                    ("Prereq", 190, 210),
+                    ("Lec", 220, 235),
+                    ("Lab", 240, 255),
+                    ("Total", 260, 280),
+                ],
+            ),
+            line(
+                680,
+                [
+                    ("BEM", 40, 62),
+                    ("111", 64, 80),
+                    ("Engineering", 100, 140),
+                    ("Calculus", 142, 175),
+                    ("1", 177, 183),
+                    ("None", 190, 210),
+                    ("3", 220, 225),
+                    ("0", 240, 245),
+                    ("3", 260, 265),
+                ],
+            ),
+            line(
+                660,
+                [
+                    ("BES", 40, 62),
+                    ("111", 64, 80),
+                    ("Chemistry", 100, 145),
+                    ("for", 147, 160),
+                    ("Engineers", 162, 205),
+                    ("None", 190, 210),
+                    ("3", 220, 225),
+                    ("1", 240, 245),
+                    ("4", 260, 265),
+                ],
+            ),
+            line(600, heading_entries),
+        ]
+
+    def test_leaves_semester_null_when_page_names_both(self) -> None:
+        proposals = _detect_on_page(
+            0,
+            self._table(
+                [
+                    ("First", 100, 130),
+                    ("Semester", 132, 170),
+                    ("Second", 400, 440),
+                    ("Semester", 442, 480),
+                ]
+            ),
+        )
+        self.assertEqual(len(proposals), 1)
+        self.assertIsNone(proposals[0].semester)
+
+    def test_uses_page_semester_when_only_one_is_named(self) -> None:
+        proposals = _detect_on_page(
+            0,
+            self._table(
+                [
+                    ("Second", 400, 440),
+                    ("Semester", 442, 480),
+                ]
+            ),
+        )
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0].semester, "2nd")
+
+
+class OneRowTableBeforeHeadingTest(unittest.TestCase):
+    def test_heading_after_a_single_row_starts_the_next_table(self) -> None:
+        lines = [
+            line(
+                700,
+                [
+                    ("Grade", 40, 60),
+                    ("Code", 62, 80),
+                    ("Descriptive", 100, 140),
+                    ("Title", 142, 160),
+                    ("Prereq", 190, 210),
+                    ("Lec", 220, 235),
+                    ("Lab", 240, 255),
+                    ("Total", 260, 280),
+                ],
+            ),
+            line(
+                680,
+                [
+                    ("BEM", 40, 62),
+                    ("111", 64, 80),
+                    ("Engineering", 100, 140),
+                    ("Calculus", 142, 175),
+                    ("1", 177, 183),
+                    ("None", 190, 210),
+                    ("3", 220, 225),
+                    ("0", 240, 245),
+                    ("3", 260, 265),
+                ],
+            ),
+            line(660, [("Second", 240, 280), ("Semester", 282, 320)]),
+            line(
+                640,
+                [
+                    ("Grade", 40, 60),
+                    ("Code", 62, 80),
+                    ("Descriptive", 100, 140),
+                    ("Title", 142, 160),
+                    ("Prereq", 190, 210),
+                    ("Lec", 220, 235),
+                    ("Lab", 240, 255),
+                    ("Total", 260, 280),
+                ],
+            ),
+            line(
+                620,
+                [
+                    ("BES", 40, 62),
+                    ("111", 64, 80),
+                    ("Chemistry", 100, 145),
+                    ("for", 147, 160),
+                    ("Engineers", 162, 205),
+                    ("None", 190, 210),
+                    ("3", 220, 225),
+                    ("1", 240, 245),
+                    ("4", 260, 265),
+                ],
+            ),
+            line(
+                600,
+                [
+                    ("CPE", 40, 62),
+                    ("111", 64, 80),
+                    ("Programming", 100, 150),
+                    ("Logic", 152, 180),
+                    ("None", 190, 210),
+                    ("0", 220, 225),
+                    ("2", 240, 245),
+                    ("2", 260, 265),
+                ],
+            ),
+        ]
+
+        proposals = _detect_on_page(0, lines)
+        # The one-row table is too small to propose, but its single row must
+        # not leak into the second table's body.
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0].semester, "2nd")
+        self.assertEqual(len(proposals[0].rows), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

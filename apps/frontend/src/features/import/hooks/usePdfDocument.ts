@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+import { pdfjsLib } from '@/lib/pdf';
 
 interface UsePdfDocumentResult {
   pdf: PDFDocumentProxy | null;

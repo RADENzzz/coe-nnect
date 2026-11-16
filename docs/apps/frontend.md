@@ -145,7 +145,19 @@ pnpm --filter @coe-nnect/frontend dev
 
 Vite normally serves the application at `http://localhost:5173` and proxies `/api` and `/socket.io` to `http://localhost:3000`. The backend must be running for authenticated screens. The root `pnpm dev` command starts both.
 
-The public landing page reads only from `/api/v1/public/*`; drafts, flagged rows, pending faculty requests, and all contact or identifier fields stay internal.
+The public landing page reads only from `/api/v1/public/*`; drafts, flagged rows, pending faculty requests, and all contact or identifier fields stay internal. The schedule view is department-first — there is no combined all-department grid. After a department is chosen, the faculty and room filters list only people and spaces used by that department's published entries, and the weekly grid has a print action with a landscape print layout that preserves the lecture/laboratory color coding and day tints. The faculty directory defaults to a role hierarchy tree when dean, department head, or college secretary accounts exist, and can switch to a designation-grouped type view.
+
+## Student planner
+
+The landing page includes a student-facing planner tab (`src/features/landing/StudentPlannerPanel.tsx`) that turns the public schedule catalog into a personal weekly plan. It reads only `/api/v1/public/schedules`, so drafts, flagged rows, and pending faculty requests never appear.
+
+- Filters cascade department → year level → section. Year levels come from the published row's `sectionRef.yearLevel`; rows without one are grouped under "Year not set".
+- Students can add an entire section, a subject/section group, or a single meeting. Adding a class copies it into the plan; the published row is never mutated.
+- Personal blocks cover consultations, study time, and org meetings. Published copies and personal blocks can both be edited or removed.
+- Plans are stored per term in `localStorage` under `coe-nnect:student-planner:v1`.
+- The weekly grid expands to the plan's time range, lays overlapping blocks side by side, and flags time conflicts. Blocks can be dragged to another day or 30-minute slot; the block keeps its duration.
+- The planner header and a subject-load table show total units, hours per week, and meetings per subject/section. Units come from the subject's `totalUnits` and are counted once per subject/section even when lecture and laboratory meetings are separate; subjects without units are flagged so the total is understood as incomplete.
+- PDF export uses `@react-pdf/renderer`; PNG export rasterizes the same PDF with pdf.js. Both modules are loaded on demand so the landing page's initial bundle stays small.
 
 ## Build and checks
 

@@ -2045,12 +2045,132 @@ html {
 /* ── Print styles ──
    Small nicety for printing timetables. */
 @media print {
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
   body {
     background: #fff;
     font-size: 12px;
   }
   .no-print {
     display: none !important;
+  }
+  /* The public schedule grid is the only printable region on the landing
+     page. Keep the lecture/laboratory tints and day chips so the printed
+     sheet stays readable at a glance, but pin everything to light values so
+     dark mode does not print pale text on a white sheet. */
+  .landing-schedule-print,
+  .landing-schedule-print * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+  }
+  .landing-schedule-print {
+    border: 1px solid #b8b8b8 !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+  /* The screen header uses theme tokens that turn pale in dark mode. Pin
+     them to ink colors for the printed sheet. */
+  .landing-schedule-print h3,
+  .landing-schedule-print .text-on-surface {
+    color: #111 !important;
+  }
+  .landing-schedule-print .text-on-surface-variant {
+    color: #4b5563 !important;
+  }
+  .landing-schedule-print table {
+    width: 100% !important;
+    table-layout: fixed;
+  }
+  .landing-schedule-print th,
+  .landing-schedule-print td {
+    padding: 3px !important;
+    font-size: 9px !important;
+    vertical-align: top;
+    border-color: #d1d5db !important;
+    color: #111 !important;
+  }
+  .landing-schedule-print thead tr {
+    background: #f3f4f6 !important;
+  }
+  .landing-schedule-print thead th {
+    color: #374151 !important;
+  }
+  .landing-schedule-print tbody th {
+    background: #f9fafb !important;
+    color: #374151 !important;
+  }
+  .landing-schedule-print .schedule-print-card {
+    border: 1px solid #d1d5db !important;
+    background: #fff !important;
+    color: #111 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .landing-schedule-print .schedule-print-card[data-load-type='lecture'] {
+    background: #fdf2f3 !important;
+    border-color: #d9a7ae !important;
+    border-left: 4px solid #8b1e2d !important;
+    color: #4a0e14 !important;
+  }
+  .landing-schedule-print .schedule-print-card[data-load-type='laboratory'] {
+    background: #fffbeb !important;
+    border-color: #fcd34d !important;
+    border-left: 4px solid #d97706 !important;
+    color: #78350f !important;
+  }
+  .landing-schedule-print .schedule-print-card p {
+    font-size: 8px !important;
+    line-height: 1.25 !important;
+    opacity: 1 !important;
+  }
+  /* Let long titles and room/faculty names wrap on paper instead of being
+     clipped by the screen-only line clamp and truncate utilities. */
+  .landing-schedule-print .schedule-print-card .line-clamp-2 {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    overflow: visible !important;
+  }
+  .landing-schedule-print .schedule-print-card .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+  /* Keep the day chips tinted on paper. */
+  .landing-schedule-print [data-day='Monday'] {
+    background: #fff1f2 !important;
+    color: #be123c !important;
+    border-color: #fecdd3 !important;
+  }
+  .landing-schedule-print [data-day='Tuesday'] {
+    background: #fffbeb !important;
+    color: #b45309 !important;
+    border-color: #fde68a !important;
+  }
+  .landing-schedule-print [data-day='Wednesday'] {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+    border-color: #a7f3d0 !important;
+  }
+  .landing-schedule-print [data-day='Thursday'] {
+    background: #f0f9ff !important;
+    color: #0369a1 !important;
+    border-color: #bae6fd !important;
+  }
+  .landing-schedule-print [data-day='Friday'] {
+    background: #f5f3ff !important;
+    color: #6d28d9 !important;
+    border-color: #ddd6fe !important;
+  }
+  .landing-schedule-print [data-day='Saturday'],
+  .landing-schedule-print [data-day='Sunday'] {
+    background: #f8fafc !important;
+    color: #475569 !important;
+    border-color: #e2e8f0 !important;
   }
 }
 
@@ -2380,7 +2500,8 @@ html {
 .dark .text-amber-800 {
   color: #fde68a;
 }
-.dark .text-amber-900 {
+.dark .text-amber-900,
+.dark .text-amber-950 {
   color: #fef3c7;
 }
 .dark .text-amber-300 {
@@ -2447,6 +2568,9 @@ html {
 
 .dark .text-violet-700 {
   color: #c4b5fd;
+}
+.dark .text-violet-800 {
+  color: #ddd6fe;
 }
 .dark .text-orange-700 {
   color: #fdba74;

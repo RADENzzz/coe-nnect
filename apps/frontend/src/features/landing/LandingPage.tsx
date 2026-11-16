@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
@@ -19,11 +19,20 @@ import {
   type IntegrationMilestoneStatus,
   type IntegrationState,
   type PublicFaculty,
+  type PublicFacultyAccountRole,
+  type PublicFacultyMember,
   type PublicIntegrationStatus,
   type PublicSchedules,
 } from '../../api/public.api';
+import {
+  scheduleFaculty,
+  scheduleRoom,
+  scheduleRoomKey,
+  WEEK_DAYS,
+} from './schedule-utils';
+import StudentPlannerPanel from './StudentPlannerPanel';
 
-type LandingTab = 'schedules' | 'faculty' | 'integration';
+type LandingTab = 'schedules' | 'planner' | 'faculty' | 'integration';
 
 /**
  * The IDP app promo is deployment-configurable. Only http(s) links are
@@ -327,6 +336,37 @@ function PanelState({
   return null;
 }
 
+const ACCOUNT_ROLE_META: Record<
+  PublicFacultyAccountRole,
+  { label: string; icon: string; tone: string }
+> = {
+  college_dean: {
+    label: 'College Dean',
+    icon: 'workspace_premium',
+    tone: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10',
+  },
+  department_head: {
+    label: 'Department Head',
+    icon: 'supervisor_account',
+    tone: 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10',
+  },
+  college_secretary: {
+    label: 'College Secretary',
+    icon: 'edit_note',
+    tone: 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10',
+  },
+};
+
+function scheduleCardTone(loadType: string | null): string {
+  if (loadType === 'laboratory') {
+    return 'border-amber-300/70 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10';
+  }
+  if (loadType === 'lecture') {
+    return 'border-primary/25 bg-primary/5 text-on-surface';
+  }
+  return 'border-outline-variant bg-surface-container-low text-on-surface';
+}
+
 function SchedulesPanel({
   data,
   isLoading,
@@ -344,24 +384,75 @@ function SchedulesPanel({
 }) {
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
+  const [facultyFilter, setFacultyFilter] = useState('');
+  const [roomFilter, setRoomFilter] = useState('');
 
   const entries = useMemo(() => data?.entries ?? [], [data?.entries]);
-  const departments = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          entries
-            .map((entry) => entry.departmentCode)
-            .filter((code): code is string => Boolean(code)),
-        ),
-      ).sort(),
-    [entries],
+  const departments = useMemo(() => {
+    const codes = new Set<string>();
+    for (const entry of entries) {
+      if (entry.departmentCode) codes.add(entry.departmentCode);
+    }
+    return Array.from(codes).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+
+  // A term change can remove the selected department; clear it rather than
+  // leaving the panel stuck on a department that has no published rows.
+  useEffect(() => {
+    if (department && !departments.includes(department)) {
+      setDepartment('');
+    }
+  }, [department, departments]);
+
+  // Faculty and room options are department-scoped, so they reset whenever
+  // the department changes.
+  useEffect(() => {
+    setFacultyFilter('');
+    setRoomFilter('');
+  }, [department]);
+
+  const departmentEntries = useMemo(
+    () => entries.filter((entry) => entry.departmentCode === department),
+    [department, entries],
   );
+
+  const facultyOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const entry of departmentEntries) {
+      if (entry.facultyName) {
+        options.set(entry.facultyName, entry.facultyName);
+      } else if (entry.externalFacultyName) {
+        options.set(
+          entry.externalFacultyName,
+          `${entry.externalFacultyName} (external)`,
+        );
+      }
+    }
+    return Array.from(options, ([value, label]) => ({ value, label })).sort(
+      (a, b) => a.label.localeCompare(b.label),
+    );
+  }, [departmentEntries]);
+
+  const roomOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const entry of departmentEntries) {
+      const room = scheduleRoom(entry);
+      if (room === '—') continue;
+      const label = [room, entry.building].filter(Boolean).join(' · ');
+      options.set(scheduleRoomKey(entry), label);
+    }
+    return Array.from(options, ([value, label]) => ({ value, label })).sort(
+      (a, b) => a.label.localeCompare(b.label),
+    );
+  }, [departmentEntries]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return entries.filter((entry) => {
-      if (department && entry.departmentCode !== department) return false;
+    return departmentEntries.filter((entry) => {
+      if (facultyFilter && scheduleFaculty(entry) !== facultyFilter) {
+        return false;
+      }
+      if (roomFilter && scheduleRoomKey(entry) !== roomFilter) return false;
       if (!needle) return true;
       return [
         entry.subjectCode,
@@ -377,13 +468,41 @@ function SchedulesPanel({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [entries, department, search]);
+  }, [departmentEntries, facultyFilter, roomFilter, search]);
 
-  const hasActiveFilters = Boolean(search.trim()) || Boolean(department);
+  const dayColumns = useMemo(() => {
+    const present = new Set(departmentEntries.map((entry) => entry.dayOfWeek));
+    const days: string[] = WEEK_DAYS.filter((day) => present.has(day));
+    if (present.has('Sunday')) days.push('Sunday');
+    return days.length > 0 ? days : WEEK_DAYS.slice(0, 5);
+  }, [departmentEntries]);
+
+  const startTimes = useMemo(
+    () =>
+      Array.from(new Set(filtered.map((entry) => entry.startTime))).sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [filtered],
+  );
+
+  const hasActiveFilters = Boolean(
+    search.trim() || facultyFilter || roomFilter,
+  );
+  const termLabel = data?.term
+    ? (data.term.termCode ?? data.term.termName)
+    : null;
+  const roomFilterLabel =
+    roomOptions.find((option) => option.value === roomFilter)?.label ?? '';
+
+  const clearFilters = () => {
+    setSearch('');
+    setFacultyFilter('');
+    setRoomFilter('');
+  };
 
   return (
     <div>
-      <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
+      <div className="no-print mt-5 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
             <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
@@ -411,9 +530,14 @@ function SchedulesPanel({
             <select
               value={department}
               onChange={(event) => setDepartment(event.target.value)}
-              className="h-10 min-w-36 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15"
+              disabled={!departments.length}
+              className="h-10 min-w-44 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
             >
-              <option value="">All departments</option>
+              <option value="">
+                {departments.length
+                  ? 'Select a department…'
+                  : 'No published departments'}
+              </option>
               {departments.map((code) => (
                 <option key={code} value={code}>
                   {code}
@@ -421,124 +545,292 @@ function SchedulesPanel({
               ))}
             </select>
           </label>
+
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Faculty
+            </span>
+            <select
+              value={facultyFilter}
+              onChange={(event) => setFacultyFilter(event.target.value)}
+              disabled={!department || facultyOptions.length === 0}
+              className="h-10 min-w-48 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+            >
+              <option value="">All faculty</option>
+              {facultyOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+              Room
+            </span>
+            <select
+              value={roomFilter}
+              onChange={(event) => setRoomFilter(event.target.value)}
+              disabled={!department || roomOptions.length === 0}
+              className="h-10 min-w-40 rounded-lg border border-outline-variant bg-surface px-3 text-sm font-medium text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+            >
+              <option value="">All rooms</option>
+              {roomOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
-        <label className="relative block w-full sm:w-72">
-          <span className="sr-only">Search published schedules</span>
-          <Icon
-            name="search"
-            size={17}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
-          />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search subject, section, faculty, room…"
-            className="h-10 w-full rounded-lg border border-outline-variant bg-surface pl-9 pr-3 text-sm text-on-surface outline-none transition placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
-          />
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative block w-full sm:w-64">
+            <span className="sr-only">Search published schedules</span>
+            <Icon
+              name="search"
+              size={17}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
+            />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              disabled={!department}
+              placeholder="Search subject, section, faculty, room…"
+              className="h-10 w-full rounded-lg border border-outline-variant bg-surface pl-9 pr-3 text-sm text-on-surface outline-none transition placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={!department || filtered.length === 0}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-outline-variant bg-surface px-4 text-sm font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-50"
+          >
+            <Icon name="print" size={16} />
+            Print
+          </button>
+        </div>
       </div>
 
-      <p className="mt-3 text-xs text-on-surface-variant" aria-live="polite">
-        Showing{' '}
-        <strong className="text-on-surface">{filtered.length}</strong> of{' '}
-        {entries.length} published class blocks
-        {data?.term ? ` for ${data.term.termCode ?? data.term.termName}` : ''}.
-      </p>
-
-      <PanelState
-        loading={isLoading}
-        error={isError}
-        empty={!isLoading && !isError && filtered.length === 0}
-        onRetry={onRetry}
-        onClear={
-          hasActiveFilters
-            ? () => {
-                setSearch('');
-                setDepartment('');
-              }
-            : undefined
-        }
-        emptyTitle={
-          entries.length === 0 ? 'No published schedules yet.' : undefined
-        }
-        emptyHint={
-          entries.length === 0
-            ? 'Published class blocks will appear here once the college publishes them.'
-            : undefined
-        }
-      />
-
-      {!isLoading && !isError && filtered.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-outline-variant text-sm">
-              <thead className="bg-surface-container-low text-left text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
-                <tr>
-                  <th className="px-4 py-3">Day</th>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Section</th>
-                  <th className="px-4 py-3">Instructor</th>
-                  <th className="px-4 py-3">Room</th>
-                  <th className="px-4 py-3">Dept</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/70">
-                {filtered.map((entry) => (
-                  <tr
-                    key={entry.scheduleId}
-                    className="transition-colors hover:bg-surface-container-low/70"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-bold ${
-                          DAY_TONE[entry.dayOfWeek] ??
-                          'border-outline-variant bg-surface-container text-on-surface-variant'
-                        }`}
-                      >
-                        {entry.dayOfWeek}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-on-surface-variant">
-                      {entry.startTime}–{entry.endTime}
-                    </td>
-                    <td className="min-w-48 px-4 py-3">
-                      <p className="font-semibold text-on-surface">
-                        {entry.subjectCode ?? '—'}
-                      </p>
-                      <p className="text-xs text-on-surface-variant">
-                        {entry.subjectTitle ?? 'Untitled subject'}
-                      </p>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-on-surface">
-                      {entry.sectionCode ?? '—'}
-                    </td>
-                    <td className="min-w-44 px-4 py-3 text-on-surface">
-                      {entry.facultyName ??
-                        entry.externalFacultyName ??
-                        'Unassigned'}
-                    </td>
-                    <td className="min-w-32 px-4 py-3 text-on-surface">
-                      {entry.roomNumber ?? entry.externalRoomName ?? '—'}
-                      {entry.building && (
-                        <span className="block text-[11px] text-on-surface-variant/70">
-                          {entry.building}
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className="rounded-md bg-surface-container px-2 py-0.5 text-[11px] font-bold text-on-surface-variant">
-                        {entry.departmentCode ?? '—'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {isLoading || isError ? (
+        <PanelState
+          loading={isLoading}
+          error={isError}
+          empty={false}
+          onRetry={onRetry}
+        />
+      ) : entries.length === 0 ? (
+        <PanelState
+          loading={false}
+          error={false}
+          empty
+          onRetry={onRetry}
+          emptyTitle="No published schedules yet."
+          emptyHint="Published class blocks will appear here once the college publishes them."
+        />
+      ) : !department ? (
+        <div className="no-print mt-5 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-outline-variant bg-surface-container-low/50 px-6 py-12 text-center">
+          <Icon
+            name="account_balance"
+            size={30}
+            className="text-on-surface-variant"
+          />
+          <p className="text-sm font-semibold text-on-surface">
+            Choose a department to view its schedule
+          </p>
+          <p className="max-w-md text-xs leading-relaxed text-on-surface-variant">
+            Schedules are published one department at a time. Pick a department
+            above, then narrow the weekly grid by faculty or room. The faculty
+            and room filters only list people and spaces used by that
+            department.
+          </p>
         </div>
+      ) : (
+        <>
+          <div className="no-print mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-on-surface-variant">
+            <p aria-live="polite">
+              Showing{' '}
+              <strong className="text-on-surface">{filtered.length}</strong> of{' '}
+              {departmentEntries.length} published class blocks for{' '}
+              <strong className="text-on-surface">{department}</strong>
+              {termLabel ? ` · ${termLabel}` : ''}.
+            </p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded-lg border border-outline-variant bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          {filtered.length === 0 ? (
+            <PanelState
+              loading={false}
+              error={false}
+              empty
+              onRetry={onRetry}
+              onClear={hasActiveFilters ? clearFilters : undefined}
+              emptyTitle="No class blocks match these filters."
+              emptyHint="Try another faculty member, room, or search term."
+            />
+          ) : (
+            <div className="landing-schedule-print mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
+              <div className="hidden border-b border-outline-variant px-4 py-3 print:block">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+                  CoE-NNECT · College of Engineering
+                </p>
+                <h3 className="mt-0.5 text-base font-bold text-on-surface">
+                  {department} published schedule
+                </h3>
+                <p className="mt-0.5 text-[11px] text-on-surface-variant">
+                  {termLabel ?? 'Published term'}
+                  {facultyFilter ? ` · ${facultyFilter}` : ''}
+                  {roomFilterLabel ? ` · ${roomFilterLabel}` : ''}
+                  {' · printed '}
+                  {new Date().toLocaleDateString()}
+                </p>
+              </div>
+
+              <div className="overflow-x-auto print:overflow-visible">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-surface-container-low">
+                      <th className="w-20 border-b border-r border-outline-variant px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                        Time
+                      </th>
+                      {dayColumns.map((day) => (
+                        <th
+                          key={day}
+                          className="border-b border-outline-variant px-3 py-2 text-left"
+                        >
+                          <span
+                            data-day={day}
+                            className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold ${
+                              DAY_TONE[day] ??
+                              'border-outline-variant bg-surface-container text-on-surface-variant'
+                            }`}
+                          >
+                            {day}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {startTimes.map((time) => (
+                      <tr key={time} className="align-top">
+                        <th
+                          scope="row"
+                          className="w-20 border-b border-r border-outline-variant bg-surface-container-low/60 px-3 py-2 text-left align-top font-mono text-[11px] font-semibold text-on-surface-variant"
+                        >
+                          {time}
+                        </th>
+                        {dayColumns.map((day) => {
+                          const cellEntries = filtered.filter(
+                            (entry) =>
+                              entry.dayOfWeek === day &&
+                              entry.startTime === time,
+                          );
+                          return (
+                            <td
+                              key={day}
+                              className="border-b border-outline-variant p-1.5 align-top"
+                            >
+                              {cellEntries.length === 0 ? (
+                                <span className="block px-1 py-2 text-[11px] text-on-surface-variant/30">
+                                  —
+                                </span>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {cellEntries.map((entry) => (
+                                    <article
+                                      key={entry.scheduleId}
+                                      data-load-type={
+                                        entry.loadType ?? 'other'
+                                      }
+                                      className={`schedule-print-card rounded-lg border p-2 text-[11px] leading-snug ${scheduleCardTone(
+                                        entry.loadType,
+                                      )}`}
+                                      title={`${entry.subjectCode ?? ''} ${
+                                        entry.subjectTitle ?? ''
+                                      }`}
+                                    >
+                                      <p className="font-bold">
+                                        {entry.subjectCode ?? '—'}
+                                        {entry.sectionCode
+                                          ? ` · ${entry.sectionCode}`
+                                          : ''}
+                                      </p>
+                                      <p className="mt-0.5 line-clamp-2 text-[10px] opacity-80">
+                                        {entry.subjectTitle ?? 'Untitled subject'}
+                                      </p>
+                                      <p className="mt-1 font-mono text-[10px] font-semibold">
+                                        {entry.startTime}–{entry.endTime}
+                                      </p>
+                                      <p className="mt-0.5 truncate text-[10px]">
+                                        {scheduleRoom(entry)}
+                                        {entry.building
+                                          ? ` · ${entry.building}`
+                                          : ''}
+                                      </p>
+                                      <p className="truncate text-[10px] opacity-80">
+                                        {scheduleFaculty(entry)}
+                                      </p>
+                                    </article>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function RoleBadge({ role }: { role: PublicFacultyAccountRole | null }) {
+  if (!role) return null;
+  const meta = ACCOUNT_ROLE_META[role];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${meta.tone}`}
+    >
+      <Icon name={meta.icon} size={11} />
+      {meta.label}
+    </span>
+  );
+}
+
+function FacultyNode({ member }: { member: PublicFacultyMember }) {
+  return (
+    <div className="rounded-xl border border-outline-variant bg-surface p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold text-on-surface">
+          {member.fullName}
+        </p>
+        <RoleBadge role={member.accountRole} />
+        {member.idpLinked && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+            <Icon name="link" size={11} />
+            IDP
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-on-surface-variant">
+        {member.designation ?? 'Faculty'}
+      </p>
     </div>
   );
 }
@@ -556,6 +848,7 @@ function FacultyPanel({
 }) {
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
+  const [view, setView] = useState<'tree' | 'type' | null>(null);
 
   const faculty = useMemo(() => data?.faculty ?? [], [data?.faculty]);
   const filtered = useMemo(() => {
@@ -563,13 +856,87 @@ function FacultyPanel({
     return faculty.filter((member) => {
       if (department && member.departmentCode !== department) return false;
       if (!needle) return true;
-      return [member.fullName, member.departmentCode, member.designation]
+      return [
+        member.fullName,
+        member.departmentCode,
+        member.departmentName,
+        member.designation,
+        member.accountRole
+          ? ACCOUNT_ROLE_META[member.accountRole].label
+          : '',
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
   }, [department, faculty, search]);
 
+  const hasLeadership = useMemo(
+    () => faculty.some((member) => member.accountRole !== null),
+    [faculty],
+  );
+  // Default to the hierarchy when leadership accounts exist, otherwise show
+  // the designation-grouped list.
+  const effectiveView = view ?? (hasLeadership ? 'tree' : 'type');
+
+  const deans = useMemo(
+    () =>
+      filtered.filter((member) => member.accountRole === 'college_dean'),
+    [filtered],
+  );
+  const secretaries = useMemo(
+    () =>
+      filtered.filter((member) => member.accountRole === 'college_secretary'),
+    [filtered],
+  );
+
+  const departmentGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        code: string;
+        name: string;
+        heads: PublicFacultyMember[];
+        members: PublicFacultyMember[];
+      }
+    >();
+
+    for (const member of filtered) {
+      const code = member.departmentCode ?? '—';
+      const group = groups.get(code) ?? {
+        code,
+        name: member.departmentName ?? 'Unassigned department',
+        heads: [],
+        members: [],
+      };
+      if (member.accountRole === 'department_head') {
+        group.heads.push(member);
+      } else if (member.accountRole === null) {
+        group.members.push(member);
+      }
+      groups.set(code, group);
+    }
+
+    return Array.from(groups.values())
+      .filter((group) => group.heads.length + group.members.length > 0)
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [filtered]);
+
+  const typeGroups = useMemo(() => {
+    const groups = new Map<string, PublicFacultyMember[]>();
+    for (const member of filtered) {
+      const key = member.designation?.trim() || 'Unclassified';
+      const members = groups.get(key) ?? [];
+      members.push(member);
+      groups.set(key, members);
+    }
+    return Array.from(groups, ([label, members]) => ({
+      label,
+      members,
+    })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [filtered]);
+
   const hasActiveFilters = Boolean(search.trim()) || Boolean(department);
+  const leadershipCount = deans.length + secretaries.length;
 
   return (
     <div>
@@ -629,6 +996,39 @@ function FacultyPanel({
             </option>
           ))}
         </select>
+
+        <div
+          className="inline-flex items-center rounded-lg border border-outline-variant bg-surface p-1"
+          role="group"
+          aria-label="Faculty directory view"
+        >
+          <button
+            type="button"
+            onClick={() => setView('tree')}
+            aria-pressed={effectiveView === 'tree'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              effectiveView === 'tree'
+                ? 'bg-primary text-on-primary'
+                : 'text-on-surface-variant hover:bg-surface-container'
+            }`}
+          >
+            <Icon name="account_tree" size={15} />
+            Tree
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('type')}
+            aria-pressed={effectiveView === 'type'}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              effectiveView === 'type'
+                ? 'bg-primary text-on-primary'
+                : 'text-on-surface-variant hover:bg-surface-container'
+            }`}
+          >
+            <Icon name="view_list" size={15} />
+            Type
+          </button>
+        </div>
       </div>
 
       <p className="mt-3 text-xs text-on-surface-variant" aria-live="polite">
@@ -659,42 +1059,186 @@ function FacultyPanel({
         }
       />
 
-      {!isLoading && !isError && filtered.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-outline-variant text-sm">
-              <thead className="bg-surface-container-low text-left text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
-                <tr>
-                  <th className="px-4 py-3">Faculty</th>
-                  <th className="px-4 py-3">Department</th>
-                  <th className="px-4 py-3">Designation</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/70">
-                {filtered.map((member) => (
-                  <tr
-                    key={member.facultyId}
-                    className="transition-colors hover:bg-surface-container-low/70"
-                  >
-                    <td className="px-4 py-3 font-semibold text-on-surface">
-                      {member.fullName}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-on-surface">
-                      {member.departmentCode ?? '—'}
-                      {member.departmentName && (
-                        <span className="block text-[11px] text-on-surface-variant/70">
-                          {member.departmentName}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-on-surface">
-                      {member.designation ?? '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {!isLoading && !isError && filtered.length > 0 && effectiveView === 'tree' && (
+        <div className="mt-4 space-y-4">
+          {leadershipCount > 0 && (
+            <div className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+                    College leadership
+                  </p>
+                  <h3 className="mt-0.5 text-base font-semibold text-on-surface">
+                    Office of the Dean
+                  </h3>
+                </div>
+                <span className="rounded-full border border-outline-variant bg-surface-container-low px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  {leadershipCount} account{leadershipCount === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-4 border-l-2 border-primary/20 pl-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    College Dean
+                  </p>
+                  {deans.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {deans.map((member) => (
+                        <FacultyNode key={member.facultyId} member={member} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      No dean account is linked to a faculty record.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    College Secretary
+                  </p>
+                  {secretaries.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {secretaries.map((member) => (
+                        <FacultyNode key={member.facultyId} member={member} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      No college secretary account is linked to a faculty
+                      record.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {departmentGroups.map((group) => (
+            <div
+              key={group.code}
+              className="rounded-2xl border border-outline-variant bg-surface p-4 shadow-sm"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+                    {group.code}
+                  </p>
+                  <h3 className="mt-0.5 text-base font-semibold text-on-surface">
+                    {group.name}
+                  </h3>
+                </div>
+                <span className="rounded-full border border-outline-variant bg-surface-container-low px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  {group.heads.length + group.members.length} faculty
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-4 border-l-2 border-outline-variant pl-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    Department Head
+                  </p>
+                  {group.heads.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {group.heads.map((member) => (
+                        <FacultyNode key={member.facultyId} member={member} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      No department head account is linked.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    Faculty
+                  </p>
+                  {group.members.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {group.members.map((member) => (
+                        <FacultyNode key={member.facultyId} member={member} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      No faculty records under this department.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && effectiveView === 'type' && (
+        <div className="mt-4 space-y-4">
+          {typeGroups.map((group) => (
+            <div
+              key={group.label}
+              className="overflow-hidden rounded-2xl border border-outline-variant bg-surface shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-outline-variant bg-surface-container-low px-4 py-3">
+                <p className="text-sm font-semibold text-on-surface">
+                  {group.label}
+                </p>
+                <span className="rounded-full border border-outline-variant bg-surface px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  {group.members.length}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-outline-variant text-sm">
+                  <thead className="text-left text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    <tr>
+                      <th className="px-4 py-3">Faculty</th>
+                      <th className="px-4 py-3">Department</th>
+                      <th className="px-4 py-3">Account role</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/70">
+                    {group.members.map((member) => (
+                      <tr
+                        key={member.facultyId}
+                        className="transition-colors hover:bg-surface-container-low/70"
+                      >
+                        <td className="px-4 py-3 font-semibold text-on-surface">
+                          <span className="flex flex-wrap items-center gap-2">
+                            {member.fullName}
+                            {member.idpLinked && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                                <Icon name="link" size={11} />
+                                IDP
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-on-surface">
+                          {member.departmentCode ?? '—'}
+                          {member.departmentName && (
+                            <span className="block text-[11px] text-on-surface-variant/70">
+                              {member.departmentName}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-on-surface">
+                          <RoleBadge role={member.accountRole} />
+                          {!member.accountRole && (
+                            <span className="text-xs text-on-surface-variant">
+                              —
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -703,9 +1247,12 @@ function FacultyPanel({
           About the public faculty directory
         </p>
         <p className="mt-1">
-          This view shows active faculty names, departments, and designations.
-          Contact details, employee IDs, API credentials, webhook secrets, and
-          internal integration endpoints are never exposed here.
+          Tree view places faculty with a dean, department head, or college
+          secretary account by role. Everyone else is listed under their
+          department. Type view groups all faculty by designation. Only
+          organizational roles are shown — contact details, employee IDs, API
+          credentials, webhook secrets, and internal integration endpoints are
+          never exposed here.
         </p>
       </div>
     </div>
@@ -1051,7 +1598,7 @@ export default function LandingPage() {
       >
         Skip to public data
       </a>
-      <header className="sticky top-0 z-40 border-b border-outline-variant bg-surface/90 backdrop-blur">
+      <header className="no-print sticky top-0 z-40 border-b border-outline-variant bg-surface/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <Link to="/" className="group flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center overflow-hidden">
@@ -1087,6 +1634,15 @@ export default function LandingPage() {
             </button>
             <button
               type="button"
+              onClick={() => goToTab('planner')}
+              className={`transition hover:text-primary ${
+                tab === 'planner' ? 'text-primary' : 'text-on-surface-variant'
+              }`}
+            >
+              Student planner
+            </button>
+            <button
+              type="button"
               onClick={() => goToTab('faculty')}
               className={`transition hover:text-primary ${
                 tab === 'faculty' ? 'text-primary' : 'text-on-surface-variant'
@@ -1114,7 +1670,7 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary-container text-white">
+      <section className="no-print relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary-container text-white">
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]"
           xmlns="http://www.w3.org/2000/svg"
@@ -1163,8 +1719,8 @@ export default function LandingPage() {
             </h1>
             <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
               Browse officially published schedules, check room and instructor
-              assignments, and look up the college faculty directory by
-              department and designation.
+              assignments, build a personal weekly plan, and look up the
+              college faculty directory by department and designation.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button
@@ -1174,6 +1730,14 @@ export default function LandingPage() {
               >
                 Browse schedules
                 <Icon name="arrow_downward" size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => goToTab('planner')}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+              >
+                <Icon name="calendar_month" size={16} />
+                Plan my schedule
               </button>
               <Link
                 to={dashboardPath}
@@ -1221,11 +1785,13 @@ export default function LandingPage() {
 
       <main
         id="public-content"
-        className="mx-auto w-full max-w-7xl scroll-mt-24 px-4 pb-16 pt-10 sm:px-6 lg:px-8"
+        className="mx-auto w-full max-w-7xl scroll-mt-24 px-4 pb-16 pt-10 sm:px-6 lg:px-8 print:p-0"
       >
-        <IdpAppPromo />
+        <div className="no-print">
+          <IdpAppPromo />
+        </div>
 
-        <section aria-labelledby="portal-highlights" className="mb-12">
+        <section aria-labelledby="portal-highlights" className="no-print mb-12">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
@@ -1244,7 +1810,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <FeatureCard
               icon="schedule"
               eyebrow="Schedules"
@@ -1252,6 +1818,14 @@ export default function LandingPage() {
               body="Filter by term or department, then search by subject, section, instructor, or room."
               actionLabel="Browse schedules"
               onAction={() => goToTab('schedules')}
+            />
+            <FeatureCard
+              icon="calendar_month"
+              eyebrow="Planner"
+              title="Build your week"
+              body="Add published classes by year and section, create personal blocks, and export your plan as PDF or PNG."
+              actionLabel="Open planner"
+              onAction={() => goToTab('planner')}
             />
             <FeatureCard
               icon="groups"
@@ -1277,7 +1851,7 @@ export default function LandingPage() {
           aria-labelledby="public-data-title"
           className="scroll-mt-24"
         >
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div className="no-print mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">
                 Public data
@@ -1289,23 +1863,27 @@ export default function LandingPage() {
                 Browse the college
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-on-surface-variant">
-                Published schedules and faculty records, refreshed
-                automatically.
+                Published schedules, a student planner, and faculty records,
+                refreshed automatically.
               </p>
             </div>
-            {tab === 'schedules' && schedules.data?.generatedAt && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-low px-3 py-1.5 text-[11px] text-on-surface-variant">
-                <Icon name="schedule" size={13} />
-                Updated{' '}
-                {new Date(schedules.data.generatedAt).toLocaleString(undefined, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-              </span>
-            )}
+            {(tab === 'schedules' || tab === 'planner') &&
+              schedules.data?.generatedAt && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-low px-3 py-1.5 text-[11px] text-on-surface-variant">
+                  <Icon name="schedule" size={13} />
+                  Updated{' '}
+                  {new Date(schedules.data.generatedAt).toLocaleString(
+                    undefined,
+                    {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    },
+                  )}
+                </span>
+              )}
           </div>
 
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
+          <div className="no-print flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
             <div
               role="tablist"
               aria-label="Public data views"
@@ -1318,6 +1896,14 @@ export default function LandingPage() {
                 onClick={() => setTab('schedules')}
               >
                 Published schedules
+              </TabButton>
+              <TabButton
+                id="tab-planner"
+                active={tab === 'planner'}
+                icon="calendar_month"
+                onClick={() => setTab('planner')}
+              >
+                Student planner
               </TabButton>
               <TabButton
                 id="tab-faculty"
@@ -1353,6 +1939,16 @@ export default function LandingPage() {
                 onTermChange={(next) => setTermId(next)}
               />
             )}
+            {tab === 'planner' && (
+              <StudentPlannerPanel
+                data={schedules.data}
+                isLoading={schedules.isLoading}
+                isError={schedules.isError}
+                onRetry={() => void schedules.refetch()}
+                selectedTermId={selectedTermId}
+                onTermChange={(next) => setTermId(next)}
+              />
+            )}
             {tab === 'faculty' && (
               <FacultyPanel
                 data={faculty.data}
@@ -1373,7 +1969,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="landing-footer border-t border-white/10">
+      <footer className="no-print landing-footer border-t border-white/10">
         <div className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-10 lg:grid-cols-[1.4fr,1fr,1fr]">
             <div>
@@ -1403,8 +1999,8 @@ export default function LandingPage() {
               </Link>
               <p className="mt-4 max-w-sm text-xs leading-relaxed text-white/65">
                 The public scheduling portal of the WMSU College of Engineering.
-                Browse officially published class schedules and the college
-                faculty directory.
+                Browse officially published class schedules, build a personal
+                weekly plan, and look up the college faculty directory.
               </p>
               <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
                 <span
@@ -1427,6 +2023,15 @@ export default function LandingPage() {
                     className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
                   >
                     Published schedules
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => goToTab('planner')}
+                    className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                  >
+                    Student planner
                   </button>
                 </li>
                 <li>

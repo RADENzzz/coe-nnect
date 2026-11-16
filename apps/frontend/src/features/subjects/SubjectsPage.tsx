@@ -587,7 +587,7 @@ export default function SubjectsPage() {
         setError(
           `${failed} of ${targets.length} subject${
             targets.length === 1 ? '' : 's'
-          } could not be deleted. They may still be referenced by prospectus entries or schedules — deactivate them instead.`,
+          } could not be deleted. They may still have published schedules or restrictions — deactivate them instead.`,
         );
       } else {
         setSuccess(
@@ -1582,9 +1582,10 @@ export default function SubjectsPage() {
           <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
             <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
             <span>
-              Subjects still referenced by prospectus entries or schedules
-              cannot be deleted. Those will be skipped — deactivate them
-              instead. This action cannot be undone.
+              Prospectus mappings and draft, review, and finalized schedule
+              entries are removed with the subject. Subjects with published
+              schedules or restrictions are skipped — deactivate them instead.
+              This action cannot be undone.
             </span>
           </div>
         </div>
@@ -1690,9 +1691,10 @@ export default function SubjectsPage() {
           <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
             <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
             <span>
-              This will remove the subject from all prospectuses and any program
-              mappings. Existing timetables that reference this subject may
-              become invalid. This action cannot be undone.
+              This removes the subject from all prospectuses and deletes its
+              draft, review, and finalized schedule entries. Published schedule
+              entries block deletion — move them back to draft first. This
+              action cannot be undone.
             </span>
           </div>
         </div>
@@ -1744,12 +1746,8 @@ export default function SubjectsPage() {
                   unplottable but its history is preserved.
                 </li>
                 <li>
-                  Remove it from all <strong>prospectus entries</strong> first,
-                  then try again.
-                </li>
-                <li>
-                  Delete or reassign the <strong>schedule entries</strong> that
-                  use it.
+                  Move the <strong>published schedule entries</strong> back to
+                  draft in Scheduling, then delete the subject.
                 </li>
                 <li>
                   If a <strong>restriction</strong> references it, remove the

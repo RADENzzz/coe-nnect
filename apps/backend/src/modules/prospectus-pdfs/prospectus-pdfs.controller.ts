@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -73,9 +74,23 @@ export class ProspectusPdfsController {
     @UploadedFile() file: UploadedPdfFile,
     @Body('departmentId') departmentId: string,
     @Body('notes') notes: string | undefined,
+    @Body('pageCount') pageCount: string | undefined,
     @Req() req: RequestWithProfile,
   ) {
-    return this.service.upload(file, req.profile, departmentId, notes);
+    let pageCountHint: number | undefined;
+    if (pageCount !== undefined && pageCount !== '') {
+      pageCountHint = Number(pageCount);
+      if (!Number.isInteger(pageCountHint) || pageCountHint < 1) {
+        throw new BadRequestException('pageCount must be a positive integer');
+      }
+    }
+    return this.service.upload(
+      file,
+      req.profile,
+      departmentId,
+      notes,
+      pageCountHint,
+    );
   }
 
   @Get()

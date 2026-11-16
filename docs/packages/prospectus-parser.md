@@ -34,6 +34,8 @@ Response:
 }
 ```
 
+The backend calls `/info` during upload. If the parser is unreachable, it uses the page count that the browser read with pdf.js; if neither source is available the upload fails instead of storing a guessed count. The editor always navigates with pdf.js's `numPages` and repairs stale stored metadata when the two disagree.
+
 ### `/detect`
 
 Request:
@@ -51,7 +53,9 @@ Request:
 - `max_tables` defaults to **30** and must be between **1** and **100**.
 - Out-of-range page indices are ignored.
 
-Each proposal contains the page index, an optional inferred year level and semester, a confidence score from 0 to 1, a label, header text, detection signals, the table rectangle in PDF points, six column slices, and one row band per text line. Proposals are conservative: a table is only returned when a header with known column labels is followed by course-code-like rows. Anything ambiguous is left for the editor to draw manually. Detection never mutates stored regions; the backend returns proposals for the user to review.
+Each proposal contains the page index, an optional inferred year level and semester, a confidence score from 0 to 1, a label, header text, detection signals, the table rectangle in PDF points, column slices built from the labels present, and one row band per text line. Proposals are conservative: a table is only returned when a header with known column labels is followed by course-code-like rows. Anything ambiguous is left for the editor to draw manually. Detection never mutates stored regions; the backend returns proposals for the user to review.
+
+Side-by-side **First Semester** and **Second Semester** tables are detected as separate proposals. The detector finds the gutter between the repeated headers, splits the page into two panels, and runs year/semester inference independently on each one. A centred heading shared by both panels (such as `FIRST YEAR`) is kept whole in both; when both semester labels sit on the same line, the label nearest the panel's horizontal centre wins. Year and semester are filled from the page as a whole only when the page names exactly one value; otherwise they stay `null` for the user to confirm.
 
 ### `/extract`
 

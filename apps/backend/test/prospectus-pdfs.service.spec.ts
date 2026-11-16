@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ProspectusPdfsService,
@@ -988,6 +989,62 @@ describe('ProspectusPdfsService uploads', () => {
       uploadedBy: 'user-dh',
     });
     expect(pdfRepo.rows).toHaveLength(1);
+  });
+
+  it('uses the browser page-count hint when parser page info fails', async () => {
+    const { service, storage, parser, pdfRepo } = createService();
+    parser.getPageInfo.mockRejectedValueOnce(new Error('parser offline'));
+    pdfRepo.create.mockImplementation((input: any) => ({
+      ...input,
+      pdfId: 'pdf-1',
+    }));
+
+    const saved = await service.upload(
+      pdfFile,
+      { userId: 'user-dh', role: 'department_head', deptId: '1' },
+      '1',
+      undefined,
+      3,
+    );
+
+    expect(storage.uploadPdf).toHaveBeenCalled();
+    expect(pdfRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageCount: 3,
+        pageWidthPt: '612',
+        pageHeightPt: '792',
+      }),
+    );
+    expect(saved.pageCount).toBe(3);
+  });
+
+  it('refuses to store a guessed page count when no hint is available', async () => {
+    const { service, storage, parser, pdfRepo } = createService();
+    parser.getPageInfo.mockRejectedValueOnce(new Error('parser offline'));
+
+    await expect(
+      service.upload(
+        pdfFile,
+        { userId: 'user-dh', role: 'department_head', deptId: '1' },
+        '1',
+      ),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(storage.uploadPdf).not.toHaveBeenCalled();
+    expect(pdfRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('repairs a stored page count reported by the editor', async () => {
+    const { service, pdfRepo } = createService();
+    seedPdf(pdfRepo, { pageCount: 1 });
+
+    const updated = await service.update(
+      'pdf-1',
+      { page_count: 3 },
+      ADMIN_USER,
+    );
+
+    expect(updated.pageCount).toBe(3);
   });
 
   it('rejects non-PDF files and cross-department uploads before storage', async () => {

@@ -215,11 +215,11 @@ The `PublicModule` under `src/modules/public` backs the public landing page. The
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/public/overview` | Aggregate counts: published entries/terms, active departments/faculty/subjects/rooms, IDP-linked faculty. |
-| `GET` | `/api/v1/public/schedules?termId=` | Published schedule entries, optionally filtered by term. |
-| `GET` | `/api/v1/public/faculty?departmentCode=&idpOnly=` | Minimal faculty directory (name, department, designation, IDP-linked status). |
+| `GET` | `/api/v1/public/schedules?termId=` | Published schedule entries, optionally filtered by term, including the section's year level and the subject's total units. |
+| `GET` | `/api/v1/public/faculty?departmentCode=&idpOnly=` | Minimal faculty directory (name, department, designation, IDP-linked status, and leadership account role). |
 | `GET` | `/api/v1/public/integration` | Public IDP integration status and milestones. |
 
-The queries exclude drafts, flagged rows, rows with a pending cross-department faculty request, inactive departments, and rows missing a day or start/end time. The faculty payload never includes email, contact number, employee ID, WMSU ID, credentials, webhook secrets, or internal integration URLs. Responses are cacheable for 30–60 seconds (`max-age` 60 for the main feeds, 30 for integration status) and remain subject to the global rate limiter.
+The queries exclude drafts, flagged rows, rows with a pending cross-department faculty request, inactive departments, and rows missing a day or start/end time. The faculty payload never includes email, contact number, employee ID, WMSU ID, credentials, webhook secrets, or internal integration URLs. It exposes only the organizational leadership role linked to an active account (`college_dean`, `department_head`, or `college_secretary`); `administrator` and `viewer` accounts are never surfaced. Responses are cacheable for 30–60 seconds (`max-age` 60 for the main feeds, 30 for integration status) and remain subject to the global rate limiter.
 
 ## Chat and presence
 
