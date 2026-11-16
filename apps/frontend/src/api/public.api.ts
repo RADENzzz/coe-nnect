@@ -31,7 +31,9 @@ export interface PublicScheduleEntry {
   departmentCode: string | null;
   subjectCode: string | null;
   subjectTitle: string | null;
+  units: number | null;
   sectionCode: string | null;
+  yearLevel: number | null;
   facultyName: string | null;
   externalFacultyName: string | null;
   roomNumber: string | null;

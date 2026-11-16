@@ -24,10 +24,11 @@ function schedule(overrides: Record<string, any> = {}) {
       subjectId: '10',
       subjectCode: 'CPE 111',
       title: 'Introduction to Computing',
+      totalUnits: '3',
     },
     faculty: { facultyId: '1', firstName: 'Juan', lastName: 'Dela Cruz' },
     room: { roomId: '3', roomNumber: '101', building: 'Engineering Bldg.' },
-    sectionRef: { sectionId: '2', sectionCode: 'A' },
+    sectionRef: { sectionId: '2', sectionCode: 'A', yearLevel: 1 },
     ...overrides,
   };
 }
@@ -175,7 +176,9 @@ describe('PublicService', () => {
     expect(result.entries[0]).toMatchObject({
       scheduleId: '2',
       subjectCode: 'CPE 111',
+      units: 3,
       sectionCode: 'A',
+      yearLevel: 1,
       facultyName: null,
       externalFacultyName: 'Prof. Guest',
       externalRoomName: 'Annex Room',

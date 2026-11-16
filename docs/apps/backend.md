@@ -215,7 +215,7 @@ The `PublicModule` under `src/modules/public` backs the public landing page. The
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/public/overview` | Aggregate counts: published entries/terms, active departments/faculty/subjects/rooms, IDP-linked faculty. |
-| `GET` | `/api/v1/public/schedules?termId=` | Published schedule entries, optionally filtered by term. |
+| `GET` | `/api/v1/public/schedules?termId=` | Published schedule entries, optionally filtered by term, including the section's year level and the subject's total units. |
 | `GET` | `/api/v1/public/faculty?departmentCode=&idpOnly=` | Minimal faculty directory (name, department, designation, IDP-linked status, and leadership account role). |
 | `GET` | `/api/v1/public/integration` | Public IDP integration status and milestones. |
 
