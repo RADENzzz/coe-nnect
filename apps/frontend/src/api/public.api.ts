@@ -50,6 +50,11 @@ export interface PublicSchedules {
   generatedAt: string;
 }
 
+export type PublicFacultyAccountRole =
+  | 'college_dean'
+  | 'department_head'
+  | 'college_secretary';
+
 export interface PublicFacultyMember {
   facultyId: string;
   fullName: string;
@@ -57,6 +62,7 @@ export interface PublicFacultyMember {
   departmentName: string | null;
   designation: string | null;
   idpLinked: boolean;
+  accountRole: PublicFacultyAccountRole | null;
 }
 
 export interface PublicFacultyDepartment {

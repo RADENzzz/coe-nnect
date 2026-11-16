@@ -145,7 +145,7 @@ pnpm --filter @coe-nnect/frontend dev
 
 Vite normally serves the application at `http://localhost:5173` and proxies `/api` and `/socket.io` to `http://localhost:3000`. The backend must be running for authenticated screens. The root `pnpm dev` command starts both.
 
-The public landing page reads only from `/api/v1/public/*`; drafts, flagged rows, pending faculty requests, and all contact or identifier fields stay internal.
+The public landing page reads only from `/api/v1/public/*`; drafts, flagged rows, pending faculty requests, and all contact or identifier fields stay internal. The schedule view is department-first — there is no combined all-department grid. After a department is chosen, the faculty and room filters list only people and spaces used by that department's published entries, and the weekly grid has a print action with a landscape print layout that preserves the lecture/laboratory color coding and day tints. The faculty directory defaults to a role hierarchy tree when dean, department head, or college secretary accounts exist, and can switch to a designation-grouped type view.
 
 ## Build and checks
 

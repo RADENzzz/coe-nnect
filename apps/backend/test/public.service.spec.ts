@@ -60,6 +60,7 @@ function buildService(rows: {
   rooms?: any[];
   terms?: any[];
   designations?: any[];
+  users?: any[];
 } = {}) {
   const service = new PublicService(
     createFakeRepository(rows.schedules ?? [schedule()]) as any,
@@ -90,6 +91,7 @@ function buildService(rows: {
         { designationId: '2', designationName: 'Instructor I' },
       ],
     ) as any,
+    createFakeRepository(rows.users ?? []) as any,
     {
       get: (key: string) =>
         key === 'IDP_ENABLED'
@@ -216,12 +218,45 @@ describe('PublicService', () => {
       departmentName: 'Computer Engineering',
       designation: 'Instructor I',
       idpLinked: true,
+      accountRole: null,
     });
     expect(result.faculty[0]).not.toHaveProperty('email');
     expect(result.faculty[0]).not.toHaveProperty('contact');
     expect(result.faculty[0]).not.toHaveProperty('employeeId');
     expect(result.faculty[0]).not.toHaveProperty('wmsuId');
     expect(result.faculty[1].idpLinked).toBe(false);
+  });
+
+  it('exposes only dean, department head, and secretary account roles', async () => {
+    const service = buildService({
+      faculty: [
+        faculty({ facultyId: '1', firstName: 'Ana', lastName: 'Dean' }),
+        faculty({ facultyId: '2', firstName: 'Ben', lastName: 'Head' }),
+        faculty({ facultyId: '3', firstName: 'Cara', lastName: 'Secretary' }),
+        faculty({ facultyId: '4', firstName: 'Dan', lastName: 'Teacher' }),
+      ],
+      users: [
+        { userId: 'u1', facultyId: '1', role: 'college_dean', isActive: true },
+        { userId: 'u2', facultyId: '2', role: 'department_head', isActive: true },
+        { userId: 'u3', facultyId: '3', role: 'college_secretary', isActive: true },
+        // Administrator accounts are not part of the public hierarchy.
+        { userId: 'u4', facultyId: '4', role: 'administrator', isActive: true },
+        // Inactive accounts are ignored too.
+        { userId: 'u5', facultyId: '4', role: 'department_head', isActive: false },
+      ],
+    });
+
+    const result = await service.getFaculty();
+    const roleByName = Object.fromEntries(
+      result.faculty.map((member) => [member.fullName, member.accountRole]),
+    );
+
+    expect(roleByName).toEqual({
+      'Ana Dean': 'college_dean',
+      'Ben Head': 'department_head',
+      'Cara Secretary': 'college_secretary',
+      'Dan Teacher': null,
+    });
   });
 
   it('aggregates public overview counts from visible rows only', async () => {

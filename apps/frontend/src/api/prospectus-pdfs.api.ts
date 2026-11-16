@@ -19,11 +19,20 @@ export async function uploadProspectusPdf(params: {
   file: File;
   departmentId: string;
   notes?: string;
+  /**
+   * Page count read by the browser from the actual PDF bytes. The backend
+   * prefers the parser's page info, but uses this when the parser is
+   * temporarily unreachable so the record never stores a guessed count.
+   */
+  pageCount?: number;
 }): Promise<ProspectusPdf> {
   const formData = new FormData();
   formData.append('file', params.file);
   formData.append('departmentId', params.departmentId);
   if (params.notes) formData.append('notes', params.notes);
+  if (params.pageCount && params.pageCount > 0) {
+    formData.append('pageCount', String(params.pageCount));
+  }
 
   const { data } = await api.post('/v1/prospectus-pdfs', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -62,6 +71,8 @@ export async function updateProspectusPdf(
     original_filename?: string;
     notes?: string;
     department_id?: number;
+    /** Corrects metadata written when the parser was unavailable at upload. */
+    page_count?: number;
   },
 ): Promise<ProspectusPdf> {
   const { data } = await api.patch(`/v1/prospectus-pdfs/${id}`, input);

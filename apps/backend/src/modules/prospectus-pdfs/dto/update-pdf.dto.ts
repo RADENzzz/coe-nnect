@@ -15,4 +15,13 @@ export class UpdatePdfDto {
   @IsInt()
   @Min(1)
   department_id?: number;
+
+  /**
+   * Repair metadata written when the parser was unreachable at upload time.
+   * The editor reads the true count from the PDF itself and reports it here.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page_count?: number;
 }

@@ -222,6 +222,116 @@ describe('SubjectsService elective units', () => {
   });
 });
 
+describe('SubjectsService.remove', () => {
+  function createService(
+    options: {
+      prospectusRows?: Record<string, any>[];
+      scheduleRows?: Record<string, any>[];
+      restrictionCount?: number;
+    } = {},
+  ) {
+    const subjectRepo = createFakeRepository([subjectRow()], {
+      idKey: 'subjectId',
+    });
+    const prospectusRepo = createFakeRepository(
+      options.prospectusRows ?? [],
+      { idKey: 'prospectusId' },
+    );
+    const scheduleRepo = createFakeRepository(options.scheduleRows ?? [], {
+      idKey: 'scheduleId',
+    });
+    const restrictions = createFakeRepository([]);
+    restrictions.createQueryBuilder = jest.fn(() => {
+      const builder: any = {
+        where: jest.fn(() => builder),
+        getCount: jest.fn(async () => options.restrictionCount ?? 0),
+      };
+      return builder;
+    });
+    const departments = {
+      assertDepartmentActive: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new SubjectsService(
+      subjectRepo as any,
+      restrictions as any,
+      scheduleRepo as any,
+      prospectusRepo as any,
+      departments as any,
+    );
+    return { service, subjectRepo, prospectusRepo, scheduleRepo };
+  }
+
+  it('deletes a subject with prospectus mappings', async () => {
+    const { service, subjectRepo, prospectusRepo } = createService({
+      prospectusRows: [prospectusRow()],
+    });
+
+    // The database FK is ON DELETE CASCADE; mirror that here so the test
+    // asserts the end state the service relies on.
+    subjectRepo.remove.mockImplementation(async (entity: any) => {
+      await prospectusRepo.delete({ subjectId: entity.subjectId });
+      const index = subjectRepo.rows.indexOf(entity);
+      if (index >= 0) subjectRepo.rows.splice(index, 1);
+      return entity;
+    });
+
+    await expect(service.remove('1', admin)).resolves.toEqual({
+      success: true,
+    });
+    expect(subjectRepo.rows).toHaveLength(0);
+    expect(prospectusRepo.rows).toHaveLength(0);
+  });
+
+  it('removes unpublished schedule rows with the subject', async () => {
+    const { service, subjectRepo, scheduleRepo } = createService({
+      scheduleRows: [
+        { scheduleId: 's1', subjectId: '1', status: 'draft' },
+        { scheduleId: 's2', subjectId: '1', status: 'review' },
+        { scheduleId: 's3', subjectId: '1', status: 'finalized' },
+      ],
+    });
+
+    await expect(service.remove('1', admin)).resolves.toEqual({
+      success: true,
+    });
+    expect(subjectRepo.rows).toHaveLength(0);
+    expect(scheduleRepo.rows).toHaveLength(0);
+  });
+
+  it('keeps schedule rows belonging to other subjects', async () => {
+    const { service, scheduleRepo } = createService({
+      scheduleRows: [
+        { scheduleId: 's1', subjectId: '1', status: 'draft' },
+        { scheduleId: 's2', subjectId: '2', status: 'published' },
+        { scheduleId: 's3', subjectId: '2', status: 'draft' },
+      ],
+    });
+
+    await expect(service.remove('1', admin)).resolves.toEqual({
+      success: true,
+    });
+    expect(scheduleRepo.rows.map((row) => row.scheduleId)).toEqual([
+      's2',
+      's3',
+    ]);
+  });
+
+  it('blocks a subject with published schedule history and keeps every row', async () => {
+    const { service, subjectRepo, scheduleRepo } = createService({
+      scheduleRows: [
+        { scheduleId: 's1', subjectId: '1', status: 'published' },
+        { scheduleId: 's2', subjectId: '1', status: 'draft' },
+      ],
+    });
+
+    await expect(service.remove('1', admin)).rejects.toThrow(
+      /published schedule entry/,
+    );
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(scheduleRepo.rows).toHaveLength(2);
+  });
+});
+
 describe('SubjectsService elective metadata', () => {
   function createService(initialRows: Record<string, any>[] = []) {
     const subjectRepo = createFakeRepository(initialRows, {
