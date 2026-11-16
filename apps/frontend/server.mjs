@@ -31,6 +31,10 @@ const distDir = resolve(here, "dist");
 const indexPath = join(distDir, "index.html");
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+const deployCommit =
+  process.env.RAILWAY_GIT_COMMIT_SHA?.trim() ||
+  process.env.GIT_COMMIT_SHA?.trim() ||
+  null;
 const backendHost = process.env.BACKEND_HOST?.trim() || "localhost";
 const backendPort = Number.parseInt(process.env.BACKEND_PORT ?? "3000", 10);
 const backendProtocol =
@@ -144,6 +148,7 @@ function securityHeaders(nonce) {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    ...(deployCommit ? { "X-CoE-NNECT-Commit": deployCommit } : {}),
   };
 }
 

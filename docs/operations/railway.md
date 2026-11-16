@@ -57,6 +57,34 @@ or variables additionally requires `--confirm-destructive`.
 If Railway does not start a deployment for a newly created service, open the
 service and click **Deploy** (or push another commit to `main`).
 
+### Forcing a deployment
+
+A push to `main` normally creates a Railway deployment automatically. If a
+merge does not deploy, check the service's **Deployments** tab first:
+
+- **Redeploy** rebuilds the selected deployment with the same commit. It does
+  not pick up newer commits.
+- **Deploy Latest Commit** (Command Palette: `Ctrl/Cmd + K`) deploys the newest
+  commit from the default branch.
+- With the CLI, `railway redeploy --from-source --service <service>` pulls the
+  latest commit, while `railway redeploy --commit <sha>` deploys one specific
+  commit.
+
+A normal **Redeploy** after a merge can therefore leave production on the old
+commit. Use **Deploy Latest Commit** or `--from-source` when the goal is to ship
+the merge.
+
+### Verifying the deployed commit
+
+Both application services expose the commit that built them:
+
+- `GET /api/v1/health` includes `commit` from
+  `RAILWAY_GIT_COMMIT_SHA` (or `GIT_COMMIT_SHA`).
+- The frontend's responses include the `X-CoE-NNECT-Commit` header.
+
+Compare those values with `git rev-parse origin/main`. The frontend's
+`index.html` asset hash also changes when the bundle changes.
+
 If Railway reports that an existing service is managed by `railway.json`,
 delete that service (or disconnect its config-as-code setting) before applying.
 A service can only be managed by one system at a time. Services created by this
