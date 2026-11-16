@@ -46,7 +46,9 @@ export interface PublicScheduleEntry {
   departmentCode: string | null;
   subjectCode: string | null;
   subjectTitle: string | null;
+  units: number | null;
   sectionCode: string | null;
+  yearLevel: number | null;
   facultyName: string | null;
   externalFacultyName: string | null;
   roomNumber: string | null;
@@ -482,7 +484,8 @@ export class PublicService {
     };
   }
 
-  private findPublishedSchedules(): Promise<Schedule[]> {    return this.schedules.find({
+  private findPublishedSchedules(): Promise<Schedule[]> {
+    return this.schedules.find({
       where: {
         status: 'published',
         flagged: false,
@@ -516,13 +519,17 @@ export class PublicService {
     const facultyName = row.faculty
       ? `${row.faculty.firstName} ${row.faculty.lastName}`.trim()
       : null;
+    const rawUnits = row.subject?.totalUnits;
+    const units = rawUnits == null ? null : Number(rawUnits);
 
     return {
       scheduleId: String(row.scheduleId),
       departmentCode: department?.deptCode ?? null,
       subjectCode: row.subject?.subjectCode ?? null,
       subjectTitle: row.subject?.title ?? null,
+      units: units != null && Number.isFinite(units) ? units : null,
       sectionCode: row.section ?? row.sectionRef?.sectionCode ?? null,
+      yearLevel: row.sectionRef?.yearLevel ?? null,
       facultyName,
       externalFacultyName: row.externalFacultyName ?? null,
       roomNumber: row.room?.roomNumber ?? null,

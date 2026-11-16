@@ -22,11 +22,17 @@ import {
   type PublicFacultyAccountRole,
   type PublicFacultyMember,
   type PublicIntegrationStatus,
-  type PublicScheduleEntry,
   type PublicSchedules,
 } from '../../api/public.api';
+import {
+  scheduleFaculty,
+  scheduleRoom,
+  scheduleRoomKey,
+  WEEK_DAYS,
+} from './schedule-utils';
+import StudentPlannerPanel from './StudentPlannerPanel';
 
-type LandingTab = 'schedules' | 'faculty' | 'integration';
+type LandingTab = 'schedules' | 'planner' | 'faculty' | 'integration';
 
 /**
  * The IDP app promo is deployment-configurable. Only http(s) links are
@@ -330,15 +336,6 @@ function PanelState({
   return null;
 }
 
-const WEEK_DAYS = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-];
-
 const ACCOUNT_ROLE_META: Record<
   PublicFacultyAccountRole,
   { label: string; icon: string; tone: string }
@@ -359,19 +356,6 @@ const ACCOUNT_ROLE_META: Record<
     tone: 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10',
   },
 };
-
-function scheduleFaculty(entry: PublicScheduleEntry): string {
-  return entry.facultyName ?? entry.externalFacultyName ?? 'Unassigned';
-}
-
-function scheduleRoom(entry: PublicScheduleEntry): string {
-  return entry.roomNumber ?? entry.externalRoomName ?? '—';
-}
-
-function scheduleRoomKey(entry: PublicScheduleEntry): string {
-  const room = entry.roomNumber ?? entry.externalRoomName ?? '';
-  return `${room}||${entry.building ?? ''}`;
-}
 
 function scheduleCardTone(loadType: string | null): string {
   if (loadType === 'laboratory') {
@@ -488,7 +472,7 @@ function SchedulesPanel({
 
   const dayColumns = useMemo(() => {
     const present = new Set(departmentEntries.map((entry) => entry.dayOfWeek));
-    const days = WEEK_DAYS.filter((day) => present.has(day));
+    const days: string[] = WEEK_DAYS.filter((day) => present.has(day));
     if (present.has('Sunday')) days.push('Sunday');
     return days.length > 0 ? days : WEEK_DAYS.slice(0, 5);
   }, [departmentEntries]);
@@ -1650,6 +1634,15 @@ export default function LandingPage() {
             </button>
             <button
               type="button"
+              onClick={() => goToTab('planner')}
+              className={`transition hover:text-primary ${
+                tab === 'planner' ? 'text-primary' : 'text-on-surface-variant'
+              }`}
+            >
+              Student planner
+            </button>
+            <button
+              type="button"
               onClick={() => goToTab('faculty')}
               className={`transition hover:text-primary ${
                 tab === 'faculty' ? 'text-primary' : 'text-on-surface-variant'
@@ -1726,8 +1719,8 @@ export default function LandingPage() {
             </h1>
             <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/80 sm:text-base">
               Browse officially published schedules, check room and instructor
-              assignments, and look up the college faculty directory by
-              department and designation.
+              assignments, build a personal weekly plan, and look up the
+              college faculty directory by department and designation.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button
@@ -1737,6 +1730,14 @@ export default function LandingPage() {
               >
                 Browse schedules
                 <Icon name="arrow_downward" size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => goToTab('planner')}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+              >
+                <Icon name="calendar_month" size={16} />
+                Plan my schedule
               </button>
               <Link
                 to={dashboardPath}
@@ -1809,7 +1810,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <FeatureCard
               icon="schedule"
               eyebrow="Schedules"
@@ -1817,6 +1818,14 @@ export default function LandingPage() {
               body="Filter by term or department, then search by subject, section, instructor, or room."
               actionLabel="Browse schedules"
               onAction={() => goToTab('schedules')}
+            />
+            <FeatureCard
+              icon="calendar_month"
+              eyebrow="Planner"
+              title="Build your week"
+              body="Add published classes by year and section, create personal blocks, and export your plan as PDF or PNG."
+              actionLabel="Open planner"
+              onAction={() => goToTab('planner')}
             />
             <FeatureCard
               icon="groups"
@@ -1854,20 +1863,24 @@ export default function LandingPage() {
                 Browse the college
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-on-surface-variant">
-                Published schedules and faculty records, refreshed
-                automatically.
+                Published schedules, a student planner, and faculty records,
+                refreshed automatically.
               </p>
             </div>
-            {tab === 'schedules' && schedules.data?.generatedAt && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-low px-3 py-1.5 text-[11px] text-on-surface-variant">
-                <Icon name="schedule" size={13} />
-                Updated{' '}
-                {new Date(schedules.data.generatedAt).toLocaleString(undefined, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-              </span>
-            )}
+            {(tab === 'schedules' || tab === 'planner') &&
+              schedules.data?.generatedAt && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-container-low px-3 py-1.5 text-[11px] text-on-surface-variant">
+                  <Icon name="schedule" size={13} />
+                  Updated{' '}
+                  {new Date(schedules.data.generatedAt).toLocaleString(
+                    undefined,
+                    {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    },
+                  )}
+                </span>
+              )}
           </div>
 
           <div className="no-print flex flex-wrap items-end justify-between gap-3 border-b border-outline-variant">
@@ -1883,6 +1896,14 @@ export default function LandingPage() {
                 onClick={() => setTab('schedules')}
               >
                 Published schedules
+              </TabButton>
+              <TabButton
+                id="tab-planner"
+                active={tab === 'planner'}
+                icon="calendar_month"
+                onClick={() => setTab('planner')}
+              >
+                Student planner
               </TabButton>
               <TabButton
                 id="tab-faculty"
@@ -1910,6 +1931,16 @@ export default function LandingPage() {
           >
             {tab === 'schedules' && (
               <SchedulesPanel
+                data={schedules.data}
+                isLoading={schedules.isLoading}
+                isError={schedules.isError}
+                onRetry={() => void schedules.refetch()}
+                selectedTermId={selectedTermId}
+                onTermChange={(next) => setTermId(next)}
+              />
+            )}
+            {tab === 'planner' && (
+              <StudentPlannerPanel
                 data={schedules.data}
                 isLoading={schedules.isLoading}
                 isError={schedules.isError}
@@ -1968,8 +1999,8 @@ export default function LandingPage() {
               </Link>
               <p className="mt-4 max-w-sm text-xs leading-relaxed text-white/65">
                 The public scheduling portal of the WMSU College of Engineering.
-                Browse officially published class schedules and the college
-                faculty directory.
+                Browse officially published class schedules, build a personal
+                weekly plan, and look up the college faculty directory.
               </p>
               <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
                 <span
@@ -1992,6 +2023,15 @@ export default function LandingPage() {
                     className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
                   >
                     Published schedules
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => goToTab('planner')}
+                    className="text-left text-white/70 transition-colors hover:text-[#facc15] dark:hover:text-[rgb(var(--accent-tint))]"
+                  >
+                    Student planner
                   </button>
                 </li>
                 <li>
