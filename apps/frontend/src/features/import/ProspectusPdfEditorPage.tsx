@@ -7,6 +7,7 @@ import {
   fetchProspectusPdf,
   fetchSignedUrl,
   createProspectusPdfTable,
+  updateProspectusPdf,
   updateProspectusPdfTable,
   deleteProspectusPdfTable,
 } from '@/api/prospectus-pdfs.api';
@@ -102,6 +103,10 @@ export default function ProspectusPdfEditorPage() {
   });
 
   const { pdf } = usePdfDocument(signed?.signedUrl ?? null);
+  // The stored page count is metadata and may be stale (for example when the
+  // parser was unreachable during upload). pdf.js reads the real count from
+  // the PDF bytes, so navigation always uses that once the document loads.
+  const totalPages = pdf?.numPages ?? pdfRecord?.pageCount ?? 1;
   const { data: textLayer } = usePdfTextLayer(pdf, pageIndex);
   const { data: programs = [] } = useQuery({
     queryKey: ['programs'],
@@ -140,6 +145,25 @@ export default function ProspectusPdfEditorPage() {
   useEffect(() => {
     tablesRef.current = tables;
   }, [tables]);
+
+  // Repair metadata written by an upload that could not reach the parser.
+  // Only runs when the real document disagrees with the stored count, and at
+  // most once per PDF, so a failed repair cannot loop.
+  const repairedPageCountRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pdf || !pdfRecord || pdf.numPages === pdfRecord.pageCount) return;
+    if (repairedPageCountRef.current === pdfRecord.pdfId) return;
+    repairedPageCountRef.current = pdfRecord.pdfId;
+
+    updateProspectusPdf(pdfRecord.pdfId, { page_count: pdf.numPages })
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
+        qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
+      })
+      .catch((err: unknown) => {
+        console.warn('Could not repair the stored PDF page count', err);
+      });
+  }, [id, pdf, pdfRecord, qc]);
 
   useEffect(() => {
     setTables(
@@ -414,7 +438,7 @@ export default function ProspectusPdfEditorPage() {
     if (textLayer && hasAutoFitted) {
       requestAnimationFrame(() => fitPageToContainer());
     }
-  }, [pageIndex]);
+  }, [pageIndex, textLayer, hasAutoFitted, fitPageToContainer]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -435,9 +459,7 @@ export default function ProspectusPdfEditorPage() {
           break;
         case 'ArrowRight':
           e.preventDefault();
-          setPageIndex((p) =>
-            Math.min((pdfRecord?.pageCount ?? 1) - 1, p + 1),
-          );
+          setPageIndex((p) => Math.min(totalPages - 1, p + 1));
           break;
         case '+':
         case '=':
@@ -475,7 +497,7 @@ export default function ProspectusPdfEditorPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [pdfRecord?.pageCount, drawingMode.kind, fitPageToContainer, setDrawingMode]);
+  }, [totalPages, drawingMode.kind, fitPageToContainer, setDrawingMode]);
 
   // ── Ctrl + wheel zoom ──
   useEffect(() => {
@@ -1114,7 +1136,6 @@ export default function ProspectusPdfEditorPage() {
     );
   }
 
-  const totalPages = pdfRecord.pageCount;
   const cursorClass =
     drawingMode.kind === 'drawing-region' || drawingMode.kind === 'focusing'
       ? 'cursor-crosshair'
@@ -1138,9 +1159,8 @@ export default function ProspectusPdfEditorPage() {
             </h1>
           </div>
           <p className="text-on-surface-variant text-xs mt-0.5">
-            {pdfRecord.pageCount} page
-            {pdfRecord.pageCount === 1 ? '' : 's'} ·{' '}
-            {tables.length} of {MAX_TABLES} tables mapped
+            {totalPages} page{totalPages === 1 ? '' : 's'} · {tables.length} of{' '}
+            {MAX_TABLES} tables mapped
           </p>
         </div>
 

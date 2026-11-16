@@ -29,8 +29,12 @@ export function createFakeRepository<T extends Row = Row>(
         switch ((expected as any).type) {
           case 'isNull':
             return row[key] == null;
-          case 'not':
-            return !matchesWhere(row, { [key]: (expected as any).child });
+          case 'not': {
+            const child = (expected as any).child;
+            return child
+              ? !matchesWhere(row, { [key]: child })
+              : !matchesWhere(row, { [key]: (expected as any).value });
+          }
           case 'raw': {
             const sql = String(
               (expected as any).getSql?.(key) ?? '',

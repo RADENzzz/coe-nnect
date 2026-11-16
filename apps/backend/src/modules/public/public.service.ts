@@ -10,6 +10,7 @@ import { Schedule } from '../scheduling/entities/schedule.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { Designation } from '../system-config/entities/designation.entity';
 import { Term } from '../terms/entities/term.entity';
+import { User } from '../users/entities/user.entity';
 
 const DAY_ORDER: Record<string, number> = {
   Monday: 1,
@@ -71,7 +72,18 @@ export interface PublicFacultyMember {
   departmentName: string | null;
   designation: string | null;
   idpLinked: boolean;
+  /**
+   * Leadership account linked to this faculty row, if any. Only the three
+   * organizational roles are exposed; administrator/viewer accounts are not
+   * part of the public hierarchy.
+   */
+  accountRole: PublicFacultyAccountRole | null;
 }
+
+export type PublicFacultyAccountRole =
+  | 'college_dean'
+  | 'department_head'
+  | 'college_secretary';
 
 export interface PublicFacultyDepartment {
   departmentCode: string;
@@ -201,6 +213,8 @@ export class PublicService {
     private readonly terms: Repository<Term>,
     @InjectRepository(Designation)
     private readonly designations: Repository<Designation>,
+    @InjectRepository(User)
+    private readonly users: Repository<User>,
     private readonly config: ConfigService,
   ) {}
 
@@ -301,13 +315,14 @@ export class PublicService {
     departmentCode?: string;
     idpOnly?: boolean;
   } = {}): Promise<PublicFaculty> {
-    const [faculty, departments, designations] = await Promise.all([
+    const [faculty, departments, designations, users] = await Promise.all([
       this.faculty.find({
         where: { isActive: true },
         order: { lastName: 'ASC', firstName: 'ASC' },
       }),
       this.departments.find(),
       this.designations.find(),
+      this.users.find({ where: { isActive: true } }),
     ]);
 
     const activeDeptMap = new Map(
@@ -321,6 +336,7 @@ export class PublicService {
         designation.designationName,
       ]),
     );
+    const accountRoleMap = this.buildAccountRoleMap(users);
 
     const all = faculty
       .filter((row) => row.deptId != null && activeDeptMap.has(String(row.deptId)))
@@ -335,6 +351,7 @@ export class PublicService {
             ? (designationMap.get(String(row.designationId)) ?? null)
             : null,
           idpLinked: this.isIdpLinked(row),
+          accountRole: accountRoleMap.get(String(row.facultyId)) ?? null,
         } satisfies PublicFacultyMember;
       });
 
@@ -530,6 +547,45 @@ export class PublicService {
 
     return String(a.subject?.subjectCode ?? '').localeCompare(
       String(b.subject?.subjectCode ?? ''),
+    );
+  }
+
+  /**
+   * Map each faculty row to the strongest leadership account linked to it.
+   * A faculty member should only ever hold one role, but choosing by
+   * precedence keeps the public hierarchy stable if a stale duplicate exists.
+   */
+  private buildAccountRoleMap(
+    users: User[],
+  ): Map<string, PublicFacultyAccountRole> {
+    const precedence: Record<PublicFacultyAccountRole, number> = {
+      college_dean: 3,
+      department_head: 2,
+      college_secretary: 1,
+    };
+    const roles = new Map<string, PublicFacultyAccountRole>();
+
+    for (const user of users) {
+      if (user.facultyId == null || !this.isLeadershipRole(user.role)) {
+        continue;
+      }
+      const key = String(user.facultyId);
+      const current = roles.get(key);
+      if (!current || precedence[user.role] > precedence[current]) {
+        roles.set(key, user.role);
+      }
+    }
+
+    return roles;
+  }
+
+  private isLeadershipRole(
+    role: User['role'],
+  ): role is PublicFacultyAccountRole {
+    return (
+      role === 'college_dean' ||
+      role === 'department_head' ||
+      role === 'college_secretary'
     );
   }
 

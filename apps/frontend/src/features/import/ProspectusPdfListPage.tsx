@@ -15,6 +15,7 @@ import {
 import type { ProspectusPdf } from './types';
 import UploadDropzone from './components/UploadDropzone';
 import { MAX_TABLES } from './constants';
+import { readPdfPageCount } from '@/lib/pdf';
 
 export default function ProspectusPdfListPage() {
   const qc = useQueryClient();
@@ -58,7 +59,19 @@ export default function ProspectusPdfListPage() {
   }, [sortedPdfs, search]);
 
   const uploadMutation = useMutation({
-    mutationFn: uploadProspectusPdf,
+    mutationFn: async (params: {
+      file: File;
+      departmentId: string;
+      notes?: string;
+    }) => {
+      // Send the browser's real page count as a fallback for the parser's
+      // page-info call, which may be unreachable during upload.
+      const pageCount = await readPdfPageCount(params.file);
+      return uploadProspectusPdf({
+        ...params,
+        pageCount: pageCount ?? undefined,
+      });
+    },
     onSuccess: (pdf) => {
       qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
       setUploadOpen(false);

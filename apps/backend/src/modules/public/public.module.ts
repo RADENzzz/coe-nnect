@@ -8,6 +8,7 @@ import { Schedule } from '../scheduling/entities/schedule.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { Designation } from '../system-config/entities/designation.entity';
 import { Term } from '../terms/entities/term.entity';
+import { User } from '../users/entities/user.entity';
 import { PublicController } from './public.controller';
 import { PublicService } from './public.service';
 
@@ -27,6 +28,7 @@ import { PublicService } from './public.service';
       Room,
       Term,
       Designation,
+      User,
     ]),
   ],
   controllers: [PublicController],

@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
@@ -104,6 +105,7 @@ export class ProspectusPdfsService {
     user: UserProfile,
     departmentId: string,
     notes?: string,
+    pageCountHint?: number,
   ): Promise<ProspectusPdf> {
     if (!file) throw new BadRequestException('No file uploaded');
     if (file.mimetype !== 'application/pdf') {
@@ -112,6 +114,10 @@ export class ProspectusPdfsService {
     this.assertCanWriteDepartment(user, departmentId);
 
     const pdfUuid = randomUUID();
+    const validHint =
+      Number.isInteger(pageCountHint) && (pageCountHint ?? 0) > 0
+        ? pageCountHint!
+        : null;
 
     let pageCount: number;
     let pageWidthPt: number;
@@ -122,10 +128,24 @@ export class ProspectusPdfsService {
       pageWidthPt = info.pageWidthPt;
       pageHeightPt = info.pageHeightPt;
     } catch (err) {
+      // Never store a guessed page count: a wrong value disables page
+      // navigation in the editor. Prefer the browser-reported count, which
+      // comes from the same PDF bytes. If neither source is available, fail
+      // loudly rather than silently creating a one-page record.
+      if (validHint == null) {
+        this.logger.error(
+          `Page-info failed and no page-count hint was supplied: ${String(err)}`,
+        );
+        throw new ServiceUnavailableException(
+          'Could not read the PDF page count. The prospectus parser is unavailable; retry once it is running.',
+        );
+      }
       this.logger.warn(
-        `Page-info failed, using Letter defaults: ${String(err)}`,
+        `Page-info failed, using browser-reported ${validHint} pages and Letter defaults: ${String(
+          err,
+        )}`,
       );
-      pageCount = 1;
+      pageCount = validHint;
       pageWidthPt = 612;
       pageHeightPt = 792;
     }
@@ -202,6 +222,9 @@ export class ProspectusPdfsService {
     }
     if (dto.notes !== undefined) {
       pdf.notes = dto.notes;
+    }
+    if (dto.page_count !== undefined) {
+      pdf.pageCount = dto.page_count;
     }
     return this.pdfRepo.save(pdf);
   }

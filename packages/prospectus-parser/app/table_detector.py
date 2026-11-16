@@ -210,9 +210,14 @@ def _role_for_token(token: str) -> str | None:
     return None
 
 
-def header_roles(line: Line) -> dict[str, float]:
-    """Return role -> x-centre for the labels found on a candidate header."""
-    found: dict[str, list[float]] = {}
+def header_role_anchors(line: Line) -> list[tuple[str, float]]:
+    """Return every role label found on a candidate header, with its centre.
+
+    Unlike :func:`header_roles`, repeated labels are kept as separate anchors.
+    A side-by-side layout repeats the whole header for each semester, so the
+    duplicate positions are what lets us find the panel boundary.
+    """
+    found: list[tuple[str, float]] = []
     words = sorted(line.words, key=lambda w: w.x0)
 
     for i, word in enumerate(words):
@@ -238,8 +243,16 @@ def header_roles(line: Line) -> dict[str, float]:
                 centre = (word.cx + nxt.cx) / 2
 
         if role is not None:
-            found.setdefault(role, []).append(centre)
+            found.append((role, centre))
 
+    return found
+
+
+def header_roles(line: Line) -> dict[str, float]:
+    """Return role -> x-centre for the labels found on a candidate header."""
+    found: dict[str, list[float]] = {}
+    for role, centre in header_role_anchors(line):
+        found.setdefault(role, []).append(centre)
     return {role: sum(xs) / len(xs) for role, xs in found.items()}
 
 
@@ -392,6 +405,47 @@ def infer_semester(text: str) -> str | None:
     return None
 
 
+def _semester_phrases(line: Line) -> list[tuple[str, float, str]]:
+    """Return (semester, x-centre, label) for every term named on a line."""
+    words = sorted(line.words, key=lambda word: word.x0)
+    phrases: list[tuple[str, float, str]] = []
+    i = 0
+    while i < len(words):
+        key = _normalise(words[i].text)
+        if (
+            key in {"first", "1st"}
+            and i + 1 < len(words)
+            and _normalise(words[i + 1].text) in {"semester", "sem"}
+        ):
+            phrases.append(
+                (
+                    "1st",
+                    (words[i].x0 + words[i + 1].x1) / 2,
+                    f"{words[i].text} {words[i + 1].text}",
+                )
+            )
+            i += 2
+            continue
+        if (
+            key in {"second", "2nd"}
+            and i + 1 < len(words)
+            and _normalise(words[i + 1].text) in {"semester", "sem"}
+        ):
+            phrases.append(
+                (
+                    "2nd",
+                    (words[i].x0 + words[i + 1].x1) / 2,
+                    f"{words[i].text} {words[i + 1].text}",
+                )
+            )
+            i += 2
+            continue
+        if key in {"summer", "midyear"}:
+            phrases.append(("summer", words[i].cx, words[i].text))
+        i += 1
+    return phrases
+
+
 def infer_year_semester(
     lines: list[Line],
     header: Line,
@@ -403,6 +457,10 @@ def infer_year_semester(
     PDF y grows upward, so a heading above the table has a larger y.
     Scanning below the header would pick up the next table's heading and
     mislabel every table after the first one on a page.
+
+    A side-by-side layout can put both semester labels on one line. In that
+    case the phrase nearest the table's horizontal centre wins, so the left
+    panel reads First Semester and the right panel reads Second Semester.
     """
     above = [
         line
@@ -421,36 +479,209 @@ def infer_year_semester(
     outside = [line for line in above if line not in overlapping]
     candidates = overlapping + outside
 
+    region_centre = (region_x0 + region_x1) / 2
     year: int | None = None
     semester: str | None = None
     label = ""
 
-    for line in candidates[:12]:
+    for line in candidates:
+        line_label = ""
         if year is None:
             found = infer_year(line.text)
             if found is not None:
                 year = found
-                label = label or line.text
+                line_label = line.text
         if semester is None:
-            found = infer_semester(line.text)
-            if found is not None:
-                semester = found
-                label = label or line.text
+            phrases = _semester_phrases(line)
+            if phrases:
+                chosen = min(
+                    phrases,
+                    key=lambda phrase: abs(phrase[1] - region_centre),
+                )
+                semester = chosen[0]
+                line_label = line_label or chosen[2]
+        if line_label and not label:
+            label = line_label
         if year is not None and semester is not None:
             break
 
-    # A heading may only name one of the two; fill the rest from the page.
-    if year is None or semester is None:
-        page_text = "\n".join(line.text for line in lines)
-        if year is None:
-            year = infer_year(page_text)
-        if semester is None:
-            semester = infer_semester(page_text)
+    # A heading may only name one of the two; fill the rest from the page,
+    # but only when the page itself is unambiguous.
+    if year is None:
+        page_years = {
+            found
+            for line in lines
+            if (found := infer_year(line.text)) is not None
+        }
+        if len(page_years) == 1:
+            year = page_years.pop()
+    if semester is None:
+        page_semesters = {
+            found
+            for line in lines
+            for found, _, _ in _semester_phrases(line)
+        }
+        if len(page_semesters) == 1:
+            semester = page_semesters.pop()
 
     return year, semester, label
 
 
+# ── Side-by-side panels ────────────────────────────────────────────
+
+
+def _looks_like_panel_header(roles: set[str]) -> bool:
+    """A course-table panel always names a code, a title, and one more role."""
+    return "code" in roles and "title" in roles and len(roles) >= 3
+
+
+def _widest_empty_band(
+    lines: list[Line],
+    y_max: float,
+    low: float,
+    high: float,
+) -> float | None:
+    """Find the widest x-gap between words below ``y_max`` inside a band.
+
+    The header row alone can have a very wide gap, but body rows often have
+    long wrapped titles that reach further right. Looking at every line below
+    the header gives the real gutter between two side-by-side tables.
+    """
+    intervals: list[tuple[float, float]] = []
+    for line in lines:
+        if line.y1 > y_max + 1:
+            continue
+        # Centred year/semester headings deliberately span both panels; they
+        # are not part of either table's body and would close the gutter.
+        if (
+            infer_year(line.text) is not None
+            or infer_semester(line.text) is not None
+        ):
+            continue
+        for word in line.words:
+            start = max(word.x0, low)
+            end = min(word.x1, high)
+            if end > start:
+                intervals.append((start, end))
+
+    intervals.sort()
+    merged: list[tuple[float, float]] = []
+    for start, end in intervals:
+        if merged and start <= merged[-1][1] + 0.5:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    gaps: list[tuple[float, float]] = []
+    cursor = low
+    for start, end in merged:
+        if start > cursor:
+            gaps.append((cursor, start))
+        cursor = max(cursor, end)
+    if high > cursor:
+        gaps.append((cursor, high))
+
+    usable = [(start, end) for start, end in gaps if end - start >= 6.0]
+    if not usable:
+        return None
+    start, end = max(usable, key=lambda gap: gap[1] - gap[0])
+    return (start + end) / 2
+
+
+def _side_by_side_split(header: Line, lines: list[Line]) -> float | None:
+    """Return the gutter x for a header that repeats for two semester panels.
+
+    Prospectuses often print First Semester and Second Semester as two full
+    tables on the same baseline. The header line then repeats
+    ``Code | Title | Prereq`` for each panel. A split is only accepted when
+    both sides of a wide word gap carry their own code/title header.
+    """
+    anchors = header_role_anchors(header)
+    if not anchors:
+        return None
+
+    words = sorted(header.words, key=lambda word: word.x0)
+    candidates: list[tuple[float, float, float]] = []
+    for left_word, right_word in zip(words, words[1:]):
+        gap_start = left_word.x1
+        gap_end = right_word.x0
+        if gap_end - gap_start < 20.0:
+            continue
+        middle = (gap_start + gap_end) / 2
+        left_roles = {role for role, x in anchors if x < middle}
+        right_roles = {role for role, x in anchors if x >= middle}
+        if not _looks_like_panel_header(left_roles):
+            continue
+        if not _looks_like_panel_header(right_roles):
+            continue
+        candidates.append((gap_end - gap_start, gap_start, gap_end))
+
+    if not candidates:
+        return None
+
+    # Prefer the widest header gap; fall back to the next one when a body
+    # word fills it (for example a wrapped title from the left panel).
+    candidates.sort(reverse=True)
+    for _, gap_start, gap_end in candidates:
+        split = _widest_empty_band(lines, header.y1, gap_start, gap_end)
+        if split is not None:
+            return split
+    _, gap_start, gap_end = candidates[0]
+    return (gap_start + gap_end) / 2
+
+
+def _split_lines_at(
+    lines: list[Line],
+    split_x: float,
+) -> tuple[list[Line], list[Line]]:
+    """Split page lines into left/right panels at ``split_x``.
+
+    Year headings are usually centred over the whole page, so cutting their
+    words would leave one panel without a year. A heading that straddles the
+    gutter is kept whole in both panels; semester inference then chooses the
+    label nearest that panel's centre.
+    """
+    left: list[Line] = []
+    right: list[Line] = []
+
+    for line in lines:
+        if (
+            line.x0 < split_x < line.x1
+            and (
+                infer_year(line.text) is not None
+                or infer_semester(line.text) is not None
+            )
+        ):
+            left.append(Line(words=list(line.words)))
+            right.append(Line(words=list(line.words)))
+            continue
+
+        left_words = [word for word in line.words if word.cx < split_x]
+        right_words = [word for word in line.words if word.cx >= split_x]
+        if left_words:
+            left.append(Line(words=left_words))
+        if right_words:
+            right.append(Line(words=right_words))
+
+    return left, right
+
+
 # ── Main detection ─────────────────────────────────────────────────
+
+
+def _header_candidate_index(lines: list[Line], start: int = 0) -> int | None:
+    """Index of the first line that looks like a course-table header."""
+    for i in range(start, len(lines)):
+        line = lines[i]
+        if len(line.words) < 2:
+            continue
+        roles = header_roles(line)
+        # A three-label header is a strong signal. Elective tables may print
+        # only code + title, so a title-bearing two-label header is accepted
+        # too. Data rows never name a "title" column.
+        if len(roles) >= 3 or (len(roles) == 2 and "title" in roles):
+            return i
+    return None
 
 
 def _is_section_heading(line: Line) -> bool:
@@ -514,32 +745,36 @@ def _median_line_height(lines: list[Line]) -> float:
 def _detect_on_page(
     page_index: int,
     lines: list[Line],
+    *,
+    _split_depth: int = 0,
 ) -> list[DetectedTable]:
+    # A page can print First Semester and Second Semester as two complete
+    # tables on the same baseline. Split them before looking for a header so
+    # the repeated labels do not get averaged into one broken column set.
+    if _split_depth == 0:
+        first_header = _header_candidate_index(lines)
+        if first_header is not None:
+            split_x = _side_by_side_split(lines[first_header], lines)
+            if split_x is not None:
+                left, right = _split_lines_at(lines, split_x)
+                return [
+                    *_detect_on_page(page_index, left, _split_depth=1),
+                    *_detect_on_page(page_index, right, _split_depth=1),
+                ]
+
     proposals: list[DetectedTable] = []
     cursor = 0
     median_height = _median_line_height(lines)
     max_gap = max(20.0, median_height * 3.2)
 
     while cursor < len(lines):
-        header_index: int | None = None
-        anchors: dict[str, float] = {}
-        for i in range(cursor, len(lines)):
-            line = lines[i]
-            if len(line.words) < 2:
-                continue
-            roles = header_roles(line)
-            # A three-label header is a strong signal. Elective tables may
-            # print only code + title, so a title-bearing two-label header is
-            # accepted too. Data rows never name a "title" column.
-            if len(roles) >= 3 or (len(roles) == 2 and "title" in roles):
-                header_index = i
-                anchors = roles
-                break
+        header_index = _header_candidate_index(lines, cursor)
 
         if header_index is None:
             break
 
         header = lines[header_index]
+        anchors = header_roles(header)
         header_lines = [header]
         header_bottom = header.y0
         consumed_headers = 1
@@ -548,7 +783,10 @@ def _detect_on_page(
         # baseline (for example "Lec Lab" above "Total"). Merge those labels
         # before the body starts so they do not become a subject row.
         for candidate in lines[header_index + 1 :]:
-            if candidate.y1 > header_bottom + 1:
+            # A continuation line can overlap the first header's baseline
+            # slightly (different font sizes), so compare centres instead of
+            # rejecting it outright.
+            if candidate.cy > header.cy:
                 continue
             gap = header_bottom - candidate.y1
             if gap > max(6.0, median_height * 1.5):
@@ -587,9 +825,11 @@ def _detect_on_page(
                 ):
                     break
                 # A "SECOND YEAR / 1st SEMESTER" heading below the rows
-                # belongs to the next table on the page, not this one.
+                # belongs to the next table on the page, not this one. Break
+                # after the first row so a one-row table cannot swallow the
+                # next semester's body.
                 if (
-                    len(body) >= 2
+                    body
                     and not is_code_like(line)
                     and len(line.words) <= 8
                     and (

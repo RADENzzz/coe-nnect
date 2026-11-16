@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { Not, QueryFailedError, Repository } from 'typeorm';
 import { Subject } from './entities/subject.entity';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
@@ -15,7 +15,10 @@ import { SubjectRestriction } from './entities/subject-restriction.entity';
 import { CreateSubjectRestrictionDto } from './dto/create-subject-restriction.dto';
 import { UpdateSubjectRestrictionDto } from './dto/update-subject-restriction.dto';
 import { User } from '../users/entities/user.entity';
-import { Schedule } from '../scheduling/entities/schedule.entity';
+import {
+  Schedule,
+  ScheduleStatus,
+} from '../scheduling/entities/schedule.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
 import { DepartmentsService } from '../departments/departments.service';
 
@@ -315,25 +318,29 @@ export class SubjectsService {
     const found = await this.assertOwnership(id, profile);
     await this.departments.assertDepartmentActive(found.deptId);
 
-    const [scheduleCount, prospectusCount, restrictionCount] =
-      await Promise.all([
-        this.scheduleRepo.count({ where: { subjectId: id } }),
-        this.prospectusRepo.count({ where: { subjectId: id } }),
-        this.restrictions
-          .createQueryBuilder('r')
-          .where('r.subjectId1 = :id OR r.subjectId2 = :id', { id })
-          .getCount(),
-      ]);
+    // Prospectus mappings are intentionally not a blocker: the FK is
+    // ON DELETE CASCADE, so deleting the subject removes them automatically.
+    // Unpublished schedule rows are working data and are removed with the
+    // subject. Published rows are historical and must be kept, so any
+    // published row blocks the hard delete. Restrictions still protect the
+    // subject because they reference a second subject that would otherwise
+    // dangle.
+    const [publishedScheduleCount, restrictionCount] = await Promise.all([
+      this.scheduleRepo.count({
+        where: { subjectId: id, status: 'published' },
+      }),
+      this.restrictions
+        .createQueryBuilder('r')
+        .where('r.subjectId1 = :id OR r.subjectId2 = :id', { id })
+        .getCount(),
+    ]);
 
     const blockers: string[] = [];
-    if (scheduleCount > 0) {
+    if (publishedScheduleCount > 0) {
       blockers.push(
-        `${scheduleCount} schedule ${scheduleCount === 1 ? 'entry' : 'entries'}`,
-      );
-    }
-    if (prospectusCount > 0) {
-      blockers.push(
-        `${prospectusCount} prospectus ${prospectusCount === 1 ? 'mapping' : 'mappings'}`,
+        `${publishedScheduleCount} published schedule ${
+          publishedScheduleCount === 1 ? 'entry' : 'entries'
+        }`,
       );
     }
     if (restrictionCount > 0) {
@@ -343,12 +350,23 @@ export class SubjectsService {
     }
 
     if (blockers.length > 0) {
+      const publishedNote =
+        publishedScheduleCount > 0
+          ? ' Published schedules are kept for history; move them back to draft first.'
+          : '';
       throw new ConflictException(
         `Cannot delete "${found.subjectCode}" — it is still referenced by ${blockers.join(
           ', ',
-        )}. Remove those references first, or deactivate the subject instead.`,
+        )}.${publishedNote} Remove those references first, or deactivate the subject instead.`,
       );
     }
+
+    // Remove draft/review/finalized rows before the subject so the
+    // ON DELETE RESTRICT FK on schedule.subject_id does not fire.
+    await this.scheduleRepo.delete({
+      subjectId: id,
+      status: Not('published' as ScheduleStatus),
+    });
 
     try {
       await this.repo.remove(found);
