@@ -56,6 +56,30 @@ export const TRIGGERS: TriggerMeta[] = [
     category: 'schedule',
     defaultEnabled: true,
   },
+  {
+    key: 'schedule.unfinalize_requested',
+    label: 'Unfinalize request for a published entry',
+    description:
+      'When a department head asks the Dean to unfinalize a published schedule entry.',
+    category: 'schedule',
+    defaultEnabled: true,
+  },
+  {
+    key: 'schedule.unfinalize_approved',
+    label: 'Unfinalize request approved',
+    description:
+      'When the Dean approves unfinalizing a published schedule entry.',
+    category: 'schedule',
+    defaultEnabled: true,
+  },
+  {
+    key: 'schedule.unfinalize_rejected',
+    label: 'Unfinalize request rejected',
+    description:
+      'When the Dean rejects a request to unfinalize a published schedule entry.',
+    category: 'schedule',
+    defaultEnabled: true,
+  },
 
   // ── Approvals ──
   {

@@ -10,6 +10,7 @@ import {
   useUnreadCount,
 } from '../../hooks/use-notifications';
 import { shellForPath } from '../../lib/notification-target';
+import { lockBodyScroll } from '../../lib/body-scroll-lock';
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -52,11 +53,7 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!open) return;
     if (window.matchMedia('(min-width: 768px)').matches) return;
-    const original = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = original;
-    };
+    return lockBodyScroll();
   }, [open]);
 
   const badgeLabel = unread > 9 ? '9+' : String(unread);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteSchedule,
   updateScheduleStatus,
@@ -8,13 +8,18 @@ import {
   flagSchedule,
   unflagSchedule,
 } from '../../../api/schedule.api';
-import type { ScheduleEntry, Day } from '../types';
+import {
+  createUnfinalizeRequest,
+  fetchPendingUnfinalizeRequest,
+} from '../../../api/schedule-unfinalize.api';
+import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
 import clsx from 'clsx';
 import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
 import { useAuthStore } from '../../../store/auth.store';
+import { lockBodyScroll } from '../../../lib/body-scroll-lock';
 
 interface Props {
   entry: ScheduleEntry | null;
@@ -66,6 +71,8 @@ export default function ScheduleDetailDrawer({
   const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [unfinalizeOpen, setUnfinalizeOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestReason, setRequestReason] = useState('');
 
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagReason, setFlagReason] = useState('');
@@ -77,9 +84,22 @@ export default function ScheduleDetailDrawer({
     setMoveOpen(false);
     setDeleteOpen(false);
     setUnfinalizeOpen(false);
+    setRequestOpen(false);
+    setRequestReason('');
     setFlagOpen(false);
     setFlagReason('');
   }, [entry?.id, entry?.remarks]);
+
+  // One shared lock for the drawer; the inner modals add their own lock and
+  // release it independently. Keeping this effect off the modal state stops
+  // the interleaved save/restore that left the page unscrollable.
+  useEffect(() => {
+    if (!entry) return;
+    return lockBodyScroll();
+    // Intentionally keyed on the id: a refetch that returns an equal entry
+    // must not release and re-take the lock mid-interaction.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry?.id]);
 
   useEffect(() => {
     if (!entry) return;
@@ -89,18 +109,16 @@ export default function ScheduleDetailDrawer({
         !moveOpen &&
         !deleteOpen &&
         !unfinalizeOpen &&
+        !requestOpen &&
         !flagOpen
       )
         onClose();
     };
-    const previousOverflow = document.body.style.overflow;
     document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
     };
-  }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen, flagOpen]);
+  }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen, requestOpen, flagOpen]);
 
   // ─────────────────────────────────────────────────────────────
   // F4.1 — Cross-page invalidation.
@@ -112,7 +130,19 @@ export default function ScheduleDetailDrawer({
     queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
     queryClient.invalidateQueries({ queryKey: ['schedule-versions'] });
     queryClient.invalidateQueries({ queryKey: ['coverage'] });
+    queryClient.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
   };
+
+  const isDH = profile?.role === 'department_head';
+  const isDean = profile?.role === 'college_dean';
+
+  const { data: pendingRequest } = useQuery({
+    queryKey: ['schedule-unfinalize-request', entry?.id],
+    queryFn: () => fetchPendingUnfinalizeRequest(entry!.id),
+    enabled:
+      !!entry && entry.status === 'published' && (isDH || isDean),
+    staleTime: 15_000,
+  });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(entry!.id),
@@ -133,6 +163,9 @@ export default function ScheduleDetailDrawer({
       invalidateAfterMutation();
       setError(null);
       setUnfinalizeOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: ['schedule-unfinalize-request', entry!.id],
+      });
     },
     onError: (err: any) => {
       setError(
@@ -179,6 +212,24 @@ export default function ScheduleDetailDrawer({
     },
   });
 
+  const requestMutation = useMutation({
+    mutationFn: (reason: string) => createUnfinalizeRequest(entry!.id, reason),
+    onSuccess: () => {
+      invalidateAfterMutation();
+      queryClient.invalidateQueries({
+        queryKey: ['schedule-unfinalize-request', entry!.id],
+      });
+      setRequestOpen(false);
+      setRequestReason('');
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(
+        err?.response?.data?.message ?? err?.message ?? 'Request failed',
+      );
+    },
+  });
+
   const handleDeleteClick = () => {
     if (!entry) return;
     setDeleteOpen(true);
@@ -196,6 +247,15 @@ export default function ScheduleDetailDrawer({
     if (!entry) return;
     const currentlyLocked = isLocked(entry.status);
     if (currentlyLocked) {
+      if (entry.status === 'published' && isDH) {
+        // A published entry is public; the DH asks the Dean instead of
+        // changing the status directly.
+        if (!pendingRequest) {
+          setError(null);
+          setRequestOpen(true);
+        }
+        return;
+      }
       setUnfinalizeOpen(true);
     } else {
       statusMutation.mutate('finalized');
@@ -204,7 +264,6 @@ export default function ScheduleDetailDrawer({
 
   if (!entry) return null;
 
-  const isDH = profile?.role === 'department_head';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
   const isForeignEntry =
     isDH && !!entry.deptId && String(entry.deptId) !== myDeptId;
@@ -212,6 +271,15 @@ export default function ScheduleDetailDrawer({
   const locked = isLocked(entry.status);
   const writable = !readOnly && !isForeignEntry;
   const canFlag = !readOnly;
+  const requestPending =
+    entry.status === 'published' && isDH && Boolean(pendingRequest);
+  const toggleLabel = locked
+    ? entry.status === 'published' && isDH
+      ? requestPending
+        ? 'Request pending'
+        : 'Request unfinalize'
+      : 'Unfinalize'
+    : 'Finalize';
 
   // Prefer external room display when set (matches grid block behavior)
   const isExternalRoom = !!entry.externalRoomName;
@@ -275,7 +343,7 @@ export default function ScheduleDetailDrawer({
             </div>
           )}
 
-          {locked && writable && (
+          {locked && writable && entry.status !== 'published' && (
             <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-xs text-blue-900">
               <Icon name="lock" size={16} className="shrink-0" />
               <span>
@@ -283,6 +351,48 @@ export default function ScheduleDetailDrawer({
                 edits.
               </span>
             </div>
+          )}
+
+          {entry.status === 'published' && writable && (
+            pendingRequest ? (
+              <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
+                <Icon
+                  name="hourglass_top"
+                  filled
+                  size={16}
+                  className="shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold">
+                    Unfinalize request waiting for the Dean
+                  </p>
+                  <p className="mt-0.5 break-words">
+                    Reason: {pendingRequest.reason}
+                  </p>
+                  <p className="mt-1 text-[10px] text-amber-700">
+                    Submitted {new Date(pendingRequest.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex items-start gap-2 text-xs text-blue-900">
+                <Icon name="lock" size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  {isDH ? (
+                    <>
+                      Published entries can only be unfinalized by the Dean.
+                      Click <strong>Request unfinalize</strong> to send the
+                      reason for review.
+                    </>
+                  ) : (
+                    <>
+                      This entry is on the public planner and the IDP feed.
+                      Unfinalizing removes it from both and returns it to Draft.
+                    </>
+                  )}
+                </span>
+              </div>
+            )
           )}
 
           {entry.pendingFacultyRequestId && (
@@ -506,20 +616,23 @@ export default function ScheduleDetailDrawer({
                   </select>
                   <button
                     onClick={handleToggleLock}
-                    disabled={statusMutation.isPending}
+                    disabled={
+                      statusMutation.isPending ||
+                      requestMutation.isPending ||
+                      requestPending
+                    }
                     className={clsx(
                       'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition whitespace-nowrap',
                       locked
                         ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100'
                         : 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100',
+                      'disabled:opacity-50 disabled:cursor-not-allowed',
                     )}
                   >
                     <Icon name={locked ? 'lock_open' : 'lock'} size={16} />
-                    {statusMutation.isPending
+                    {statusMutation.isPending || requestMutation.isPending
                       ? '…'
-                      : locked
-                      ? 'Unfinalize'
-                      : 'Finalize'}
+                      : toggleLabel}
                   </button>
                 </div>
                 {statusMutation.isPending && (
@@ -687,7 +800,11 @@ export default function ScheduleDetailDrawer({
       <Modal
         open={unfinalizeOpen}
         onClose={() => setUnfinalizeOpen(false)}
-        title="Unfinalize entry?"
+        title={
+          entry.status === 'published'
+            ? 'Unfinalize published entry?'
+            : 'Unfinalize entry?'
+        }
         size="sm"
         footer={
           <>
@@ -710,8 +827,76 @@ export default function ScheduleDetailDrawer({
         }
       >
         <p className="text-sm text-slate-600">
-          Unfinalize this entry? It will be editable again and set back to{' '}
-          <strong>Draft</strong>.
+          {entry.status === 'published' ? (
+            <>
+              This entry is on the public planner and the IDP feed.
+              Unfinalizing removes it from both and sets it back to{' '}
+              <strong>Draft</strong>.
+            </>
+          ) : (
+            <>
+              Unfinalize this entry? It will be editable again and set back to{' '}
+              <strong>Draft</strong>.
+            </>
+          )}
+        </p>
+      </Modal>
+
+      <Modal
+        open={requestOpen}
+        onClose={() => {
+          setRequestOpen(false);
+          setRequestReason('');
+        }}
+        title="Request unfinalize from the Dean"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setRequestOpen(false);
+                setRequestReason('');
+              }}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => requestMutation.mutate(requestReason.trim())}
+              disabled={
+                requestMutation.isPending || requestReason.trim().length < 5
+              }
+              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              {requestMutation.isPending ? 'Sending…' : 'Send request'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 mb-3">
+          <strong>"{entry.subjectCode}"</strong> is published, so only the Dean
+          can unfinalize it. Explain why it needs to go back to Draft; the Dean
+          will approve or reject the request.
+        </p>
+        {error && (
+          <div className="mb-3 flex items-start gap-2 border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+            <Icon name="error" size={14} className="mt-0.5 shrink-0" />
+            <span className="flex-1">{error}</span>
+          </div>
+        )}
+        <textarea
+          value={requestReason}
+          onChange={(e) => setRequestReason(e.target.value)}
+          placeholder="e.g. Room reassignment approved after publication"
+          rows={4}
+          maxLength={500}
+          autoFocus
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none"
+        />
+        <p className="text-xs text-slate-400 mt-1 text-right">
+          {requestReason.length}/500
         </p>
       </Modal>
 

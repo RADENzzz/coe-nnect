@@ -1,41 +1,17 @@
 import {
   createContext,
-  forwardRef,
   useContext,
   useEffect,
   useId,
   useRef,
-  useState,
 } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import Icon from './Icon';
+import { lockBodyScroll } from '../../lib/body-scroll-lock';
 
-// ── Stack counter so stacked modals coordinate body lock & Escape ──
+// ── Stack counter so stacked modals coordinate Escape ordering ──
 let modalStack = 0;
-const modalBodyLocks = { overflow: '', paddingRight: '' };
-
-function lockBody() {
-  if (modalStack === 0) {
-    modalBodyLocks.overflow = document.body.style.overflow;
-    modalBodyLocks.paddingRight = document.body.style.paddingRight;
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-  }
-  modalStack++;
-}
-
-function unlockBody() {
-  modalStack = Math.max(0, modalStack - 1);
-  if (modalStack === 0) {
-    document.body.style.overflow = modalBodyLocks.overflow;
-    document.body.style.paddingRight = modalBodyLocks.paddingRight;
-  }
-}
 
 /**
  * True if at least one Modal is currently mounted.
@@ -145,7 +121,8 @@ export default function Modal({
 
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
 
-    lockBody();
+    const releaseBodyLock = lockBodyScroll();
+    modalStack++;
     stackOrderRef.current = modalStack - 1;
 
     const isTopmost = () => stackOrderRef.current === modalStack - 1;
@@ -210,7 +187,8 @@ export default function Modal({
     return () => {
       document.removeEventListener('keydown', onKey, true);
       window.clearTimeout(timer);
-      unlockBody();
+      releaseBodyLock();
+      modalStack = Math.max(0, modalStack - 1);
 
       const prev = previouslyFocusedRef.current;
       if (prev && document.body.contains(prev)) {

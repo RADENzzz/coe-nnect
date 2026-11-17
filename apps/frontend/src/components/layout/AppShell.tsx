@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -11,7 +11,6 @@ import { getNavForRole } from '../../lib/constants/nav-config';
 import { NotificationSocketProvider } from '../../hooks/use-notification-socket';
 import { useNotificationSocketBridge } from '../../hooks/use-notifications';
 import { useNavAttention } from '../../hooks/use-nav-attention';
-import { useNavUsageRecorder } from '../../hooks/use-nav-usage';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
 import NotificationToaster from '../../features/notifications/NotificationToaster';
 import ChatSoundListener from '../../features/chat/ChatSoundListener';
@@ -19,6 +18,21 @@ import { FeedbackProvider } from '../../components/ui/FeedbackToast';
 import { installSoundUnlock } from '../../lib/sound';
 import LiquidBackground from './LiquidBackground';
 import TutorialProvider from '../../features/tutorial/TutorialProvider';
+import { prefetchRoutes } from '../../lib/route-prefetch';
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center">
+      <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+        <span
+          className="h-4 w-4 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
+          aria-hidden="true"
+        />
+        Loading…
+      </div>
+    </div>
+  );
+}
 
 function ShellInner() {
   const profile = useAuthStore((s) => s.profile);
@@ -32,7 +46,14 @@ function ShellInner() {
   const attention = useNavAttention(nav, profile?.role);
 
   useNotificationSocketBridge();
-  useNavUsageRecorder();
+
+  // Warm the primary nav chunks while the browser is idle. The first visit to
+  // a page then paints its content immediately instead of waiting on a cold
+  // dynamic import; later visits are served from the module cache.
+  useEffect(
+    () => prefetchRoutes(nav.main.map((item) => item.path)),
+    [nav.main],
+  );
 
   // Browsers require a gesture before Web Audio can start; arm the context
   // on the first click or keypress and keep it ready for socket events.
@@ -96,7 +117,9 @@ function ShellInner() {
         >
           <SystemStatusBanner />
           <div key={location.pathname} className="animate-page-roll h-full">
-            <Outlet />
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

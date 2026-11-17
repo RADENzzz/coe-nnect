@@ -7,31 +7,13 @@ import { useDepartmentLabel } from '../../hooks/use-department-label';
 import {
   filterNavByRole,
   groupNav,
-  notificationsPath,
   type RoleNav,
 } from '../../lib/constants/nav-config';
 import { useNavAttention } from '../../hooks/use-nav-attention';
 import { useAuthStore } from '../../store/auth.store';
 import { useAppearanceStore } from '../../store/appearance.store';
-
-// Global body-lock counter so nested modals cooperate
-let bodyLockCount = 0;
-const originalOverflow = { value: '' };
-
-function lockBody() {
-  if (bodyLockCount === 0) {
-    originalOverflow.value = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-  }
-  bodyLockCount += 1;
-}
-
-function unlockBody() {
-  bodyLockCount = Math.max(0, bodyLockCount - 1);
-  if (bodyLockCount === 0) {
-    document.body.style.overflow = originalOverflow.value;
-  }
-}
+import { lockBodyScroll } from '../../lib/body-scroll-lock';
+import { prefetchRoute } from '../../lib/route-prefetch';
 
 interface MobileDrawerProps {
   nav: RoleNav;
@@ -48,6 +30,8 @@ function DrawerNavLink({ item, badge, onNavigate }: DrawerNavLinkProps) {
     <NavLink
       to={item.path}
       onClick={onNavigate}
+      onMouseEnter={() => prefetchRoute(item.path)}
+      onFocus={() => prefetchRoute(item.path)}
       className={({ isActive }) =>
         isActive
           ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
@@ -94,13 +78,12 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
   const visibleFooter = filterNavByRole(nav.footer, profile?.role);
   const groups = useMemo(() => groupNav(visibleMain), [visibleMain]);
   const attention = useNavAttention(nav, profile?.role);
-  const inboxPath = notificationsPath(nav);
 
   useEffect(() => {
     if (!isMobileDrawerOpen) return;
 
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
-    lockBody();
+    const releaseBodyLock = lockBodyScroll();
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -145,7 +128,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       window.clearTimeout(focusTimer);
-      unlockBody();
+      releaseBodyLock();
       // Restore focus
       const prev = previouslyFocusedRef.current;
       if (prev && document.body.contains(prev)) {
@@ -233,25 +216,6 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
 
         {/* Main Nav */}
         <div className="flex-1 flex flex-col py-2 overflow-y-auto px-2 overscroll-contain">
-          {attention.totalUnread > 0 && inboxPath && (
-            <NavLink
-              to={inboxPath}
-              onClick={closeMobileDrawer}
-              className="nav-attention-card mb-2 block rounded px-3 py-2.5 transition-colors"
-            >
-              <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider">
-                <Icon name="notifications_active" size={14} />
-                {attention.totalUnread}{' '}
-                {attention.totalUnread === 1 ? 'needs' : 'need'} attention
-              </span>
-              {attention.latestTitle && (
-                <span className="mt-1 block truncate text-xs font-medium opacity-80">
-                  {attention.latestTitle}
-                </span>
-              )}
-            </NavLink>
-          )}
-
           {groups.map((group, index) => (
             <div key={group.label} className={index > 0 ? 'mt-1' : undefined}>
               <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">

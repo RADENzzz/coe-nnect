@@ -77,6 +77,17 @@ export function notificationHref(
     case 'schedule.conflict_detected':
       return href(shell, '/timetable', { focus: id });
 
+    case 'schedule.unfinalize_requested':
+      // The Dean reviews published-unfinalize requests on Schedule Approvals.
+      return href(shell, '/approvals', {
+        request: id,
+        status: 'published',
+      });
+
+    case 'schedule.unfinalize_approved':
+    case 'schedule.unfinalize_rejected':
+      return href(shell, '/timetable', { focus: id });
+
     case 'request.submitted':
     case 'request.approved':
     case 'request.rejected':
@@ -132,6 +143,11 @@ export function notificationHref(
       return href(shell, shell === '/dean' ? '/requests' : '/approvals', {
         request: id,
       });
+    case 'schedule_unfinalize_request':
+      return href(shell, '/approvals', {
+        request: id,
+        status: 'published',
+      });
     case 'faculty':
       return href(shell, '/faculty', { faculty: id });
     case 'term':
@@ -156,6 +172,12 @@ export function notificationIcon(item: NotificationItem): string {
       return 'report_problem';
     case 'schedule.status_changed':
       return 'event';
+    case 'schedule.unfinalize_requested':
+      return 'pending_actions';
+    case 'schedule.unfinalize_approved':
+      return 'lock_open';
+    case 'schedule.unfinalize_rejected':
+      return 'lock';
     case 'request.submitted':
       return 'swap_horiz';
     case 'request.approved':
@@ -289,6 +311,7 @@ export function notificationChips(item: NotificationItem): NotificationChip[] {
   }
 
   push('calendar_month', asString(payload.termName));
+  push('person', asString(payload.requestedByName));
   push('picture_as_pdf', asString(payload.fileName));
   push('school', asString(payload.programCode));
   push('mail', asString(payload.email));

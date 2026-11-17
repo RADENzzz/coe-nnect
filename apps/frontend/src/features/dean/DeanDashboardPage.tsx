@@ -1162,7 +1162,7 @@ export default function DeanDashboardPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <section
           id="dean-dash-attention"
-          className="flex scroll-mt-4 flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm lg:col-span-7"
+          className="flex scroll-mt-4 flex-col overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm lg:col-span-7"
         >
           <header className="flex items-start justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
             <div className="min-w-0">
@@ -1274,7 +1274,7 @@ export default function DeanDashboardPage() {
       {/* ── Departments + review queue ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <section
-          className="overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm lg:col-span-7"
+          className="overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm lg:col-span-7"
           data-tour="dean-dash-departments"
         >
           <header className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/70 px-4 py-3">
@@ -1435,7 +1435,7 @@ export default function DeanDashboardPage() {
 
         <div className="flex flex-col gap-4 lg:col-span-5">
           {/* Review queue */}
-          <section className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
+          <section className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/70 px-4 py-3">
               <div>
                 <h2 className="text-sm font-bold text-on-surface">
@@ -1527,7 +1527,7 @@ export default function DeanDashboardPage() {
           </section>
 
           {/* Faculty requests */}
-          <section className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
+          <section className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/70 px-4 py-3">
               <div>
                 <h2 className="text-sm font-bold text-on-surface">
@@ -1607,7 +1607,7 @@ export default function DeanDashboardPage() {
           </section>
 
           {/* Quick links */}
-          <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
+          <section className="overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
             <header className="border-b border-outline-variant/70 px-4 py-3">
               <h2 className="text-sm font-bold text-on-surface">Quick links</h2>
               <p className="mt-0.5 text-[11px] text-on-surface-variant">
@@ -1635,7 +1635,7 @@ export default function DeanDashboardPage() {
       </div>
 
       {/* ── Recent activity ── */}
-      <section className="overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
         <header className="flex items-center justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
           <div>
             <h2 className="text-sm font-bold text-on-surface">
