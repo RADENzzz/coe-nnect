@@ -25,6 +25,13 @@ function usePageTitle(): string {
   const profile = useAuthStore((s) => s.profile);
   const nav = getNavForRole(profile?.role);
 
+  // Pages reachable from the bell but no longer listed in the nav rail.
+  const overrides: Record<string, string> = {
+    '/notifications': 'Notifications',
+    '/dean/notifications': 'Notifications',
+  };
+  if (overrides[pathname]) return overrides[pathname];
+
   const all = [...nav.main, ...nav.footer];
   const match = all
     .filter(

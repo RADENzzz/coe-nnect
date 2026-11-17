@@ -117,7 +117,6 @@ const DH_NAV: RoleNav = {
     { label: 'Reports',           path: ROUTES.REPORTS_HUB,    icon: 'bar_chart',           group: 'Insights' },
   ],
   footer: [
-    { label: 'Notifications', shortLabel: 'Inbox', path: '/notifications', icon: 'inbox', attention: 'all' },
     { label: 'Help', path: ROUTES.HELP, icon: 'help_outline' },
   ],
   bottom: [
@@ -162,7 +161,6 @@ const DEAN_NAV: RoleNav = {
     { label: 'Audit Trail',        path: '/dean/audit-trail',     icon: 'history',           group: 'Governance' },
   ],
   footer: [
-    { label: 'Notifications', shortLabel: 'Inbox', path: '/dean/notifications', icon: 'inbox', attention: 'all' },
     { label: 'Help',          path: '/dean/help',          icon: 'help_outline' },
   ],
   bottom: [
@@ -200,7 +198,6 @@ const SECRETARY_NAV: RoleNav = {
     { label: 'System Settings',   path: '/dean/system-settings', icon: 'settings',         group: 'Governance' },
   ],
   footer: [
-    { label: 'Notifications', shortLabel: 'Inbox', path: '/dean/notifications', icon: 'inbox', attention: 'all' },
     { label: 'Help', path: '/dean/help', icon: 'help_outline' },
   ],
   bottom: [

@@ -7,6 +7,7 @@ import MaintenanceGate from './components/auth/MaintenanceGate';
 import RequireDesktop from './features/import/components/RequireDesktop';
 import PresenceProvider from './components/presence/PresenceProvider';
 import { useAuthStore } from './store/auth.store';
+import { ROUTE_LOADERS } from './lib/route-prefetch';
 
 // The public landing page is the entry point, so it stays in the initial
 // bundle. Authenticated pages and their shells are split into chunks and
@@ -24,59 +25,37 @@ const RecoveryVerifyPage = lazy(
 const ResetPasswordPage = lazy(
   () => import('./features/auth/ResetPasswordPage'),
 );
-const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'));
-const TimetablePage = lazy(() => import('./features/timetable/TimetablePage'));
-const DeanDashboardPage = lazy(
-  () => import('./features/dean/DeanDashboardPage'),
-);
-const DeanDepartmentsPage = lazy(
-  () => import('./features/dean/DeanDepartmentsPage'),
-);
+const DashboardPage = lazy(ROUTE_LOADERS['/dashboard']);
+const TimetablePage = lazy(ROUTE_LOADERS['/timetable']);
+const DeanDashboardPage = lazy(ROUTE_LOADERS['/dean/dashboard']);
+const DeanDepartmentsPage = lazy(ROUTE_LOADERS['/dean/departments']);
 const DeanDepartmentsManagePage = lazy(
-  () => import('./features/dean/DeanDepartmentsManagePage'),
+  ROUTE_LOADERS['/dean/departments/manage'],
 );
-const DeanApprovalsPage = lazy(
-  () => import('./features/dean/DeanApprovalsPage'),
-);
+const DeanApprovalsPage = lazy(ROUTE_LOADERS['/dean/approvals']);
 const IdpChangeRequestsPage = lazy(
-  () => import('./features/idp/IdpChangeRequestsPage'),
+  ROUTE_LOADERS['/dean/idp/change-requests'],
 );
-const AdminUsersPage = lazy(() => import('./features/admin/AdminUsersPage'));
-const SectionsPage = lazy(() => import('./features/sections/SectionsPage'));
-const ApprovalsPage = lazy(() => import('./features/approvals/ApprovalsPage'));
-const SubjectsPage = lazy(() => import('./features/subjects/SubjectsPage'));
-const FacultyPage = lazy(() => import('./features/faculty/FacultyPage'));
-const RoomsPage = lazy(() => import('./features/rooms/RoomsPage'));
-const ProspectusPage = lazy(() => import('./features/prospectus/ProspectusPage'));
-const ProgramsPage = lazy(() => import('./features/programs/ProgramsPage'));
-const SystemConfigPage = lazy(
-  () => import('./features/system-config/SystemConfigPage'),
-);
-const AuditTrailPage = lazy(
-  () => import('./features/audit-trail/AuditTrailPage'),
-);
-const FacultyWorkloadPage = lazy(
-  () => import('./features/reports/FacultyWorkloadPage'),
-);
-const ReportsHubPage = lazy(() => import('./features/reports/ReportsHubPage'));
-const ApprovalsReportPage = lazy(
-  () => import('./features/reports/ApprovalsReportPage'),
-);
-const RoomSufficiencyPage = lazy(
-  () => import('./features/reports/RoomSufficiencyPage'),
-);
-const ProspectusPdfListPage = lazy(
-  () => import('./features/import/ProspectusPdfListPage'),
-);
-const ProspectusPdfEditorPage = lazy(
-  () => import('./features/import/ProspectusPdfEditorPage'),
-);
-const NotificationsInboxPage = lazy(
-  () => import('./features/notifications/NotificationsInboxPage'),
-);
-const SettingsPage = lazy(() => import('./features/settings/SettingsPage'));
-const HelpPage = lazy(() => import('./features/help/HelpPage'));
-const DevToolsPage = lazy(() => import('./features/dev-tools/DevToolsPage'));
+const AdminUsersPage = lazy(ROUTE_LOADERS['/dean/users']);
+const SectionsPage = lazy(ROUTE_LOADERS['/sections']);
+const ApprovalsPage = lazy(ROUTE_LOADERS['/approvals']);
+const SubjectsPage = lazy(ROUTE_LOADERS['/subjects']);
+const FacultyPage = lazy(ROUTE_LOADERS['/faculty']);
+const RoomsPage = lazy(ROUTE_LOADERS['/rooms']);
+const ProspectusPage = lazy(ROUTE_LOADERS['/prospectus']);
+const ProgramsPage = lazy(ROUTE_LOADERS['/programs']);
+const SystemConfigPage = lazy(ROUTE_LOADERS['/dean/system-settings']);
+const AuditTrailPage = lazy(ROUTE_LOADERS['/dean/audit-trail']);
+const FacultyWorkloadPage = lazy(ROUTE_LOADERS['/reports/workload']);
+const ReportsHubPage = lazy(ROUTE_LOADERS['/reports']);
+const ApprovalsReportPage = lazy(ROUTE_LOADERS['/reports/approvals']);
+const RoomSufficiencyPage = lazy(ROUTE_LOADERS['/reports/rooms']);
+const ProspectusPdfListPage = lazy(ROUTE_LOADERS['/import']);
+const ProspectusPdfEditorPage = lazy(ROUTE_LOADERS['/import/:id']);
+const NotificationsInboxPage = lazy(ROUTE_LOADERS['/notifications']);
+const SettingsPage = lazy(ROUTE_LOADERS['/settings']);
+const HelpPage = lazy(ROUTE_LOADERS['/help']);
+const DevToolsPage = lazy(ROUTE_LOADERS['/dean/dev-tools']);
 
 function RouteFallback() {
   return (

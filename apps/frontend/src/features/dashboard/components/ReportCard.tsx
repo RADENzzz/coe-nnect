@@ -21,7 +21,7 @@ export default function ReportCard({
   children: ReactNode;
 }) {
   return (
-    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface shadow-sm">
+    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
       <header className="flex items-start justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-on-surface">{title}</h2>

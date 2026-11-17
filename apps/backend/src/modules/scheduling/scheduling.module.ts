@@ -20,6 +20,9 @@ import { SolverClient } from './services/solver.client';
 import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ScheduleVersion } from './entities/schedule-version.entity';
+import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-request.entity';
+import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
+import { ScheduleUnfinalizeController } from './schedule-unfinalize.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DepartmentsModule } from '../departments/departments.module';
 
@@ -28,6 +31,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     TypeOrmModule.forFeature([
       Schedule,
       ScheduleVersion,
+      ScheduleUnfinalizeRequest,
       TimeSlot,
       Term,
       Subject,
@@ -39,9 +43,12 @@ import { DepartmentsModule } from '../departments/departments.module';
     NotificationsModule,
     DepartmentsModule,
   ],
-  controllers: [SchedulingController],
+  // The unfinalize controller goes first: its literal routes must resolve
+  // before the scheduling controller's `:id` routes.
+  controllers: [ScheduleUnfinalizeController, SchedulingController],
   providers: [
     SchedulingService,
+    ScheduleUnfinalizeService,
     AutoGenerateService,
     RuleContextBuilder,
     ScheduleFacultyService,

@@ -20,6 +20,7 @@ import { ScheduleFacultyService } from './services/schedule-faculty.service';
 import { ScheduleFlagService } from './services/schedule-flag.service';
 import { SchedulingCoverageService } from './services/scheduling-coverage.service';
 import { ScheduleVersionService } from './services/schedule-version.service';
+import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
@@ -56,6 +57,7 @@ export class SchedulingService {
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
     private readonly departments: DepartmentsService,
+    private readonly scheduleUnfinalize: ScheduleUnfinalizeService,
   ) {}
 
   async getActiveTerm(): Promise<Term | null> {
@@ -827,11 +829,42 @@ export class SchedulingService {
     }
 
     const previousStatus = found.status;
+
+    // Published entries are on the public planner and the IDP feed. A DH
+    // cannot pull one back directly; the request goes to the Dean.
+    if (
+      previousStatus === 'published' &&
+      status !== 'published' &&
+      user?.role === 'department_head'
+    ) {
+      throw new BadRequestException(
+        'Published entries can only be unfinalized by the Dean. ' +
+          'Submit an unfinalize request with a reason instead.',
+      );
+    }
+
     const isBecomingFinalized =
       status === 'finalized' && previousStatus !== 'finalized';
 
     found.status = status;
     const saved = await this.scheduleRepo.save(found);
+
+    // Any other exit from Published closes an open Dean request so it cannot
+    // be approved against a row that is already back in Draft.
+    if (previousStatus === 'published' && status !== 'published') {
+      try {
+        await this.scheduleUnfinalize.cancelPendingForSchedule(
+          id,
+          user?.userId ?? null,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Cancelling pending unfinalize requests failed for schedule=${id}: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
 
     if (previousStatus !== status) {
       const recipients = await this.recipients.departmentHeadsOfSchedule(id);
