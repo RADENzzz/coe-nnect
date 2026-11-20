@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 
+import { lockBodyScroll } from '../../../lib/body-scroll-lock';
+import { isAnyModalOpen } from '../../../components/ui/Modal';
 import {
   fetchUnscheduled,
   type UnscheduledRecord,
@@ -40,6 +42,62 @@ const KIND_LABEL: Record<UnscheduledRecord['kind'], string> = {
   lecture: 'Lecture',
   lab: 'Laboratory',
 };
+
+/**
+ * Stable per-group accent colors so subjects/faculty are visually separated
+ * in the palette. Each palette entry lists every Tailwind class it uses so
+ * the JIT compiler keeps them.
+ */
+const GROUP_ACCENTS = [
+  {
+    border: 'border-l-sky-500',
+    dot: 'bg-sky-500',
+    chip: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  },
+  {
+    border: 'border-l-violet-500',
+    dot: 'bg-violet-500',
+    chip: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
+  },
+  {
+    border: 'border-l-amber-500',
+    dot: 'bg-amber-500',
+    chip: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  },
+  {
+    border: 'border-l-emerald-500',
+    dot: 'bg-emerald-500',
+    chip: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  },
+  {
+    border: 'border-l-rose-500',
+    dot: 'bg-rose-500',
+    chip: 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+  },
+  {
+    border: 'border-l-cyan-600',
+    dot: 'bg-cyan-600',
+    chip: 'bg-cyan-600/15 text-cyan-700 dark:text-cyan-300',
+  },
+  {
+    border: 'border-l-fuchsia-500',
+    dot: 'bg-fuchsia-500',
+    chip: 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300',
+  },
+  {
+    border: 'border-l-orange-500',
+    dot: 'bg-orange-500',
+    chip: 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
+  },
+] as const;
+
+function accentFor(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return GROUP_ACCENTS[Math.abs(hash) % GROUP_ACCENTS.length];
+}
 
 function payloadFor(record: UnscheduledRecord): ExternalPlotDragPayload {
   return {
@@ -371,20 +429,34 @@ export default function PlotFocusMode({
     return options;
   }, [sortedFaculty, presetFaculty]);
 
-  // Escape closes, and the overlay owns the page scroll while open.
+  // Use the shared, reference-counted scroll lock. Nested modals (e.g. the
+  // cross-department confirm that pops up after a drop) use the same lock, so
+  // closing them can no longer restore a stale `hidden` value and leave the
+  // timetable page without a scrollbar after focus mode exits.
+  const presetRef = useRef(preset);
+  presetRef.current = preset;
+
   useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseBodyLock = lockBodyScroll();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      // A shared Modal handles its own Escape. If the plot dialog is open,
+      // close only that first instead of tearing down the whole workspace.
+      if (isAnyModalOpen()) return;
+      if (presetRef.current) {
+        setPreset(null);
+        void qc.invalidateQueries({ queryKey: ['unscheduled'] });
+        return;
+      }
+      onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = previous;
+      releaseBodyLock();
       window.removeEventListener('keydown', onKey);
     };
-  }, [open, onClose]);
+  }, [open, onClose, qc]);
 
   if (!open) return null;
 
@@ -632,15 +704,28 @@ export default function PlotFocusMode({
                   {facultyGroups.map((group) => {
                     const isCrossDept =
                       !!group.deptId && group.deptId !== deptId;
+                    const accent = accentFor(group.facultyId);
                     const sessionCount = group.subjects.reduce(
                       (total, subject) => total + subject.rows.length,
                       0,
                     );
                     return (
                       <li key={group.facultyId} className="px-2 py-2">
-                        <div className="flex items-start justify-between gap-2 border border-outline-variant/70 bg-surface px-2.5 py-2">
+                        <div
+                          className={clsx(
+                            'flex items-start justify-between gap-2 border border-l-4 border-outline-variant/70 bg-surface px-2.5 py-2',
+                            accent.border,
+                          )}
+                        >
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-1">
+                              <span
+                                className={clsx(
+                                  'h-2 w-2 shrink-0',
+                                  accent.dot,
+                                )}
+                                aria-hidden="true"
+                              />
                               <span className="text-xs font-black text-on-surface">
                                 {group.lastName}, {group.firstName}
                               </span>
@@ -656,7 +741,12 @@ export default function PlotFocusMode({
                               {group.classification.replace('_', ' ')}
                             </span>
                           </div>
-                          <span className="shrink-0 bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                          <span
+                            className={clsx(
+                              'shrink-0 px-1.5 py-0.5 text-[10px] font-bold',
+                              accent.chip,
+                            )}
+                          >
                             {sessionCount}
                           </span>
                         </div>
@@ -735,6 +825,7 @@ export default function PlotFocusMode({
               <ul className="divide-y divide-outline-variant/60">
                 {grouped.map((group) => {
                   const active = selectedSubjectId === group.subjectId;
+                  const accent = accentFor(group.subjectId);
                   return (
                     <li key={group.key} className="px-2 py-2">
                       <button
@@ -746,7 +837,8 @@ export default function PlotFocusMode({
                           );
                         }}
                         className={clsx(
-                          'flex w-full items-start justify-between gap-2 border px-2.5 py-2 text-left transition',
+                          'flex w-full items-start justify-between gap-2 border border-l-4 px-2.5 py-2 text-left transition',
+                          accent.border,
                           active
                             ? 'border-primary/40 bg-primary/5'
                             : 'border-outline-variant/70 bg-surface hover:bg-surface-container-low/70',
@@ -754,11 +846,23 @@ export default function PlotFocusMode({
                       >
                         <span className="min-w-0">
                           <span className="flex items-center gap-1.5">
+                            <span
+                              className={clsx(
+                                'h-2 w-2 shrink-0',
+                                accent.dot,
+                              )}
+                              aria-hidden="true"
+                            />
                             <span className="text-xs font-black text-on-surface">
                               {group.code}
                             </span>
                             {group.rows.length > 1 && (
-                              <span className="bg-primary/10 px-1 text-[9px] font-bold uppercase tracking-wide text-primary">
+                              <span
+                                className={clsx(
+                                  'px-1 text-[9px] font-bold uppercase tracking-wide',
+                                  accent.chip,
+                                )}
+                              >
                                 {group.rows.length} sessions
                               </span>
                             )}

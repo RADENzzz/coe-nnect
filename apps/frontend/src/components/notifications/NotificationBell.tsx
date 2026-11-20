@@ -154,6 +154,15 @@ export default function NotificationBell() {
 
   return (
     <>
+      {/* Desktop: dim + blur the page so the notification popover owns focus. */}
+      {open && (
+        <div
+          className="fixed inset-0 z-[45] hidden animate-backdrop-in bg-black/30 backdrop-blur-[2px] md:block"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Bell button */}
       <div ref={rootRef} className="relative">
         <button
