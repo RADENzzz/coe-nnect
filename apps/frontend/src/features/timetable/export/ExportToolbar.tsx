@@ -34,6 +34,8 @@ interface Props {
   suggestedFilename: string;
   gridAvailable: boolean;
   gridScopeLabel: string;
+  /** Optional title for the grid PDF (e.g. a faculty schedule). */
+  gridTitle?: string;
   layoutMode: LayoutMode;
   /**
    * When set, the toolbar is exporting a historical version instead of
@@ -88,6 +90,7 @@ export default function ExportToolbar({
   suggestedFilename,
   gridAvailable,
   gridScopeLabel,
+  gridTitle,
   layoutMode,
   versionContext,
 }: Props) {
@@ -181,9 +184,10 @@ export default function ExportToolbar({
   const gridDocProps: ScheduleGridPdfProps = {
     entries,
     title:
-      (isMaster
-        ? 'CoE-NNECT Master Schedule'
-        : `Room Schedule — ${gridScopeLabel}`) + versionSuffix,
+      (gridTitle ??
+        (isMaster
+          ? 'CoE-NNECT Master Schedule'
+          : `Room Schedule — ${gridScopeLabel}`)) + versionSuffix,
     subtitle: versionSubtitle
       ? versionSubtitle
       : isMaster

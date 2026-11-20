@@ -872,7 +872,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <section
           id="dash-attention"
-          className="flex scroll-mt-4 flex-col overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm lg:col-span-7"
+          className="flex scroll-mt-4 flex-col overflow-hidden rounded-xl border border-outline-variant border-t-2 border-t-primary bg-surface shadow-sm lg:col-span-7"
         >
           <header className="flex items-start justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
             <div className="min-w-0">
@@ -969,7 +969,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Recent activity ── */}
-      <section className="overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-outline-variant border-t-2 border-t-primary bg-surface shadow-sm">
         <header className="flex items-center justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
           <div>
             <h2 className="text-sm font-bold text-on-surface">

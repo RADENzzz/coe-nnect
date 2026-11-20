@@ -159,3 +159,144 @@ export async function fetchIdpHealth(): Promise<IdpHealth> {
   const { data } = await api.get('/idp/v1/health');
   return data.data;
 }
+
+// ────────────────────────────────────────────────────────────
+// Schedule-change review (faculty / IDP requests)
+// ────────────────────────────────────────────────────────────
+
+export type ScheduleChangeConflictState =
+  'ok' | 'warning' | 'conflict' | 'unknown';
+
+export interface ScheduleChangeConflictItem {
+  severity: 'hard' | 'soft' | 'info';
+  ruleId: string;
+  ruleName: string;
+  reason: string;
+}
+
+export interface ScheduleChangeFaculty {
+  facultyId: string;
+  name: string;
+  deptId: string | null;
+  deptCode: string | null;
+  deptName: string | null;
+}
+
+export interface ScheduleChangeSubject {
+  subjectId: string;
+  subjectCode: string;
+  title: string;
+  deptId: string | null;
+}
+
+export interface ScheduleChangeTerm {
+  termId: string;
+  label: string;
+  schoolYear: string;
+  semester: string | null;
+  isActive: boolean;
+}
+
+export interface ScheduleChangeSchedule {
+  scheduleId: string;
+  subjectCode: string | null;
+  subjectTitle: string | null;
+  section: string | null;
+  facultyName: string | null;
+  room: string | null;
+  dayOfWeek: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  status: string;
+}
+
+export interface ScheduleChangeProposal {
+  dayOfWeek: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  loadType: string | null;
+  sectionCode: string | null;
+  roomId: string | null;
+  reason: string | null;
+  affectedDates: string[];
+}
+
+export interface ScheduleChangeAck {
+  action: string;
+  notes: string | null;
+  acknowledgedBy: string | null;
+  acknowledgedAt: string;
+}
+
+export interface ScheduleChangeRequest {
+  idpRequestId: string;
+  type: string;
+  status: IdpChangeRequestStatus;
+  severity: string;
+  requiresAck: boolean;
+  requestedAt: string;
+  receivedAt: string;
+  faculty: ScheduleChangeFaculty | null;
+  subject: ScheduleChangeSubject | null;
+  term: ScheduleChangeTerm | null;
+  schedule: ScheduleChangeSchedule | null;
+  proposed: ScheduleChangeProposal;
+  conflict: {
+    state: ScheduleChangeConflictState;
+    summary: string;
+    items: ScheduleChangeConflictItem[];
+  };
+  ack: ScheduleChangeAck | null;
+  canReview: boolean;
+  requiresDeanUnfinalize: boolean;
+  details: Record<string, unknown>;
+}
+
+export interface ScheduleChangeCounts {
+  pending: number;
+  ready: number;
+  conflicted: number;
+  warning: number;
+  unknown: number;
+}
+
+export interface ScheduleChangeReviewList {
+  items: ScheduleChangeRequest[];
+  counts: ScheduleChangeCounts;
+}
+
+export interface ScheduleChangeDecisionInput {
+  action: 'accepted' | 'rejected';
+  notes?: string | null;
+  acknowledgeConflicts?: boolean;
+}
+
+export interface ScheduleChangeDecisionResult {
+  request: ScheduleChangeRequest;
+  ack: IdpChangeRequestAckResult;
+  unfinalize: {
+    filed: boolean;
+    requestId?: string;
+    message?: string;
+  };
+}
+
+export async function fetchScheduleChangeRequests(
+  filters: { status?: IdpChangeRequestStatus; limit?: number } = {},
+): Promise<ScheduleChangeReviewList> {
+  const { data } = await api.get('/v1/idp/schedule-change-requests', {
+    params: filters,
+  });
+  return data.data;
+}
+
+export async function decideScheduleChangeRequest(
+  idpRequestId: string,
+  input: ScheduleChangeDecisionInput,
+): Promise<ScheduleChangeDecisionResult> {
+  const { data } = await api.post(
+    `/v1/idp/schedule-change-requests/${encodeURIComponent(idpRequestId)}/decision`,
+    input,
+  );
+  return data.data;
+}

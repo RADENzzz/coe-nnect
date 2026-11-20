@@ -13,12 +13,14 @@ import { Designation } from '../system-config/entities/designation.entity';
 import { Term } from '../terms/entities/term.entity';
 import { User } from '../users/entities/user.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { SchedulingModule } from '../scheduling/scheduling.module';
 import { IdpChangeRequestService } from './idp-change-request.service';
 import { IdpClientService } from './idp-client.service';
 import { IdpController, IdpSyncController } from './idp.controller';
 import { IdpDeviceGuard } from './idp-device.guard';
 import { IdpFacultyRequestPublisherService } from './idp-faculty-request-publisher.service';
 import { IdpOutboxService } from './idp-outbox.service';
+import { IdpScheduleChangeReviewService } from './idp-schedule-change-review.service';
 import { IdpSchedulePublisherService } from './idp-schedule-publisher.service';
 import { IdpSignatureGuard } from './idp-signature.guard';
 import { IdpSyncService } from './idp-sync.service';
@@ -61,6 +63,7 @@ import { IdpProcessedEvent } from './entities/idp-processed-event.entity';
       IdpOutboxItem,
       IdpChangeRequest,
     ]),
+    SchedulingModule,
   ],
   controllers: [IdpController, IdpSyncController],
   providers: [
@@ -70,6 +73,7 @@ import { IdpProcessedEvent } from './entities/idp-processed-event.entity';
     IdpSchedulePublisherService,
     IdpFacultyRequestPublisherService,
     IdpChangeRequestService,
+    IdpScheduleChangeReviewService,
     IdpDeviceGuard,
     IdpSignatureGuard,
     RolesGuard,

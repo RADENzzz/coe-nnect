@@ -39,6 +39,9 @@ const IdpChangeRequestsPage = lazy(
 const AdminUsersPage = lazy(ROUTE_LOADERS['/dean/users']);
 const SectionsPage = lazy(ROUTE_LOADERS['/sections']);
 const ApprovalsPage = lazy(ROUTE_LOADERS['/approvals']);
+const ScheduleChangeApprovalsPage = lazy(
+  ROUTE_LOADERS['/approvals/schedule-changes'],
+);
 const SubjectsPage = lazy(ROUTE_LOADERS['/subjects']);
 const FacultyPage = lazy(ROUTE_LOADERS['/faculty']);
 const RoomsPage = lazy(ROUTE_LOADERS['/rooms']);
@@ -185,6 +188,10 @@ function App() {
             <Route path="timetable" element={<TimetablePage />} />
             <Route path="sections" element={<SectionsPage />} />
             <Route path="approvals" element={<ApprovalsPage />} />
+            <Route
+              path="approvals/schedule-changes"
+              element={<ScheduleChangeApprovalsPage />}
+            />
             <Route path="subjects" element={<SubjectsPage />} />
             <Route path="programs" element={<ProgramsPage />} />
             <Route path="prospectus" element={<ProspectusPage />} />

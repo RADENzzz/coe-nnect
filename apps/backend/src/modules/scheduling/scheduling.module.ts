@@ -58,6 +58,6 @@ import { DepartmentsModule } from '../departments/departments.module';
     SolverClient,
     RolesGuard,
   ],
-  exports: [SchedulingService],
+  exports: [SchedulingService, ScheduleUnfinalizeService],
 })
 export class SchedulingModule {}

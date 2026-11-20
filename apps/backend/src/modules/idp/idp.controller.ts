@@ -26,8 +26,10 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { AckChangeRequestDto } from './dto/ack-change-request.dto';
 import { ListChangeRequestsDto } from './dto/list-change-requests.dto';
 import { PublishScheduleDto } from './dto/publish-schedule.dto';
+import { ReviewScheduleChangeDto } from './dto/review-schedule-change.dto';
 import { SyncFacultyDto } from './dto/sync-faculty.dto';
 import { IdpChangeRequestService } from './idp-change-request.service';
+import { IdpScheduleChangeReviewService } from './idp-schedule-change-review.service';
 import { IdpDeviceGuard } from './idp-device.guard';
 import { IdpOutboxService } from './idp-outbox.service';
 import { IdpSchedulePublisherService } from './idp-schedule-publisher.service';
@@ -275,6 +277,7 @@ export class IdpSyncController {
     private readonly sync: IdpSyncService,
     private readonly publisher: IdpSchedulePublisherService,
     private readonly changeRequests: IdpChangeRequestService,
+    private readonly scheduleChanges: IdpScheduleChangeReviewService,
   ) {}
 
   @Post('faculty/sync')
@@ -373,6 +376,54 @@ export class IdpSyncController {
   ) {
     return {
       data: await this.changeRequests.acknowledge(id, dto, req.user.id),
+    };
+  }
+
+  /**
+   * Department-head schedule-change review.
+   *
+   * This is a richer view than the raw IDP queue: it resolves the faculty,
+   * subject, term, and linked schedule, then runs the scheduling rules against
+   * the proposed slot so the reviewer can see whether the change is safe.
+   * Department heads only see requests for faculty in their department (or
+   * requests whose details name their department).
+   */
+  @Get('schedule-change-requests')
+  @Roles(
+    'college_dean',
+    'college_secretary',
+    'department_head',
+    'administrator',
+  )
+  @ApiOperation({
+    summary: 'List faculty/IDP schedule changes with conflict analysis',
+  })
+  async listScheduleChangeRequests(
+    @Query() dto: ListChangeRequestsDto,
+    @Req() req: any,
+  ) {
+    return { data: await this.scheduleChanges.list(req.profile, dto) };
+  }
+
+  @Post('schedule-change-requests/:id/decision')
+  @Roles(
+    'college_dean',
+    'college_secretary',
+    'department_head',
+    'administrator',
+  )
+  @Auditable({ action: 'idp.schedule_change.review', source: 'IDP' })
+  @ApiParam({ name: 'id', description: 'IDP request id, e.g. IDP-REQ-0001.' })
+  @ApiOperation({
+    summary: 'Approve or reject a schedule change and record the IDP ack',
+  })
+  async decideScheduleChangeRequest(
+    @Param('id') id: string,
+    @Body() dto: ReviewScheduleChangeDto,
+    @Req() req: any,
+  ) {
+    return {
+      data: await this.scheduleChanges.decide(id, dto, req.profile),
     };
   }
 }

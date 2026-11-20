@@ -556,5 +556,226 @@ export class SchedulingCoverageService {
     };
   }
 
+  /**
+   * Live list of sessions that still need plotting for a department.
+   *
+   * The `schedule_unscheduled` table is only written by the auto-generate
+   * solver, so it goes stale as soon as the prospectus or schedule changes
+   * (and it is empty when auto-generate has never run). This computes the
+   * backlog directly from prospectus × active sections × required weekly
+   * sessions minus what is already on the schedule.
+   *
+   * Returns `null` when the term/prospectus cannot be resolved so callers
+   * can fall back to the persisted rows.
+   */
+  async findUnscheduledSessions(
+    termId: string,
+    deptId: string,
+  ): Promise<
+    Array<{
+      unscheduledId: string;
+      sectionId: string | null;
+      sectionCode: string;
+      subjectId: string;
+      subjectCode: string;
+      subjectTitle: string;
+      kind: 'lecture' | 'lab';
+      sessionIndex: number;
+      reason: string | null;
+    }> | null
+  > {
+    const db = this.supabase.getAdminClient();
 
+    // ── 1. Term semester ──
+    const { data: term } = await db
+      .from('term')
+      .select('semester')
+      .eq('term_id', termId)
+      .maybeSingle();
+
+    const semester = term?.semester ?? null;
+    if (!semester) return null;
+
+    // ── 2. Active programs in the department ──
+    const { data: programs } = await db
+      .from('program')
+      .select('program_id')
+      .eq('dept_id', deptId)
+      .eq('is_active', true);
+
+    const programIds = (programs ?? []).map((p) => String(p.program_id));
+    if (programIds.length === 0) return null;
+
+    // ── 3. Active sections + prospectus for this semester ──
+    const [{ data: sections }, { data: prospectusRows }] = await Promise.all([
+      db
+        .from('section')
+        .select('section_id, section_code, program_id, year_level')
+        .in('program_id', programIds)
+        .eq('is_active', true),
+      db
+        .from('prospectus')
+        .select(
+          'subject_id, program_id, year_level, semester, ' +
+            'lecture_sessions_per_week, lab_sessions_per_week',
+        )
+        .in('program_id', programIds)
+        .eq('is_active', true)
+        .eq('semester', semester),
+    ]);
+
+    if (!prospectusRows || prospectusRows.length === 0) return null;
+
+    // The generated Supabase types do not include the session columns yet,
+    // so the select above widens to GenericStringError. Narrow it manually.
+    const prospectus = prospectusRows as unknown as Array<{
+      subject_id: string;
+      program_id: string;
+      year_level: number;
+      lecture_sessions_per_week: number | null;
+      lab_sessions_per_week: number | null;
+    }>;
+
+    const sectionRows = sections ?? [];
+    const subjectIds = Array.from(
+      new Set(prospectus.map((p) => String(p.subject_id))),
+    );
+    if (subjectIds.length === 0) return null;
+
+    // ── 4. Subjects + live schedule counts ──
+    const [{ data: subjectRows }, { data: scheduleRows }] = await Promise.all([
+      db
+        .from('subject')
+        .select(
+          'subject_id, subject_code, title, lecture_units, lab_units, is_active',
+        )
+        .in('subject_id', subjectIds)
+        .eq('is_active', true),
+      db
+        .from('schedule')
+        .select('subject_id, section_id, load_type')
+        .eq('term_id', termId)
+        .in('subject_id', subjectIds),
+    ]);
+
+    const subjectById = new Map(
+      (subjectRows ?? []).map((s) => [String(s.subject_id), s]),
+    );
+
+    const plottedCounts = new Map<string, number>();
+    for (const row of scheduleRows ?? []) {
+      if (!row.section_id || !row.subject_id) continue;
+      const loadType = row.load_type ?? 'lecture';
+      if (loadType !== 'lecture' && loadType !== 'laboratory') continue;
+      const key = `${row.subject_id}::${row.section_id}::${loadType}`;
+      plottedCounts.set(key, (plottedCounts.get(key) ?? 0) + 1);
+    }
+
+    // ── 5. Expand prospectus × sections into required sessions ──
+    const required = new Map<
+      string,
+      {
+        subjectId: string;
+        subjectCode: string;
+        subjectTitle: string;
+        sectionId: string;
+        sectionCode: string;
+        lecture: number;
+        lab: number;
+      }
+    >();
+
+    for (const p of prospectus) {
+      const subjectId = String(p.subject_id);
+      const subject = subjectById.get(subjectId);
+      if (!subject) continue;
+
+      const lectureUnits = Number(subject.lecture_units ?? 0);
+      const labUnits = Number(subject.lab_units ?? 0);
+      const lectureSessions =
+        lectureUnits > 0
+          ? Math.max(1, Number(p.lecture_sessions_per_week ?? 1))
+          : 0;
+      const labSessions =
+        labUnits > 0 ? Math.max(1, Number(p.lab_sessions_per_week ?? 1)) : 0;
+      if (lectureSessions === 0 && labSessions === 0) continue;
+
+      const programId = String(p.program_id);
+      const yearLevel = Number(p.year_level);
+
+      for (const section of sectionRows) {
+        if (String(section.program_id) !== programId) continue;
+        if (Number(section.year_level ?? -1) !== yearLevel) continue;
+
+        const sectionId = String(section.section_id);
+        const key = `${subjectId}::${sectionId}`;
+        const existing = required.get(key);
+        if (existing) {
+          existing.lecture = Math.max(existing.lecture, lectureSessions);
+          existing.lab = Math.max(existing.lab, labSessions);
+          continue;
+        }
+        required.set(key, {
+          subjectId,
+          subjectCode: subject.subject_code ?? '?',
+          subjectTitle: subject.title ?? '',
+          sectionId,
+          sectionCode: section.section_code ?? '?',
+          lecture: lectureSessions,
+          lab: labSessions,
+        });
+      }
+    }
+
+    // ── 6. Emit one row per session that is still missing ──
+    const result: Array<{
+      unscheduledId: string;
+      sectionId: string | null;
+      sectionCode: string;
+      subjectId: string;
+      subjectCode: string;
+      subjectTitle: string;
+      kind: 'lecture' | 'lab';
+      sessionIndex: number;
+      reason: string | null;
+    }> = [];
+
+    for (const pair of required.values()) {
+      const kinds: Array<{ kind: 'lecture' | 'lab'; loadType: string; need: number }> = [
+        { kind: 'lecture', loadType: 'lecture', need: pair.lecture },
+        { kind: 'lab', loadType: 'laboratory', need: pair.lab },
+      ];
+      for (const { kind, loadType, need } of kinds) {
+        if (need <= 0) continue;
+        const key = `${pair.subjectId}::${pair.sectionId}::${loadType}`;
+        const plotted = plottedCounts.get(key) ?? 0;
+        for (let i = plotted; i < need; i++) {
+          result.push({
+            unscheduledId: `live-${key}-${i}`,
+            sectionId: pair.sectionId,
+            sectionCode: pair.sectionCode,
+            subjectId: pair.subjectId,
+            subjectCode: pair.subjectCode,
+            subjectTitle: pair.subjectTitle,
+            kind,
+            sessionIndex: i,
+            reason: null,
+          });
+        }
+      }
+    }
+
+    result.sort((a, b) => {
+      if (a.sectionCode !== b.sectionCode) {
+        return a.sectionCode.localeCompare(b.sectionCode);
+      }
+      if (a.subjectCode !== b.subjectCode) {
+        return a.subjectCode.localeCompare(b.subjectCode);
+      }
+      if (a.kind !== b.kind) return a.kind === 'lecture' ? -1 : 1;
+      return a.sessionIndex - b.sessionIndex;
+    });
+
+    return result;
+  }
 }

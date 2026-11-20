@@ -1290,6 +1290,14 @@ export class AutoGenerateService {
       reason: string | null;
     }>
   > {
+    // Compute the backlog live when a department is known: the persisted
+    // table is a solver artifact and goes stale (or stays empty) whenever the
+    // prospectus/schedule changes without a fresh auto-generate run.
+    if (deptId) {
+      const live = await this.coverage.findUnscheduledSessions(termId, deptId);
+      if (live) return live;
+    }
+
     const qb = this.supabase
       .getAdminClient()
       .from('schedule_unscheduled')

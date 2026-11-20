@@ -71,7 +71,7 @@ export default function SummaryCard({
   );
 
   const className =
-    'group flex min-w-0 flex-col items-start gap-1 bg-gradient-to-br from-primary/[0.06] via-surface to-surface px-4 py-3.5 text-left';
+    'group flex min-w-0 flex-col items-start gap-1 border-t-2 border-t-primary/70 bg-surface px-4 py-3.5 text-left';
 
   if (onClick) {
     return (

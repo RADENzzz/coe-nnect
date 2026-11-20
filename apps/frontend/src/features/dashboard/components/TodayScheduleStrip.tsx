@@ -67,7 +67,7 @@ export default function TodayScheduleStrip({
       : 'Up next';
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-outline-variant bg-gradient-to-br from-primary/[0.06] via-surface to-surface shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-outline-variant border-t-2 border-t-primary bg-surface shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-outline-variant/70 px-4 py-3">
         <div className="flex items-baseline gap-2">
           <h3 className="text-sm font-bold text-on-surface">Today</h3>
