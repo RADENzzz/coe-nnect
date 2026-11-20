@@ -17,6 +17,8 @@ import {
 export default function ThemeStyleMenu() {
   const accent = useAppearanceStore((s) => s.appearance.accent);
   const setAccent = useAppearanceStore((s) => s.setAccent);
+  const show3dBuilding = useAppearanceStore((s) => s.appearance.show3dBuilding);
+  const setShow3dBuilding = useAppearanceStore((s) => s.setShow3dBuilding);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -112,6 +114,24 @@ export default function ThemeStyleMenu() {
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-outline-variant px-2 py-1.5">
+            <span className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant">
+              <Icon name={show3dBuilding ? 'visibility' : 'visibility_off'} size={14} />
+              3D building
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-label="Toggle 3D building"
+              aria-checked={show3dBuilding}
+              onClick={() => setShow3dBuilding(!show3dBuilding)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
+            >
+              <Icon name={show3dBuilding ? 'check_circle' : 'cancel'} size={12} />
+              {show3dBuilding ? 'On' : 'Off'}
+            </button>
           </div>
 
           {accent.toLowerCase() !== DEFAULT_APPEARANCE.accent && (

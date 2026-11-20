@@ -35,6 +35,10 @@ import {
 // the public schedule view stays light.
 const StudentPlannerPanelLazy = lazy(() => import('./StudentPlannerPanel'));
 
+// The 3D viewer pulls in three.js. Keep it out of the initial bundle so the
+// public landing page still paints quickly on first visit.
+const CoeBuildingViewerLazy = lazy(() => import('./CoeBuildingViewer'));
+
 type LandingTab = 'schedules' | 'planner' | 'faculty' | 'integration';
 
 /**
@@ -1544,6 +1548,7 @@ export default function LandingPage() {
   const user = useAuthStore((state) => state.user);
   const profile = useAuthStore((state) => state.profile);
   const brandLogo = useAppearanceStore((state) => state.logo);
+  const show3dBuilding = useAppearanceStore((state) => state.appearance.show3dBuilding);
   const [tab, setTab] = useState<LandingTab>('schedules');
   const [termId, setTermId] = useState<string | undefined>(undefined);
 
@@ -1707,8 +1712,8 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
 
-        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.3fr,1fr] lg:items-center lg:px-8 lg:py-24">
-          <div>
+        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.3fr,1fr] lg:px-8">
+          <div className="py-16 lg:py-24">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85">
                 <Icon name="public" size={14} />
@@ -1758,6 +1763,16 @@ export default function LandingPage() {
                 {user ? 'Open dashboard' : 'Sign in to manage'}
               </Link>
             </div>
+          </div>
+
+          <div className="h-full min-h-[320px] w-full lg:min-h-[480px]">
+            <Suspense
+              fallback={
+                <div className="h-full w-full" />
+              }
+            >
+              {show3dBuilding && <CoeBuildingViewerLazy />}
+            </Suspense>
           </div>
         </div>
       </section>

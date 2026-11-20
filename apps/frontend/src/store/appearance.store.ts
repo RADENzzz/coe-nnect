@@ -14,12 +14,15 @@ export interface Appearance {
   surfaceTint: SurfaceTint;
   /** Experimental glassmorphism + animated liquid backdrop. */
   glass: boolean;
+  /** Whether the interactive 3D building is rendered in the landing hero. */
+  show3dBuilding: boolean;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
   accent: '#5c1219',
   surfaceTint: 'default',
   glass: false,
+  show3dBuilding: true,
 };
 
 export interface AccentPreset {
@@ -490,6 +493,7 @@ function readStoredAppearance(): Appearance {
         ? parsed.surfaceTint
         : 'default',
       glass: parsed?.glass === true,
+      show3dBuilding: parsed?.show3dBuilding !== false,
     };
   } catch {
     return DEFAULT_APPEARANCE;
@@ -513,6 +517,7 @@ interface AppearanceState {
   setAccent: (hex: string) => void;
   setSurfaceTint: (tint: SurfaceTint) => void;
   setGlass: (glass: boolean) => void;
+  setShow3dBuilding: (show: boolean) => void;
   resetAppearance: () => void;
   setLogo: (dataUrl: string | null) => void;
 }
@@ -548,6 +553,12 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => ({
   setGlass: (glass) => {
     const appearance = { ...get().appearance, glass };
     applyAppearance(appearance);
+    persistAppearance(appearance);
+    set({ appearance });
+  },
+
+  setShow3dBuilding: (show) => {
+    const appearance = { ...get().appearance, show3dBuilding: show };
     persistAppearance(appearance);
     set({ appearance });
   },
