@@ -14,7 +14,6 @@ import { useAppearanceStore } from '../../store/appearance.store';
 import {
   fetchPublicFaculty,
   fetchPublicIntegration,
-  fetchPublicOverview,
   fetchPublicSchedules,
   type IntegrationMilestoneStatus,
   type IntegrationState,
@@ -179,27 +178,6 @@ function FeatureCard({
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-function HeroStat({
-  label,
-  value,
-  loading = false,
-}: {
-  label: string;
-  value: number | string;
-  loading?: boolean;
-}) {
-  return (
-    <div className="border-t border-white/10 pt-3">
-      <dt className="text-[10px] font-semibold uppercase tracking-wider text-white/55">
-        {label}
-      </dt>
-      <dd className="mt-1 text-2xl font-extrabold text-white tabular-nums">
-        <RollingValue value={value} loading={loading} />
-      </dd>
     </div>
   );
 }
@@ -1569,12 +1547,6 @@ export default function LandingPage() {
   const [tab, setTab] = useState<LandingTab>('schedules');
   const [termId, setTermId] = useState<string | undefined>(undefined);
 
-  const overview = useQuery({
-    queryKey: ['public-overview'],
-    queryFn: fetchPublicOverview,
-    staleTime: 60_000,
-  });
-
   const schedules = useQuery({
     queryKey: ['public-schedules', termId ?? 'latest'],
     queryFn: () => fetchPublicSchedules(termId),
@@ -1786,50 +1758,6 @@ export default function LandingPage() {
                 {user ? 'Open dashboard' : 'Sign in to manage'}
               </Link>
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/15 bg-white/[0.07] p-6 backdrop-blur-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                At a glance
-              </p>
-              <span
-                className="inline-flex items-center gap-1.5 border border-[#6ee7b7]/40 bg-[#052e22]/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6ee7b7]"
-                style={{ borderRadius: 2 }}
-              >
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-[#34d399] shadow-[0_0_0_2px_rgba(52,211,153,0.25)]"
-                  aria-hidden="true"
-                />
-                Live
-              </span>
-            </div>
-            <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4">
-              <HeroStat
-                label="Published class blocks"
-                value={overview.data?.publishedEntries ?? '—'}
-                loading={overview.isLoading}
-              />
-              <HeroStat
-                label="Published terms"
-                value={overview.data?.publishedTerms ?? '—'}
-                loading={overview.isLoading}
-              />
-              <HeroStat
-                label="Active faculty"
-                value={overview.data?.activeFaculty ?? '—'}
-                loading={overview.isLoading}
-              />
-              <HeroStat
-                label="Active departments"
-                value={overview.data?.activeDepartments ?? '—'}
-                loading={overview.isLoading}
-              />
-            </dl>
-            <p className="mt-5 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-white/60">
-              Only published schedules are shown. Drafts, flagged rows, and
-              entries awaiting faculty approval stay internal.
-            </p>
           </div>
         </div>
       </section>

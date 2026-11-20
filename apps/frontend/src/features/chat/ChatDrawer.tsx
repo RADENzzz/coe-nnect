@@ -298,9 +298,9 @@ export default function ChatDrawer({ onClose }: Props) {
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* Backdrop dims and blurs the page so the chat panel owns focus. */}
       <div
-        className="fixed inset-0 z-[45] animate-backdrop-in bg-black/30 md:hidden"
+        className="fixed inset-0 z-[45] animate-backdrop-in bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
         aria-hidden="true"
       />

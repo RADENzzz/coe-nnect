@@ -208,6 +208,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const [plotOpen, setPlotOpen] = useState(false);
   const [focusModeOpen, setFocusModeOpen] = useState(false);
+  const closeFocusMode = useCallback(() => setFocusModeOpen(false), []);
   const [plotSubjectPresetId, setPlotSubjectPresetId] = useState<string | null>(
     null,
   );
@@ -1759,7 +1760,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         {writable && activeTerm && focusModeOpen && (
           <PlotFocusMode
             open={focusModeOpen}
-            onClose={() => setFocusModeOpen(false)}
+            onClose={closeFocusMode}
             termId={activeTerm.termId}
             termLabel={`${activeTerm.termName} — AY ${activeTerm.schoolYear}`}
             deptId={myDeptId}
