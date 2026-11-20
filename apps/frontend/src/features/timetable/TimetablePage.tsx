@@ -46,6 +46,7 @@ import RollingValue, {
   RollingNumber,
 } from '../../components/ui/RollingValue';
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
+import PlotFocusMode from './components/PlotFocusMode';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
 import { colorForSubject } from './utils/color.util';
 import StackPicker from './components/StackPicker';
@@ -206,6 +207,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const queryClient = useQueryClient();
 
   const [plotOpen, setPlotOpen] = useState(false);
+  const [focusModeOpen, setFocusModeOpen] = useState(false);
   const [plotSubjectPresetId, setPlotSubjectPresetId] = useState<string | null>(
     null,
   );
@@ -413,6 +415,30 @@ export default function TimetablePage({ readOnly = false }: Props) {
     return subjects.filter((s) => !blocked.has(String(s.subjectId)));
   }, [subjects, unresolvedElectives]);
 
+  const plotSubjectOptions = useMemo(
+    () =>
+      plottableSubjects.map((s) => {
+        const entries = prospectus.filter((p) => p.subjectId === s.subjectId);
+        const years = entries.map((p) => ({
+          yearLevel: p.yearLevel,
+          semester: p.semester,
+        }));
+        const first = entries[0];
+        return {
+          subjectId: s.subjectId,
+          subjectCode: s.subjectCode,
+          title: s.title,
+          lectureUnits: s.lectureUnits,
+          labUnits: s.labUnits,
+          deptId: s.deptId,
+          prospectusYears: years,
+          lectureSessionsPerWeek: first?.lectureSessionsPerWeek ?? 1,
+          labSessionsPerWeek: first?.labSessionsPerWeek ?? 1,
+        };
+      }),
+    [plottableSubjects, prospectus],
+  );
+
   const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =
     useQuery({
       queryKey: ['pending-auto-generate', activeTerm?.termId, myDeptId],
@@ -471,6 +497,49 @@ export default function TimetablePage({ readOnly = false }: Props) {
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
+
+  const plotFacultyOptions = useMemo(
+    () =>
+      faculty.map((f) => ({
+        facultyId: f.facultyId,
+        firstName: f.firstName,
+        lastName: f.lastName,
+        deptId: f.deptId,
+      })),
+    [faculty],
+  );
+
+  const plotRoomOptions = useMemo(
+    () =>
+      rooms.map((r) => ({
+        roomId: r.roomId,
+        roomNumber: r.roomNumber,
+        roomType: r.roomType,
+      })),
+    [rooms],
+  );
+
+  const plotDepartmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        deptId: String(d.deptId),
+        deptCode: d.deptCode,
+        deptName: d.deptName,
+      })),
+    [departments],
+  );
+
+  const plotExistingCounts = useMemo(
+    () =>
+      (schedules ?? []).map((s) => ({
+        scheduleId: s.scheduleId,
+        section: s.section,
+        subjectId: s.subjectId,
+        loadType: (s.loadType ?? 'lecture') as
+          'lecture' | 'laboratory' | 'other',
+      })),
+    [schedules],
+  );
 
   const allEntries = useMemo(() => {
     if (activeVersion && versionDetail?.snapshot) {
@@ -796,17 +865,21 @@ export default function TimetablePage({ readOnly = false }: Props) {
     invalidateAfterAutoGenerate,
   ]);
 
-  const { moveEntry: handleMove, isPending: movePending, pendingConfirmation } =
-    useMoveSchedule({
-      termId: activeTerm?.termId,
-      allEntries,
-      onError: (msg) =>
-        setAlertState({
-          title: 'Move failed',
-          tone: 'error',
-          items: [{ message: msg, tone: 'error' }],
-        }),
-    });
+  const {
+    moveEntry: handleMove,
+    isPending: movePending,
+    isBusy: moveBusy,
+    pendingConfirmation,
+  } = useMoveSchedule({
+    termId: activeTerm?.termId,
+    allEntries,
+    onError: (msg) =>
+      setAlertState({
+        title: 'Move failed',
+        tone: 'error',
+        items: [{ message: msg, tone: 'error' }],
+      }),
+  });
 
   const handleClick = useCallback(
     (entry: ScheduleEntry) => {
@@ -1157,6 +1230,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const entryCountLabel = `${entries.length} ${
     entries.length === 1 ? 'entry' : 'entries'
   }`;
+  const facultyGridActive =
+    viewMode === 'byFaculty' ||
+    (viewMode === 'byDepartment' && subMode === 'byFaculty');
   const writable = !readOnly && !activeVersion;
 
   const versionContext = activeVersion
@@ -1224,9 +1300,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 <span className="tabular-nums">
                   <RollingValue value={entryCountLabel} loading={isLoading} />
                 </span>
-                {writable && movePending && (
+                {writable && moveBusy && (
                   <span className="ml-1 text-primary font-medium animate-pulse">
-                    Saving…
+                    Checking conflicts…
                   </span>
                 )}
               </div>
@@ -1293,6 +1369,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
                   disabledReason={autoGenerateDisabledReason}
                 />
               </div>
+            )}
+
+            {writable && activeTerm && (
+              <button
+                data-tour="tt-focus"
+                onClick={() => setFocusModeOpen(true)}
+                disabled={isGenerating}
+                title={
+                  isGenerating
+                    ? 'Wait for the current generation to finish'
+                    : 'Open the full-screen plotting workspace'
+                }
+                className="flex items-center gap-2 px-3 py-2 border border-primary/40 text-sm font-semibold text-primary hover:bg-primary/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Icon name="center_focus_strong" size={16} />
+                <span className="hidden sm:inline">Focus Plot</span>
+              </button>
             )}
 
             {writable && activeTerm && (
@@ -1598,11 +1691,20 @@ export default function TimetablePage({ readOnly = false }: Props) {
                     : 'Term'
                 }
                 suggestedFilename={exportScope.filename}
-                gridAvailable={viewMode === 'byRoom' || viewMode === 'master'}
+                gridAvailable={
+                  viewMode === 'byRoom' ||
+                  viewMode === 'master' ||
+                  facultyGridActive
+                }
                 gridScopeLabel={
-                  viewMode === 'byRoom'
+                  viewMode === 'byRoom' || facultyGridActive
                     ? exportScope.scopeLabel
                     : 'Master Schedule'
+                }
+                gridTitle={
+                  facultyGridActive
+                    ? `Faculty Schedule — ${exportScope.scopeLabel}`
+                    : undefined
                 }
                 layoutMode={layoutMode}
                 versionContext={versionContext}
@@ -1626,6 +1728,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                         ? new Set(entries.map((e) => e.id))
                         : foreignEntryIds
                     }
+                    busy={moveBusy}
                   />
                 </>
               )}
@@ -1645,52 +1748,33 @@ export default function TimetablePage({ readOnly = false }: Props) {
             termId={activeTerm.termId}
             editing={editEntry}
             presetSubjectId={plotSubjectPresetId ?? undefined}
-            departments={departments.map((d) => ({
-              deptId: String(d.deptId),
-              deptCode: d.deptCode,
-              deptName: d.deptName,
-            }))}
-            subjects={plottableSubjects.map((s) => {
-              const entries = prospectus.filter(
-                (p) => p.subjectId === s.subjectId,
-              );
-              const years = entries.map((p) => ({
-                yearLevel: p.yearLevel,
-                semester: p.semester,
-              }));
-              const first = entries[0];
-              return {
-                subjectId: s.subjectId,
-                subjectCode: s.subjectCode,
-                title: s.title,
-                lectureUnits: s.lectureUnits,
-                labUnits: s.labUnits,
-                deptId: s.deptId,
-                prospectusYears: years,
-                lectureSessionsPerWeek: first?.lectureSessionsPerWeek ?? 1,
-                labSessionsPerWeek: first?.labSessionsPerWeek ?? 1,
-              };
-            })}
-            faculty={faculty.map((f) => ({
-              facultyId: f.facultyId,
-              firstName: f.firstName,
-              lastName: f.lastName,
-              deptId: f.deptId,
-            }))}
-            rooms={rooms.map((r) => ({
-              roomId: r.roomId,
-              roomNumber: r.roomNumber,
-              roomType: r.roomType,
-            }))}
-            existingCounts={(schedules ?? []).map((s) => ({
-              scheduleId: s.scheduleId,
-              section: s.section,
-              subjectId: s.subjectId,
-              loadType: (s.loadType ?? 'lecture') as
-                | 'lecture'
-                | 'laboratory'
-                | 'other',
-            }))}
+            departments={plotDepartmentOptions}
+            subjects={plotSubjectOptions}
+            faculty={plotFacultyOptions}
+            rooms={plotRoomOptions}
+            existingCounts={plotExistingCounts}
+          />
+        )}
+
+        {writable && activeTerm && focusModeOpen && (
+          <PlotFocusMode
+            open={focusModeOpen}
+            onClose={() => setFocusModeOpen(false)}
+            termId={activeTerm.termId}
+            termLabel={`${activeTerm.termName} — AY ${activeTerm.schoolYear}`}
+            deptId={myDeptId}
+            deptName={
+              departments.find((d) => String(d.deptId) === myDeptId)
+                ?.deptName ?? ''
+            }
+            entries={entries}
+            readOnlyEntryIds={foreignEntryIds}
+            onEntryMove={handleMove}
+            onEntryClick={handleClick}
+            subjects={plotSubjectOptions}
+            rooms={plotRoomOptions}
+            departments={plotDepartmentOptions}
+            existingCounts={plotExistingCounts}
           />
         )}
 
@@ -1989,7 +2073,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               <summary className="px-4 py-3 cursor-pointer bg-amber-50 text-amber-900 font-semibold text-sm flex items-center gap-2 hover:bg-amber-100 transition select-none">
                 <Icon name="warning" size={16} />
                 <span className="flex-1">
-                  {unscheduledRecords.length} subject
+                  {unscheduledRecords.length} session
                   {unscheduledRecords.length === 1 ? '' : 's'} need manual plotting
                 </span>
                 <Icon name="expand_more" size={16} />

@@ -32,7 +32,7 @@ const DAY_ABBR_TO_FULL: Record<string, string> = {
   SUN: 'Sunday',
 };
 
-interface SubjectOption {
+export interface SubjectOption {
   subjectId: string;
   subjectCode: string;
   title: string;
@@ -44,23 +44,33 @@ interface SubjectOption {
   labSessionsPerWeek?: number;
 }
 
-interface FacultyOption {
+export interface FacultyOption {
   facultyId: string;
   firstName: string;
   lastName: string;
   deptId?: string | null;
 }
 
-interface RoomOption {
+export interface RoomOption {
   roomId: string;
   roomNumber: string;
   roomType: string;
 }
 
-interface DepartmentOption {
+export interface DepartmentOption {
   deptId: string;
   deptCode: string;
   deptName: string;
+}
+
+export interface PlotSubjectPreset {
+  subjectId?: string;
+  section?: string;
+  facultyId?: string;
+  dayOfWeek?: string;
+  startTime?: string;
+  endTime?: string;
+  loadType?: 'lecture' | 'laboratory' | 'other';
 }
 
 interface Props {
@@ -79,6 +89,13 @@ interface Props {
     loadType: 'lecture' | 'laboratory' | 'other';
   }>;
   presetSubjectId?: string;
+  /** Focus-mode drop presets. Only applied in create mode. */
+  presetSection?: string;
+  presetFacultyId?: string;
+  presetDayOfWeek?: string;
+  presetStartTime?: string;
+  presetEndTime?: string;
+  presetLoadType?: 'lecture' | 'laboratory' | 'other';
 }
 
 type PlotMode = 'single' | 'multi';
@@ -96,6 +113,12 @@ export default function PlotSubjectModal({
   departments = [],
   existingCounts = [],
   presetSubjectId,
+  presetSection,
+  presetFacultyId,
+  presetDayOfWeek,
+  presetStartTime,
+  presetEndTime,
+  presetLoadType,
 }: Props) {
   const queryClient = useQueryClient();
   const profile = useAuthStore((s) => s.profile);
@@ -312,9 +335,21 @@ export default function PlotSubjectModal({
       setFilterYear('');
       setFilterSem('');
     } else {
+      const startTime = presetStartTime ?? EMPTY_FORM.startTime;
+      const startIndex = TIME_OPTIONS.indexOf(startTime);
+      const fallbackEnd =
+        startIndex >= 0
+          ? TIME_OPTIONS[Math.min(startIndex + 3, TIME_OPTIONS.length - 1)]
+          : EMPTY_FORM.endTime;
       setForm({
         ...EMPTY_FORM,
         subjectId: presetSubjectId ?? '',
+        section: presetSection ?? '',
+        facultyId: presetFacultyId ?? '',
+        dayOfWeek: presetDayOfWeek ?? EMPTY_FORM.dayOfWeek,
+        startTime,
+        endTime: presetEndTime ?? fallbackEnd,
+        loadType: presetLoadType ?? EMPTY_FORM.loadType,
       });
       setMode('single');
       setRoomMode('system');
@@ -335,8 +370,19 @@ export default function PlotSubjectModal({
       setFilterYear('');
       setFilterSem('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, editing, myDeptId, profile?.role, presetSubjectId]);
+  }, [
+    open,
+    editing,
+    myDeptId,
+    profile?.role,
+    presetSubjectId,
+    presetSection,
+    presetFacultyId,
+    presetDayOfWeek,
+    presetStartTime,
+    presetEndTime,
+    presetLoadType,
+  ]);
 
   // Autofocus the subject picker the first time the modal opens in create mode
   useEffect(() => {
@@ -509,6 +555,7 @@ export default function PlotSubjectModal({
     queryClient.invalidateQueries({ queryKey: ['schedules', termId] });
     queryClient.invalidateQueries({ queryKey: ['faculty-requests'] });
     queryClient.invalidateQueries({ queryKey: ['unplotted-minors'] });
+    queryClient.invalidateQueries({ queryKey: ['unscheduled'] });
     queryClient.invalidateQueries({ queryKey: ['flagged'] });
     queryClient.invalidateQueries({ queryKey: ['coverage'] });
   };

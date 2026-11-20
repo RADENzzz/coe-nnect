@@ -1793,9 +1793,12 @@ export default function LandingPage() {
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                 At a glance
               </p>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+              <span
+                className="inline-flex items-center gap-1.5 border border-[#6ee7b7]/40 bg-[#052e22]/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6ee7b7]"
+                style={{ borderRadius: 2 }}
+              >
                 <span
-                  className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+                  className="h-1.5 w-1.5 rounded-full bg-[#34d399] shadow-[0_0_0_2px_rgba(52,211,153,0.25)]"
                   aria-hidden="true"
                 />
                 Live

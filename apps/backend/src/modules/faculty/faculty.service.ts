@@ -25,6 +25,7 @@ import { FacultyUnavailability } from './entities/faculty-unavailability.entity'
 import { CreateFacultyUnavailabilityDto } from './dto/create-faculty-unavailability.dto';
 import { UpdateFacultyUnavailabilityDto } from './dto/update-faculty-unavailability.dto';
 import { DepartmentsService } from '../departments/departments.service';
+import { Department } from '../departments/entities/department.entity';
 import type { FacultyStatusSummaryRow } from './dto/faculty-status-summary.dto';
 
 function normalizeTime(t: string): string {
@@ -277,6 +278,145 @@ export class FacultyService {
       relations: ['subject'],
       order: { qualId: 'ASC' },
     });
+  }
+
+  /**
+   * Faculty qualified to teach one subject.
+   *
+   * Deliberately college-wide: a department head plotting a minor subject
+   * needs to see qualified faculty in other departments. The cross-department
+   * faculty-request gate still runs when the plot is saved.
+   */
+  async findQualifiedFaculty(subjectId: string): Promise<
+    Array<{
+      facultyId: string;
+      firstName: string;
+      lastName: string;
+      deptId: string | null;
+      deptCode: string | null;
+      deptName: string | null;
+      classification: string;
+      requiredHours: number | null;
+      qualId: string;
+    }>
+  > {
+    const subject = await this.subjects.findOne({ where: { subjectId } });
+    if (!subject) throw new NotFoundException('Subject not found');
+
+    const rows = await this.quals
+      .createQueryBuilder('q')
+      .innerJoin(Faculty, 'f', 'f.faculty_id = q.faculty_id')
+      .leftJoin(Department, 'd', 'd.dept_id = f.dept_id')
+      .where('q.subject_id = :subjectId', { subjectId })
+      .andWhere('f.is_active = true')
+      .select([
+        'f.faculty_id AS "facultyId"',
+        'f.first_name AS "firstName"',
+        'f.last_name AS "lastName"',
+        'f.dept_id AS "deptId"',
+        'f.classification AS "classification"',
+        'f.required_hours AS "requiredHours"',
+        'd.dept_code AS "deptCode"',
+        'd.dept_name AS "deptName"',
+        'q.qual_id AS "qualId"',
+      ])
+      .orderBy('f.last_name', 'ASC')
+      .addOrderBy('f.first_name', 'ASC')
+      .getRawMany<{
+        facultyId: string;
+        firstName: string;
+        lastName: string;
+        deptId: string | null;
+        classification: string;
+        requiredHours: string | null;
+        deptCode: string | null;
+        deptName: string | null;
+        qualId: string;
+      }>();
+
+    return rows.map((row) => ({
+      facultyId: String(row.facultyId),
+      firstName: row.firstName,
+      lastName: row.lastName,
+      deptId: row.deptId != null ? String(row.deptId) : null,
+      deptCode: row.deptCode ?? null,
+      deptName: row.deptName ?? null,
+      classification: row.classification,
+      requiredHours:
+        row.requiredHours != null ? Number(row.requiredHours) : null,
+      qualId: String(row.qualId),
+    }));
+  }
+
+  /**
+   * Inverse of {@link findQualifiedFaculty} for a set of subjects.
+   *
+   * Returns one row per (faculty, subject) qualification so the plotting
+   * workspace can group the backlog by the teacher who can actually take it.
+   */
+  async findQualifiedFacultyForSubjects(subjectIds: string[]): Promise<
+    Array<{
+      subjectId: string;
+      facultyId: string;
+      firstName: string;
+      lastName: string;
+      deptId: string | null;
+      deptCode: string | null;
+      deptName: string | null;
+      classification: string;
+      requiredHours: number | null;
+      qualId: string;
+    }>
+  > {
+    const ids = Array.from(new Set(subjectIds.filter(Boolean)));
+    if (ids.length === 0) return [];
+
+    const rows = await this.quals
+      .createQueryBuilder('q')
+      .innerJoin(Faculty, 'f', 'f.faculty_id = q.faculty_id')
+      .leftJoin(Department, 'd', 'd.dept_id = f.dept_id')
+      .where('q.subject_id IN (:...ids)', { ids })
+      .andWhere('f.is_active = true')
+      .select([
+        'q.subject_id AS "subjectId"',
+        'f.faculty_id AS "facultyId"',
+        'f.first_name AS "firstName"',
+        'f.last_name AS "lastName"',
+        'f.dept_id AS "deptId"',
+        'f.classification AS "classification"',
+        'f.required_hours AS "requiredHours"',
+        'd.dept_code AS "deptCode"',
+        'd.dept_name AS "deptName"',
+        'q.qual_id AS "qualId"',
+      ])
+      .orderBy('f.last_name', 'ASC')
+      .addOrderBy('f.first_name', 'ASC')
+      .getRawMany<{
+        subjectId: string;
+        facultyId: string;
+        firstName: string;
+        lastName: string;
+        deptId: string | null;
+        classification: string;
+        requiredHours: string | null;
+        deptCode: string | null;
+        deptName: string | null;
+        qualId: string;
+      }>();
+
+    return rows.map((row) => ({
+      subjectId: String(row.subjectId),
+      facultyId: String(row.facultyId),
+      firstName: row.firstName,
+      lastName: row.lastName,
+      deptId: row.deptId != null ? String(row.deptId) : null,
+      deptCode: row.deptCode ?? null,
+      deptName: row.deptName ?? null,
+      classification: row.classification,
+      requiredHours:
+        row.requiredHours != null ? Number(row.requiredHours) : null,
+      qualId: String(row.qualId),
+    }));
   }
 
   async addQualification(

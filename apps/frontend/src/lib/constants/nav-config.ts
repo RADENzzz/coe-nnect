@@ -104,6 +104,7 @@ const DH_NAV: RoleNav = {
 
     { label: 'Schedule Planner',  path: ROUTES.TIMETABLE,      icon: 'calendar_view_month', group: 'Planning', primary: true, attention: ['schedule', 'scheduling'] },
     { label: 'Approvals',         path: ROUTES.APPROVALS,      icon: 'report_problem',      group: 'Planning', primary: true, attention: ['approvals'] },
+    { label: 'Schedule Changes', path: ROUTES.SCHEDULE_CHANGE_APPROVALS, icon: 'rule', group: 'Planning', attention: ['approvals', 'schedule'] },
 
     { label: 'Faculty Directory', path: ROUTES.FACULTY,        icon: 'groups',              group: 'Records', primary: true, attention: ['faculty'] },
     { label: 'Subjects',          path: ROUTES.SUBJECTS,       icon: 'menu_book',           group: 'Records' },

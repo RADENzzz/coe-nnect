@@ -16,6 +16,8 @@ export const ROUTE_LOADERS = {
   '/timetable': () => import('../features/timetable/TimetablePage'),
   '/sections': () => import('../features/sections/SectionsPage'),
   '/approvals': () => import('../features/approvals/ApprovalsPage'),
+  '/approvals/schedule-changes': () =>
+    import('../features/approvals/ScheduleChangeApprovalsPage'),
   '/subjects': () => import('../features/subjects/SubjectsPage'),
   '/programs': () => import('../features/programs/ProgramsPage'),
   '/prospectus': () => import('../features/prospectus/ProspectusPage'),

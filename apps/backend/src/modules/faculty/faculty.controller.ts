@@ -9,6 +9,7 @@ import {
   Query,
   Req,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FacultyService } from './faculty.service';
@@ -68,6 +69,26 @@ export class FacultyController {
   async getStatusSummary(@Query() query: FacultyStatusSummaryQueryDto) {
     const data = await this.faculty.getStatusSummary(query.deptId);
     return { data };
+  }
+
+  // ── Qualified faculty for one subject (static prefix, before :id) ──
+
+  @Get('qualified')
+  async findQualified(
+    @Query('subjectId') subjectId?: string,
+    @Query('subjectIds') subjectIds?: string,
+  ) {
+    if (subjectIds) {
+      const ids = subjectIds
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+      return { data: await this.faculty.findQualifiedFacultyForSubjects(ids) };
+    }
+    if (!subjectId) {
+      throw new BadRequestException('subjectId is required.');
+    }
+    return { data: await this.faculty.findQualifiedFaculty(subjectId) };
   }
 
   // ── Qualifications ──

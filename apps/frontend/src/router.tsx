@@ -15,6 +15,7 @@ export const ROUTES = {
   PROSPECTUS: '/prospectus',
   SECTIONS: '/sections',
   APPROVALS: '/approvals',
+  SCHEDULE_CHANGE_APPROVALS: '/approvals/schedule-changes',
   REPORTS: '/reports',
   COLLEGE_WIDE: '/college-wide',
   MINOR_IMPORT: '/minor-import',

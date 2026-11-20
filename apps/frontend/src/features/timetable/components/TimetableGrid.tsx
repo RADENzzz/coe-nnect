@@ -6,7 +6,12 @@ import {
   useRef,
 } from 'react';
 import { DragDropProvider } from '@dnd-kit/react';
-import type { ScheduleEntry, DropCellData, Day } from '../types';
+import type {
+  ScheduleEntry,
+  DropCellData,
+  Day,
+  ExternalPlotDragPayload,
+} from '../types';
 import { computeLanes } from '../utils/lane-layout.util';
 import {
   DAYS,
@@ -35,6 +40,14 @@ interface Props {
   onEntryClick?: (entry: ScheduleEntry) => void;
   /** IDs of entries the current user cannot drag (foreign dept, etc.). */
   readOnlyEntryIds?: Set<string>;
+  /** Accept an unscheduled subject dragged from an external palette. */
+  onExternalDrop?: (
+    day: string,
+    startTime: string,
+    payload: ExternalPlotDragPayload,
+  ) => void;
+  /** A move is being validated/saved — lock all drag and drop. */
+  busy?: boolean;
 }
 
 /** Get the index in DAYS array for today, or -1 if today isn't a grid day. */
@@ -118,6 +131,8 @@ export default function TimetableGrid({
   onEntryMove,
   onEntryClick,
   readOnlyEntryIds,
+  onExternalDrop,
+  busy = false,
 }: Props) {
   const [containerRef, containerWidth] = useMeasuredWidth<HTMLDivElement>();
   const effectiveDensity: GridDensity = fitToContainer ? 'fit' : density;
@@ -127,13 +142,15 @@ export default function TimetableGrid({
       density={effectiveDensity}
       containerWidth={containerWidth}
     >
-    <GridBody
-      containerRef={containerRef}
-      entries={entries}
-      onEntryMove={onEntryMove}
-      onEntryClick={onEntryClick}
-      readOnlyEntryIds={readOnlyEntryIds}
-    />
+      <GridBody
+        containerRef={containerRef}
+        entries={entries}
+        onEntryMove={onEntryMove}
+        onEntryClick={onEntryClick}
+        readOnlyEntryIds={readOnlyEntryIds}
+        onExternalDrop={onExternalDrop}
+        busy={busy}
+      />
     </GridMetricsProvider>
   );
 }
@@ -144,6 +161,8 @@ interface GridBodyProps {
   onEntryMove?: Props['onEntryMove'];
   onEntryClick?: Props['onEntryClick'];
   readOnlyEntryIds?: Set<string>;
+  onExternalDrop?: Props['onExternalDrop'];
+  busy: boolean;
 }
 
 function GridBody({
@@ -152,6 +171,8 @@ function GridBody({
   onEntryMove,
   onEntryClick,
   readOnlyEntryIds,
+  onExternalDrop,
+  busy,
 }: GridBodyProps) {
   const metrics = useGridMetrics();
   const isDesktopLike = useIsDesktopLike();
@@ -226,6 +247,7 @@ function GridBody({
 
   const handleDragStart = useCallback(
     (event: any) => {
+      if (busy) return;
       const entry = event.operation?.source?.data?.entry as
         | ScheduleEntry
         | undefined;
@@ -233,12 +255,16 @@ function GridBody({
       setDraggingId(entry.id);
       setValidCells(computeValidCells(entry));
     },
-    [computeValidCells],
+    [busy, computeValidCells],
   );
 
   const handleDragEnd = useCallback(
     (event: any) => {
       setDraggingId(null);
+      if (busy) {
+        setValidCells(new Set());
+        return;
+      }
       const source = event.operation?.source;
       const target = event.operation?.target;
 
@@ -260,7 +286,7 @@ function GridBody({
       }
       setValidCells(new Set());
     },
-    [onEntryMove, validCells],
+    [busy, onEntryMove, validCells],
   );
 
   const dragActive = draggingId !== null;
@@ -313,7 +339,17 @@ function GridBody({
 }
   return (
     <DragDropProvider onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden flex flex-col h-full min-h-0">
+      <div className="relative bg-surface-container-lowest rounded-xl shadow-card border border-surface-variant overflow-hidden flex flex-col h-full min-h-0">
+        {busy && (
+          <div
+            className="pointer-events-none absolute right-3 top-3 z-40 inline-flex items-center gap-1.5 border border-primary/30 bg-surface px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+            Checking conflicts…
+          </div>
+        )}
         <div
           ref={containerRef}
           className="flex-1 overflow-auto overscroll-contain"
@@ -472,6 +508,16 @@ function GridBody({
                         width={metrics.dayWidth}
                         height={metrics.slotHeight}
                         isValidTarget={isValid}
+                        onExternalDrop={
+                          onExternalDrop && !busy
+                            ? (target, payload) =>
+                                onExternalDrop(
+                                  target.day,
+                                  target.startTime,
+                                  payload,
+                                )
+                            : undefined
+                        }
                       />
                     );
                   })}
@@ -500,7 +546,7 @@ function GridBody({
                       overlapCount={overlapCount}
                       onClick={onEntryClick}
                       isDragging={draggingId === entry.id}
-                      disabled={locked || !isDesktopLike || isForeign}
+                      disabled={locked || !isDesktopLike || isForeign || busy}
                       isForeign={isForeign}
                     />
                   );

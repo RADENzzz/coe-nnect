@@ -58,6 +58,24 @@ export interface DropCellData {
   cellId: string;
 }
 
+/**
+ * Payload for dragging an unscheduled subject from the plotting focus-mode
+ * palette onto the timetable grid. Native HTML5 drag-and-drop is used here
+ * because the palette lives outside the grid's dnd-kit provider.
+ */
+export const PLOT_DRAG_MIME = 'application/x-coe-nnect-plot';
+
+export interface ExternalPlotDragPayload {
+  unscheduledId: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectTitle: string;
+  sectionId: string | null;
+  sectionCode: string;
+  kind: 'lecture' | 'lab';
+  sessionIndex: number;
+}
+
 export interface GridMetrics {
   cellHeight: number;
   dayWidth: number;
