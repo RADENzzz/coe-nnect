@@ -316,7 +316,7 @@ export default function Sidebar({ nav }: SidebarProps) {
         )}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="relative w-9 h-9 bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
             {brandLogo ? (
               <img
                 src={brandLogo}

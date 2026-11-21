@@ -15,6 +15,8 @@ import { CAP_API_ENDPOINT, login as loginWithCap } from '../../api/auth.api';
 import { requestPasswordReset } from '../../api/recovery.api';
 import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
 import { useAppearanceStore } from '../../store/appearance.store';
+import { useAuthStore } from '../../store/auth.store';
+import { waitForMinimumLoginAnimation } from '../../hooks/login-flow';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -411,6 +413,7 @@ export default function LoginPage() {
   const [attemptCount, setAttemptCount] = useState(0);
   const [capToken, setCapToken] = useState<string | null>(null);
   const [capError, setCapError] = useState<string | null>(null);
+  const setLoggingIn = useAuthStore((s) => s.setLoggingIn);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -557,12 +560,16 @@ export default function LoginPage() {
       }
 
       const role = session.user.role;
+      let destination = '/dashboard';
 
       // Local-only preview: simulate the wall after the backend has verified
       // the credentials, then drop the session so the wall is the real gate.
       if (isMaintenancePreviewEnabled() && role !== 'administrator') {
         await supabase.auth.signOut({ scope: 'local' });
+        setLoggingIn(true);
+        await waitForMinimumLoginAnimation();
         navigate('/maintenance', { replace: true });
+        window.setTimeout(() => setLoggingIn(false), 160);
         return;
       }
 
@@ -571,19 +578,23 @@ export default function LoginPage() {
       if (role === 'department_head' && session.user.deptActive === false) {
         // Walled — bypass `from` because `from` might point at a page
         // the DH can't load anyway.
-        navigate('/department-deactivated', { replace: true });
+        destination = '/department-deactivated';
       } else if (from) {
-        navigate(from, { replace: true });
+        destination = from;
       } else if (
         role === 'administrator' ||
         role === 'college_dean' ||
         role === 'college_secretary'
       ) {
-        navigate('/dean/dashboard', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
+        destination = '/dean/dashboard';
       }
+
+      setLoggingIn(true);
+      await waitForMinimumLoginAnimation();
+      navigate(destination, { replace: true });
+      window.setTimeout(() => setLoggingIn(false), 160);
     } catch (err: unknown) {
+      setLoggingIn(false);
       // A failed login consumes the Cap token. Reset the widget so the next
       // attempt gets a fresh single-use token.
       setCapToken(null);

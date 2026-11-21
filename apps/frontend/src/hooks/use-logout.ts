@@ -3,21 +3,31 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/auth.store';
 import { heartbeatPresence } from '../api/users.api';
+import { waitForMinimumLogoutAnimation } from './logout-flow';
 
 export function useLogout() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const setLoggingOut = useAuthStore((s) => s.setLoggingOut);
 
   return async () => {
-    // Stamp the exact moment the user left. Cap the wait so a slow or
-    // unreachable API cannot strand them on the current page — the regular
-    // one-minute heartbeat has already covered earlier activity.
-    await heartbeatPresence(4_000).catch(() => {});
-
+    setLoggingOut(true);
+    void heartbeatPresence(1_500).catch(() => {});
     queryClient.clear();
     clearAuth();
-    await supabase.auth.signOut();
+
+    const signOutPromise = supabase.auth.signOut({ scope: 'local' }).catch(
+      () => undefined,
+    );
+    const signOutTimeout = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 1_500);
+    });
+
+    await Promise.race([signOutPromise, signOutTimeout]);
+    await waitForMinimumLogoutAnimation();
+    setLoggingOut(false);
+    await waitForMinimumLogoutAnimation(160);
     navigate('/login', { replace: true });
   };
 }
