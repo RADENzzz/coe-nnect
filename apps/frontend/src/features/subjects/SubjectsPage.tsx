@@ -23,6 +23,10 @@ import SubjectFiltersPanel, {
 } from './components/SubjectFiltersPanel';
 import SubjectFormModal from './components/SubjectFormModal';
 import SubjectDetailPanel from './components/SubjectDetailPanel';
+import {
+  getSubjectsDefaultDepartment,
+  restoreSubjectsDepartmentFilter,
+} from './subjects-department-default';
 
 const ROOM_TYPES: Array<{ value: '' | SubjectRoomType; label: string; icon: string }> = [
   { value: '', label: '— none —', icon: 'block' },
@@ -146,6 +150,26 @@ export default function SubjectsPage() {
   );
 
   useEffect(() => {
+    if (!isDH || !myDeptId || deptFilter) return;
+    const defaultDepartment = getSubjectsDefaultDepartment(
+      profile?.role,
+      myDeptId,
+      deptFilter,
+    );
+    if (!defaultDepartment) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('dept', defaultDepartment);
+    setSearchParams(next, { replace: true });
+  }, [
+    isDH,
+    myDeptId,
+    deptFilter,
+    profile?.role,
+    searchParams,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
     if (debouncedSearch !== (searchParams.get('q') ?? '')) {
       setFilter('q', debouncedSearch);
     }
@@ -168,21 +192,13 @@ export default function SubjectsPage() {
 
   const clearAll = useCallback(() => {
     setSearchInput('');
-    const next = new URLSearchParams(searchParams);
-    next.delete('q');
-    next.delete('dept');
-    next.delete('room');
-    next.delete('minor');
-    next.delete('kind');
-    next.delete('comp');
-    next.delete('status');
-    next.delete('ecat');
-    next.delete('eyear');
-    next.delete('eterm');
-    next.delete('sort');
-    next.delete('dir');
+    const next = restoreSubjectsDepartmentFilter(
+      profile?.role,
+      myDeptId,
+      searchParams,
+    );
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, profile?.role, myDeptId]);
 
   const hasAnyFilter =
     !!searchInput ||
