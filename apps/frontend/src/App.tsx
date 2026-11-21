@@ -92,7 +92,6 @@ function DeanRouteGuard() {
 
 function App() {
   const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
-  const isLoggingIn = useAuthStore((s) => s.isLoggingIn);
 
   return (
     <>
@@ -119,33 +118,6 @@ function App() {
                 <Icon name="logout" size={26} color="inherit" />
               </div>
               <p className="text-base font-bold">Logging out…</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {isLoggingIn && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-6"
-            role="status"
-            aria-live="polite"
-            aria-label="Signing in"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 4 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="flex min-w-64 flex-col items-center rounded-2xl border border-white/15 bg-slate-950/95 px-8 py-7 text-white shadow-2xl"
-            >
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-400/10 text-emerald-300">
-                <Icon name="check" size={26} color="inherit" />
-              </div>
-              <p className="text-base font-bold">Signing in…</p>
             </motion.div>
           </motion.div>
         )}

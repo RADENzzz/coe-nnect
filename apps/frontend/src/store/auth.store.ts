@@ -31,12 +31,10 @@ interface AuthState {
   profile: UserProfile | null;
   isLoading: boolean;
   isLoggingOut: boolean;
-  isLoggingIn: boolean;
   setUser: (user: User | null) => void;
   setProfile: (profile: UserProfile | null) => void;
   setLoading: (isLoading: boolean) => void;
   setLoggingOut: (isLoggingOut: boolean) => void;
-  setLoggingIn: (isLoggingIn: boolean) => void;
   clearAuth: () => void;
 }
 
@@ -45,11 +43,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   profile: null,
   isLoading: true,
   isLoggingOut: false,
-  isLoggingIn: false,
   setUser: (user) => set({ user }),
   setProfile: (profile) => set({ profile }),
   setLoading: (isLoading) => set({ isLoading }),
   setLoggingOut: (isLoggingOut) => set({ isLoggingOut }),
-  setLoggingIn: (isLoggingIn) => set({ isLoggingIn }),
   clearAuth: () => set({ user: null, profile: null }),
 }));

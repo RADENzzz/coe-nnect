@@ -15,8 +15,6 @@ import { CAP_API_ENDPOINT, login as loginWithCap } from '../../api/auth.api';
 import { requestPasswordReset } from '../../api/recovery.api';
 import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
 import { useAppearanceStore } from '../../store/appearance.store';
-import { useAuthStore } from '../../store/auth.store';
-import { waitForMinimumLoginAnimation } from '../../hooks/login-flow';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -413,7 +411,6 @@ export default function LoginPage() {
   const [attemptCount, setAttemptCount] = useState(0);
   const [capToken, setCapToken] = useState<string | null>(null);
   const [capError, setCapError] = useState<string | null>(null);
-  const setLoggingIn = useAuthStore((s) => s.setLoggingIn);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -566,10 +563,7 @@ export default function LoginPage() {
       // the credentials, then drop the session so the wall is the real gate.
       if (isMaintenancePreviewEnabled() && role !== 'administrator') {
         await supabase.auth.signOut({ scope: 'local' });
-        setLoggingIn(true);
-        await waitForMinimumLoginAnimation();
         navigate('/maintenance', { replace: true });
-        window.setTimeout(() => setLoggingIn(false), 160);
         return;
       }
 
@@ -589,12 +583,8 @@ export default function LoginPage() {
         destination = '/dean/dashboard';
       }
 
-      setLoggingIn(true);
-      await waitForMinimumLoginAnimation();
       navigate(destination, { replace: true });
-      window.setTimeout(() => setLoggingIn(false), 160);
     } catch (err: unknown) {
-      setLoggingIn(false);
       // A failed login consumes the Cap token. Reset the widget so the next
       // attempt gets a fresh single-use token.
       setCapToken(null);
