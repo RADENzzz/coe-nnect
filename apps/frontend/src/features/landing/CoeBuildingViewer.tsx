@@ -7,9 +7,15 @@ import {
   captureCameraPose,
   type CameraPoseCaptureResult,
 } from './camera-orbit-capture';
+import {
+  getCameraZoomLockConstraints,
+  getHorizontalAngularVelocity,
+  shouldStartHorizontalInertia,
+  stepHorizontalInertia,
+} from './camera-inertia';
 
 const MODEL_SRC = '/3D_Models/coe_Building.glb';
-const DEFAULT_CAMERA_ORBIT = '2.2133245190924704rad 1.5579204157012274rad 154.5116331083687m';
+const DEFAULT_CAMERA_ORBIT = '2.2471349423243066rad 1.1908017615620003rad 154.5116331083687m';
 const DEFAULT_CAMERA_TARGET = '-4.961324271775314m 6.2189790436357235m -2.4709905048660423m';
 const DEFAULT_CAMERA_FIELD_OF_VIEW = '15.402513570977764deg';
 
@@ -21,8 +27,20 @@ const DEFAULT_CAMERA_FIELD_OF_VIEW = '15.402513570977764deg';
 export default function CoeBuildingViewer() {
   const viewerRef = useRef<ModelViewerElement>(null);
   const [loaded, setLoaded] = useState(false);
+  const [devInertiaEnabled, setDevInertiaEnabled] = useState(false);
+  const devInertiaEnabledRef = useRef(false);
+  const inertiaFrameRef = useRef<number | null>(null);
   const [cameraPoseCapture, setCameraPoseCapture] =
     useState<CameraPoseCaptureResult | null>(null);
+
+  const handleDevInertiaToggle = (enabled: boolean) => {
+    devInertiaEnabledRef.current = enabled;
+    setDevInertiaEnabled(enabled);
+    if (!enabled && inertiaFrameRef.current !== null) {
+      cancelAnimationFrame(inertiaFrameRef.current);
+      inertiaFrameRef.current = null;
+    }
+  };
 
   const handleCaptureCameraOrbit = async () => {
     const viewer = viewerRef.current;
@@ -43,6 +61,117 @@ export default function CoeBuildingViewer() {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
+    const activePointers = new Set<number>();
+    let rotationPointerId: number | null = null;
+    let lastPointerX = 0;
+    let lastPointerTime = 0;
+    let angularVelocity = 0;
+    const prefersReducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+
+    const cancelInertia = () => {
+      if (inertiaFrameRef.current !== null) {
+        cancelAnimationFrame(inertiaFrameRef.current);
+        inertiaFrameRef.current = null;
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      cancelInertia();
+      activePointers.add(event.pointerId);
+
+      if (
+        activePointers.size !== 1 ||
+        event.button !== 0 ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        rotationPointerId = null;
+        angularVelocity = 0;
+        return;
+      }
+
+      rotationPointerId = event.pointerId;
+      lastPointerX = event.clientX;
+      lastPointerTime = event.timeStamp;
+      angularVelocity = 0;
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== rotationPointerId) return;
+
+      const duration = event.timeStamp - lastPointerTime;
+      if (duration > 0) {
+        angularVelocity = getHorizontalAngularVelocity(
+          event.clientX - lastPointerX,
+          duration,
+          viewer.clientHeight,
+        );
+        lastPointerX = event.clientX;
+        lastPointerTime = event.timeStamp;
+      }
+    };
+
+    const startInertia = () => {
+      if (
+        !shouldStartHorizontalInertia(
+          import.meta.env.DEV,
+          devInertiaEnabledRef.current,
+          prefersReducedMotion,
+          angularVelocity,
+        )
+      ) {
+        return;
+      }
+
+      const orbit = viewer.getCameraOrbit();
+      let theta = orbit.theta;
+      let previousTime = 0;
+
+      const animate = (time: number) => {
+        const elapsed = previousTime === 0 ? 0 : (time - previousTime) / 1000;
+        previousTime = time;
+        const step = stepHorizontalInertia(angularVelocity, elapsed);
+        angularVelocity = step.velocity;
+        theta += step.deltaRadians;
+        viewer.cameraOrbit = `${theta}rad ${orbit.phi}rad ${orbit.radius}m`;
+
+        if (Math.abs(angularVelocity) < 0.08) {
+          inertiaFrameRef.current = null;
+          return;
+        }
+
+        inertiaFrameRef.current = requestAnimationFrame(animate);
+      };
+
+      inertiaFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      activePointers.delete(event.pointerId);
+      if (event.pointerId !== rotationPointerId) return;
+
+      rotationPointerId = null;
+      if (activePointers.size === 0) startInertia();
+    };
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      activePointers.delete(event.pointerId);
+      if (event.pointerId === rotationPointerId) {
+        rotationPointerId = null;
+        angularVelocity = 0;
+      }
+      cancelInertia();
+    };
+
+    viewer.addEventListener('pointerdown', handlePointerDown);
+    viewer.addEventListener('pointermove', handlePointerMove);
+    viewer.addEventListener('pointerup', handlePointerUp);
+    viewer.addEventListener('pointercancel', handlePointerCancel);
+
     const playIntroAnimations = async () => {
       const animationNames = [...viewer.availableAnimations];
       if (animationNames.length === 0) return;
@@ -60,11 +189,29 @@ export default function CoeBuildingViewer() {
 
     const handleLoad = () => {
       setLoaded(true);
+      if (!import.meta.env.DEV) {
+        const { radius } = viewer.getCameraOrbit();
+        const constraints = getCameraZoomLockConstraints(
+          radius,
+          viewer.getFieldOfView(),
+        );
+        viewer.minCameraOrbit = constraints.minCameraOrbit;
+        viewer.maxCameraOrbit = constraints.maxCameraOrbit;
+        viewer.minFieldOfView = constraints.minFieldOfView;
+        viewer.maxFieldOfView = constraints.maxFieldOfView;
+      }
       void playIntroAnimations();
     };
 
     viewer.addEventListener('load', handleLoad);
-    return () => viewer.removeEventListener('load', handleLoad);
+    return () => {
+      cancelInertia();
+      viewer.removeEventListener('load', handleLoad);
+      viewer.removeEventListener('pointerdown', handlePointerDown);
+      viewer.removeEventListener('pointermove', handlePointerMove);
+      viewer.removeEventListener('pointerup', handlePointerUp);
+      viewer.removeEventListener('pointercancel', handlePointerCancel);
+    };
   }, []);
 
   return (
@@ -77,13 +224,29 @@ export default function CoeBuildingViewer() {
 
       {import.meta.env.DEV && loaded && (
         <div className="absolute bottom-3 right-3 z-10 max-w-[85%] rounded-lg bg-slate-950/90 p-3 text-xs text-white shadow-lg">
-          <button
-            type="button"
-            onClick={handleCaptureCameraOrbit}
-            className="rounded-md bg-white px-3 py-1.5 font-semibold text-slate-900 hover:bg-slate-100"
-          >
-            Capture & copy camera defaults
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCaptureCameraOrbit}
+              className="rounded-md bg-white px-3 py-1.5 font-semibold text-slate-900 hover:bg-slate-100"
+            >
+              Capture & copy camera defaults
+            </button>
+            <label className="inline-flex cursor-pointer items-center gap-2 font-medium">
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label="Enable camera inertia"
+                checked={devInertiaEnabled}
+                onChange={(event) =>
+                  handleDevInertiaToggle(event.currentTarget.checked)
+                }
+                className="peer sr-only"
+              />
+              <span className="relative h-5 w-9 rounded-full bg-white/25 transition-colors peer-checked:bg-emerald-500 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white" />
+              <span>Inertia {devInertiaEnabled ? 'on' : 'off'}</span>
+            </label>
+          </div>
           {cameraPoseCapture && (
             <div className="mt-2 space-y-1" aria-live="polite">
               <p>
