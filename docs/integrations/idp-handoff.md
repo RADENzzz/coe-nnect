@@ -2,6 +2,7 @@
 
 > Audience: the IDP team implementing the IDP side of the CoE-NNECT ↔ IDP
 > API Contract v2.0.
+>
 > Status: Milestones 1 and 3 are implemented in CoE-NNECT. Pattern C is the
 > primary transport; Pattern A is an optional fallback.
 >
@@ -14,20 +15,18 @@
 
 ## 1. Who calls whom
 
-| Direction | Transport | Caller | Receiver |
-|---|---|---|---|
-| Faculty snapshot | Pattern C (HTTP push) | IDP desktop | CoE-NNECT |
-| Published schedules | Pattern C (HTTP poll) | IDP desktop | CoE-NNECT |
-| Faculty-request statuses | Pattern C (HTTP poll) | IDP desktop | CoE-NNECT |
-| Change-request acks | Pattern C (HTTP poll) | IDP desktop | CoE-NNECT |
-| Faculty-change events | Signed webhook | IDP | CoE-NNECT |
-| Change requests | Signed webhook | IDP | CoE-NNECT |
-| Roster / qualifications / unavailability | Pattern A (HTTP pull) | CoE-NNECT | IDP |
-| Schedule / faculty-request / ack push | Pattern A (HTTP push) | CoE-NNECT | IDP |
+| Direction                 | Transport | Caller        | Receiver      |
+| ------------------------- | --------- | ------------- | ------------- |
+| Faculty snapshot          | Pattern C | IDP desktop   | CoE-NNECT     |
+| Published schedules       | Pattern C | IDP desktop   | CoE-NNECT     |
+| Faculty-request statuses  | Pattern C | IDP desktop   | CoE-NNECT     |
+| Change-request acks       | Pattern C | IDP desktop   | CoE-NNECT     |
+| Faculty-change events     | Signed webhook | IDP       | CoE-NNECT     |
+| Change requests           | Signed webhook | IDP       | CoE-NNECT     |
+| Roster / qualifications / unavailability | Pattern A | CoE-NNECT | IDP |
+| Schedule / faculty-request / ack push | Pattern A | CoE-NNECT | IDP |
 
-**Pattern C is the default.** It requires no inbound HTTP on the IDP desktop,
-so it works when the desktop is behind NAT or temporarily offline. Pattern A is
-only enabled when `IDP_ENABLED=true` and `IDP_BASE_URL` is set on CoE-NNECT.
+**Pattern C is the default.** It requires no inbound HTTP on the IDP desktop, so it works when the desktop is behind NAT or temporarily offline. Pattern A is only enabled when `IDP_ENABLED=true` and `IDP_BASE_URL` is set on CoE-NNECT.
 
 ---
 
@@ -36,28 +35,17 @@ only enabled when `IDP_ENABLED=true` and `IDP_BASE_URL` is set on CoE-NNECT.
 ### For Pattern C (primary)
 
 1. **Desktop base configuration**
-   - The CoE-NNECT base URL you will call, e.g.
-     `https://coe-nnect.example.edu/api`.
-   - A device API key issued by CoE-NNECT (sent separately over a secure
-     channel).
+   - The CoE-NNECT base URL you will call, e.g. `https://coe-nnect.example.edu/api`.
+   - A device API key issued by CoE-NNECT (sent separately over a secure channel).
    - A webhook signing secret shared with CoE-NNECT (sent separately).
-2. **Clock discipline** — webhook timestamps must be within ±5 minutes of
-   CoE-NNECT server time (configurable with `IDP_WEBHOOK_TOLERANCE_MS`).
-3. **Raw-body signing** — sign the exact JSON bytes you send, before any
-   re-serialization.
-4. **Poll state** — persist the last `next_since` value per outbox endpoint and
-   send it back on the next poll.
-5. **Public app link (optional)** — if the IDP team wants the faculty-facing
-   app advertised on the CoE-NNECT landing page, provide the public `http(s)`
-   URL. The CoE-NNECT deployment sets it as `VITE_IDP_APP_URL`; the landing
-   page then shows an "Open IDP app" promo card and a footer link. Leave it
-   empty to hide the promo.
+2. **Clock discipline** — webhook timestamps must be within ±5 minutes of CoE-NNECT server time (configurable with `IDP_WEBHOOK_TOLERANCE_MS`).
+3. **Raw-body signing** — sign the exact JSON bytes you send, before any re-serialization.
+4. **Poll state** — persist the last `next_since` value per outbox endpoint and send it back on the next poll.
+5. **Public app link (optional)** — if the IDP team wants the faculty-facing app advertised on the CoE-NNECT landing page, provide the public `http(s)` URL. The CoE-NNECT deployment sets it as `VITE_IDP_APP_URL`; the landing page then shows an "Open IDP app" promo card and a footer link. Leave it empty to hide the promo.
 
 ### For Pattern A (optional fallback)
 
-1. IDP REST namespace base URL (staging and production), including
-   `/api/idp/v1`, without a trailing slash. Hosted:
-   `https://adp-server-3m0u.onrender.com/api/idp/v1`.
+1. IDP REST namespace base URL (staging and production), including `/api/idp/v1`, without a trailing slash. Hosted: `https://adp-server-3m0u.onrender.com/api/idp/v1`.
 2. Bearer API key for CoE-NNECT outbound calls.
 3. Confirmation that these paths exist (or the agreed alternatives):
    - `GET /faculty?department_code=&updated_since=`
@@ -67,8 +55,7 @@ only enabled when `IDP_ENABLED=true` and `IDP_BASE_URL` is set on CoE-NNECT.
    - `POST /faculty-requests`
    - `POST /change-requests/{id}/ack`
 4. Which of the eight change-request types you will actually send.
-5. A staging faculty record and a staging change request we can use for
-   end-to-end testing.
+5. A staging faculty record and a staging change request we can use for end-to-end testing.
 
 ---
 
@@ -97,10 +84,8 @@ Generate strong random values, for example in PowerShell:
 [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
 ```
 
-- `IDP_DEVICE_API_KEY` — shared with the IDP desktop; rotate by replacing it on
-  both sides.
-- `IDP_WEBHOOK_SECRET` — shared with the IDP sender; used only for HMAC
-  verification.
+- `IDP_DEVICE_API_KEY` — shared with the IDP desktop; rotate by replacing it on both sides.
+- `IDP_WEBHOOK_SECRET` — shared with the IDP sender; used only for HMAC verification.
 - Never commit real values. Store them in the deployment secret manager.
 
 Apply the IDP migrations in order if the database does not already have them:
@@ -117,8 +102,7 @@ Check readiness:
 Invoke-RestMethod http://localhost:3000/api/idp/v1/health
 ```
 
-The response reports whether the device key, webhook secret, and Pattern A base
-URL are configured. It never returns secret values.
+The response reports whether the device key, webhook secret, and Pattern A base URL are configured. It never returns secret values.
 
 ---
 
@@ -135,6 +119,10 @@ Content-Type:    application/json
 ### 4.1 Push a faculty snapshot
 
 `POST /api/idp/v1/inbox/faculty`
+
+Accepts either the contract's bare array or an envelope. Per-record failures do not abort the snapshot; they are counted in `failed` or `skipped` and appended to `errors[]`.
+
+**Bare array example:**
 
 ```json
 {
@@ -153,7 +141,7 @@ Content-Type:    application/json
 }
 ```
 
-A bare array is also accepted. Per-record failures do not abort the snapshot:
+**Envelope example:**
 
 ```json
 {
@@ -171,13 +159,13 @@ A bare array is also accepted. Per-record failures do not abort the snapshot:
 }
 ```
 
+A row with a pending local edit returns `409 local_edit_pending` in that record's error entry, not as a request-level failure.
+
 ### 4.2 Poll published schedules
 
 `GET /api/idp/v1/outbox/schedules?since=<iso>&limit=<1-200>&deptCode=<code>`
 
-`deptCode` is optional. For example, `deptCode=CPE` returns only CPE entries
-within each published term payload. Track a separate `next_since` cursor per
-department filter.
+`deptCode` is optional. For example, `deptCode=CPE` returns only CPE entries within each published term payload. Track a separate `next_since` cursor per department filter.
 
 ```json
 {
@@ -203,24 +191,22 @@ department filter.
 }
 ```
 
-Rules:
+**Rules:**
 
 1. Dedupe on `payload.coe_nnect_version_id`.
-2. Persist `next_since`; it is inclusive, so the same item may be returned
-   again. Re-reading is harmless; skipping is not.
+2. Persist `next_since`; it is inclusive, so the same item may be returned again. Re-reading is harmless; skipping is not.
 3. Keep polling while `items` is non-empty.
 4. Schedule items are frozen at publish time and never change.
 
 ### 4.3 Fetch department class references
 
-`GET /api/idp/v1/schedules/classes?deptCode=CPE` returns finalized or published,
-unflagged class rows for the selected department. The response includes
-`subject_code`, `section_code`, `course_title`, and `class_code` (the
-CoE-NNECT schedule row ID). Department codes are case-insensitive.
+`GET /api/idp/v1/schedules/classes?deptCode=CPE` returns finalized or published, unflagged class rows for the selected department. Department codes are case-insensitive.
 
 ### 4.4 Poll faculty-request statuses
 
 `GET /api/idp/v1/outbox/faculty-requests?since=<iso>&limit=<1-200>`
+
+Unlike schedule items, faculty-request items are **refreshed in place**: `coe_nnect_request_id` is the idempotency key, and a new status overwrites the existing row and moves its `created_at` cursor forward. Dedupe on `payload.coe_nnect_request_id` plus `status`.
 
 ```json
 {
@@ -250,8 +236,7 @@ CoE-NNECT schedule row ID). Department codes are case-insensitive.
 }
 ```
 
-Unlike schedules, each request has **one row that is refreshed in place**.
-Dedupe on `payload.coe_nnect_request_id` plus `status`; the latest status wins.
+Every create, approve, reject, and cancel transition queues a status. The local approval transaction is never rolled back if IDP is unreachable: the outbox row survives and is delivered on the next poll or replay.
 
 ### 4.5 Poll change-request acknowledgements
 
@@ -281,8 +266,7 @@ Dedupe on `payload.coe_nnect_request_id` plus `status`; the latest status wins.
 }
 ```
 
-`action` is `accepted`, `rejected`, or `modified`. There is exactly one ack per
-`idp_request_id`; treat it as final.
+`action` is `accepted`, `rejected`, or `modified`. There is exactly one ack per `idp_request_id`; treat it as final.
 
 ---
 
@@ -297,28 +281,27 @@ X-IDP-Signature: sha256=<hex>
 X-IDP-Timestamp: <ISO 8601>
 ```
 
-- Signature = HMAC-SHA256 of the **raw request body bytes**, hex-encoded,
-  prefixed with `sha256=`.
-- Timestamp must be within ±5 minutes (configurable).
+- **Signature** = HMAC-SHA256 of the **raw request body bytes**, hex-encoded, prefixed with `sha256=`.
+- **Timestamp** must be within ±5 minutes (configurable).
 - Send the body exactly as signed; do not re-serialize after computing the HMAC.
+
+`X-COE-NNECT-Signature` and `X-COE-NNECT-Timestamp` are accepted aliases.
+
+`POST /api/idp/v1/webhooks/change-request` additionally accepts the shared integration key through `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or `Authorization: Bearer`. The faculty-change webhook stays HMAC-only.
 
 ### 5.1 Faculty change event
 
 `POST /api/idp/v1/webhooks/faculty-changed`
 
-Follow contract 4.6. The event is deduplicated on its event id; a retry with the
-same id and body returns a duplicate result, while a different body returns
-`409 duplicate_key`.
+Follows contract 4.6. The event is deduplicated on its event id; a retry with the same id and body returns a duplicate result, while a different body returns `409 duplicate_key`.
 
 ### 5.2 Change request
 
 `POST /api/idp/v1/webhooks/change-request`
 
-Contract 4.5 requires only `idp_request_id` and `type`. Everything else is
-optional; CoE-NNECT applies `severity: "info"`, `details: {}`, `created_at` at
-receive time, and `requires_ack` based on the type.
+Contract 4.5 requires only `idp_request_id` and `type`. Everything else is optional; CoE-NNECT applies `severity: "info"`, `details: {}`, `created_at` at receive time, and `requires_ack` based on the type.
 
-Example (`unavailability_change`):
+**Example (`unavailability_change`):**
 
 ```json
 {
@@ -340,45 +323,29 @@ Example (`unavailability_change`):
 }
 ```
 
-The eight types split into two groups:
+**The eight types split into two groups:**
 
-- **Auto-accepted:** `faculty_create`, `faculty_update`, `faculty_deactivate`,
-  `qualification_add`, `qualification_remove`. CoE-NNECT stores them as
-  `acknowledged` for audit but does not apply them and does not put them in the
-  review queue. If you need a return acknowledgement, set
-  `requires_ack: true`; CoE-NNECT then queues a system ack
-  (`acknowledged_by_coe_nnect_user_id: "0"`).
-- **Pending review:** `unavailability_change`, `schedule_override`,
-  `faculty_transfer`. These wait for a Dean, college secretary, or administrator
-  to record `accepted`, `rejected`, or `modified`.
+- **Auto-accepted:** `faculty_create`, `faculty_update`, `faculty_deactivate`, `qualification_add`, `qualification_remove`. CoE-NNECT stores them as `acknowledged` for audit but does not apply them and does not put them in the review queue. If you need a return acknowledgement, set `requires_ack: true`; CoE-NNECT then queues a system ack (`acknowledged_by_coe_nnect_user_id: "0"`).
+- **Pending review:** `unavailability_change`, `schedule_override`, `faculty_transfer`. These wait for a Dean, college secretary, or administrator to record `accepted`, `rejected`, or `modified`.
 
-`schedule_override` may omit `faculty_wmsu_id` / `faculty_employee_id`;
-`unavailability_change` and `faculty_transfer` must identify an existing
-faculty record.
+`schedule_override` may omit `faculty_wmsu_id` / `faculty_employee_id`; `unavailability_change` and `faculty_transfer` must identify an existing faculty record.
 
-Idempotency:
+**Idempotency:**
 
-| Case | Response |
-|---|---|
-| New pending `idp_request_id` | `200`, `status: "pending"` |
-| New auto-accepted `idp_request_id` | `200`, `status: "acknowledged"` |
-| Same id + same effective body | `200`, `status: "duplicate"` |
-| Same id + different body | `409 duplicate_key` |
+| Case                                   | Response              |
+| -------------------------------------- | --------------------- |
+| New pending `idp_request_id`           | `200`, `status: "pending"` |
+| New auto-accepted `idp_request_id`     | `200`, `status: "acknowledged"` |
+| Same id + same effective body          | `200`, `status: "duplicate"` |
+| Same id + different body               | `409 duplicate_key`   |
 
-CoE-NNECT **does not apply the change automatically**. For pending types, a
-Dean/college secretary/administrator reviews the request and records an
-acknowledgement; the underlying schedule or faculty change is applied manually
-through CoE-NNECT screens. This is deliberate: CoE-NNECT is authoritative for
-schedules.
+CoE-NNECT **does not apply the change automatically**. For pending types, a Dean/college secretary/administrator reviews the request and records an acknowledgement; the underlying schedule or faculty change is applied manually through CoE-NNECT screens. This is deliberate: CoE-NNECT is authoritative for schedules.
 
-The webhook accepts HMAC-SHA256 headers or, as a fallback, the shared
-integration key in `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or
-`Authorization: Bearer`. `X-COE-NNECT-Signature` / `X-COE-NNECT-Timestamp` are
-accepted aliases for the HMAC headers.
+The webhook accepts HMAC-SHA256 headers or, as a fallback, the shared integration key in `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or `Authorization: Bearer`. `X-COE-NNECT-Signature` / `X-COE-NNECT-Timestamp` are accepted aliases for the HMAC headers.
 
 ### 5.3 Signing examples
 
-Node.js:
+**Node.js:**
 
 ```js
 const crypto = require('crypto');
@@ -403,7 +370,7 @@ await fetch(`${baseUrl}/api/idp/v1/webhooks/change-request`, {
 });
 ```
 
-PowerShell:
+**PowerShell:**
 
 ```powershell
 $body = '{"idp_request_id":"IDP-REQ-0001", ...}'
@@ -425,23 +392,18 @@ Invoke-RestMethod -Method Post `
 
 ## 6. Pattern A endpoints (CoE-NNECT → IDP, optional)
 
-CoE-NNECT calls these with `Authorization: Bearer <IDP_API_KEY>` and an
-`X-Request-ID` per attempt. `IDP_BASE_URL` includes `/api/idp/v1`, so the
-paths below resolve to `/api/idp/v1/faculty`, `/api/idp/v1/schedules/published`,
-and so on.
+CoE-NNECT calls these with `Authorization: Bearer <IDP_API_KEY>` and an `X-Request-ID` per attempt. `IDP_BASE_URL` includes `/api/idp/v1`, so the paths below resolve to `/api/idp/v1/faculty`, `/api/idp/v1/schedules/published`, and so on.
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/faculty?department_code=&updated_since=` | Roster pull |
-| `GET` | `/faculty/{key}/qualifications` | Qualification pull |
-| `GET` | `/faculty/{key}/unavailability?term_code=` | Unavailability pull |
-| `POST` | `/schedules/published` | Published-schedule push |
-| `POST` | `/faculty-requests` | Faculty-request status push |
-| `POST` | `/change-requests/{id}/ack` | Change-request ack push |
+| Method | Path                                    | Purpose              |
+| ------ | --------------------------------------- | -------------------- |
+| `GET`  | `/faculty?department_code=&updated_since=` | Roster pull          |
+| `GET`  | `/faculty/{key}/qualifications`          | Qualification pull   |
+| `GET`  | `/faculty/{key}/unavailability?term_code=` | Unavailability pull  |
+| `POST` | `/schedules/published`                   | Published-schedule push |
+| `POST` | `/faculty-requests`                      | Faculty-request status |
+| `POST` | `/change-requests/{id}/ack`              | Change-request ack   |
 
-CoE-NNECT treats `409` on a push as "already accepted" and does not retry.
-`429` and `5xx` are retried with bounded backoff; other `4xx` are reported and
-left in the outbox.
+CoE-NNECT treats `409` on a push as "already accepted" and does not retry. `429` and `5xx` are retried with bounded backoff; other `4xx` are reported and left in the outbox.
 
 The IDP receiving side should return the contract error envelope on failure:
 
@@ -460,21 +422,23 @@ The IDP receiving side should return the contract error envelope on failure:
 
 ## 7. Error codes CoE-NNECT returns
 
-| HTTP | Code | Meaning |
-|---|---|---|
-| 400 | `validation_error` | Missing/invalid field or body shape |
-| 401 | `unauthorized` | Missing/invalid device key, signature, or timestamp |
-| 403 | `forbidden` | Role is not allowed to review/ack |
-| 409 | `duplicate_key` | Same idempotency key with a different body or decision |
-| 409 | `local_edit_pending` | Faculty row has an unreconciled local edit |
-| 422 | `unknown_department` | Department code does not resolve |
-| 422 | `unknown_subject` | Subject code does not resolve |
-| 422 | `unknown_section` | Section code does not resolve |
-| 422 | `unknown_term` | Term code does not resolve |
-| 422 | `unknown_faculty` | Faculty key does not resolve |
-| 422 | `unknown_designation` | Designation id does not resolve |
-| 422 | `faculty_key_conflict` | `wmsu_id` and `employee_id` point to different rows |
-| 500 | `internal_error` | Unexpected server failure |
+| HTTP | Code                | Meaning                                                  |
+| ---- | ------------------- | -------------------------------------------------------- |
+| 400  | `validation_error`  | Missing/invalid field or body shape                      |
+| 401  | `unauthorized`      | Missing/invalid device key, signature, or timestamp      |
+| 403  | `forbidden`         | Role is not allowed to review/ack                        |
+| 409  | `duplicate_key`     | Same idempotency key with a different body or decision   |
+| 409  | `local_edit_pending` | Faculty row has an unreconciled local edit               |
+| 422  | `unknown_department` | Department code does not resolve                        |
+| 422  | `unknown_subject`   | Subject code does not resolve                            |
+| 422  | `unknown_section`   | Section code does not resolve                            |
+| 422  | `unknown_term`      | Term code does not resolve                               |
+| 422  | `unknown_faculty`   | Faculty key does not resolve                             |
+| 422  | `unknown_designation` | Designation id does not resolve                        |
+| 422  | `faculty_key_conflict` | `wmsu_id` and `employee_id` point to different rows     |
+| 500  | `internal_error`    | Unexpected server failure                                |
+
+Bulk faculty pushes do not abort on a bad record; the record is counted in `skipped` or `failed` and its error is added to `errors[]`.
 
 ---
 
@@ -486,19 +450,21 @@ Run this against a CoE-NNECT staging environment before production.
 
 - CoE-NNECT staging base URL and device key.
 - Webhook secret.
-- At least one department code (`CPE`), subject code (`CPE 131`), and term
-  code (`2026-2027-1st`) that exist in staging.
+- At least one department code (`CPE`), subject code (`CPE 131`), and term code (`2026-2027-1st`) that exist in staging.
 - A Dean/secretary/administrator JWT for the review step.
 
 ### 8.2 Steps
 
 1. **Health**
+
    ```powershell
    Invoke-RestMethod "$BASE/api/idp/v1/health"
    ```
+
    Confirm the device key and webhook secret are reported as configured.
 
 2. **Faculty inbox**
+
    ```powershell
    $headers = @{
      Authorization = "Bearer $env:IDP_DEVICE_API_KEY"
@@ -508,20 +474,23 @@ Run this against a CoE-NNECT staging environment before production.
    Invoke-RestMethod -Method Post -Uri "$BASE/api/idp/v1/inbox/faculty" `
      -Headers $headers -Body $body
    ```
+
    Expect `received: 1` and `failed: 0`.
 
 3. **Schedule outbox**
+
    ```powershell
-   Invoke-RestMethod -Uri "$BASE/api/idp/v1/outbox/schedules" -Headers $headers
+   Invoke-RestMethod -Uri "$BASE/api/idp/v1/outbox/schedules?limit=50" -Headers $headers
    ```
+
    An empty `items` array is fine before the first publish.
 
 4. **Change request**
-   Send the signed example from section 5.2. Expect
-   `status: "pending"`. Resend the exact same body: expect
-   `status: "duplicate"`. Change a field and resend: expect `409 duplicate_key`.
+
+   Send the signed example from section 5.2. Expect `status: "pending"`. Resend the exact same body: expect `status: "duplicate"`. Change a field and resend: expect `409 duplicate_key`.
 
 5. **Review + ack**
+
    ```powershell
    $jwt = $env:COE_NNECT_JWT
    Invoke-RestMethod -Uri "$BASE/api/v1/idp/change-requests?status=pending" `
@@ -535,17 +504,19 @@ Run this against a CoE-NNECT staging environment before production.
    ```
 
 6. **Ack outbox**
+
    ```powershell
-   Invoke-RestMethod -Uri "$BASE/api/idp/v1/outbox/change-request-acks" `
-     -Headers $headers
+   Invoke-RestMethod -Uri "$BASE/api/idp/v1/outbox/change-request-acks" -Headers $headers
    ```
+
    Confirm the ack payload for `IDP-REQ-0001`.
 
 7. **Cursor replay**
-   Poll with the returned `next_since`; confirm the same item is returned
-   (inclusive cursor) and that your client dedupes it.
+
+   Poll with the returned `next_since`; confirm the same item is returned (inclusive cursor) and that your client dedupes it.
 
 8. **Failure paths**
+
    - Missing device key → `401 unauthorized`.
    - Wrong HMAC → `401 unauthorized`.
    - Stale timestamp (>5 min) → `401 unauthorized`.
@@ -567,25 +538,16 @@ Run this against a CoE-NNECT staging environment before production.
 ## 9. Local testing without the IDP team
 
 You can exercise every CoE-NNECT endpoint with curl/PowerShell and a fake IDP.
-Two options:
 
-1. **Pattern C only** — no fake IDP needed. Use the device key and webhook
-   secret from `apps/backend/.env` and run the section 8 steps against
-   `http://localhost:3000`.
-2. **Pattern A** — point `IDP_BASE_URL` at a small mock server (for example a
-   local Express/Flask app) that returns the contract payloads, set
-   `IDP_ENABLED=true`, then use the **Refresh from IDP** action or
-   `POST /api/v1/idp/faculty/sync`.
+**Pattern C only** — no fake IDP needed. Use the device key and webhook secret from `apps/backend/.env` and run the section 8 steps against `http://localhost:3000`.
+
+**Pattern A** — point `IDP_BASE_URL` at a small mock server (for example a local Express/Flask app) that returns the contract payloads, set `IDP_ENABLED=true`, then use the **Refresh from IDP** action or `POST /api/v1/idp/faculty/sync`.
 
 The backend test suite already covers both patterns with fakes:
 
 ```powershell
 cd apps/backend
-npx jest --runInBand test/idp.service.spec.ts test/idp-outbox.service.spec.ts `
-  test/idp-schedule-publisher.service.spec.ts `
-  test/idp-faculty-request-publisher.service.spec.ts `
-  test/idp-change-request.service.spec.ts `
-  test/idp-device.guard.spec.ts test/idp-signature.guard.spec.ts
+npx jest --runInBand test/idp.service.spec.ts test/idp-outbox.service.spec.ts test/idp-schedule-publisher.service.spec.ts test/idp-faculty-request-publisher.service.spec.ts test/idp-change-request.service.spec.ts test/idp-device.guard.spec.ts test/idp-signature.guard.spec.ts
 ```
 
 ---
@@ -593,16 +555,22 @@ npx jest --runInBand test/idp.service.spec.ts test/idp-outbox.service.spec.ts `
 ## 10. Open questions for the IDP team
 
 1. Confirm the Pattern A base URL and API key for staging and production.
-2. Confirm the final Pattern A paths for faculty-request status and
-   change-request acks.
-3. Confirm which of the eight change-request types IDP will send and whether
-   the `details` shapes match contract 4.7.1.
-4. Confirm whether IDP expects automatic application or reviewer
-   acknowledgement only (current behaviour: reviewer decision, manual
-   application).
-5. Confirm retry/ack expectations, including the offline timestamp tolerance
-   (contract allows up to 24 hours; CoE-NNECT currently enforces 5 minutes for
-   online webhooks and relies on the outbox for offline delivery).
+2. Confirm the final Pattern A paths for faculty-request status and change-request acks.
+3. Confirm which of the eight change-request types IDP will send and whether the `details` shapes match contract 4.7.1.
+4. Confirm whether IDP expects automatic application or reviewer acknowledgement only (current behaviour: reviewer decision, manual application).
+5. Confirm retry/ack expectations, including the offline timestamp tolerance (contract allows up to 24 hours; CoE-NNECT currently enforces 5 minutes for online webhooks and relies on the outbox for offline delivery).
 6. Confirm change-request retention and PII requirements.
-7. Provide a staging faculty record and a staging change request for the
-   end-to-end test.
+7. Provide a staging faculty record and a staging change request for the end-to-end test.
+
+---
+
+## 11. Related documentation
+
+- [Milestone 1 checkpoint](idp-milestone-1-checkpoint.md)
+- [Milestone 3 checkpoint](idp-milestone-3-checkpoint.md)
+- [IDP integration](idp.md) — full IDP integration documentation, including the new DH schedule-change review section
+- [Backend guide](../apps/backend.md)
+- [Frontend guide](../apps/frontend.md)
+- [System architecture](../architecture/README.md)
+- [IDP client package status](../packages/idp-client.md)
+- [Testing guide](../testing.md)
