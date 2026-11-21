@@ -69,6 +69,11 @@ import AutoGenerateButton, {
 import SolverLiveBoard, {
   type SolverBlock,
 } from './auto-schedule/SolverLiveBoard';
+import {
+  normalizeTimetableScope,
+  resetTimetableScope,
+  visibleUnresolvedElectives,
+} from './timetable-scope';
 
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
@@ -287,10 +292,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialViewApplied, setInitialViewApplied] = useState(false);
+  const [initialViewExplicit, setInitialViewExplicit] = useState(false);
   useEffect(() => {
     if (initialViewApplied) return;
     const qv = searchParams.get('view');
     if (qv && QUERY_VIEW_MAP[qv]) {
+      setInitialViewExplicit(true);
       setViewMode(QUERY_VIEW_MAP[qv]);
       const next = new URLSearchParams(searchParams);
       next.delete('view');
@@ -315,12 +322,35 @@ export default function TimetablePage({ readOnly = false }: Props) {
   useEffect(() => {
     if (defaultedToDept) return;
     if (!profile) return;
-    if (isDepartmentHead && myDeptId) {
+    if (
+      isDepartmentHead &&
+      myDeptId &&
+      !initialViewExplicit &&
+      viewMode === 'master'
+    ) {
       setViewMode('byDepartment');
       setViewDeptId(myDeptId);
+      setDefaultedToDept(true);
+      return;
     }
+    const normalized = normalizeTimetableScope({
+      role: profile.role,
+      deptId: myDeptId,
+      viewMode,
+      viewDeptId,
+    });
+    setViewMode(normalized.viewMode);
+    setViewDeptId(normalized.viewDeptId);
     setDefaultedToDept(true);
-  }, [profile, isDepartmentHead, myDeptId, defaultedToDept]);
+  }, [
+    profile,
+    myDeptId,
+    defaultedToDept,
+    viewMode,
+    viewDeptId,
+    isDepartmentHead,
+    initialViewExplicit,
+  ]);
 
   const {
     data: activeTerm,
@@ -406,6 +436,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
             /^(ELEC|SLOT)-/i.test(String(s.subjectCode ?? ''))),
       ),
     [subjects],
+  );
+
+  const visibleUnresolved = useMemo(
+    () =>
+      visibleUnresolvedElectives(
+        unresolvedElectives,
+        profile?.role,
+        myDeptId,
+      ),
+    [unresolvedElectives, profile?.role, myDeptId],
   );
 
   const plottableSubjects = useMemo(() => {
@@ -1120,13 +1160,22 @@ export default function TimetablePage({ readOnly = false }: Props) {
         .map((d) => ({
           value: String(d.deptId),
           label: `[${d.deptCode}] ${d.deptName}`,
+          deptCode: d.deptCode,
         })),
     [departments],
   );
 
   const sectionsForDept = useMemo(() => {
     if (!viewDeptId) return sections.filter((s) => s.isActive);
-    return sections.filter((s) => s.isActive);
+    return sections.filter((s) => {
+      if (!s.isActive) return false;
+      const sDept =
+        (s as any).program?.deptId ??
+        (s as any).deptId ??
+        (s as any).program?.dept_id;
+      if (sDept == null) return false;
+      return String(sDept) === viewDeptId;
+    });
   }, [sections, viewDeptId]);
 
   const sectionOptions = useMemo(
@@ -1141,12 +1190,18 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const facultyOptions = useMemo(
     () =>
       faculty
-        .filter((f) => f.isActive)
+        .filter(
+          (f) =>
+            f.isActive &&
+            (viewMode !== 'byDepartment' ||
+              !viewDeptId ||
+              String(f.deptId ?? '') === viewDeptId),
+        )
         .map((f) => ({
           value: f.facultyId,
           label: `${f.lastName}, ${f.firstName}`,
         })),
-    [faculty],
+    [faculty, viewMode, viewDeptId],
   );
 
   const roomOptions = useMemo(
@@ -1168,8 +1223,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
   );
 
   const clearFilters = () => {
-    setViewMode('master');
-    setViewDeptId('');
+    const reset = resetTimetableScope(profile?.role, myDeptId);
+    setViewMode(reset.viewMode);
+    setViewDeptId(reset.viewDeptId);
     setSubMode('all');
     setSubTargetId('');
     setRoomTargetId('');
@@ -1272,7 +1328,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
         />
       )}
 
-      <div className="flex flex-col h-full min-h-0 p-4 md:p-6">
+      <div
+        className="flex flex-col h-full min-h-0 p-4 md:p-6"
+        data-testid="timetable-scope"
+        data-scope={isDepartmentHead ? 'department' : 'college'}
+      >
         {/* ── Header ── */}
         <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3" data-tour="tt-header">
           <div className="min-w-0">
@@ -1422,7 +1482,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         )}
 
         {/* ── Unresolved electives ── */}
-        {!activeVersion && unresolvedElectives.length > 0 && (
+        {!activeVersion && visibleUnresolved.length > 0 && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3">
             <Icon
               name="warning"
@@ -1432,8 +1492,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
             />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-amber-900">
-                {unresolvedElectives.length} elective
-                {unresolvedElectives.length === 1 ? '' : 's'} hidden from
+                {visibleUnresolved.length} elective
+                {visibleUnresolved.length === 1 ? '' : 's'} hidden from
                 plotting
               </p>
               <p className="text-xs text-amber-800 mt-0.5">
@@ -1442,7 +1502,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 plot them here.
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1">
-                {unresolvedElectives.map((s) => (
+                {visibleUnresolved.map((s) => (
                   <span
                     key={s.subjectId}
                     className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-200/70 text-[11px] font-mono font-semibold text-amber-900"

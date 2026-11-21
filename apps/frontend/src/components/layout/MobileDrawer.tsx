@@ -200,7 +200,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         {/* Brand */}
         <div className="px-5 py-4 border-b border-white/20 flex items-start justify-between gap-2 pt-safe">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
               {brandLogo ? (
                 <img
                   src={brandLogo}

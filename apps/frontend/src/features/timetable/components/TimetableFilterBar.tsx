@@ -1,10 +1,15 @@
 import Icon from '../../../components/ui/Icon';
 import type { GridDensity } from './GridMetricsContext';
 import type { LayoutMode, SubMode, ViewMode } from '../types';
+import {
+  departmentTabTone,
+  visibleTimetableViewTabs,
+} from '../timetable-scope';
 
 interface SelectOption {
   value: string;
   label: string;
+  deptCode?: string;
 }
 
 export interface TimetableFilterBarProps {
@@ -73,59 +78,86 @@ export default function TimetableFilterBar({
   conflictCount,
 }: TimetableFilterBarProps) {
   if (!activeTerm) return null;
+  const visibleTabs = visibleTimetableViewTabs(
+    isDepartmentHead ? 'department_head' : undefined,
+  );
 
   return (
         <div className="mb-4 flex flex-col gap-3 p-3 md:p-4 rounded-xl border border-surface-variant bg-surface-container-lowest">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[150px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                View
-              </label>
-              <select
-                value={viewMode}
-                onChange={(e) => {
-                  const v = e.target.value as ViewMode;
-                  setViewMode(v);
+                <span className="mb-1.5 block text-xs font-semibold uppercase text-on-surface-variant">
+                  Schedule View
+                </span>
+                <div
+                  role="tablist"
+                  aria-label="Schedule view"
+                  className="flex w-full flex-wrap gap-1 rounded-lg border border-surface-variant bg-surface-container-low p-1"
+                >
+                  {visibleTabs.map((tab) => (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={viewMode === tab.value}
+                      onClick={() => {
+                        setViewMode(tab.value);
                   setSubMode('all');
                   setSubTargetId('');
                   setRoomTargetId('');
                   setFacultyTargetId('');
-                  if (v === 'byDepartment' && myDeptId && isDepartmentHead) {
-                    setViewDeptId(myDeptId);
-                  } else {
                     setViewDeptId('');
-                  }
-                }}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="master">Master View</option>
-                <option value="byDepartment">By Department</option>
-                <option value="byRoom">By Room</option>
-                <option value="byFaculty">By Faculty</option>
-              </select>
+                      }}
+                      className={`min-h-9 flex-1 rounded-md px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                        viewMode === tab.value
+                          ? 'bg-surface text-primary shadow-sm'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
             </div>
 
             {viewMode === 'byDepartment' && (
               <div className="flex-1 min-w-[180px]">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                <span className="mb-1.5 block text-xs font-semibold uppercase text-on-surface-variant">
                   Department
-                </label>
-                <select
-                  value={viewDeptId}
-                  onChange={(e) => {
-                    setViewDeptId(e.target.value);
-                    setSubMode('all');
-                    setSubTargetId('');
-                  }}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                >
-                  <option value="">— select —</option>
-                  {deptOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                </span>
+                <div className="relative">
+                  {(() => {
+                    const selected = deptOptions.find(
+                      (opt) => opt.value === viewDeptId,
+                    );
+                    const tone = selected?.deptCode
+                      ? departmentTabTone(selected.deptCode)
+                      : null;
+                    return tone ? (
+                      <span
+                        aria-hidden="true"
+                        className={`absolute left-3 top-1/2 z-10 size-2 -translate-y-1/2 rounded-full ${tone.dot}`}
+                      />
+                    ) : null;
+                  })()}
+                  <select
+                    value={viewDeptId}
+                    aria-label="Department"
+                    onChange={(e) => {
+                      setViewDeptId(e.target.value);
+                      setSubMode('all');
+                      setSubTargetId('');
+                    }}
+                    className="w-full rounded-lg border border-surface-variant bg-surface-container-low py-2 pl-7 pr-3 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option value="">— select department —</option>
+                    {deptOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 
@@ -182,22 +214,38 @@ export default function TimetableFilterBar({
           {viewMode === 'byDepartment' && viewDeptId && (
             <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-surface-variant">
               <div className="flex-1 min-w-[150px]">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                  Refine by
-                </label>
-                <select
-                  value={subMode}
-                  onChange={(e) => {
-                    const v = e.target.value as SubMode;
-                    setSubMode(v);
-                    setSubTargetId('');
-                  }}
-                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                <span className="mb-1.5 block text-xs font-semibold uppercase text-on-surface-variant">
+                  Department Scope
+                </span>
+                <div
+                  role="tablist"
+                  aria-label="Department scope"
+                  className="inline-flex rounded-lg border border-surface-variant bg-surface-container-low p-0.5"
                 >
-                  <option value="all">All (no refinement)</option>
-                  <option value="bySection">Section</option>
-                  <option value="byFaculty">Faculty</option>
-                </select>
+                  {[
+                    { value: 'all' as SubMode, label: 'Whole department' },
+                    { value: 'bySection' as SubMode, label: 'Section' },
+                    { value: 'byFaculty' as SubMode, label: 'Faculty' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={subMode === tab.value}
+                      onClick={() => {
+                        setSubMode(tab.value);
+                        setSubTargetId('');
+                      }}
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                        subMode === tab.value
+                          ? 'bg-surface text-primary shadow-sm'
+                          : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {subMode === 'bySection' && (

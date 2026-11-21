@@ -38,6 +38,20 @@ test('department head signs in and plots a schedule', async ({ page }) => {
   await loginAs(page, 'head');
   await openTimetable(page);
 
+  await expect(
+    page.getByTestId('timetable-scope'),
+  ).toHaveAttribute('data-scope', 'department');
+
+  await gotoApp(page, '/timetable?view=master');
+  await expect(
+    page.getByTestId('timetable-scope'),
+  ).toHaveAttribute('data-scope', 'department');
+
+  await gotoApp(page, '/timetable?view=byRoom');
+  await expect(
+    page.getByTestId('timetable-scope'),
+  ).toHaveAttribute('data-scope', 'department');
+
   await page.getByRole('button', { name: 'Plot Subject' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Plot a subject' });
   await expect(dialog).toBeVisible();
