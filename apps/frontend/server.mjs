@@ -102,8 +102,8 @@ const SUPABASE_ORIGINS = supabaseCspOrigins();
  * - `style-src 'unsafe-inline'`: React inline styles and the pre-paint
  *   appearance <style> block need it; Google Fonts serves the stylesheet.
  *   Adding a nonce here would disable `'unsafe-inline'`.
- * - `connect-src`: same-origin API/socket proxy, self-hosted Cap WASM, and
- *   Supabase REST/Realtime.
+ * - `connect-src blob:`: same-origin API/socket proxy, self-hosted Cap WASM,
+ *   embedded GLTF textures, and Supabase REST/Realtime.
  * - `worker-src blob:`: PDF.js, export workers, and the Cap proof-of-work
  *   widget create workers from blobs.
  * - `img-src blob:` and `media-src blob:`: generated previews/audio clips.
@@ -129,7 +129,7 @@ function buildContentSecurityPolicy(nonce) {
       .join(" "),
     "media-src 'self' data: blob:",
     [
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      "connect-src 'self' blob: https://*.supabase.co wss://*.supabase.co",
       ...SUPABASE_ORIGINS.http,
       ...SUPABASE_ORIGINS.ws,
     ]
