@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import Icon from '../ui/Icon';
 import CetLogo from '../brand/CetLogo';
 import { useUiStore } from '../../store/ui.store';
@@ -7,6 +7,7 @@ import { useDepartmentLabel } from '../../hooks/use-department-label';
 import {
   filterNavByRole,
   groupNav,
+  resolveActiveNavPath,
   type RoleNav,
 } from '../../lib/constants/nav-config';
 import { useNavAttention } from '../../hooks/use-nav-attention';
@@ -22,37 +23,48 @@ interface MobileDrawerProps {
 interface DrawerNavLinkProps {
   item: { label: string; path: string; icon: string; shortLabel?: string };
   badge: number;
+  active: boolean;
+  /** The newest unread notification points at this page. */
+  highlight: boolean;
   onNavigate: () => void;
 }
 
-function DrawerNavLink({ item, badge, onNavigate }: DrawerNavLinkProps) {
+function DrawerNavLink({
+  item,
+  badge,
+  active,
+  highlight,
+  onNavigate,
+}: DrawerNavLinkProps) {
   return (
     <NavLink
       to={item.path}
+      end
       onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
       onMouseEnter={() => prefetchRoute(item.path)}
       onFocus={() => prefetchRoute(item.path)}
-      className={({ isActive }) =>
-        isActive
-          ? 'flex items-center gap-3 px-3 py-3 bg-primary text-white font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-          : 'flex items-center gap-3 px-3 py-3 text-slate-600 font-semibold text-sm hover:bg-slate-50 hover:text-slate-900 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
-      }
+      className={[
+        'flex items-center gap-3 px-3 py-3 font-semibold text-sm transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+        active
+          ? 'sidebar-active'
+          : 'text-white/80 hover:bg-white/10 hover:text-white',
+        !active && highlight ? 'nav-attention-rule' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
-      {({ isActive }) => (
-        <>
-          <Icon name={item.icon} filled={isActive} />
-          <span className="min-w-0 flex-1 truncate">
-            {item.shortLabel ?? item.label}
-          </span>
-          {badge > 0 && (
-            <span
-              className="nav-attention-pill flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none tabular-nums"
-              aria-label={`${badge} unread`}
-            >
-              {badge > 9 ? '9+' : badge}
-            </span>
-          )}
-        </>
+      <Icon name={item.icon} filled={active} />
+      <span className="min-w-0 flex-1 truncate">
+        {item.shortLabel ?? item.label}
+      </span>
+      {badge > 0 && (
+        <span
+          className="nav-attention-pill flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none tabular-nums"
+          aria-label={`${badge} unread`}
+        >
+          {badge > 9 ? '9+' : badge}
+        </span>
       )}
     </NavLink>
   );
@@ -62,6 +74,7 @@ const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export default function MobileDrawer({ nav }: MobileDrawerProps) {
+  const { pathname } = useLocation();
   const { isMobileDrawerOpen, closeMobileDrawer } = useUiStore();
   const { deptName } = useDepartmentLabel();
   const drawerRef = useRef<HTMLElement>(null);
@@ -77,6 +90,11 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
   const visibleMain = filterNavByRole(nav.main, profile?.role);
   const visibleFooter = filterNavByRole(nav.footer, profile?.role);
   const groups = useMemo(() => groupNav(visibleMain), [visibleMain]);
+  const activePath = useMemo(
+    () =>
+      resolveActiveNavPath(pathname, [...visibleMain, ...visibleFooter]),
+    [pathname, visibleMain, visibleFooter],
+  );
   const attention = useNavAttention(nav, profile?.role);
 
   useEffect(() => {
@@ -149,7 +167,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
     <div className="md:hidden fixed inset-0 z-[100]">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 animate-backdrop-in"
+        className="absolute inset-0 bg-black/50 animate-backdrop-in"
         onClick={closeMobileDrawer}
         aria-hidden="true"
       />
@@ -177,12 +195,12 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
           transform: dragX < 0 ? `translateX(${dragX}px)` : undefined,
           transition: dragX === 0 ? 'transform 200ms ease-out' : 'none',
         }}
-        className="absolute left-0 top-0 bottom-0 w-[85%] max-w-[300px] bg-white border-r border-slate-200 flex flex-col animate-drawer-in outline-none"
+        className="absolute left-0 top-0 bottom-0 w-[86%] max-w-[320px] bg-primary border-r border-black/20 shadow-2xl flex flex-col animate-drawer-in outline-none"
       >
         {/* Brand */}
-        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-2 pt-safe">
+        <div className="px-5 py-4 border-b border-white/20 flex items-start justify-between gap-2 pt-safe">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="w-9 h-9 bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
               {brandLogo ? (
                 <img
                   src={brandLogo}
@@ -190,15 +208,15 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <CetLogo variant="mark" className="h-full w-full" />
+                <CetLogo variant="mark" className="h-full w-full p-0.5" />
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-extrabold text-slate-900 leading-tight tracking-tight">
+              <p className="text-sm font-extrabold text-white leading-tight tracking-tight">
                 CoE-NNECT
               </p>
               <p
-                className="text-[11px] text-slate-500 truncate max-w-[180px]"
+                className="text-[11px] text-white/70 truncate max-w-[180px]"
                 title={subtitle}
               >
                 {subtitle}
@@ -207,7 +225,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
           </div>
           <button
             onClick={closeMobileDrawer}
-            className="tap-target hover:bg-slate-50 flex items-center justify-center text-slate-500 -mr-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="tap-target hover:bg-white/10 flex items-center justify-center text-white/70 hover:text-white -mr-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
             aria-label="Close menu"
           >
             <Icon name="close" />
@@ -218,7 +236,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
         <div className="flex-1 flex flex-col py-2 overflow-y-auto px-2 overscroll-contain">
           {groups.map((group, index) => (
             <div key={group.label} className={index > 0 ? 'mt-1' : undefined}>
-              <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+              <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-yellow-300">
                 {group.label}
               </p>
               <div className="flex flex-col gap-px">
@@ -227,6 +245,8 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
                     key={item.path}
                     item={item}
                     badge={attention.badgeFor(item)}
+                    active={item.path === activePath}
+                    highlight={attention.latestPath === item.path}
                     onNavigate={closeMobileDrawer}
                   />
                 ))}
@@ -237,12 +257,14 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
 
         {/* Footer Nav */}
         {visibleFooter.length > 0 && (
-          <div className="flex flex-col gap-px py-2 border-t border-slate-100 px-2 pb-safe">
+          <div className="flex flex-col gap-px py-2 border-t border-white/20 px-2 pb-safe">
             {visibleFooter.map((item) => (
               <DrawerNavLink
                 key={item.path}
                 item={item}
                 badge={attention.badgeFor(item)}
+                active={item.path === activePath}
+                highlight={attention.latestPath === item.path}
                 onNavigate={closeMobileDrawer}
               />
             ))}
@@ -251,7 +273,7 @@ export default function MobileDrawer({ nav }: MobileDrawerProps) {
 
         {/* Swipe hint (subtle) */}
         <div className="px-3 pb-3 text-center">
-          <span className="text-[10px] text-slate-300">Swipe left to close</span>
+          <span className="text-[10px] text-white/40">Swipe left to close</span>
         </div>
       </aside>
     </div>

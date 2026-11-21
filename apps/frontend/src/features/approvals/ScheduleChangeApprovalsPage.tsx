@@ -286,7 +286,10 @@ export default function ScheduleChangeApprovalsPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-outline-variant pb-4">
+      <header
+        data-tour="sc-header"
+        className="flex flex-wrap items-start justify-between gap-3 border-b border-outline-variant pb-4"
+      >
         <div>
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center border border-primary/30 bg-primary/10 text-primary">
@@ -336,7 +339,10 @@ export default function ScheduleChangeApprovalsPage() {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1 border-b border-outline-variant">
+      <div
+        data-tour="sc-tabs"
+        className="flex flex-wrap items-center gap-1 border-b border-outline-variant"
+      >
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}
@@ -364,7 +370,10 @@ export default function ScheduleChangeApprovalsPage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         {/* ── Request list ── */}
-        <section className="overflow-hidden border border-outline-variant bg-surface">
+        <section
+          data-tour="sc-list"
+          className="overflow-hidden border border-outline-variant bg-surface"
+        >
           <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low/60 px-3 py-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
               Requests
@@ -476,7 +485,10 @@ export default function ScheduleChangeApprovalsPage() {
         </section>
 
         {/* ── Detail ── */}
-        <section className="min-w-0 border border-outline-variant bg-surface">
+        <section
+          data-tour="sc-detail"
+          className="min-w-0 border border-outline-variant bg-surface"
+        >
           {!selected ? (
             <div className="flex h-full min-h-[20rem] flex-col items-center justify-center gap-2 p-8 text-center">
               <Icon

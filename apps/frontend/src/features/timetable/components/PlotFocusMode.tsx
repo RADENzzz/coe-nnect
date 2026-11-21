@@ -43,6 +43,43 @@ const KIND_LABEL: Record<UnscheduledRecord['kind'], string> = {
   lab: 'Laboratory',
 };
 
+type SubjectFilter = 'all' | 'regular' | 'minor' | 'elective';
+
+const SUBJECT_FILTERS: Array<{
+  value: SubjectFilter;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'all', label: 'All', hint: 'Every unscheduled session' },
+  {
+    value: 'regular',
+    label: 'Regular',
+    hint: 'Subjects that are neither minor nor elective',
+  },
+  {
+    value: 'minor',
+    label: 'Minor',
+    hint: 'Subjects owned by another department',
+  },
+  { value: 'elective', label: 'Elective', hint: 'Elective subjects' },
+];
+
+function matchesSubjectFilter(
+  record: UnscheduledRecord,
+  filter: SubjectFilter,
+): boolean {
+  switch (filter) {
+    case 'minor':
+      return record.isMinor;
+    case 'elective':
+      return record.isElective;
+    case 'regular':
+      return !record.isMinor && !record.isElective;
+    default:
+      return true;
+  }
+}
+
 /**
  * Stable per-group accent colors so subjects/faculty are visually separated
  * in the palette. Each palette entry lists every Tailwind class it uses so
@@ -233,6 +270,7 @@ export default function PlotFocusMode({
   const [paletteMode, setPaletteMode] = useState<'subject' | 'faculty'>(
     'subject',
   );
+  const [subjectFilter, setSubjectFilter] = useState<SubjectFilter>('all');
 
   const { data: unscheduled = [], isLoading } = useQuery({
     queryKey: ['unscheduled', termId, deptId],
@@ -240,13 +278,46 @@ export default function PlotFocusMode({
     enabled: open && !!termId,
   });
 
-  // Auto-select the first subject so the faculty panel is never dead on open.
+  // Sessions in the active tab, before the free-text search narrows further.
+  const scoped = useMemo(
+    () =>
+      unscheduled.filter((record) =>
+        matchesSubjectFilter(record, subjectFilter),
+      ),
+    [unscheduled, subjectFilter],
+  );
+
+  const filterCounts = useMemo(() => {
+    const counts: Record<SubjectFilter, number> = {
+      all: unscheduled.length,
+      regular: 0,
+      minor: 0,
+      elective: 0,
+    };
+    for (const record of unscheduled) {
+      if (record.isMinor) counts.minor += 1;
+      if (record.isElective) counts.elective += 1;
+      if (!record.isMinor && !record.isElective) counts.regular += 1;
+    }
+    return counts;
+  }, [unscheduled]);
+
+  // Auto-select the first visible subject so the faculty panel is never dead.
   useEffect(() => {
     if (!open) return;
     if (selectedSubjectId) return;
-    const first = unscheduled[0];
+    const first = scoped[0];
     if (first) setSelectedSubjectId(first.subjectId);
-  }, [open, unscheduled, selectedSubjectId]);
+  }, [open, scoped, selectedSubjectId]);
+
+  // A subject hidden by the active filter must not keep the faculty panel
+  // pointed at something the user cannot see in the palette.
+  useEffect(() => {
+    if (!selectedSubjectId) return;
+    if (scoped.some((record) => record.subjectId === selectedSubjectId)) return;
+    setSelectedSubjectId(null);
+    setArmed(null);
+  }, [scoped, selectedSubjectId]);
 
   const activeSubjectId = preset?.subjectId ?? selectedSubjectId ?? '';
 
@@ -263,14 +334,14 @@ export default function PlotFocusMode({
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return unscheduled;
-    return unscheduled.filter((record) =>
+    if (!term) return scoped;
+    return scoped.filter((record) =>
       [record.subjectCode, record.subjectTitle, record.sectionCode]
         .join(' ')
         .toLowerCase()
         .includes(term),
     );
-  }, [unscheduled, search]);
+  }, [scoped, search]);
 
   const grouped = useMemo(() => {
     const groups = new Map<
@@ -312,8 +383,8 @@ export default function PlotFocusMode({
   }, [filtered]);
 
   const backlogSubjectIds = useMemo(
-    () => Array.from(new Set(unscheduled.map((record) => record.subjectId))),
-    [unscheduled],
+    () => Array.from(new Set(scoped.map((record) => record.subjectId))),
+    [scoped],
   );
 
   const { data: qualifiedPairs = [], isLoading: facultyViewLoading } = useQuery({
@@ -582,9 +653,23 @@ export default function PlotFocusMode({
               Checking conflicts…
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 border border-outline-variant bg-surface-container-low px-2.5 py-1.5 text-[11px] font-semibold text-on-surface">
+          <span
+            className="inline-flex items-center gap-1.5 border border-outline-variant bg-surface-container-low px-2.5 py-1.5 text-[11px] font-semibold text-on-surface"
+            title={
+              subjectFilter === 'all'
+                ? `${unscheduled.length} unscheduled session${
+                    unscheduled.length === 1 ? '' : 's'
+                  }`
+                : `${scoped.length} shown of ${unscheduled.length} unscheduled sessions`
+            }
+          >
             <span className="h-1.5 w-1.5 bg-amber-500" aria-hidden="true" />
-            {unscheduled.length} to plot
+            {scoped.length} to plot
+            {subjectFilter !== 'all' && (
+              <span className="font-normal text-on-surface-variant">
+                · {unscheduled.length} total
+              </span>
+            )}
           </span>
           <button
             type="button"
@@ -634,6 +719,34 @@ export default function PlotFocusMode({
             ))}
           </div>
 
+          <div className="flex items-center gap-1 border-b border-outline-variant px-2 py-1.5">
+            <Icon
+              name="filter_alt"
+              size={12}
+              className="shrink-0 text-on-surface-variant"
+            />
+            {SUBJECT_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => setSubjectFilter(filter.value)}
+                title={filter.hint}
+                aria-pressed={subjectFilter === filter.value}
+                className={clsx(
+                  'flex min-w-0 flex-1 items-center justify-center gap-1 border px-1 py-1 text-[9px] font-bold uppercase tracking-wide transition',
+                  subjectFilter === filter.value
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-low',
+                )}
+              >
+                {filter.label}
+                <span className="tabular-nums opacity-70">
+                  {filterCounts[filter.value]}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="space-y-2 p-3">
@@ -644,7 +757,7 @@ export default function PlotFocusMode({
                   />
                 ))}
               </div>
-            ) : grouped.length === 0 ? (
+            ) : filtered.length === 0 ? (
               search.trim() ? (
                 <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                   <Icon
@@ -659,7 +772,7 @@ export default function PlotFocusMode({
                     Clear the search to see the full plotting backlog.
                   </p>
                 </div>
-              ) : (
+              ) : unscheduled.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                   <Icon
                     name="task_alt"
@@ -672,6 +785,31 @@ export default function PlotFocusMode({
                   <p className="max-w-[15rem] text-xs text-on-surface-variant">
                     No unscheduled sessions remain for this department and term.
                   </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+                  <Icon
+                    name="filter_alt_off"
+                    size={28}
+                    className="text-on-surface-variant"
+                  />
+                  <p className="text-sm font-semibold text-on-surface">
+                    No{' '}
+                    {SUBJECT_FILTERS.find(
+                      (filter) => filter.value === subjectFilter,
+                    )?.label.toLowerCase() ?? 'filtered'}{' '}
+                    sessions
+                  </p>
+                  <p className="max-w-[15rem] text-xs text-on-surface-variant">
+                    Switch the filter to see the rest of the plotting backlog.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSubjectFilter('all')}
+                    className="mt-1 border border-outline-variant px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-primary transition hover:bg-primary/10"
+                  >
+                    Show all sessions
+                  </button>
                 </div>
               )
             ) : paletteMode === 'faculty' ? (
@@ -898,9 +1036,9 @@ export default function PlotFocusMode({
           </div>
 
           <div className="border-t border-outline-variant bg-surface-container-low/50 px-3 py-2 text-[10px] leading-relaxed text-on-surface-variant">
-            Tip: switch to <strong>By faculty</strong> to see the subjects each
-            teacher is qualified for, then drag a session. The drop pre-fills
-            the slot and the teacher.
+            Tip: filter to <strong>Minor</strong> or <strong>Elective</strong>{' '}
+            to focus that backlog, or switch to <strong>By faculty</strong> to
+            see who is qualified. The drop pre-fills the slot and the teacher.
           </div>
         </aside>
 

@@ -32,6 +32,7 @@ Use these guides to set up the applications, understand workspace packages, and 
 
 - [IDP integration](integrations/idp.md) — faculty roster, qualifications, and unavailability sync, plus schedule, faculty-request, and change-request exchange with the Institutional Data Platform.
 - [IDP integration handoff](integrations/idp-handoff.md) — what to configure, what to send the IDP team, and the end-to-end test plan.
+- [IDP what is new](integrations/idp-whats-new.md) — the new DH schedule-change review queue, IDP Requests upgrades, and the handoff message for the IDP team.
 - [IDP Milestone 1 checkpoint](integrations/idp-milestone-1-checkpoint.md) — implementation record, verification, and handoff notes.
 - [IDP Milestone 3 checkpoint](integrations/idp-milestone-3-checkpoint.md) — change requests, acknowledgements, and faculty-request status publishing.
 

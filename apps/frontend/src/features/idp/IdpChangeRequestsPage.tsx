@@ -696,7 +696,10 @@ export default function IdpChangeRequestsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div
+        data-tour="idp-header"
+        className="flex flex-wrap items-start justify-between gap-3"
+      >
         <div>
           <h1 className="text-2xl font-bold text-on-surface">
             IDP Change Requests
@@ -759,7 +762,10 @@ export default function IdpChangeRequestsPage() {
         </div>
       )}
 
-      <div className="space-y-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4">
+      <div
+        data-tour="idp-filters"
+        className="space-y-3 rounded-xl border border-surface-variant bg-surface-container-lowest p-4"
+      >
         <div className="flex gap-2 overflow-x-auto border-b border-surface-variant">
           {STATUS_TABS.map((tab) => (
             <button
@@ -860,29 +866,31 @@ export default function IdpChangeRequestsPage() {
         </div>
       </div>
 
-      <ResponsiveTable
-        columns={columns}
-        rows={filtered}
-        rowKey={(request) => request.idp_request_id}
-        rowTitle={(request) => request.idp_request_id}
-        rowSubtitle={summarizeRequest}
-        isLoading={requestsQuery.isLoading}
-        hasSourceRows={requests.length > 0}
-        emptyMessage="No change requests have been received from IDP yet."
-        noMatchMessage="No change requests match your filters."
-        emptyIcon="cloud_sync"
-        emptyAction={
-          <button
-            type="button"
-            onClick={() => requestsQuery.refetch()}
-            className="rounded-lg border border-surface-variant px-4 py-2 text-sm font-semibold text-on-surface transition hover:bg-surface-container-low"
-          >
-            Check again
-          </button>
-        }
-        getActions={getActions}
-        onRowClick={(request) => setDetailTarget(request)}
-      />
+      <div data-tour="idp-table">
+        <ResponsiveTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(request) => request.idp_request_id}
+          rowTitle={(request) => request.idp_request_id}
+          rowSubtitle={summarizeRequest}
+          isLoading={requestsQuery.isLoading}
+          hasSourceRows={requests.length > 0}
+          emptyMessage="No change requests have been received from IDP yet."
+          noMatchMessage="No change requests match your filters."
+          emptyIcon="cloud_sync"
+          emptyAction={
+            <button
+              type="button"
+              onClick={() => requestsQuery.refetch()}
+              className="rounded-lg border border-surface-variant px-4 py-2 text-sm font-semibold text-on-surface transition hover:bg-surface-container-low"
+            >
+              Check again
+            </button>
+          }
+          getActions={getActions}
+          onRowClick={(request) => setDetailTarget(request)}
+        />
+      </div>
 
       <div className="flex gap-2 rounded-xl border border-surface-variant bg-surface-container-low p-3 text-xs text-on-surface-variant">
         <Icon name="info" size={16} className="mt-0.5 shrink-0" />

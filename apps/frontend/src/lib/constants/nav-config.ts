@@ -61,6 +61,28 @@ const UNGROUPED = 'More';
  * Bucket nav items by `group`, preserving config order. Items without a
  * group collect under "More" at the end.
  */
+/**
+ * The most specific nav path covering the current location.
+ *
+ * `NavLink` matches by prefix, so `/approvals` would stay lit while
+ * `/approvals/schedule-changes` is open. Resolving the longest match once
+ * per nav list keeps exactly one entry active, while still lighting the
+ * parent on detail routes (`/subjects/42` → `/subjects`).
+ */
+export function resolveActiveNavPath(
+  pathname: string,
+  items: NavItem[],
+): string | null {
+  let best: string | null = null;
+  for (const item of items) {
+    const matches =
+      pathname === item.path || pathname.startsWith(`${item.path}/`);
+    if (!matches) continue;
+    if (!best || item.path.length > best.length) best = item.path;
+  }
+  return best;
+}
+
 export function groupNav(items: NavItem[]): NavGroup[] {
   const groups: NavGroup[] = [];
   const index = new Map<string, NavGroup>();

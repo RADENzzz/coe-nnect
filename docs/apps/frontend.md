@@ -51,7 +51,8 @@ All application routes except the public landing page, login, maintenance page, 
 | `/dean/users` | Dean, secretary | User lifecycle management. |
 | `/dean/approvals` | Dean | Schedule approvals and finalization. |
 | `/dean/requests` | Dean | Cross-department faculty requests. |
-| `/dean/idp/change-requests` | Dean, secretary | IDP change-request review queue; records accepted/rejected/modified decisions without applying the underlying change automatically. |
+| `/approvals/schedule-changes` | Department head | Schedule-change review queue (DH): enriched view of IDP `schedule_override` / `unavailability_change` requests with live conflict analysis and a decision workflow. |
+| `/dean/idp/change-requests` | Dean, secretary | IDP change-request review queue (status/type filters, search, detail modal). |
 | `/dean/timetable` | Dean | Read-only college timetable. |
 | `/dean/import`, `/dean/import/:id` | Dean, secretary | Prospectus PDF import. |
 | `/dean/reports/*` | Dean | Reports hub and reports. |

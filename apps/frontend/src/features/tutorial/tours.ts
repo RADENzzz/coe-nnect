@@ -69,6 +69,8 @@ const TOUR_META: Record<string, TourMeta> = {
   programs: { category: 'setup', minutes: 1 },
   prospectus: { category: 'scheduling', minutes: 2 },
   approvals: { category: 'workflow', minutes: 2 },
+  'schedule-changes': { category: 'workflow', minutes: 2 },
+  'idp-requests': { category: 'workflow', minutes: 2 },
   reports: { category: 'reports', minutes: 1 },
   settings: { category: 'account', minutes: 2 },
   help: { category: 'essentials', minutes: 1 },
@@ -266,6 +268,14 @@ const TIMETABLE_TOUR: Tour = {
       target: '[data-tour="tt-auto"]',
       placement: 'bottom',
       icon: 'auto_awesome',
+    },
+    {
+      title: 'Focus on the backlog',
+      body: 'Focus Plot opens a full-screen workspace with the unscheduled subjects beside the grid. Use the All, Regular, Minor, and Elective tabs to narrow the list before you drag.',
+      tip: 'Minor and elective subjects can overlap, so a subject may appear under both filters.',
+      target: '[data-tour="tt-focus"]',
+      placement: 'bottom',
+      icon: 'center_focus_strong',
     },
     {
       title: 'Slice the timetable',
@@ -541,6 +551,81 @@ const APPROVALS_TOUR: Tour = {
       title: 'Keep it moving',
       body: 'Approve or reject promptly so the other department can finish plotting. Cancelled requests stay in the history.',
       icon: 'notifications_active',
+    },
+  ],
+};
+
+const SCHEDULE_CHANGES_TOUR: Tour = {
+  id: 'schedule-changes',
+  title: 'Schedule change approvals',
+  description:
+    'Review faculty and IDP requests that move a plotted class or block availability.',
+  icon: 'rule',
+  roles: [ROLES.DEPT_HEAD],
+  paths: ['/approvals/schedule-changes'],
+  steps: [
+    {
+      title: 'Requests that touch the timetable',
+      body: 'This queue collects faculty and IDP requests that would move a plotted class or block faculty availability. Refresh pulls the latest state.',
+      target: '[data-tour="sc-header"]',
+      placement: 'bottom',
+      icon: 'rule',
+    },
+    {
+      title: 'Read the verdict before you open',
+      body: 'Every request is checked against the live schedule. Pending means it is new, Ready can be applied safely, Conflicted clashes with an existing block, and Advisory carries a soft warning.',
+      target: '[data-tour="sc-tabs"]',
+      placement: 'bottom',
+      icon: 'fact_check',
+    },
+    {
+      title: 'Work the queue',
+      body: 'Switch tabs to filter by status, then pick a request from the list. The list shows the affected faculty or subject, section, and proposed time at a glance.',
+      target: '[data-tour="sc-list"]',
+      placement: 'right',
+      icon: 'list_alt',
+    },
+    {
+      title: 'Decide with the evidence',
+      body: 'The detail panel compares the current and proposed schedule, shows the conflict reason, and holds the approve and reject actions.',
+      tip: 'Approving a change updates the timetable and notifies the requesting department. A conflicted request cannot be approved until the clash is resolved.',
+      target: '[data-tour="sc-detail"]',
+      placement: 'left',
+      icon: 'balance',
+    },
+  ],
+};
+
+const IDP_REQUESTS_TOUR: Tour = {
+  id: 'idp-requests',
+  title: 'IDP change requests',
+  description:
+    'Review schedule and faculty changes raised by the Institutional Data Platform.',
+  icon: 'cloud_sync',
+  roles: [ROLES.DEAN, ROLES.SECRETARY],
+  paths: ['/dean/idp/change-requests'],
+  steps: [
+    {
+      title: 'Changes from the IDP',
+      body: 'The Institutional Data Platform sends schedule and faculty changes here. The status badges show whether the inbound and outbound channels are connected.',
+      target: '[data-tour="idp-header"]',
+      placement: 'bottom',
+      icon: 'cloud_sync',
+    },
+    {
+      title: 'Filter to what needs you',
+      body: 'Use the status tabs, request type, and search to narrow the queue. Refresh re-checks the integration without leaving the page.',
+      target: '[data-tour="idp-filters"]',
+      placement: 'bottom',
+      icon: 'filter_alt',
+    },
+    {
+      title: 'Open a request',
+      body: 'Each row summarizes the request and its current status. Open one to compare the incoming change with the record in CoE-NNECT, then accept or dismiss it.',
+      tip: 'Requests stay in the history after they are handled, so you can always trace what the IDP sent.',
+      target: '[data-tour="idp-table"]',
+      placement: 'top',
+      icon: 'fact_check',
     },
   ],
 };
@@ -986,6 +1071,8 @@ export const TOURS: Tour[] = [
   PROGRAMS_TOUR,
   PROSPECTUS_TOUR,
   APPROVALS_TOUR,
+  SCHEDULE_CHANGES_TOUR,
+  IDP_REQUESTS_TOUR,
   REPORTS_TOUR,
   SETTINGS_TOUR,
   NOTIFICATIONS_TOUR,
@@ -1047,6 +1134,7 @@ const RECOMMENDED_ORDER: Record<string, string[]> = {
     'sections',
     'timetable',
     'approvals',
+    'schedule-changes',
     'reports',
     'notifications',
     'settings',
@@ -1058,6 +1146,7 @@ const RECOMMENDED_ORDER: Record<string, string[]> = {
     'dean-departments',
     'dean-users',
     'dean-approvals',
+    'idp-requests',
     'system-settings',
     'timetable',
     'faculty',
@@ -1076,6 +1165,7 @@ const RECOMMENDED_ORDER: Record<string, string[]> = {
     'sections',
     'rooms',
     'timetable',
+    'idp-requests',
     'reports',
     'notifications',
     'settings',
