@@ -24,7 +24,9 @@ declare global {
         'shadow-intensity'?: string | number;
         exposure?: string | number;
         'environment-image'?: string;
+        'camera-target'?: string;
         'camera-orbit'?: string;
+        'field-of-view'?: string;
         'min-camera-orbit'?: string;
         'max-camera-orbit'?: string;
         loading?: string;
