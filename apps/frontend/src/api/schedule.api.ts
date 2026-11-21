@@ -208,6 +208,10 @@ export interface UnscheduledRecord {
   kind: 'lecture' | 'lab';
   sessionIndex: number;
   reason: string | null;
+  /** Subject owned by another department. */
+  isMinor: boolean;
+  /** Subject flagged as an elective. */
+  isElective: boolean;
 }
 
 export interface PendingAutoGenerateInfo {

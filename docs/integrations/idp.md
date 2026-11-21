@@ -65,6 +65,81 @@ flowchart LR
     API -->|upsert faculty, qualifications, unavailability| DB
 ```
 
+
+
+### DH schedule-change review (college_dean, college_secretary, department_head, administrator)
+
+Department heads get a richer, conflict-aware review of the IDP schedule and
+unavailability changes that matter to them. This is implemented by
+\`IdpScheduleChangeReviewService\` and backed by:
+
+- \`GET /api/v1/idp/schedule-change-requests\` — list with conflict analysis
+- \`POST /api/v1/idp/schedule-change-requests/:id/decision\` — approve/reject + record the DH ack
+
+Queries are scoped to the DH's department (or details that name it); only
+\`schedule_override\` and \`unavailability_change\` surface in this queue.
+
+**List:**
+
+\`\`\`json
+{
+  "data": {
+    "items": [{
+      "idpRequestId": "IDP-REQ-0001",
+      "type": "schedule_override",
+      "status": "pending",
+      "severity": "warning",
+      "requiresAck": true,
+      "requestedAt": "2026-11-11T10:00:00.000Z",
+      "receivedAt": "2026-11-11T10:00:00.000Z",
+      "faculty": { "facultyId": "1", "name": "Juan Dela Cruz", "deptCode": "CPE" },
+      "subject": { "subjectId": "11", "subjectCode": "CPE 131", "title": "Data Structures" },
+      "term": { "termId": "5", "label": "2026 · 1st" },
+      "schedule": { "scheduleId": "77", "subjectCode": "CPE 131", "section": "CpE-1A", "room": "CET 205", "dayOfWeek": "Monday", "startTime": "08:00", "endTime": "09:00", "status": "active" },
+      "proposed": { "dayOfWeek": "Thursday", "startTime": "09:00", "endTime": "10:00", "loadType": "lecture", "sectionCode": null, "roomId": null, "reason": "Teach CPE 131 for 8th week instead", "affectedDates": [] },
+      "conflict": { "state": "ok", "summary": "No conflicts found for the proposed change.", "items": [] },
+      "ack": null,
+      "canReview": true,
+      "requiresDeanUnfinalize": false,
+      "details": { "term_code": "2026-2027-1st", "subject_code": "CPE 131", "day_of_week": "Thursday", "start_time": "09:00", "end_time": "10:00", "reason": "Teach CPE 131 for 8th week instead" }
+    }],
+    "counts": { "pending": 1, "ready": 0, "conflicted": 0, "warning": 0, "unknown": 0 }
+  }
+}\`\`\`
+
+\`conflict.state\` is \`ok\` | \`warning\` | \`conflict\` | \`unknown\`. Each item in
+\`items\` carries \`{ severity, ruleId, ruleName, reason }\` with severity
+\`hard\` | \`soft\` | \`info\` (hard means blocking, soft is an advisory, and a
+published-block item is informational).
+
+**Decision:**
+
+\`\`\`post
+POST /api/v1/idp/schedule-change-requests/IDP-REQ-0001/decision
+
+{
+  "action": "accepted",            // or "rejected"
+  "notes": "Optional reviewer note.",
+  "acknowledgeConflicts": true     // required when conflict.state === "conflict"
+}
+\`\`\`
+
+The response is \`{ request, ack, unfinalize }\`:
+
+- \`ack\` is the exactly-once reviewer acknowledgement (same contract as
+  \`POST /api/v1/idp/change-requests/:id/ack\`) and flows to the IDP desktop
+  through the \`change_request.ack\` outbox.
+- For \`accepted\` on \`schedule_override\` where the affected schedule is
+  published, \`requiresDeanUnfinalize\` is true. When the caller is the DH, a
+  Dean unfinalize request is filed automatically — the published-unfinalize
+  rule is preserved without a second manual step.
+- For \`unavailability_change\`, conflicts are computed by checking plotted
+  classes on the same faculty and term that overlap the proposed window
+  (rule id \`UNAVAIL-OVERLAP\`).
+- For \`schedule_override\`, the full scheduling validator runs against the
+  proposed subject, term, and slot (excluding the original schedule), so hard
+  rule violations come back as blockers.
+
 The module has these responsibilities:
 
 - `IdpClientService` — outbound Pattern A HTTP client, timeout and error mapping.
@@ -100,6 +175,8 @@ The module has these responsibilities:
 | `GET`  | `/api/idp/v1/schedules/classes?deptCode=`    | Device bearer key | Department class-reference lookup |
 | `GET`  | `/api/idp/v1/outbox/faculty-requests?since=&limit=` | Device bearer key | Pattern C faculty-request poll |
 | `GET`  | `/api/idp/v1/outbox/change-request-acks?since=&limit=` | Device bearer key | Pattern C change-request-ack poll |
+| `GET` | `/api/v1/idp/schedule-change-requests` | Device bearer key | DH review: list with conflict analysis |
+| `POST` | `/api/v1/idp/schedule-change-requests/:id/decision` | Device bearer key | DH review: approve/reject + record ack |
 
 Pattern C calls send:
 

@@ -1288,6 +1288,8 @@ export class AutoGenerateService {
       kind: 'lecture' | 'lab';
       sessionIndex: number;
       reason: string | null;
+      isMinor: boolean;
+      isElective: boolean;
     }>
   > {
     // Compute the backlog live when a department is known: the persisted
@@ -1310,7 +1312,7 @@ export class AutoGenerateService {
         session_index,
         reason,
         section:section_id ( section_code ),
-        subject:subject_id ( subject_code, title )
+        subject:subject_id ( subject_code, title, is_minor, is_elective )
         `,
       )
       .eq('term_id', termId);
@@ -1336,6 +1338,8 @@ export class AutoGenerateService {
       kind: r.kind as 'lecture' | 'lab',
       sessionIndex: r.session_index ?? 0,
       reason: r.reason ?? null,
+      isMinor: (r as any).subject?.is_minor === true,
+      isElective: (r as any).subject?.is_elective === true,
     }));
   }
 

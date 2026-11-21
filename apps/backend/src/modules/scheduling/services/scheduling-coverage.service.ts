@@ -582,6 +582,8 @@ export class SchedulingCoverageService {
       kind: 'lecture' | 'lab';
       sessionIndex: number;
       reason: string | null;
+      isMinor: boolean;
+      isElective: boolean;
     }> | null
   > {
     const db = this.supabase.getAdminClient();
@@ -647,7 +649,7 @@ export class SchedulingCoverageService {
       db
         .from('subject')
         .select(
-          'subject_id, subject_code, title, lecture_units, lab_units, is_active',
+          'subject_id, subject_code, title, lecture_units, lab_units, is_active, is_minor, is_elective',
         )
         .in('subject_id', subjectIds)
         .eq('is_active', true),
@@ -682,6 +684,8 @@ export class SchedulingCoverageService {
         sectionCode: string;
         lecture: number;
         lab: number;
+        isMinor: boolean;
+        isElective: boolean;
       }
     >();
 
@@ -723,6 +727,8 @@ export class SchedulingCoverageService {
           sectionCode: section.section_code ?? '?',
           lecture: lectureSessions,
           lab: labSessions,
+          isMinor: subject.is_minor === true,
+          isElective: subject.is_elective === true,
         });
       }
     }
@@ -738,6 +744,8 @@ export class SchedulingCoverageService {
       kind: 'lecture' | 'lab';
       sessionIndex: number;
       reason: string | null;
+      isMinor: boolean;
+      isElective: boolean;
     }> = [];
 
     for (const pair of required.values()) {
@@ -760,6 +768,8 @@ export class SchedulingCoverageService {
             kind,
             sessionIndex: i,
             reason: null,
+            isMinor: pair.isMinor,
+            isElective: pair.isElective,
           });
         }
       }

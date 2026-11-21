@@ -277,12 +277,13 @@ The `IdpModule` under `src/modules/idp` implements the CoE-NNECT ↔ IDP v2.0 co
 | `GET` | `/api/v1/idp/change-requests` | Bearer JWT + role guard | Review queue for inbound change requests. |
 | `GET` | `/api/v1/idp/change-requests/:id` | Bearer JWT + role guard | Read one inbound change request. |
 | `POST` | `/api/v1/idp/change-requests/:id/ack` | Bearer JWT + role guard | Record the reviewer decision and queue the ack. |
+| `GET` | `/api/v1/idp/schedule-change-requests` | Bearer JWT + role guard | List DH-visible schedule/unavailability changes with conflict analysis and ack state. |
+| `POST` | `/api/v1/idp/schedule-change-requests/:id/decision` | Bearer JWT + role guard | Approve or reject an IDP schedule/unavailability change and record the DH ack. |
 
 The sync applies faculty identity, qualifications, and unavailability, matches records by `wmsu_id` then `employee_id`, and maintains `faculty.sync_status` / `last_synced_at`. Local identity edits mark a row pending and block incoming IDP updates with `409 local_edit_pending`. Webhooks are signed with HMAC-SHA256 over the raw request body; `main.ts` enables `rawBody: true` for this reason. The guard also accepts the `X-COE-NNECT-Signature` / `X-COE-NNECT-Timestamp` aliases, and the change-request webhook alone accepts the integration key through `X-IDP-API-Key`, `X-COE-NNECT-Key`, `X-API-Key`, or `Authorization: Bearer`.
 
 Change requests follow contract 4.5: only `idp_request_id` and `type` are required, and the receiver defaults `severity` to `info`, `details` to `{}`, `created_at` to receive time, and `requires_ack` to `false` for auto-accepted types / `true` for pending types. `faculty_create`, `faculty_update`, `faculty_deactivate`, `qualification_add`, and `qualification_remove` are stored as `acknowledged` with no reviewer and no live mutation; a system ack is queued only when the sender explicitly requests one. `unavailability_change`, `schedule_override`, and `faculty_transfer` stay pending for Dean/secretary/administrator review. `schedule_override` may omit faculty keys. Published schedule entries use the contract v2.0 `day` field, not `day_of_week`.
 
-Webhook idempotency, change requests, and outbound schedules, faculty-request statuses, and acks are stored in `idp_processed_event`, `idp_change_request`, and `idp_outbox` so an offline desktop client can catch up safely. A change-request acknowledgement is a reviewer decision, not an automatic mutation of live schedule or faculty data.
 
 Configure the integration in `apps/backend/.env`:
 

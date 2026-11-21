@@ -6,7 +6,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import Icon from '../ui/Icon';
 import CetLogo from '../brand/CetLogo';
@@ -18,6 +18,7 @@ import { useNavAttention, type NavAttention } from '../../hooks/use-nav-attentio
 import {
   filterNavByRole,
   groupNav,
+  resolveActiveNavPath,
   type NavItem,
   type RoleNav,
 } from '../../lib/constants/nav-config';
@@ -31,7 +32,7 @@ const FOCUS_RING =
 const NAV_LINK_BASE =
   `flex items-center gap-3 font-semibold text-sm transition-colors rounded ${FOCUS_RING}`;
 const GROUP_LABEL =
-  'pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40';
+  'pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-yellow-300';
 
 const NAV_TONES: Record<
   NavTone,
@@ -60,6 +61,8 @@ interface SidebarNavItemProps {
   badge: number;
   /** The newest unread notification points at this page. */
   highlight: boolean;
+  /** The single nav path that owns the current location. */
+  active: boolean;
 }
 
 function SidebarNavItem({
@@ -68,6 +71,7 @@ function SidebarNavItem({
   tone,
   badge,
   highlight,
+  active,
 }: SidebarNavItemProps) {
   const t = NAV_TONES[tone];
   const title = collapsed
@@ -77,48 +81,44 @@ function SidebarNavItem({
   return (
     <NavLink
       to={item.path}
+      end
       title={title}
+      aria-current={active ? 'page' : undefined}
       onMouseEnter={() => prefetchRoute(item.path)}
       onFocus={() => prefetchRoute(item.path)}
-      className={({ isActive }) =>
-        clsx(
-          NAV_LINK_BASE,
-          collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
-          isActive ? t.active : t.idle,
-          !isActive && highlight && 'nav-attention-rule',
-        )
-      }
+      className={clsx(
+        NAV_LINK_BASE,
+        collapsed ? 'justify-center py-2.5 px-2' : 'px-3 py-2.5',
+        active ? t.active : t.idle,
+        !active && highlight && 'nav-attention-rule',
+      )}
     >
-      {({ isActive }) => (
-        <>
-          <span className="relative shrink-0">
-            <Icon
-              name={item.icon}
-              filled={isActive}
-              className={isActive ? undefined : t.iconIdleClass}
-            />
-            {collapsed && badge > 0 && (
-              <span
-                aria-hidden
-                className="nav-attention-dot nav-attention-dot--ringed absolute -top-0.5 -right-1 h-2 w-2 rounded-full"
-              />
-            )}
-          </span>
+      <span className="relative shrink-0">
+        <Icon
+          name={item.icon}
+          filled={active}
+          className={active ? undefined : t.iconIdleClass}
+        />
+        {collapsed && badge > 0 && (
+          <span
+            aria-hidden
+            className="nav-attention-dot nav-attention-dot--ringed absolute -top-0.5 -right-1 h-2 w-2 rounded-full"
+          />
+        )}
+      </span>
 
-          {!collapsed && (
-            <>
-              <span className="min-w-0 flex-1 truncate">
-                {item.shortLabel ?? item.label}
-              </span>
-              {badge > 0 && (
-                <span
-                  className="nav-attention-pill flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none tabular-nums"
-                  aria-label={`${badge} unread`}
-                >
-                  {badgeLabel(badge)}
-                </span>
-              )}
-            </>
+      {!collapsed && (
+        <>
+          <span className="min-w-0 flex-1 truncate">
+            {item.shortLabel ?? item.label}
+          </span>
+          {badge > 0 && (
+            <span
+              className="nav-attention-pill flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold leading-none tabular-nums"
+              aria-label={`${badge} unread`}
+            >
+              {badgeLabel(badge)}
+            </span>
           )}
         </>
       )}
@@ -131,6 +131,8 @@ interface SidebarNavSectionProps {
   collapsed: boolean;
   ariaLabel: string;
   attention: NavAttention;
+  /** The single nav path that owns the current location. */
+  activePath: string | null;
   tone?: NavTone;
   className?: string;
 }
@@ -140,6 +142,7 @@ function SidebarNavSection({
   collapsed,
   ariaLabel,
   attention,
+  activePath,
   tone = 'primary',
   className,
 }: SidebarNavSectionProps) {
@@ -158,6 +161,7 @@ function SidebarNavSection({
           tone={tone}
           badge={attention.badgeFor(item)}
           highlight={attention.latestPath === item.path}
+          active={item.path === activePath}
         />
       ))}
     </div>
@@ -169,6 +173,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ nav }: SidebarProps) {
+  const { pathname } = useLocation();
   const { deptName } = useDepartmentLabel();
   const profile = useAuthStore((s) => s.profile);
   const brandLogo = useAppearanceStore((s) => s.logo);
@@ -194,6 +199,14 @@ export default function Sidebar({ nav }: SidebarProps) {
     [nav.footer, profile?.role],
   );
   const groups = useMemo(() => groupNav(visibleMain), [visibleMain]);
+
+  // One owner per location: the longest matching nav path. Without this,
+  // `/approvals` would stay active alongside `/approvals/schedule-changes`.
+  const activePath = useMemo(
+    () =>
+      resolveActiveNavPath(pathname, [...visibleMain, ...visibleFooter]),
+    [pathname, visibleMain, visibleFooter],
+  );
 
   const attention = useNavAttention(nav, profile?.role);
 
@@ -378,19 +391,21 @@ export default function Sidebar({ nav }: SidebarProps) {
               collapsed={collapsed}
               ariaLabel={`${group.label} navigation`}
               attention={attention}
+              activePath={activePath}
             />
           </div>
         ))}
       </div>
 
-      {/* Footer Nav — secondary tone, on a darker band */}
+      {/* Footer Nav — secondary tone, on the sidebar maroon */}
       <SidebarNavSection
         items={visibleFooter}
         collapsed={collapsed}
         ariaLabel="Secondary navigation"
         attention={attention}
+        activePath={activePath}
         tone="footer"
-        className="border-t border-white/20 bg-black/20 py-2"
+        className="border-t border-white/20 py-2"
       />
     </nav>
   );
