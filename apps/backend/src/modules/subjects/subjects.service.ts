@@ -20,6 +20,7 @@ import {
   ScheduleStatus,
 } from '../scheduling/entities/schedule.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
+import { FacultyQualification } from '../faculty/entities/faculty-qualification.entity';
 import { DepartmentsService } from '../departments/departments.service';
 
 const PG_FK_VIOLATION = '23503';
@@ -35,6 +36,8 @@ export class SubjectsService {
     private readonly scheduleRepo: Repository<Schedule>,
     @InjectRepository(Prospectus)
     private readonly prospectusRepo: Repository<Prospectus>,
+    @InjectRepository(FacultyQualification)
+    private readonly qualificationRepo: Repository<FacultyQualification>,
     private readonly departments: DepartmentsService,
   ) {}
 
@@ -321,10 +324,11 @@ export class SubjectsService {
     // Prospectus mappings are intentionally not a blocker: the FK is
     // ON DELETE CASCADE, so deleting the subject removes them automatically.
     // Unpublished schedule rows are working data and are removed with the
-    // subject. Published rows are historical and must be kept, so any
-    // published row blocks the hard delete. Restrictions still protect the
-    // subject because they reference a second subject that would otherwise
-    // dangle.
+    // subject, and faculty qualifications for the subject go with it too — a
+    // qualification for a subject that no longer exists cannot be satisfied.
+    // Published rows are historical and must be kept, so any published row
+    // blocks the hard delete. Restrictions still protect the subject because
+    // they reference a second subject that would otherwise dangle.
     const [publishedScheduleCount, restrictionCount] = await Promise.all([
       this.scheduleRepo.count({
         where: { subjectId: id, status: 'published' },
@@ -361,12 +365,15 @@ export class SubjectsService {
       );
     }
 
-    // Remove draft/review/finalized rows before the subject so the
-    // ON DELETE RESTRICT FK on schedule.subject_id does not fire.
-    await this.scheduleRepo.delete({
-      subjectId: id,
-      status: Not('published' as ScheduleStatus),
-    });
+    // Remove draft/review/finalized rows and faculty qualifications before the
+    // subject so the FK constraints do not fire.
+    await Promise.all([
+      this.scheduleRepo.delete({
+        subjectId: id,
+        status: Not('published' as ScheduleStatus),
+      }),
+      this.qualificationRepo.delete({ subjectId: id }),
+    ]);
 
     try {
       await this.repo.remove(found);

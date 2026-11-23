@@ -175,14 +175,15 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const existingIds = new Set(quals.map((q) => String(q.subjectId)));
-  const availableSubjects = useMemo(
-    () =>
-      subjects.filter(
-        (s) => !existingIds.has(String(s.subjectId)) && s.isActive,
-      ),
-    [subjects, quals],
-  );
+  const availableSubjects = useMemo(() => {
+    const existingIds = new Set(quals.map((q) => String(q.subjectId)));
+    return subjects.filter(
+      (s) =>
+        !s.isPlaceholder &&
+        !existingIds.has(String(s.subjectId)) &&
+        s.isActive,
+    );
+  }, [subjects, quals]);
 
   const filteredSubjects = useMemo(() => {
     const q = search.trim().toLowerCase();

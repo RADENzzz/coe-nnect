@@ -4,16 +4,24 @@ import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import { fetchSubjects, type SubjectRecord } from '@/api/subjects.api';
 
+export interface FillSlotValue {
+  subjectId?: string;
+  newSubjectCode?: string;
+  newSubjectTitle?: string;
+}
+
 interface FillSlotModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (subjectId: string) => void;
+  onConfirm: (value: FillSlotValue) => void;
   slotLabel: string;
   programId: string;
   yearLevel?: number | null;
   semester?: string | null;
   isPending: boolean;
 }
+
+type FillMode = 'existing' | 'typed';
 
 function electiveOptionLabel(s: SubjectRecord): string {
   const code = s.subjectCode?.trim();
@@ -40,7 +48,10 @@ export default function FillSlotModal({
   semester,
   isPending,
 }: FillSlotModalProps) {
+  const [mode, setMode] = useState<FillMode>('existing');
   const [selectedId, setSelectedId] = useState('');
+  const [typedCode, setTypedCode] = useState('');
+  const [typedTitle, setTypedTitle] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
@@ -49,11 +60,14 @@ export default function FillSlotModal({
   // slot's year/term so the most likely electives are shown first.
   useEffect(() => {
     if (!open) return;
+    setMode('existing');
     setSelectedId('');
+    setTypedCode('');
+    setTypedTitle(slotLabel);
     setCategoryFilter('');
     setYearFilter(yearLevel != null ? String(yearLevel) : '');
     setSemesterFilter(semester ?? '');
-  }, [open, yearLevel, semester]);
+  }, [open, yearLevel, semester, slotLabel]);
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects', { forProgram: programId, active: true }],
@@ -61,7 +75,8 @@ export default function FillSlotModal({
     enabled: open,
   });
 
-  // Only active electives can fill an elective slot. Placeholders are hidden.
+  // Only active electives can fill an elective slot. Placeholders are hidden:
+  // they are empty fields, not catalog electives.
   const electives = useMemo(
     () =>
       subjects.filter(
@@ -145,6 +160,23 @@ export default function FillSlotModal({
     }
   }, [filtered, selectedId]);
 
+  const typedCodeValid = typedCode.trim().length > 0;
+  const canConfirm =
+    mode === 'existing' ? !!selectedId : typedCodeValid;
+
+  const handleConfirm = () => {
+    if (mode === 'existing') {
+      if (selectedId) onConfirm({ subjectId: selectedId });
+      return;
+    }
+    const code = typedCode.trim();
+    if (!code) return;
+    onConfirm({
+      newSubjectCode: code,
+      ...(typedTitle.trim() ? { newSubjectTitle: typedTitle.trim() } : {}),
+    });
+  };
+
   return (
     <Modal
       open={open}
@@ -160,128 +192,200 @@ export default function FillSlotModal({
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(selectedId)}
-            disabled={!selectedId || isPending}
+            onClick={handleConfirm}
+            disabled={!canConfirm || isPending}
             className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-2 disabled:opacity-50"
           >
             {isPending && (
               <Icon name="progress_activity" size={14} className="animate-spin" />
             )}
-            {isPending ? 'Saving…' : 'Assign Subject'}
+            {isPending
+              ? 'Saving…'
+              : mode === 'typed'
+              ? 'Create & Fill'
+              : 'Assign Subject'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
         <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-900">
-          You are filling the slot: <strong>{slotLabel}</strong>
+          You are filling the empty elective field:{' '}
+          <strong>{slotLabel}</strong>
         </div>
 
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <Icon name="stars" size={14} className="text-teal-600" />
-            <span className="text-xs font-semibold text-on-surface uppercase tracking-wider">
-              Elective filters
-            </span>
-            <span className="text-[10px] text-on-surface-variant">
-              {filtered.length} of {electives.length} available
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div>
-              <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                Category
-              </label>
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
-              >
-                <option value="">All categories</option>
-                <option value="__none__">Uncategorized</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                Year level
-              </label>
-              <select
-                value={yearFilter}
-                onChange={(e) => setYearFilter(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
-              >
-                <option value="">All year levels</option>
-                <option value="1">Year 1</option>
-                <option value="2">Year 2</option>
-                <option value="3">Year 3</option>
-                <option value="4">Year 4</option>
-                <option value="none">Unassigned</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
-                Term
-              </label>
-              <select
-                value={semesterFilter}
-                onChange={(e) => setSemesterFilter(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
-              >
-                <option value="">All terms</option>
-                <option value="1st">1st semester</option>
-                <option value="2nd">2nd semester</option>
-                <option value="summer">Summer</option>
-                <option value="none">Unassigned</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-            Select an Elective Subject
-          </label>
-          <select
-            value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
-            className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-            disabled={isLoading}
+        <div className="flex rounded-lg border border-surface-variant overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setMode('existing')}
+            className={`flex-1 px-3 py-2 text-xs font-semibold transition ${
+              mode === 'existing'
+                ? 'bg-primary text-on-primary'
+                : 'bg-surface-container-low text-slate-600 hover:bg-surface-container-high'
+            }`}
           >
-            <option value="">— Select an elective —</option>
-            {groups.map((group) => (
-              <optgroup
-                key={group.category || '__uncategorized__'}
-                label={group.category || 'Uncategorized'}
+            Choose existing elective
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('typed')}
+            className={`flex-1 px-3 py-2 text-xs font-semibold transition ${
+              mode === 'typed'
+                ? 'bg-primary text-on-primary'
+                : 'bg-surface-container-low text-slate-600 hover:bg-surface-container-high'
+            }`}
+          >
+            Type a new code
+          </button>
+        </div>
+
+        {mode === 'existing' ? (
+          <>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Icon name="stars" size={14} className="text-teal-600" />
+                <span className="text-xs font-semibold text-on-surface uppercase tracking-wider">
+                  Elective filters
+                </span>
+                <span className="text-[10px] text-on-surface-variant">
+                  {filtered.length} of {electives.length} available
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Category
+                  </label>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All categories</option>
+                    <option value="__none__">Uncategorized</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Year level
+                  </label>
+                  <select
+                    value={yearFilter}
+                    onChange={(e) => setYearFilter(e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All year levels</option>
+                    <option value="1">Year 1</option>
+                    <option value="2">Year 2</option>
+                    <option value="3">Year 3</option>
+                    <option value="4">Year 4</option>
+                    <option value="none">Unassigned</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-on-surface-variant mb-1 uppercase tracking-wider">
+                    Term
+                  </label>
+                  <select
+                    value={semesterFilter}
+                    onChange={(e) => setSemesterFilter(e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All terms</option>
+                    <option value="1st">1st semester</option>
+                    <option value="2nd">2nd semester</option>
+                    <option value="summer">Summer</option>
+                    <option value="none">Unassigned</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Select an Elective Subject
+              </label>
+              <select
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                disabled={isLoading}
               >
-                {group.items.map((s) => (
-                  <option key={s.subjectId} value={s.subjectId}>
-                    {electiveOptionLabel(s)}
-                  </option>
+                <option value="">— Select an elective —</option>
+                {groups.map((group) => (
+                  <optgroup
+                    key={group.category || '__uncategorized__'}
+                    label={group.category || 'Uncategorized'}
+                  >
+                    {group.items.map((s) => (
+                      <option key={s.subjectId} value={s.subjectId}>
+                        {electiveOptionLabel(s)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
-              </optgroup>
-            ))}
-          </select>
-          <p className="text-[11px] text-on-surface-variant mt-2 flex items-center gap-1.5">
-            <Icon name="info" size={11} />
-            Only active elective subjects are shown, grouped by category.
-          </p>
-          {!isLoading && filtered.length === 0 && (
-            <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
-              <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
+              </select>
+              <p className="text-[11px] text-on-surface-variant mt-2 flex items-center gap-1.5">
+                <Icon name="info" size={11} />
+                Only active elective subjects are shown, grouped by category.
+              </p>
+              {!isLoading && filtered.length === 0 && (
+                <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
+                  <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
+                  <span>
+                    No electives match these filters. Switch to{' '}
+                    <strong>Type a new code</strong> to create one now.
+                  </span>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                New Course Code
+              </label>
+              <input
+                type="text"
+                value={typedCode}
+                onChange={(e) => setTypedCode(e.target.value)}
+                placeholder="e.g. CPE SD 1"
+                autoFocus
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Title
+              </label>
+              <input
+                type="text"
+                value={typedTitle}
+                onChange={(e) => setTypedTitle(e.target.value)}
+                placeholder="Course title"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="p-3 rounded-lg bg-teal-50 border border-teal-200 text-xs text-teal-900 flex items-start gap-2">
+              <Icon name="info" size={14} className="shrink-0 mt-0.5" />
               <span>
-                No electives match these filters. Try clearing a filter or
-                mark a subject as elective in the Subjects catalog.
+                The code is saved to the elective catalog automatically. Units
+                and elective metadata are inherited from this empty field, and
+                the field is filled immediately.
               </span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

@@ -225,11 +225,19 @@ export default function SubjectsPage() {
     (electiveSemesterFilter ? 1 : 0);
 
   // ── Queries ──
-  const { data: subjects = [], isLoading } = useQuery({
+  const { data: allSubjects = [], isLoading } = useQuery({
     queryKey: ['subjects', { includeInactive: true }],
     queryFn: () => fetchSubjects(true),
     enabled: !!user,
   });
+
+  // Placeholder rows are empty prospectus fields, not catalog subjects. They
+  // are filled from the Prospectus page, so they must stay out of every list,
+  // count, filter, and picker on this page.
+  const subjects = useMemo(
+    () => allSubjects.filter((s) => !s.isPlaceholder),
+    [allSubjects],
+  );
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -536,6 +544,9 @@ export default function SubjectsPage() {
       setDeleteTarget(null);
       setDetailEntry(null);
       invalidateAfterSubjectChange();
+      // Qualifications for the subject are deleted with it.
+      qc.invalidateQueries({ queryKey: ['faculty'] });
+      qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
     },
     onError: (err: any) => {
       const target = deleteTarget;
@@ -1707,10 +1718,11 @@ export default function SubjectsPage() {
           <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
             <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
             <span>
-              This removes the subject from all prospectuses and deletes its
-              draft, review, and finalized schedule entries. Published schedule
-              entries block deletion — move them back to draft first. This
-              action cannot be undone.
+              This removes the subject from all prospectuses, deletes its
+              draft, review, and finalized schedule entries, and removes it from
+              every faculty qualification list. Published schedule entries block
+              deletion — move them back to draft first. This action cannot be
+              undone.
             </span>
           </div>
         </div>

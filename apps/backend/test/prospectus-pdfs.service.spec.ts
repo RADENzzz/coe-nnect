@@ -305,8 +305,14 @@ describe('ProspectusPdfsService elective imports', () => {
       ],
       { idKey: 'tableId' },
     );
-    const subjectRepo = createFakeRepository([], { idKey: 'subjectId' });
-    const prospectusRepo = createFakeRepository([], { idKey: 'prospectusId' });
+    const subjectRepo = createFakeRepository([], {
+      idKey: 'subjectId',
+      autoId: true,
+    });
+    const prospectusRepo = createFakeRepository([], {
+      idKey: 'prospectusId',
+      autoId: true,
+    });
     const programRepo = createFakeRepository([{ programId: '1', deptId: '1' }], {
       idKey: 'programId',
     });
@@ -535,7 +541,7 @@ describe('ProspectusPdfsService elective imports', () => {
     expect(result.temporaryCodes[0].subjectCode).toBe(
       subjectRepo.rows[0].subjectCode,
     );
-    expect(result.warnings.join(' ')).toContain('temporary code');
+    expect(result.warnings.join(' ')).toContain('empty elective field');
   });
 
   it('is idempotent when the same temporary elective is re-imported', async () => {
@@ -555,6 +561,152 @@ describe('ProspectusPdfsService elective imports', () => {
     await service.confirmImport('pdf-1', dto as any, user);
 
     expect(subjectRepo.rows).toHaveLength(1);
+  });
+
+  it('creates one hidden empty field per requested copy', async () => {
+    const { service, subjectRepo, prospectusRepo } = createImportService();
+
+    const result = await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: '',
+          title: 'Professional Elective',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          units_mode: 'lec_lab',
+          copies: 3,
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(3);
+    expect(subjectRepo.rows.every((row) => row.isPlaceholder)).toBe(true);
+    expect(subjectRepo.rows.map((row) => row.subjectCode)).toEqual([
+      expect.stringMatching(/^ELEC-Y1S1-[A-F0-9]{6}$/),
+      expect.stringMatching(/-C2$/),
+      expect.stringMatching(/-C3$/),
+    ]);
+    expect(prospectusRepo.rows).toHaveLength(3);
+    expect(result.slotsCreated).toBe(3);
+    expect(result.temporaryCodes).toHaveLength(3);
+  });
+
+  it('keeps copy imports idempotent', async () => {
+    const { service, subjectRepo, prospectusRepo } = createImportService();
+    const dto = importDto([
+      {
+        code: '',
+        title: 'Professional Elective',
+        lec: '3',
+        lab: '0',
+        total: '3',
+        action: 'elective',
+        copies: 2,
+      },
+    ]);
+
+    await service.confirmImport('pdf-1', dto as any, user);
+    await service.confirmImport('pdf-1', dto as any, user);
+
+    expect(subjectRepo.rows).toHaveLength(2);
+    expect(prospectusRepo.rows).toHaveLength(2);
+  });
+
+  it('does not create copies when the row names a real elective', async () => {
+    const { service, subjectRepo } = createImportService();
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'GEC 104',
+          title: 'Art Appreciation',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'elective',
+          copies: 4,
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'GEC 104',
+      isPlaceholder: false,
+    });
+  });
+
+  it('classifies regular subjects as minor during import', async () => {
+    const { service, subjectRepo } = createImportService({
+      tableKind: 'regular',
+    });
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'PSY 101',
+          title: 'General Psychology',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'subject',
+          is_minor: true,
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      subjectCode: 'PSY 101',
+      isMinor: true,
+      isElective: false,
+    });
+  });
+
+  it('updates the minor flag when re-importing a regular subject', async () => {
+    const { service, subjectRepo } = createImportService({
+      tableKind: 'regular',
+    });
+    subjectRepo.rows.push({
+      subjectId: 's1',
+      subjectCode: 'PSY 101',
+      title: 'General Psychology',
+      totalUnits: 3,
+      lectureUnits: 3,
+      labUnits: 0,
+      deptId: '1',
+      isActive: true,
+      isMinor: false,
+      isPlaceholder: false,
+      isElective: false,
+      unitsMode: 'lec_lab',
+    });
+
+    await service.confirmImport(
+      'pdf-1',
+      importDto([
+        {
+          code: 'PSY 101',
+          title: 'General Psychology',
+          lec: '3',
+          lab: '0',
+          total: '3',
+          action: 'subject',
+          is_minor: true,
+        },
+      ]) as any,
+      user,
+    );
+
+    expect(subjectRepo.rows).toHaveLength(1);
+    expect(subjectRepo.rows[0].isMinor).toBe(true);
   });
 
   it('reuses an existing elective chosen by subject id', async () => {

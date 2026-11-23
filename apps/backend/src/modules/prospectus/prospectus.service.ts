@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { Prospectus } from './entities/prospectus.entity';
 import { Program } from '../programs/entities/program.entity';
 import { Subject } from '../subjects/entities/subject.entity';
@@ -17,6 +17,14 @@ export interface ProspectusCaller {
   role: string;
   deptId: string | null;
 }
+
+export interface FillSlotInput {
+  subjectId?: string;
+  newSubjectCode?: string;
+  newSubjectTitle?: string;
+}
+
+const PG_FK_VIOLATION = '23503';
 
 @Injectable()
 export class ProspectusService {
@@ -280,12 +288,25 @@ export class ProspectusService {
   ): Promise<{ success: boolean }> {
     const found = await this.repo.findOne({
       where: { prospectusId: id },
+      relations: ['subject'],
     });
     if (!found) throw new NotFoundException('Prospectus entry not found');
 
     await this.assertProgramWriteAccess(found.programId, caller);
 
+    const placeholder = found.subject?.isPlaceholder
+      ? found.subject
+      : undefined;
+
     await this.repo.remove(found);
+
+    // A placeholder only exists to back its prospectus field(s). Once the
+    // last field is deleted there is nothing left to fill, so remove the
+    // hidden catalog row instead of leaving an unused temp subject behind.
+    if (placeholder) {
+      await this.deleteUnusedPlaceholder(placeholder);
+    }
+
     return { success: true };
   }
 
@@ -293,10 +314,14 @@ export class ProspectusService {
    * Replaces a placeholder slot subject with a real elective subject.
    * Preserves the original slot label for history, then deactivates
    * the placeholder subject so it drops out of dropdowns.
+   *
+   * Accepts either an existing elective (`subjectId`) or a typed code
+   * (`newSubjectCode`), which creates and saves a real elective subject
+   * using the slot's title and units.
    */
   async fillSlot(
     prospectusId: string,
-    newSubjectId: string,
+    input: string | FillSlotInput,
     caller: ProspectusCaller,
   ): Promise<Prospectus> {
     const found = await this.repo.findOne({
@@ -313,27 +338,36 @@ export class ProspectusService {
       );
     }
 
-    const newSubject = await this.subjects.findOne({
-      where: { subjectId: newSubjectId },
-    });
-    if (!newSubject) {
-      throw new BadRequestException('Target subject not found.');
-    }
-    if (!newSubject.isActive) {
+    const subjectId = (
+      typeof input === 'string' ? input : input.subjectId
+    )?.trim();
+    const newSubjectCode = (
+      typeof input === 'string' ? '' : input.newSubjectCode
+    )?.trim();
+
+    if (subjectId && newSubjectCode) {
       throw new BadRequestException(
-        `Subject "${newSubject.subjectCode}" is inactive.`,
+        'Choose an existing elective or type a new code — not both.',
       );
     }
-    if (newSubject.isPlaceholder) {
+    if (!subjectId && !newSubjectCode) {
       throw new BadRequestException(
-        'Cannot fill a slot with another placeholder subject.',
+        'Choose an existing elective or type a new course code.',
       );
     }
-    if (!newSubject.isElective) {
+    if (newSubjectCode && /^(ELEC|SLOT)-/i.test(newSubjectCode)) {
       throw new BadRequestException(
-        'Slots can only be filled with elective subjects.',
+        'Enter a real course code, not a temporary placeholder code.',
       );
     }
+
+    const newSubject = newSubjectCode
+      ? await this.resolveOrCreateElectiveFromSlot(
+          found.subject,
+          newSubjectCode,
+          typeof input === 'string' ? undefined : input.newSubjectTitle,
+        )
+      : await this.findFillTarget(subjectId!);
 
     // Snapshot the placeholder label onto the prospectus row before
     // changing the FK. Falls back to the subject title if slot_label
@@ -357,6 +391,183 @@ export class ProspectusService {
     }
 
     return this.findOne(saved.prospectusId);
+  }
+
+  /**
+   * Adds another identical empty elective field to the same program/year/term.
+   * Each copy gets a distinct placeholder subject because the prospectus
+   * uniqueness key includes `subject_id`.
+   */
+  async duplicateSlot(
+    prospectusId: string,
+    caller: ProspectusCaller,
+  ): Promise<Prospectus> {
+    const found = await this.repo.findOne({
+      where: { prospectusId },
+      relations: ['subject'],
+    });
+    if (!found) throw new NotFoundException('Prospectus entry not found');
+
+    await this.assertProgramWriteAccess(found.programId, caller);
+
+    const source = found.subject;
+    if (!source?.isPlaceholder) {
+      throw new BadRequestException(
+        'Only an empty elective field can be duplicated.',
+      );
+    }
+
+    const code = await this.nextPlaceholderCopyCode(source.subjectCode);
+    const copy = this.subjects.create({
+      subjectCode: code,
+      title: source.title,
+      totalUnits: source.totalUnits,
+      lectureUnits: source.lectureUnits,
+      labUnits: source.labUnits,
+      deptId: source.deptId,
+      isActive: true,
+      isPlaceholder: true,
+      isMinor: false,
+      isElective: true,
+      unitsMode: source.unitsMode ?? 'lec_lab',
+      electiveCategory: source.electiveCategory ?? null,
+      electiveYearLevel: source.electiveYearLevel ?? null,
+      electiveSemester: source.electiveSemester ?? null,
+      requiredRoomType: source.requiredRoomType ?? null,
+    });
+    const savedSubject = await this.subjects.save(copy);
+
+    const copyRow = this.repo.create({
+      programId: found.programId,
+      subjectId: savedSubject.subjectId,
+      yearLevel: found.yearLevel,
+      semester: found.semester,
+      isActive: true,
+      deactivatedBySubject: false,
+      lectureSessionsPerWeek: found.lectureSessionsPerWeek,
+      lectureMinutesPerSession: found.lectureMinutesPerSession,
+      labSessionsPerWeek: found.labSessionsPerWeek,
+      labMinutesPerSession: found.labMinutesPerSession,
+      slotLabel: found.slotLabel ?? source.title,
+    });
+    const saved = await this.repo.save(copyRow);
+    return this.findOne(saved.prospectusId);
+  }
+
+  // ── Slot helpers ──
+
+  private async findFillTarget(subjectId: string): Promise<Subject> {
+    const subject = await this.subjects.findOne({
+      where: { subjectId },
+    });
+    if (!subject) {
+      throw new BadRequestException('Target subject not found.');
+    }
+    if (!subject.isActive) {
+      throw new BadRequestException(
+        `Subject "${subject.subjectCode}" is inactive.`,
+      );
+    }
+    if (subject.isPlaceholder) {
+      throw new BadRequestException(
+        'Cannot fill a slot with another placeholder subject.',
+      );
+    }
+    if (!subject.isElective) {
+      throw new BadRequestException(
+        'Slots can only be filled with elective subjects.',
+      );
+    }
+    return subject;
+  }
+
+  /**
+   * Typed-code fill: reuse an existing elective when the code is known,
+   * otherwise create a real elective subject from the slot's units.
+   */
+  private async resolveOrCreateElectiveFromSlot(
+    slot: Subject,
+    code: string,
+    title?: string,
+  ): Promise<Subject> {
+    const existing = await this.subjects.findOne({
+      where: { subjectCode: code },
+    });
+    if (existing) return this.findFillTarget(existing.subjectId);
+
+    const resolvedTitle = (title ?? '').trim() || slot.title?.trim();
+    if (!resolvedTitle) {
+      throw new BadRequestException(
+        'A title is required when creating a new elective subject.',
+      );
+    }
+
+    const lec = Number(slot.lectureUnits ?? 0);
+    const lab = Number(slot.labUnits ?? 0);
+    let unitsMode = slot.unitsMode ?? 'lec_lab';
+    if (unitsMode !== 'total_only' && lec + lab !== Number(slot.totalUnits)) {
+      // Placeholders always carry a valid split, but keep the created
+      // subject valid if older data stored something unusual.
+      unitsMode = 'total_only';
+    }
+
+    const subject = this.subjects.create({
+      subjectCode: code,
+      title: resolvedTitle,
+      totalUnits: slot.totalUnits,
+      lectureUnits: unitsMode === 'total_only' ? 0 : lec,
+      labUnits: unitsMode === 'total_only' ? 0 : lab,
+      deptId: slot.deptId,
+      isActive: true,
+      isPlaceholder: false,
+      isMinor: false,
+      isElective: true,
+      unitsMode,
+      electiveCategory: slot.electiveCategory ?? null,
+      electiveYearLevel: slot.electiveYearLevel ?? null,
+      electiveSemester: slot.electiveSemester ?? null,
+      requiredRoomType: slot.requiredRoomType ?? null,
+    });
+    return this.subjects.save(subject);
+  }
+
+  /** First free `…-C2`, `…-C3`, … code for a duplicated empty field. */
+  private async nextPlaceholderCopyCode(sourceCode: string): Promise<string> {
+    const base = String(sourceCode ?? '').replace(/-C\d+$/i, '') || 'ELEC';
+    for (let copy = 2; copy < 1000; copy += 1) {
+      const code = `${base}-C${copy}`;
+      const exists = await this.subjects.findOne({
+        where: { subjectCode: code },
+      });
+      if (!exists) return code;
+    }
+    throw new BadRequestException('Could not allocate a copy code.');
+  }
+
+  /**
+   * Remove a placeholder subject that is no longer referenced by any
+   * prospectus row. If historical data still points at it, deactivate
+   * instead so the delete can never fail on a foreign key.
+   */
+  private async deleteUnusedPlaceholder(placeholder: Subject): Promise<void> {
+    const stillUsed = await this.repo.count({
+      where: { subjectId: placeholder.subjectId },
+    });
+    if (stillUsed > 0) return;
+
+    try {
+      await this.subjects.delete({ subjectId: placeholder.subjectId });
+    } catch (err) {
+      if (
+        err instanceof QueryFailedError &&
+        (err as any).driverError?.code === PG_FK_VIOLATION
+      ) {
+        placeholder.isActive = false;
+        await this.subjects.save(placeholder);
+        return;
+      }
+      throw err;
+    }
   }
 
   // ── Helper ──
