@@ -97,6 +97,12 @@ describe('ProspectusService fillSlot elective guard', () => {
     subjectId: 'slot-1',
     subjectCode: 'SLOT-1',
     title: 'Elective Slot',
+    totalUnits: 3,
+    lectureUnits: 3,
+    labUnits: 0,
+    unitsMode: 'lec_lab',
+    electiveYearLevel: 2,
+    electiveSemester: '2nd',
     isActive: true,
     isPlaceholder: true,
     isElective: false,
@@ -107,6 +113,12 @@ describe('ProspectusService fillSlot elective guard', () => {
     subjectId: 'elective-1',
     subjectCode: 'GEC 101',
     title: 'Gender and Society',
+    totalUnits: 3,
+    lectureUnits: 3,
+    labUnits: 0,
+    unitsMode: 'lec_lab',
+    electiveYearLevel: 1,
+    electiveSemester: '1st',
     isActive: true,
     isPlaceholder: false,
     isElective: true,
@@ -138,14 +150,14 @@ describe('ProspectusService fillSlot elective guard', () => {
           program: { ...programRow() },
         },
       ],
-      { idKey: 'prospectusId' },
+      { idKey: 'prospectusId', autoId: true },
     );
     const programRepo = createFakeRepository([programRow()], {
       idKey: 'programId',
     });
     const subjectRepo = createFakeRepository(
       [{ ...placeholder }, { ...elective }, { ...regular }],
-      { idKey: 'subjectId' },
+      { idKey: 'subjectId', autoId: true },
     );
 
     const service = new ProspectusService(
@@ -178,5 +190,142 @@ describe('ProspectusService fillSlot elective guard', () => {
     expect(
       subjectRepo.rows.find((row) => row.subjectId === 'slot-1')?.isActive,
     ).toBe(false);
+  });
+
+  it('creates and saves a real elective when a new code is typed', async () => {
+    const { service, prospectusRepo, subjectRepo } = createService();
+
+    const result = await service.fillSlot(
+      'p1',
+      { newSubjectCode: 'GEC 200' },
+      admin,
+    );
+
+    const created = subjectRepo.rows.find(
+      (row) => row.subjectCode === 'GEC 200',
+    );
+    expect(created).toMatchObject({
+      title: 'Elective Slot',
+      totalUnits: 3,
+      lectureUnits: 3,
+      labUnits: 0,
+      isActive: true,
+      isPlaceholder: false,
+      isElective: true,
+      deptId: '7',
+      electiveYearLevel: 2,
+      electiveSemester: '2nd',
+    });
+    expect(result.subjectId).toBe(created?.subjectId);
+    expect(prospectusRepo.rows[0].subjectId).toBe(created?.subjectId);
+    expect(
+      subjectRepo.rows.find((row) => row.subjectId === 'slot-1')?.isActive,
+    ).toBe(false);
+  });
+
+  it('reuses an existing elective when its code is typed', async () => {
+    const { service, prospectusRepo, subjectRepo } = createService();
+    const before = subjectRepo.rows.length;
+
+    const result = await service.fillSlot(
+      'p1',
+      { newSubjectCode: 'GEC 101' },
+      admin,
+    );
+
+    expect(result.subjectId).toBe('elective-1');
+    expect(prospectusRepo.rows[0].subjectId).toBe('elective-1');
+    expect(subjectRepo.rows).toHaveLength(before);
+  });
+
+  it('rejects a typed temporary placeholder code', async () => {
+    const { service, prospectusRepo } = createService();
+
+    await expect(
+      service.fillSlot('p1', { newSubjectCode: 'ELEC-Y1S1-AB12CD' }, admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prospectusRepo.rows[0].subjectId).toBe('slot-1');
+  });
+
+  it('rejects choosing a subject and typing a code at once', async () => {
+    const { service, prospectusRepo } = createService();
+
+    await expect(
+      service.fillSlot(
+        'p1',
+        { subjectId: 'elective-1', newSubjectCode: 'GEC 200' },
+        admin,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prospectusRepo.rows[0].subjectId).toBe('slot-1');
+  });
+
+  it('duplicates an empty field with a distinct placeholder subject', async () => {
+    const { service, prospectusRepo, subjectRepo } = createService();
+
+    const copy = await service.duplicateSlot('p1', admin);
+    const second = await service.duplicateSlot('p1', admin);
+
+    expect(copy.prospectusId).not.toBe('p1');
+    expect(second.prospectusId).not.toBe(copy.prospectusId);
+
+    const copySubject = subjectRepo.rows.find(
+      (row) => row.subjectId === copy.subjectId,
+    );
+    expect(copySubject).toMatchObject({
+      subjectCode: 'SLOT-1-C2',
+      title: 'Elective Slot',
+      isActive: true,
+      isPlaceholder: true,
+      isElective: true,
+    });
+    expect(
+      subjectRepo.rows.find((row) => row.subjectId === second.subjectId),
+    ).toMatchObject({ subjectCode: 'SLOT-1-C3', isPlaceholder: true });
+    expect(prospectusRepo.rows).toHaveLength(3);
+  });
+
+  it('refuses to duplicate a field that is not an empty placeholder', async () => {
+    const { service, prospectusRepo } = createService();
+    prospectusRepo.rows[0].subjectId = 'elective-1';
+    prospectusRepo.rows[0].subject = { ...elective };
+
+    await expect(service.duplicateSlot('p1', admin)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prospectusRepo.rows).toHaveLength(1);
+  });
+
+  it('deletes the placeholder subject when its last field is removed', async () => {
+    const { service, subjectRepo } = createService();
+
+    await service.remove('p1', admin);
+
+    expect(
+      subjectRepo.rows.some((row) => row.subjectId === 'slot-1'),
+    ).toBe(false);
+  });
+
+  it('keeps a placeholder that still backs another field', async () => {
+    const { service, prospectusRepo, subjectRepo } = createService();
+    prospectusRepo.rows.push({
+      ...prospectusRow({
+        prospectusId: 'p2',
+        subjectId: 'slot-1',
+        isActive: true,
+        deactivatedBySubject: false,
+      }),
+      slotLabel: 'Elective Slot',
+      subject: { ...placeholder },
+      program: { ...programRow() },
+    });
+
+    await service.remove('p1', admin);
+
+    expect(
+      subjectRepo.rows.some((row) => row.subjectId === 'slot-1'),
+    ).toBe(true);
   });
 });

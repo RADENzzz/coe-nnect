@@ -2,6 +2,12 @@ type Row = Record<string, any>;
 
 export interface FakeRepositoryOptions {
   idKey?: string;
+  /**
+   * Assign a sequential ID to entities passed to `create`, mimicking the
+   * database-generated primary key. Off by default so existing specs keep
+   * their exact row shapes.
+   */
+  autoId?: boolean;
 }
 
 /**
@@ -20,6 +26,7 @@ export function createFakeRepository<T extends Row = Row>(
 ) {
   const idKey = options.idKey ?? 'id';
   const rows: T[] = initialRows.map((row) => ({ ...row }));
+  let autoIdSequence = 0;
 
   const matchesWhere = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, expected]) => {
@@ -99,7 +106,18 @@ export function createFakeRepository<T extends Row = Row>(
     return rows.filter((row) => !where || matchesWhere(row, where)).length;
   });
 
-  const create = jest.fn((input: Partial<T>) => ({ ...input }) as T);
+  const create = jest.fn((input: Partial<T>) => {
+    const entity = { ...input } as T;
+    if (options.autoId && (entity as Row)[idKey] == null) {
+      let next: string;
+      do {
+        autoIdSequence += 1;
+        next = String(autoIdSequence);
+      } while (rows.some((row) => String(row[idKey]) === next));
+      (entity as Row)[idKey] = next;
+    }
+    return entity;
+  });
 
   const save = jest.fn(async (entity: T) => {
     const id = entity[idKey];

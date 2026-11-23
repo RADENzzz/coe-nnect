@@ -65,9 +65,18 @@ export class ProspectusController {
     @Req() req: any,
   ) {
     return {
-      data: await this.prospectus.fillSlot(
+      data: await this.prospectus.fillSlot(id, dto, callerFromRequest(req)),
+    };
+  }
+
+  // NOTE: duplicate-slot is another static suffix and must come before :id.
+  @Roles('college_dean', 'college_secretary', 'department_head')
+  @Post(':id/duplicate-slot')
+  @Auditable({ action: 'prospectus.duplicate_slot', source: 'Prospectus' })
+  async duplicateSlot(@Param('id') id: string, @Req() req: any) {
+    return {
+      data: await this.prospectus.duplicateSlot(
         id,
-        dto.subjectId,
         callerFromRequest(req),
       ),
     };

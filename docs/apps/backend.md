@@ -105,6 +105,8 @@ All paths below are relative to `/api` unless noted. Role names are illustrative
 | `GET` | `/v1/designations` | Faculty designations. |
 | `GET/PATCH` | `/v1/system-config` | Scheduling/system configuration. |
 
+Deleting a subject removes its prospectus mappings, its unpublished (draft, review, finalized) schedule entries, and every faculty qualification that references it. Published schedule entries are kept for history and block the delete until they are moved back to draft.
+
 ### Scheduling and approvals
 
 | Method | Path | Purpose |

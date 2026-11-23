@@ -8,6 +8,7 @@ import { SubjectRestriction } from './entities/subject-restriction.entity';
 import { User } from '../users/entities/user.entity';
 import { Schedule } from '../scheduling/entities/schedule.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
+import { FacultyQualification } from '../faculty/entities/faculty-qualification.entity';
 import { DepartmentsModule } from '../departments/departments.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       User,        // required because the controller uses RolesGuard
       Schedule,    // required for the FK pre-flight in remove()
       Prospectus,  // required for the FK pre-flight in remove()
+      FacultyQualification, // removed with the subject in remove()
     ]),
     DepartmentsModule,
   ],

@@ -302,6 +302,13 @@ export default function ProspectusFormModal({
     const q = subjectSearch.trim().toLowerCase();
     return subjects
       .filter((s) => s.isActive)
+      // Empty prospectus fields are filled via Fill Slot, never by adding a
+      // second prospectus row from this picker.
+      .filter(
+        (s) =>
+          !s.isPlaceholder ||
+          (editing && String(s.subjectId) === String(editing.subjectId)),
+      )
       .filter((s) => {
         if (editing && String(s.subjectId) === String(editing.subjectId)) return true;
         if (subjectsInCurrentProgram.has(String(s.subjectId))) return false;

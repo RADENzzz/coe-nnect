@@ -131,13 +131,32 @@ export async function deleteProspectus(id: string): Promise<void> {
   await api.delete(`/v1/prospectus/${id}`);
 }
 
+export interface FillSlotInput {
+  /** Fill with an existing elective subject. */
+  subjectId?: string;
+  /** Or type a real code; the backend saves it as an elective. */
+  newSubjectCode?: string;
+  /** Optional title override for a typed code (defaults to the slot label). */
+  newSubjectTitle?: string;
+}
+
 export async function fillProspectusSlot(
   prospectusId: string,
-  subjectId: string,
+  input: string | FillSlotInput,
 ): Promise<ProspectusRecord> {
+  const body = typeof input === 'string' ? { subjectId: input } : input;
   const { data } = await api.patch(
     `/v1/prospectus/${prospectusId}/fill-slot`,
-    { subjectId },
+    body,
+  );
+  return data.data;
+}
+
+export async function duplicateProspectusSlot(
+  prospectusId: string,
+): Promise<ProspectusRecord> {
+  const { data } = await api.post(
+    `/v1/prospectus/${prospectusId}/duplicate-slot`,
   );
   return data.data;
 }

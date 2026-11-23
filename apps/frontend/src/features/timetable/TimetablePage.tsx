@@ -1492,14 +1492,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
             />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-amber-900">
-                {visibleUnresolved.length} elective
-                {visibleUnresolved.length === 1 ? '' : 's'} hidden from
-                plotting
+                {visibleUnresolved.length} empty elective field
+                {visibleUnresolved.length === 1 ? '' : 's'} hidden from plotting
               </p>
               <p className="text-xs text-amber-800 mt-0.5">
-                These subjects still have a temporary code. Auto-generate
-                excludes them too. Resolve the code on the Subjects page, then
-                plot them here.
+                These fields have no real course yet. Auto-generate excludes
+                them too. Fill each one from the Prospectus page — choose an
+                existing elective or type a code — then plot them here.
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {visibleUnresolved.map((s) => (
@@ -1514,10 +1513,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
               </div>
             </div>
             <Link
-              to="/subjects?kind=elective"
+              to="/prospectus"
               className="text-xs font-semibold text-amber-800 hover:text-amber-950 whitespace-nowrap flex items-center gap-1 shrink-0"
             >
-              Resolve
+              Fill fields
               <Icon name="arrow_forward" size={14} />
             </Link>
           </div>
