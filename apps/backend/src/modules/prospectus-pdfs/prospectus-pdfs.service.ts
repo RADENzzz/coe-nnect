@@ -948,13 +948,15 @@ export class ProspectusPdfsService {
 
         // ── Elective path ('elective', plus the legacy 'slot' alias) ──
         if (isElectiveAction) {
-          let subject: Subject | null = null;
-          let usedTemporaryCode = false;
+          const resolved: {
+            subject: Subject;
+            usedTemporaryCode: boolean;
+          }[] = [];
 
           // Legacy 'slot' rows always use a placeholder code, ignoring any
           // code text. New 'elective' rows may reference an existing subject.
           if (action === 'elective' && sub.subject_id != null) {
-            subject = await this.subjectRepo.findOne({
+            const subject = await this.subjectRepo.findOne({
               where: { subjectId: String(sub.subject_id) },
             });
             if (!subject || !subject.isActive) {
@@ -989,8 +991,9 @@ export class ProspectusPdfsService {
               rowIndexInTable++;
               continue;
             }
+            resolved.push({ subject, usedTemporaryCode: false });
           } else if (action === 'elective' && rawCode) {
-            subject = await this.subjectRepo.findOne({
+            let subject = await this.subjectRepo.findOne({
               where: { subjectCode: rawCode },
             });
             if (subject && !subject.isElective) {
@@ -1026,69 +1029,84 @@ export class ProspectusPdfsService {
               subject = created.subject;
               if (created.created) subjectsCreated++;
             }
+            resolved.push({ subject, usedTemporaryCode: false });
           } else {
-            const created = await this.createElectiveSubject({
-              table,
-              title,
-              lec,
-              lab,
-              total,
-              deptId: pdf.departmentId,
-              unitsMode,
-              category: sub.elective_category,
-              isPlaceholder: true,
-              rowIndex: rowIndexInTable,
-              legacySlot: action === 'slot',
-            });
-            subject = created.subject;
-            if (created.created) subjectsCreated++;
-            usedTemporaryCode = true;
+            // No code and no chosen elective: this row is an empty field.
+            // `copies` lets one PDF row represent several identical offerings
+            // in the same term (e.g. Software Development + Robotics). Each
+            // copy needs its own placeholder subject because the prospectus
+            // uniqueness key includes subject_id.
+            const copies = Math.min(Math.max(sub.copies ?? 1, 1), 20);
+            for (let copyIndex = 1; copyIndex <= copies; copyIndex++) {
+              const created = await this.createElectiveSubject({
+                table,
+                title,
+                lec,
+                lab,
+                total,
+                deptId: pdf.departmentId,
+                unitsMode,
+                category: sub.elective_category,
+                isPlaceholder: true,
+                rowIndex: rowIndexInTable,
+                legacySlot: action === 'slot',
+                copyIndex,
+              });
+              if (created.created) subjectsCreated++;
+              resolved.push({
+                subject: created.subject,
+                usedTemporaryCode: true,
+              });
+            }
           }
 
-          slotsCreated++;
-          slotsInTable++;
-          slots.push({
-            subjectId: subject.subjectId,
-            subjectCode: subject.subjectCode,
-            slotLabel: title,
-            title,
-            yearLevel: table.yearLevel,
-            semester: table.semester,
-            isElective: true,
-            isPlaceholder: subject.isPlaceholder,
-            unitsMode,
-          });
-
-          if (usedTemporaryCode) {
-            temporaryCodes.push({
+          for (const { subject, usedTemporaryCode } of resolved) {
+            slotsCreated++;
+            slotsInTable++;
+            slots.push({
               subjectId: subject.subjectId,
               subjectCode: subject.subjectCode,
+              slotLabel: title,
               title,
               yearLevel: table.yearLevel,
               semester: table.semester,
+              isElective: true,
+              isPlaceholder: subject.isPlaceholder,
+              unitsMode,
             });
-            warnings.push(
-              `${this.describeTable(table)}: "${title}" imported with temporary code ${subject.subjectCode}. Resolve it before plotting or auto-generating.`,
-            );
+
+            if (usedTemporaryCode) {
+              temporaryCodes.push({
+                subjectId: subject.subjectId,
+                subjectCode: subject.subjectCode,
+                title,
+                yearLevel: table.yearLevel,
+                semester: table.semester,
+              });
+              warnings.push(
+                `${this.describeTable(table)}: "${title}" imported as an empty elective field (${subject.subjectCode}). Fill it from the Prospectus before plotting or auto-generating.`,
+              );
+            }
+
+            if (table.yearLevel != null && table.semester != null) {
+              const outcome = await this.upsertProspectusRow({
+                programId,
+                subjectId: subject.subjectId,
+                table,
+                slotLabel: title,
+              });
+              if (outcome.created) prospectusCreated++;
+              else prospectusSkipped++;
+            } else {
+              // Yearless elective tables are catalog-only: the subject exists,
+              // but there is no prospectus slot to attach it to yet.
+              warnings.push(
+                `${this.describeTable(table)}: "${title}" was added to the elective catalog without a year/term. Assign it when you build the prospectus.`,
+              );
+            }
+            created++;
           }
 
-          if (table.yearLevel != null && table.semester != null) {
-            const outcome = await this.upsertProspectusRow({
-              programId,
-              subjectId: subject.subjectId,
-              table,
-              slotLabel: title,
-            });
-            if (outcome.created) prospectusCreated++;
-            else prospectusSkipped++;
-          } else {
-            // Yearless elective tables are catalog-only: the subject exists,
-            // but there is no prospectus slot to attach it to yet.
-            warnings.push(
-              `${this.describeTable(table)}: "${title}" was added to the elective catalog without a year/term. Assign it when you build the prospectus.`,
-            );
-          }
-          created++;
           rowIndexInTable++;
           continue;
         }
@@ -1131,7 +1149,7 @@ export class ProspectusPdfsService {
             labUnits: lab,
             deptId: pdf.departmentId,
             isActive: true,
-            isMinor: false,
+            isMinor: sub.is_minor ?? false,
             isPlaceholder: false,
             isElective: false,
             unitsMode: 'lec_lab',
@@ -1140,6 +1158,8 @@ export class ProspectusPdfsService {
           subject = await this.subjectRepo.save(subject);
           subjectsCreated++;
         } else {
+          let needsSave = false;
+
           // Backfill a missing room type from the unit split. A mixed
           // subject also replaces a stale auto-inferred basic type, but
           // specialised types the user chose (computer_lab, drafting_room,
@@ -1153,8 +1173,20 @@ export class ProspectusPdfsService {
             (current === null || isStaleBasicType)
           ) {
             subject.requiredRoomType = inferredRoomType;
-            await this.subjectRepo.save(subject);
+            needsSave = true;
           }
+
+          // Import review decides Major/Minor once, so the department head
+          // no longer has to edit each subject on the Subjects page.
+          if (
+            sub.is_minor !== undefined &&
+            subject.isMinor !== sub.is_minor
+          ) {
+            subject.isMinor = sub.is_minor;
+            needsSave = true;
+          }
+
+          if (needsSave) await this.subjectRepo.save(subject);
           subjectsExisting++;
         }
 
@@ -1364,6 +1396,8 @@ export class ProspectusPdfsService {
     isPlaceholder: boolean;
     rowIndex: number;
     legacySlot?: boolean;
+    /** 1 for the first field; 2..N suffix later copies so each stays unique. */
+    copyIndex?: number;
   }): Promise<{ subject: Subject; created: boolean }> {
     const code =
       params.code?.trim() ||
@@ -1372,6 +1406,7 @@ export class ProspectusPdfsService {
         title: params.title,
         rowIndex: params.rowIndex,
         legacySlot: params.legacySlot ?? false,
+        copyIndex: params.copyIndex ?? 1,
       });
 
     const existing = await this.subjectRepo.findOne({
@@ -1411,6 +1446,7 @@ export class ProspectusPdfsService {
     title: string;
     rowIndex: number;
     legacySlot: boolean;
+    copyIndex: number;
   }): string {
     const sem =
       params.table.semester === '1st'
@@ -1433,7 +1469,10 @@ export class ProspectusPdfsService {
       .slice(0, 6)
       .toUpperCase();
     const prefix = params.legacySlot ? 'SLOT' : 'ELEC';
-    return `${prefix}-Y${year}S${sem}-${hash}`;
+    const base = `${prefix}-Y${year}S${sem}-${hash}`;
+    // Keep the first field's historical code unchanged (re-imports stay
+    // idempotent) and disambiguate later copies of the same field.
+    return params.copyIndex > 1 ? `${base}-C${params.copyIndex}` : base;
   }
 
   private async upsertProspectusRow(params: {

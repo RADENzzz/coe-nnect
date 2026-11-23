@@ -8,8 +8,10 @@ import {
   deleteProspectus,
   createProspectus,
   fillProspectusSlot,
+  duplicateProspectusSlot,
   type ProspectusRecord,
   type SemesterType,
+  type FillSlotInput,
 } from '../../api/prospectus.api';
 import { fetchPrograms } from '../../api/programs.api';
 import { fetchSubjects } from '../../api/subjects.api';
@@ -214,9 +216,9 @@ export default function ProspectusPage() {
   ]);
 
   /**
-   * Electives imported without a real code carry a deterministic temporary
-   * code. They may exist in the prospectus, but scheduling cannot use them
-   * until someone resolves them on the Subjects page.
+   * Empty elective fields carry a deterministic placeholder code. They may
+   * exist in the prospectus, but scheduling cannot use them until someone
+   * fills them from the Prospectus page (choose an elective or type a code).
    */
   const unresolvedElectives = useMemo(
     () =>
@@ -370,15 +372,25 @@ export default function ProspectusPage() {
   });
 
   const fillSlotMutation = useMutation({
-    mutationFn: ({ id, subjectId }: { id: string; subjectId: string }) =>
-      fillProspectusSlot(id, subjectId),
+    mutationFn: ({ id, input }: { id: string; input: FillSlotInput }) =>
+      fillProspectusSlot(id, input),
     onSuccess: () => {
-      setSuccess('Elective slot filled successfully.');
+      setSuccess('Elective field filled successfully.');
       setFillTarget(null);
       invalidateAfterProspectusChange();
     },
     onError: (err: any) =>
       setError(err?.response?.data?.message ?? 'Failed to fill slot'),
+  });
+
+  const duplicateSlotMutation = useMutation({
+    mutationFn: duplicateProspectusSlot,
+    onSuccess: () => {
+      setSuccess('Empty elective field duplicated.');
+      invalidateAfterProspectusChange();
+    },
+    onError: (err: any) =>
+      setError(err?.response?.data?.message ?? 'Failed to duplicate field'),
   });
 
   // ── Bulk action: activate/deactivate ALL visible (quick path) ──
@@ -583,6 +595,10 @@ export default function ProspectusPage() {
     handleCloseDetail();
   };
 
+  const handleDuplicateSlot = (entry: ProspectusRecord) => {
+    duplicateSlotMutation.mutate(entry.prospectusId);
+  };
+
   const handleToggleFromDetail = () => {
     if (!detailLive) return;
     toggleMutation.mutate(detailLive.prospectusId);
@@ -757,12 +773,12 @@ export default function ProspectusPage() {
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 w-fit"
                   title={
                     isElective
-                      ? 'Temporary elective code — resolve it before plotting'
+                      ? 'Empty elective field — fill it before plotting'
                       : 'This is an elective placeholder — fill it with a real course'
                   }
                 >
                   <Icon name="warning" size={10} />
-                  {isElective ? 'Temporary code' : 'Needs Course'}
+                  {isElective ? 'Empty field' : 'Needs Course'}
                 </span>
               )}
             </div>
@@ -842,6 +858,14 @@ export default function ProspectusPage() {
         label: 'Fill Slot',
         icon: 'add_circle',
         onClick: () => setFillTarget(e),
+      });
+      actions.push({
+        label: 'Duplicate field',
+        icon: 'content_copy',
+        loading:
+          duplicateSlotMutation.isPending &&
+          duplicateSlotMutation.variables === e.prospectusId,
+        onClick: () => handleDuplicateSlot(e),
       });
       actions.push({ divider: true });
     }
@@ -994,13 +1018,13 @@ export default function ProspectusPage() {
           <Icon name="warning" size={18} className="shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="font-semibold">
-              {unresolvedElectives.length} unresolved elective
+              {unresolvedElectives.length} empty elective field
               {unresolvedElectives.length === 1 ? '' : 's'} in this view
             </p>
             <p className="text-xs text-amber-800 mt-0.5">
-              These entries carry a temporary code and are excluded from
-              auto-generate and plotting. Resolve them on the Subjects page
-              first.
+              These fields have no course yet and are excluded from
+              auto-generate and plotting. Fill each one by choosing an existing
+              elective or typing a code.
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {unresolvedElectives.map((e) => (
@@ -1014,13 +1038,17 @@ export default function ProspectusPage() {
               ))}
             </div>
           </div>
-          <Link
-            to="/subjects?kind=elective"
+          <button
+            type="button"
+            onClick={() => {
+              const first = unresolvedElectives[0];
+              if (first) setFillTarget(first);
+            }}
             className="text-xs font-semibold text-amber-800 hover:text-amber-950 whitespace-nowrap flex items-center gap-1"
           >
-            Resolve
+            Fill
             <Icon name="arrow_forward" size={14} />
-          </Link>
+          </button>
         </div>
       )}
 
@@ -1377,9 +1405,14 @@ export default function ProspectusPage() {
             toggleMutation.isPending &&
             toggleMutation.variables === detailLive.prospectusId
           }
+          duplicatePending={
+            duplicateSlotMutation.isPending &&
+            duplicateSlotMutation.variables === detailLive.prospectusId
+          }
           onEditPlacement={handleEditFromDetail}
           onEditSubject={handleEditSubjectFromDetail}
           onFillSlot={handleFillSlotFromDetail}
+          onDuplicateSlot={() => handleDuplicateSlot(detailLive)}
           onToggleActive={handleToggleFromDetail}
           onDelete={handleDeleteFromDetail}
         />
@@ -1417,11 +1450,11 @@ export default function ProspectusPage() {
         <FillSlotModal
           open={!!fillTarget}
           onClose={() => setFillTarget(null)}
-          onConfirm={(subjectId) => {
+          onConfirm={(input) => {
             if (fillTarget) {
               fillSlotMutation.mutate({
                 id: fillTarget.prospectusId,
-                subjectId,
+                input,
               });
             }
           }}

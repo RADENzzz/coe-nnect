@@ -18,9 +18,11 @@ interface Props {
   isMinor: boolean;
   canWrite: boolean;
   togglePending?: boolean;
+  duplicatePending?: boolean;
   onEditPlacement: () => void;
   onEditSubject: () => void;
   onFillSlot: () => void;
+  onDuplicateSlot: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
 }
@@ -54,9 +56,11 @@ export default function ProspectusDetailPanel({
   isMinor,
   canWrite,
   togglePending = false,
+  duplicatePending = false,
   onEditPlacement,
   onEditSubject,
   onFillSlot,
+  onDuplicateSlot,
   onToggleActive,
   onDelete,
 }: Props) {
@@ -141,7 +145,7 @@ export default function ProspectusDetailPanel({
               {isPlaceholder && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-600 border border-amber-500/30">
                   <Icon name="warning" size={10} />
-                  Needs Course
+                  Empty field
                 </span>
               )}
               {!canWrite && (
@@ -259,14 +263,26 @@ export default function ProspectusDetailPanel({
           {canWrite ? (
             <>
               {isPlaceholder ? (
-                <button
-                  type="button"
-                  onClick={onFillSlot}
-                  className="px-3 py-2 text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-1.5"
-                >
-                  <Icon name="add_circle" size={14} />
-                  Fill Slot
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={onFillSlot}
+                    className="px-3 py-2 text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-1.5"
+                  >
+                    <Icon name="add_circle" size={14} />
+                    Fill Slot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDuplicateSlot}
+                    disabled={duplicatePending}
+                    className="px-3 py-2 text-xs font-semibold border border-surface-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+                    title="Add another identical empty field to this term"
+                  >
+                    <Icon name="content_copy" size={14} />
+                    Duplicate
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"

@@ -10,7 +10,9 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -104,6 +106,28 @@ export class ImportSubjectDto {
   @IsOptional()
   @IsIn(IMPORT_ROW_ACTIONS)
   action?: ImportRowAction;
+
+  /**
+   * Classification chosen during import review. Only meaningful for regular
+   * subject rows; minor subjects are taught by another department and are
+   * plotted manually before auto-generation.
+   */
+  @IsOptional()
+  @IsBoolean()
+  is_minor?: boolean;
+
+  /**
+   * How many empty elective fields this row represents. An empty row in a
+   * regular prospectus table is a slot, not a catalog subject; a department
+   * that offers two electives in that slot imports two copies. Ignored when
+   * the row references an existing/typed elective.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  copies?: number;
 }
 
 export class ImportRegionDto {

@@ -72,6 +72,7 @@ describe('SubjectsService.toggleActive prospectus cascade', () => {
       emptyRepo as any,
       emptyRepo as any,
       prospectusRepo as any,
+      emptyRepo as any,
       departments as any,
     );
   });
@@ -123,6 +124,7 @@ describe('SubjectsService elective units', () => {
     };
     const service = new SubjectsService(
       subjectRepo as any,
+      emptyRepo as any,
       emptyRepo as any,
       emptyRepo as any,
       emptyRepo as any,
@@ -227,6 +229,7 @@ describe('SubjectsService.remove', () => {
     options: {
       prospectusRows?: Record<string, any>[];
       scheduleRows?: Record<string, any>[];
+      qualificationRows?: Record<string, any>[];
       restrictionCount?: number;
     } = {},
   ) {
@@ -240,6 +243,10 @@ describe('SubjectsService.remove', () => {
     const scheduleRepo = createFakeRepository(options.scheduleRows ?? [], {
       idKey: 'scheduleId',
     });
+    const qualificationRepo = createFakeRepository(
+      options.qualificationRows ?? [],
+      { idKey: 'qualId' },
+    );
     const restrictions = createFakeRepository([]);
     restrictions.createQueryBuilder = jest.fn(() => {
       const builder: any = {
@@ -256,9 +263,16 @@ describe('SubjectsService.remove', () => {
       restrictions as any,
       scheduleRepo as any,
       prospectusRepo as any,
+      qualificationRepo as any,
       departments as any,
     );
-    return { service, subjectRepo, prospectusRepo, scheduleRepo };
+    return {
+      service,
+      subjectRepo,
+      prospectusRepo,
+      scheduleRepo,
+      qualificationRepo,
+    };
   }
 
   it('deletes a subject with prospectus mappings', async () => {
@@ -316,6 +330,21 @@ describe('SubjectsService.remove', () => {
     ]);
   });
 
+  it('removes faculty qualifications for the deleted subject', async () => {
+    const { service, qualificationRepo } = createService({
+      qualificationRows: [
+        { qualId: 'q1', facultyId: 'f1', subjectId: '1' },
+        { qualId: 'q2', facultyId: 'f2', subjectId: '1' },
+        { qualId: 'q3', facultyId: 'f1', subjectId: '2' },
+      ],
+    });
+
+    await expect(service.remove('1', admin)).resolves.toEqual({
+      success: true,
+    });
+    expect(qualificationRepo.rows.map((row) => row.qualId)).toEqual(['q3']);
+  });
+
   it('blocks a subject with published schedule history and keeps every row', async () => {
     const { service, subjectRepo, scheduleRepo } = createService({
       scheduleRows: [
@@ -343,6 +372,7 @@ describe('SubjectsService elective metadata', () => {
     };
     const service = new SubjectsService(
       subjectRepo as any,
+      emptyRepo as any,
       emptyRepo as any,
       emptyRepo as any,
       emptyRepo as any,

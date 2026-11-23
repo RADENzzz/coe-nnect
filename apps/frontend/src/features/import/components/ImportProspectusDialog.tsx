@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import Icon from '@/components/ui/Icon';
@@ -68,6 +68,10 @@ interface ReviewRow {
   /** Category for a newly created elective (e.g. GEC, Major). */
   electiveCategory: string;
   unitsMode: UnitsMode;
+  /** Regular subjects are major unless the reviewer drops them on Minor. */
+  isMinor: boolean;
+  /** How many identical empty elective fields this row represents. */
+  copies: number;
   warning?: string;
   checked: boolean;
 }
@@ -75,6 +79,18 @@ interface ReviewRow {
 interface ElectiveGroup {
   label: string;
   items: SubjectRecord[];
+}
+
+/**
+ * A code-less elective row is an empty prospectus field, not a catalog
+ * subject. The head fills it later by choosing an elective or typing a code.
+ */
+function isEmptyElectiveRow(row: ReviewRow): boolean {
+  return (
+    (row.action === 'elective' || row.action === 'slot') &&
+    !row.subjectId &&
+    !(row.typedCode.trim() || row.code.trim())
+  );
 }
 
 function groupElectives(subjects: SubjectRecord[]): ElectiveGroup[] {
@@ -190,6 +206,10 @@ export default function ImportProspectusDialog({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [filter, setFilter] = useState('');
+  const [draggedRowKey, setDraggedRowKey] = useState<string | null>(null);
+  const [dragZone, setDragZone] = useState<'major' | 'minor' | null>(null);
+  const [classifyOpen, setClassifyOpen] = useState(false);
+  const [classifyGroup, setClassifyGroup] = useState('all');
 
   const { data: catalogSubjects = [] } = useQuery({
     queryKey: ['subjects', { includeInactive: false }],
@@ -197,8 +217,13 @@ export default function ImportProspectusDialog({
     enabled: open,
   });
 
+  // Placeholders are empty prospectus fields, not catalog electives. They
+  // must never appear in the import review's elective picker.
   const electiveSubjects = useMemo(
-    () => catalogSubjects.filter((s: SubjectRecord) => s.isElective),
+    () =>
+      catalogSubjects.filter(
+        (s: SubjectRecord) => s.isElective && !s.isPlaceholder,
+      ),
     [catalogSubjects],
   );
   const electiveGroups = useMemo(
@@ -350,7 +375,9 @@ export default function ImportProspectusDialog({
             ? 'elective'
             : code
               ? 'subject'
-              : 'slot';
+              : // A regular table row with no code is an empty elective
+                // field the head fills later, not a legacy placeholder.
+                'elective';
 
           // Electives may list only a total. Auto-detect that shape so the
           // lec+lab=total check does not reject a valid total-only row.
@@ -399,6 +426,8 @@ export default function ImportProspectusDialog({
             subjectId: '',
             electiveCategory: '',
             unitsMode,
+            isMinor: false,
+            copies: 1,
             warning,
             checked: status === 'new' && !suspicious,
           });
@@ -443,8 +472,12 @@ export default function ImportProspectusDialog({
           lab: r.lab,
           total: r.total,
           action: r.action,
+          ...(r.action === 'subject' ? { is_minor: r.isMinor } : {}),
           ...(r.action === 'elective' && r.subjectId
             ? { subject_id: Number(r.subjectId) }
+            : {}),
+          ...(isEmptyElectiveRow(r)
+            ? { copies: Math.min(Math.max(r.copies || 1, 1), 20) }
             : {}),
           ...(r.action === 'elective'
             ? {
@@ -504,13 +537,65 @@ export default function ImportProspectusDialog({
   const electiveCount = reviewRows.filter(
     (r) => r.checked && r.action === 'elective',
   ).length;
-  const temporaryElectiveCount = reviewRows.filter(
-    (r) =>
-      r.checked &&
-      r.action === 'elective' &&
-      !r.subjectId &&
-      !(r.typedCode.trim() || r.code),
+  const emptyFieldCount = reviewRows.filter(
+    (r) => r.checked && isEmptyElectiveRow(r),
   ).length;
+  const classifiableRows = useMemo(
+    () => reviewRows.filter((r) => r.action === 'subject'),
+    [reviewRows],
+  );
+  const majorCount = classifiableRows.filter(
+    (r) => r.checked && !r.isMinor,
+  ).length;
+  const minorCount = classifiableRows.filter(
+    (r) => r.checked && r.isMinor,
+  ).length;
+
+  /** One tab per year/term in the import so classification stays reviewable. */
+  const classifyGroups = useMemo(() => {
+    const order: Record<string, number> = { '1st': 1, '2nd': 2, summer: 3 };
+    const map = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        yearLevel: number | null;
+        semester: SemesterType | null;
+      }
+    >();
+    for (const row of classifiableRows) {
+      const key = `${row.yearLevel ?? 'any'}-${row.semester ?? 'any'}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          label: yearTermLabel(row.yearLevel, row.semester),
+          yearLevel: row.yearLevel,
+          semester: row.semester,
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      const yearDelta = (a.yearLevel ?? 99) - (b.yearLevel ?? 99);
+      if (yearDelta !== 0) return yearDelta;
+      return (
+        (order[a.semester ?? ''] ?? 99) - (order[b.semester ?? ''] ?? 99)
+      );
+    });
+  }, [classifiableRows]);
+
+  const classifyRows = useMemo(
+    () =>
+      classifyGroup === 'all'
+        ? classifiableRows
+        : classifiableRows.filter(
+            (r) =>
+              `${r.yearLevel ?? 'any'}-${r.semester ?? 'any'}` === classifyGroup,
+          ),
+    [classifiableRows, classifyGroup],
+  );
+
+  const classifyMajorCount = classifyRows.filter((r) => !r.isMinor).length;
+  const classifyMinorCount = classifyRows.filter((r) => r.isMinor).length;
   const selectedElectiveTables = useMemo(
     () =>
       tables.filter(
@@ -564,6 +649,62 @@ export default function ImportProspectusDialog({
         r.status === 'new' && !isSuspiciousTitle(r.title) ? { ...r, checked } : r,
       ),
     );
+  };
+
+  const setRowMinor = (key: string, isMinor: boolean) => {
+    setReviewRows((prev) =>
+      prev.map((r) =>
+        r.key === key && r.action === 'subject' ? { ...r, isMinor } : r,
+      ),
+    );
+  };
+
+  /** Set Major/Minor for one year/term group (or every regular row). */
+  const setGroupMinor = (groupKey: string, isMinor: boolean) => {
+    setReviewRows((prev) =>
+      prev.map((r) =>
+        r.action === 'subject' &&
+        (groupKey === 'all' ||
+          `${r.yearLevel ?? 'any'}-${r.semester ?? 'any'}` === groupKey)
+          ? { ...r, isMinor }
+          : r,
+      ),
+    );
+  };
+
+  const handleDropOnZone = (
+    e: DragEvent,
+    zone: 'major' | 'minor',
+  ) => {
+    e.preventDefault();
+    const key = e.dataTransfer.getData('text/plain') || draggedRowKey;
+    if (key) setRowMinor(key, zone === 'minor');
+    setDraggedRowKey(null);
+    setDragZone(null);
+  };
+
+  // The whole row is the drag handle; taps/drags that start on a control are
+  // ignored so typing, selecting, and using dropdowns still work normally.
+  const handleRowDragStart = (
+    e: DragEvent<HTMLTableRowElement>,
+    row: ReviewRow,
+  ) => {
+    if (row.action !== 'subject') {
+      e.preventDefault();
+      return;
+    }
+    if ((e.target as HTMLElement).closest('input, select, textarea, button, a')) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('text/plain', row.key);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedRowKey(row.key);
+  };
+
+  const handleRowDragEnd = () => {
+    setDraggedRowKey(null);
+    setDragZone(null);
   };
 
   return (
@@ -698,10 +839,9 @@ export default function ImportProspectusDialog({
               <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
               <span>
                 No elective subjects exist in the catalog yet. Elective rows
-                without a typed code will be imported with a{' '}
-                <strong>temporary flagged code</strong> (for example{' '}
-                <span className="font-mono">ELEC-Y1S1-AB12CD</span>) and must be
-                resolved before plotting or auto-generating.
+                without a typed code become{' '}
+                <strong>empty elective fields</strong> in the prospectus and are
+                hidden from the Subjects catalog until you fill them there.
               </span>
             </div>
           )}
@@ -742,6 +882,77 @@ export default function ImportProspectusDialog({
             ))}
           </datalist>
 
+          {classifiableRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-700">
+                  Separate major from minor
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClassifyGroup('all');
+                    setClassifyOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-primary/40 text-primary hover:bg-primary/5 transition flex items-center gap-1"
+                >
+                  <Icon name="tune" size={13} />
+                  Open classifier
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+              <div
+                onDragOver={(e) => {
+                  if (!draggedRowKey) return;
+                  e.preventDefault();
+                  setDragZone('major');
+                }}
+                onDragLeave={() => setDragZone(null)}
+                onDrop={(e) => handleDropOnZone(e, 'major')}
+                className={`rounded-lg border-2 border-dashed p-2 flex items-center gap-2 transition ${
+                  dragZone === 'major'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-surface-variant bg-surface-container-lowest'
+                }`}
+              >
+                <Icon name="school" size={18} className="text-primary" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-800">
+                    Major subjects
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant">
+                    {majorCount} selected · drag a row here
+                  </p>
+                </div>
+              </div>
+              <div
+                onDragOver={(e) => {
+                  if (!draggedRowKey) return;
+                  e.preventDefault();
+                  setDragZone('minor');
+                }}
+                onDragLeave={() => setDragZone(null)}
+                onDrop={(e) => handleDropOnZone(e, 'minor')}
+                className={`rounded-lg border-2 border-dashed p-2 flex items-center gap-2 transition ${
+                  dragZone === 'minor'
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'border-surface-variant bg-surface-container-lowest'
+                }`}
+              >
+                <Icon name="book" size={18} className="text-purple-600" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-800">
+                    Minor subjects
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant">
+                    {minorCount} selected · drag a row here
+                  </p>
+                </div>
+              </div>
+              </div>
+            </div>
+          )}
+
           <div className="max-h-[400px] overflow-auto border border-surface-variant rounded-lg">
             {[...rowsByTable.entries()].map(([tableId, rows]) => {
               const table = tables.find((t) => String(t.tableId) === String(tableId));
@@ -773,6 +984,7 @@ export default function ImportProspectusDialog({
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-slate-500 bg-surface-container-lowest border-b border-surface-variant">
+                          <th className="w-6 px-1 py-1.5"></th>
                           <th className="w-8 px-2 py-1.5"></th>
                           <th className="text-left px-2 py-1.5 font-semibold">
                             Code
@@ -797,10 +1009,25 @@ export default function ImportProspectusDialog({
                           return (
                             <tr
                               key={row.key}
+                              draggable={row.action === 'subject'}
+                              onDragStart={(e) => handleRowDragStart(e, row)}
+                              onDragEnd={handleRowDragEnd}
                               className={`border-t border-surface-variant ${
                                 row.status === 'invalid' ? 'bg-amber-50' : ''
-                              } ${row.action === 'skip' ? 'opacity-50' : ''}`}
+                              } ${row.action === 'skip' ? 'opacity-50' : ''} ${
+                                draggedRowKey === row.key ? 'opacity-50' : ''
+                              }`}
                             >
+                              <td className="px-1 py-1.5 text-center align-top">
+                                {row.action === 'subject' ? (
+                                  <span
+                                    className="inline-flex cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-700"
+                                    title="Drag anywhere on this row to Major or Minor"
+                                  >
+                                    <Icon name="drag_indicator" size={14} />
+                                  </span>
+                                ) : null}
+                              </td>
                               <td className="px-2 py-1.5">
                                 <input
                                   type="checkbox"
@@ -860,22 +1087,38 @@ export default function ImportProspectusDialog({
                                   </select>
 
                                   {row.action === 'subject' && (
-                                    <input
-                                      type="text"
-                                      placeholder={row.code || 'Code…'}
-                                      value={row.typedCode}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        setReviewRows((prev) =>
-                                          prev.map((r) =>
-                                            r.key === row.key
-                                              ? { ...r, typedCode: val }
-                                              : r,
-                                          ),
-                                        );
-                                      }}
-                                      className="w-24 px-1 py-0.5 text-[11px] border border-primary/40 rounded focus:outline-none focus:border-primary"
-                                    />
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="text"
+                                        placeholder={row.code || 'Code…'}
+                                        value={row.typedCode}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setReviewRows((prev) =>
+                                            prev.map((r) =>
+                                              r.key === row.key
+                                                ? { ...r, typedCode: val }
+                                                : r,
+                                            ),
+                                          );
+                                        }}
+                                        className="w-24 px-1 py-0.5 text-[11px] border border-primary/40 rounded focus:outline-none focus:border-primary"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setRowMinor(row.key, !row.isMinor)
+                                        }
+                                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border transition ${
+                                          row.isMinor
+                                            ? 'bg-purple-100 border-purple-300 text-purple-800'
+                                            : 'bg-slate-100 border-slate-300 text-slate-700'
+                                        }`}
+                                        title="Click to switch between Major and Minor; you can also drag the handle"
+                                      >
+                                        {row.isMinor ? 'Minor' : 'Major'}
+                                      </button>
+                                    </div>
                                   )}
 
                                   {row.action === 'elective' && (
@@ -899,7 +1142,7 @@ export default function ImportProspectusDialog({
                                           );
                                         }}
                                         className="w-36 text-[10px] border border-surface-variant rounded px-1 py-0.5 bg-white"
-                                        title="Use an existing elective subject, or leave blank to type a code / use a temporary code"
+                                        title="Use an existing elective subject, or leave blank to type a code / import an empty field"
                                       >
                                         <option value="">
                                           — New / typed code —
@@ -996,15 +1239,50 @@ export default function ImportProspectusDialog({
                                         </option>
                                       </select>
 
-                                      {!row.subjectId &&
-                                        !(row.typedCode.trim() || row.code) && (
+                                      {isEmptyElectiveRow(row) && (
+                                        <div className="flex items-center gap-1.5">
                                           <span
                                             className="text-[9px] text-amber-700 font-semibold"
-                                            title="This row will receive a deterministic temporary code"
+                                            title="No code: this row is an empty prospectus field filled later"
                                           >
-                                            Temporary code
+                                            Empty elective field
                                           </span>
-                                        )}
+                                          <label
+                                            className="flex items-center gap-1 text-[9px] text-slate-600"
+                                            title="Number of identical offerings for this term (e.g. Software Development + Robotics = 2)"
+                                          >
+                                            Copies
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={20}
+                                              value={row.copies}
+                                              onChange={(e) => {
+                                                const value = Number(
+                                                  e.target.value,
+                                                );
+                                                const copies = Math.min(
+                                                  Math.max(
+                                                    Number.isFinite(value)
+                                                      ? value
+                                                      : 1,
+                                                    1,
+                                                  ),
+                                                  20,
+                                                );
+                                                setReviewRows((prev) =>
+                                                  prev.map((r) =>
+                                                    r.key === row.key
+                                                      ? { ...r, copies }
+                                                      : r,
+                                                  ),
+                                                );
+                                              }}
+                                              className="w-12 px-1 py-0.5 text-[10px] border border-surface-variant rounded focus:outline-none focus:border-primary"
+                                            />
+                                          </label>
+                                        </div>
+                                      )}
                                     </>
                                   )}
 
@@ -1070,12 +1348,10 @@ export default function ImportProspectusDialog({
                 <strong className="text-teal-700">{electiveCount}</strong>
               </span>
             )}
-            {temporaryElectiveCount > 0 && (
+            {emptyFieldCount > 0 && (
               <span>
-                · Temporary codes:{' '}
-                <strong className="text-amber-700">
-                  {temporaryElectiveCount}
-                </strong>
+                · Empty fields:{' '}
+                <strong className="text-amber-700">{emptyFieldCount}</strong>
               </span>
             )}
             {slotCount > 0 && (
@@ -1084,18 +1360,44 @@ export default function ImportProspectusDialog({
                 <strong className="text-amber-700">{slotCount}</strong>
               </span>
             )}
+            {classifiableRows.length > 0 && (
+              <>
+                <span>
+                  · Major: <strong className="text-primary">{majorCount}</strong>
+                </span>
+                <span>
+                  · Minor:{' '}
+                  <strong className="text-purple-700">{minorCount}</strong>
+                </span>
+              </>
+            )}
           </div>
 
-          {temporaryElectiveCount > 0 && (
+          {classifiableRows.length > 0 && (
+            <div className="p-3 rounded-lg bg-blue-50 border border-blue-300 text-blue-900 text-xs flex items-start gap-2">
+              <Icon name="info" size={16} className="shrink-0 mt-0.5" />
+              <span>
+                Drag a regular row by pressing anywhere outside its fields, or
+                click its Major/Minor badge. For a longer list, open the{' '}
+                <strong>classifier</strong> and switch between year/term tabs.
+                Minor subjects are flagged in one step here instead of editing
+                each subject later. Elective rows are classified when they are
+                filled.
+              </span>
+            </div>
+          )}
+
+          {emptyFieldCount > 0 && (
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
               <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
               <span>
-                {temporaryElectiveCount} elective row
-                {temporaryElectiveCount === 1 ? '' : 's'} will receive a
-                deterministic temporary code. You can resolve{' '}
-                {temporaryElectiveCount === 1 ? 'it' : 'them'} later from the
-                Subjects page; plotting and auto-generate will exclude unresolved
-                electives and warn you.
+                {emptyFieldCount} empty elective field
+                {emptyFieldCount === 1 ? '' : 's'} will be added to the
+                prospectus without a code. Fill{' '}
+                {emptyFieldCount === 1 ? 'it' : 'them'} later from the
+                Prospectus page by choosing an existing elective or typing a
+                code. Use <strong>Copies</strong> when a term has more than one
+                identical offering.
               </span>
             </div>
           )}
@@ -1105,8 +1407,8 @@ export default function ImportProspectusDialog({
               <Icon name="info" size={16} className="shrink-0 mt-0.5" />
               <span>
                 There are no elective subjects in the catalog yet. Choose{' '}
-                <strong>Regular subject</strong> and type a real code, or let
-                these rows import with temporary codes and add the electives
+                <strong>Regular subject</strong> and type a real code, or leave
+                these rows as empty elective fields and add the electives
                 afterward.
               </span>
             </div>
@@ -1138,9 +1440,8 @@ export default function ImportProspectusDialog({
               )}
               {result.temporaryCodes?.length > 0 && (
                 <li className="text-amber-800">
-                  {result.temporaryCodes.length} temporary code
-                  {result.temporaryCodes.length === 1 ? '' : 's'} need
-                  resolving
+                  {result.temporaryCodes.length} empty elective field
+                  {result.temporaryCodes.length === 1 ? '' : 's'} to fill later
                 </li>
               )}
             </ul>
@@ -1212,11 +1513,12 @@ export default function ImportProspectusDialog({
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-900">
-                    Temporary elective codes
+                    Empty elective fields
                   </p>
                   <p className="text-xs text-amber-800 mt-1">
-                    These electives have no fixed course code yet. Edit them on
-                    the Subjects page before plotting or auto-generating.
+                    These fields have no fixed course code yet. Fill them from
+                    the Prospectus page — choose an existing elective or type a
+                    code — before plotting or auto-generating.
                   </p>
                   <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto">
                     {result.temporaryCodes.map((temp) => (
@@ -1225,7 +1527,7 @@ export default function ImportProspectusDialog({
                         className="flex items-start gap-3 p-2 rounded border border-amber-200 bg-white"
                       >
                         <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded shrink-0 bg-amber-200 text-amber-900">
-                          Temp
+                          Empty field
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2 flex-wrap">
@@ -1254,7 +1556,7 @@ export default function ImportProspectusDialog({
                 <Icon name="info" filled size={20} className="text-blue-700 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-blue-900">
-                    {result.slots.length} elective subject
+                    {result.slots.length} elective prospectus row
                     {result.slots.length === 1 ? '' : 's'} imported
                   </p>
                   <ul className="mt-3 space-y-2 max-h-48 overflow-y-auto">
@@ -1267,7 +1569,7 @@ export default function ImportProspectusDialog({
                               : 'bg-teal-200 text-teal-900'
                           }`}
                         >
-                          {slot.isPlaceholder ? 'Temp' : 'Elective'}
+                          {slot.isPlaceholder ? 'Empty field' : 'Elective'}
                         </span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2 flex-wrap">
@@ -1296,6 +1598,159 @@ export default function ImportProspectusDialog({
           )}
         </div>
       )}
+
+      {/* ── Major/Minor classifier (stacked on every year/term in the import) ── */}
+      <Modal
+        open={classifyOpen && step === 'review'}
+        onClose={() => setClassifyOpen(false)}
+        title="Separate major and minor subjects"
+        description="Minor subjects are offered by another department. Everything is Major unless you mark it Minor here."
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setGroupMinor(classifyGroup, false)}
+              className="px-3 py-2 text-xs font-semibold border border-surface-variant rounded-lg text-slate-700 hover:bg-surface-container-high transition"
+            >
+              All major
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupMinor(classifyGroup, true)}
+              className="px-3 py-2 text-xs font-semibold border border-purple-300 rounded-lg text-purple-800 hover:bg-purple-50 transition"
+            >
+              All minor
+            </button>
+            <button
+              type="button"
+              onClick={() => setClassifyOpen(false)}
+              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg"
+            >
+              Done
+            </button>
+          </>
+        }
+      >
+        {classifiableRows.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">
+            This import has no regular subjects to classify. Elective rows are
+            classified when they are filled later.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {/* Year/term tabs keep a multi-year import easy to review. */}
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setClassifyGroup('all')}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  classifyGroup === 'all'
+                    ? 'bg-primary text-on-primary border-primary'
+                    : 'bg-surface-container-lowest text-slate-600 border-surface-variant hover:bg-surface-container-high'
+                }`}
+              >
+                All terms ({classifiableRows.length})
+              </button>
+              {classifyGroups.map((group) => {
+                const total = classifiableRows.filter(
+                  (r) =>
+                    `${r.yearLevel ?? 'any'}-${r.semester ?? 'any'}` ===
+                    group.key,
+                ).length;
+                return (
+                  <button
+                    key={group.key}
+                    type="button"
+                    onClick={() => setClassifyGroup(group.key)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                      classifyGroup === group.key
+                        ? 'bg-primary text-on-primary border-primary'
+                        : 'bg-surface-container-lowest text-slate-600 border-surface-variant hover:bg-surface-container-high'
+                    }`}
+                  >
+                    {group.label} ({total})
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+              <span>
+                Major:{' '}
+                <strong className="text-primary">{classifyMajorCount}</strong>
+              </span>
+              <span>
+                Minor:{' '}
+                <strong className="text-purple-700">
+                  {classifyMinorCount}
+                </strong>
+              </span>
+            </div>
+
+            <ul className="divide-y divide-surface-variant border border-surface-variant rounded-lg overflow-hidden">
+              {classifyRows.map((row) => (
+                <li
+                  key={row.key}
+                  className={`px-3 py-2 flex items-center gap-3 ${
+                    row.checked ? '' : 'opacity-60'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="font-mono text-xs font-bold text-slate-900">
+                        {row.typedCode.trim() || row.code || '(no code)'}
+                      </span>
+                      <span className="text-[10px] text-on-surface-variant">
+                        {yearTermLabel(row.yearLevel, row.semester)}
+                      </span>
+                      {!row.checked && (
+                        <span className="text-[10px] text-amber-700 font-semibold">
+                          Not selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-on-surface truncate">
+                      {row.title}
+                    </p>
+                  </div>
+                  <div className="flex rounded-lg overflow-hidden border border-surface-variant shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setRowMinor(row.key, false)}
+                      aria-pressed={!row.isMinor}
+                      className={`px-2.5 py-1 text-[10px] font-bold transition ${
+                        row.isMinor
+                          ? 'bg-white text-slate-600 hover:bg-slate-100'
+                          : 'bg-primary text-on-primary'
+                      }`}
+                    >
+                      Major
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRowMinor(row.key, true)}
+                      aria-pressed={row.isMinor}
+                      className={`px-2.5 py-1 text-[10px] font-bold transition ${
+                        row.isMinor
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Minor
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <p className="text-[11px] text-on-surface-variant">
+              Tip: you can also drag a regular row in the review list onto the
+              Major or Minor box, or click the badge beside its code.
+            </p>
+          </div>
+        )}
+      </Modal>
     </Modal>
   );
 }

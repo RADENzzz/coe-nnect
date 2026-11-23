@@ -183,6 +183,10 @@ export interface ImportConfirmInput {
       units_mode?: UnitsMode;
       /** Group for a newly created elective (for example GEC). */
       elective_category?: string;
+      /** Major/minor classification chosen during import review. */
+      is_minor?: boolean;
+      /** Number of identical empty elective fields this row represents. */
+      copies?: number;
     }[];
   }[];
 }
