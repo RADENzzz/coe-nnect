@@ -1686,7 +1686,7 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="no-print relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary-container text-white">
+      <section className="no-print relative min-h-[500px] overflow-hidden bg-gradient-to-br from-primary via-primary to-primary-container text-white sm:min-h-[540px]">
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.08]"
           xmlns="http://www.w3.org/2000/svg"
@@ -1712,8 +1712,19 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-white/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
 
-        <div className="relative mx-auto grid w-full max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.15fr,1.15fr] lg:px-8">
-          <div className="py-16 lg:py-24">
+        <div className="pointer-events-none absolute inset-0">
+          <Suspense fallback={null}>
+            {show3dBuilding && (
+              <div className="pointer-events-auto absolute inset-0">
+                <CoeBuildingViewerLazy />
+              </div>
+            )}
+          </Suspense>
+        </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-primary via-primary/80 to-primary/20 sm:via-primary/70" />
+
+        <div className="pointer-events-none relative z-10 mx-auto flex min-h-[500px] w-full max-w-7xl items-start px-4 pt-4 sm:min-h-[540px] sm:px-6 sm:pt-5 lg:px-8">
+          <div className="pointer-events-auto max-w-2xl pb-12 pt-1 sm:pt-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85">
                 <Icon name="public" size={14} />
@@ -1765,15 +1776,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="h-full min-h-[320px] w-full lg:min-h-[480px]">
-            <Suspense
-              fallback={
-                <div className="h-full w-full" />
-              }
-            >
-              {show3dBuilding && <CoeBuildingViewerLazy />}
-            </Suspense>
-          </div>
         </div>
       </section>
 
