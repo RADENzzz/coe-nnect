@@ -8,6 +8,7 @@ import {
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import Icon from './Icon';
+import { getModalBackdropClassName } from './modal-backdrop';
 import { lockBodyScroll } from '../../lib/body-scroll-lock';
 
 // ── Stack counter so stacked modals coordinate Escape ordering ──
@@ -49,6 +50,7 @@ export interface ModalProps {
   closeOnBackdrop?: boolean;
   initialFocusRef?: React.RefObject<HTMLElement>;
   hideCloseButton?: boolean;
+  blurBackdrop?: boolean;
   className?: string;
 }
 
@@ -98,6 +100,7 @@ export default function Modal({
   closeOnBackdrop = true,
   initialFocusRef,
   hideCloseButton = false,
+  blurBackdrop = true,
   className,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -224,7 +227,7 @@ export default function Modal({
       >
         {/* Backdrop */}
         <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-backdrop-in"
+          className={getModalBackdropClassName(blurBackdrop)}
           onMouseDown={(e) => {
             downOnBackdropRef.current = e.target === e.currentTarget;
           }}

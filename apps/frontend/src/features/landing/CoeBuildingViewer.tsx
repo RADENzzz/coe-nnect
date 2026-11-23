@@ -3,21 +3,51 @@ import '@google/model-viewer';
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ModelViewerElement } from '@google/model-viewer';
+import CoeBuildingViewerDevControls from './CoeBuildingViewerDevControls';
 import {
-  captureCameraPose,
-  type CameraPoseCaptureResult,
+  captureCameraKeyframe,
+  serializeCameraKeyframes,
+  updateInitialCameraKeyframe,
+  type CameraKeyframe,
+  type CameraKeyframeEditorItem,
 } from './camera-orbit-capture';
 import {
-  getCameraZoomLockConstraints,
-  getHorizontalAngularVelocity,
-  shouldStartHorizontalInertia,
-  stepHorizontalInertia,
+  getCameraRadiusForZoom,
+  getCameraZoomBaseRadius,
+  getCameraZoomPercentForRadius,
 } from './camera-inertia';
+import { useCoeBuildingMotion } from './useCoeBuildingMotion';
 
 const MODEL_SRC = '/3D_Models/coe_Building.glb';
-const DEFAULT_CAMERA_ORBIT = '2.2471349423243066rad 1.1908017615620003rad 154.5116331083687m';
-const DEFAULT_CAMERA_TARGET = '-4.961324271775314m 6.2189790436357235m -2.4709905048660423m';
 const DEFAULT_CAMERA_FIELD_OF_VIEW = '15.402513570977764deg';
+const CAMERA_INTRO_KEYFRAMES = [
+  {
+    "orbit": [
+      -0.778102868604185,
+      1.5371925492880687,
+      151.64844522385124
+    ],
+    "target": [
+      -13.559750438546992,
+      1.8474313251591141,
+      -9.92520688465358
+    ],
+    "durationMs": 2500
+  },
+  {
+    "orbit": [
+      2.091995070466173,
+      1.3975662091304537,
+      115.51231886330305
+    ],
+    "target": [
+      1.505051952954549,
+      0.7034910800911691,
+      11.737586764076806
+    ],
+    "durationMs": 5000
+  }
+] as const satisfies readonly CameraKeyframe[]; 
 
 /**
  * Interactive 3D preview of the COE building. The viewer reads the GLB at
@@ -26,193 +56,155 @@ const DEFAULT_CAMERA_FIELD_OF_VIEW = '15.402513570977764deg';
  */
 export default function CoeBuildingViewer() {
   const viewerRef = useRef<ModelViewerElement>(null);
-  const [loaded, setLoaded] = useState(false);
   const [devInertiaEnabled, setDevInertiaEnabled] = useState(false);
-  const devInertiaEnabledRef = useRef(false);
-  const inertiaFrameRef = useRef<number | null>(null);
-  const [cameraPoseCapture, setCameraPoseCapture] =
-    useState<CameraPoseCaptureResult | null>(null);
-
+  const [devToolsVisible, setDevToolsVisible] = useState(true);
+  const [cameraZoomPercent, setCameraZoomPercent] = useState(100);
+  const {
+    cameraAnimationPlaying,
+    cameraControlsEnabled,
+    cancelInertia,
+    loaded,
+    playCameraKeyframes,
+    stopCameraKeyframeAnimation,
+  } = useCoeBuildingMotion(
+    viewerRef,
+    CAMERA_INTRO_KEYFRAMES,
+    devInertiaEnabled,
+  );
+  const [cameraKeyframes, setCameraKeyframes] = useState<
+    CameraKeyframeEditorItem[]
+  >(() =>
+    CAMERA_INTRO_KEYFRAMES.map((keyframe, index) => ({
+      ...keyframe,
+      editorId: `initial-${index}`,
+    })),
+  );
+  const cameraZoomBaseRadiusM = getCameraZoomBaseRadius(cameraKeyframes);
+  const nextKeyframeIdRef = useRef(CAMERA_INTRO_KEYFRAMES.length);
+  const [keyframeDurationMs, setKeyframeDurationMs] = useState(1600);
+  const [cameraKeyframeStatus, setCameraKeyframeStatus] = useState('');
+  const [cameraKeyframeSource, setCameraKeyframeSource] = useState('');
   const handleDevInertiaToggle = (enabled: boolean) => {
-    devInertiaEnabledRef.current = enabled;
     setDevInertiaEnabled(enabled);
-    if (!enabled && inertiaFrameRef.current !== null) {
-      cancelAnimationFrame(inertiaFrameRef.current);
-      inertiaFrameRef.current = null;
+    if (!enabled) cancelInertia();
+  };
+
+  const handleCaptureCameraKeyframe = () => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    const keyframe = captureCameraKeyframe(
+      viewer,
+      cameraKeyframes.length === 0 ? 0 : keyframeDurationMs,
+    );
+    const editorId = `captured-${nextKeyframeIdRef.current++}`;
+    setCameraKeyframes((current) => [...current, { ...keyframe, editorId }]);
+    setCameraKeyframeStatus('Camera key added. Copy the code to keep it.');
+  };
+
+  const handleSetInitialCamera = () => {
+    const viewer = viewerRef.current;
+    const initialKeyframe = cameraKeyframes[0];
+    if (!viewer || !initialKeyframe) return;
+
+    const currentPose = captureCameraKeyframe(
+      viewer,
+      initialKeyframe.durationMs,
+    );
+    setCameraKeyframes((current) =>
+      updateInitialCameraKeyframe(current, currentPose),
+    );
+    setCameraKeyframeStatus(
+      'Initial camera pose updated. Copy keyframes to keep it.',
+    );
+  };
+
+  const handleCopyCameraKeyframes = async () => {
+    const source = serializeCameraKeyframes(cameraKeyframes);
+    setCameraKeyframeSource(source);
+
+    try {
+      const clipboard = navigator.clipboard;
+      if (!clipboard) throw new Error('Clipboard API is unavailable.');
+      await clipboard.writeText(source);
+      setCameraKeyframeStatus('Copied camera keyframes to the clipboard.');
+    } catch {
+      setCameraKeyframeStatus(
+        'Clipboard copy failed. Select and copy the code below.',
+      );
     }
   };
 
-  const handleCaptureCameraOrbit = async () => {
+  const handleRemoveCameraKeyframe = (index: number) => {
+    setCameraKeyframes((current) =>
+      current.length > 1
+        ? current.filter((_, itemIndex) => itemIndex !== index)
+        : current,
+    );
+    setCameraKeyframeStatus('Camera key removed.');
+  };
+
+  const handleKeyframeDurationChange = (durationMs: number) => {
+    setKeyframeDurationMs(durationMs);
+  };
+
+  const handleTransitionDurationChange = (
+    index: number,
+    durationMs: number,
+  ) => {
+    setCameraKeyframes((current) =>
+      current.map((keyframe, keyframeIndex) =>
+        keyframeIndex === index
+          ? { ...keyframe, durationMs }
+          : keyframe,
+      ),
+    );
+  };
+
+  const handleCameraPreview = () => {
+    if (cameraAnimationPlaying) {
+      stopCameraKeyframeAnimation();
+      return;
+    }
+
+    playCameraKeyframes(cameraKeyframes);
+  };
+
+  const handleCameraZoomChange = (zoomPercent: number) => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer || !cameraControlsEnabled || cameraAnimationPlaying) return;
 
-    const capture = await captureCameraPose(viewer, (value) => {
-      const clipboard = navigator.clipboard;
-      if (!clipboard) {
-        return Promise.reject(new Error('Clipboard API is unavailable.'));
-      }
-      return clipboard.writeText(value);
-    });
-
-    setCameraPoseCapture(capture);
+    const { theta, phi } = viewer.getCameraOrbit();
+    const radius = getCameraRadiusForZoom(
+      cameraZoomBaseRadiusM,
+      zoomPercent,
+    );
+    viewer.cameraOrbit = `${theta}rad ${phi}rad ${radius}m`;
+    viewer.jumpCameraToGoal();
+    setCameraZoomPercent(
+      getCameraZoomPercentForRadius(cameraZoomBaseRadiusM, radius),
+    );
   };
 
   useEffect(() => {
+    if (!import.meta.env.DEV || !loaded) return;
+
     const viewer = viewerRef.current;
     if (!viewer) return;
 
-    const activePointers = new Set<number>();
-    let rotationPointerId: number | null = null;
-    let lastPointerX = 0;
-    let lastPointerTime = 0;
-    let angularVelocity = 0;
-    const prefersReducedMotion = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches;
-
-    const cancelInertia = () => {
-      if (inertiaFrameRef.current !== null) {
-        cancelAnimationFrame(inertiaFrameRef.current);
-        inertiaFrameRef.current = null;
-      }
+    const handleCameraChange = () => {
+      setCameraZoomPercent(
+        getCameraZoomPercentForRadius(
+          cameraZoomBaseRadiusM,
+          viewer.getCameraOrbit().radius,
+        ),
+      );
     };
 
-    const handlePointerDown = (event: PointerEvent) => {
-      cancelInertia();
-      activePointers.add(event.pointerId);
-
-      if (
-        activePointers.size !== 1 ||
-        event.button !== 0 ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey
-      ) {
-        rotationPointerId = null;
-        angularVelocity = 0;
-        return;
-      }
-
-      rotationPointerId = event.pointerId;
-      lastPointerX = event.clientX;
-      lastPointerTime = event.timeStamp;
-      angularVelocity = 0;
-    };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerId !== rotationPointerId) return;
-
-      const duration = event.timeStamp - lastPointerTime;
-      if (duration > 0) {
-        angularVelocity = getHorizontalAngularVelocity(
-          event.clientX - lastPointerX,
-          duration,
-          viewer.clientHeight,
-        );
-        lastPointerX = event.clientX;
-        lastPointerTime = event.timeStamp;
-      }
-    };
-
-    const startInertia = () => {
-      if (
-        !shouldStartHorizontalInertia(
-          import.meta.env.DEV,
-          devInertiaEnabledRef.current,
-          prefersReducedMotion,
-          angularVelocity,
-        )
-      ) {
-        return;
-      }
-
-      const orbit = viewer.getCameraOrbit();
-      let theta = orbit.theta;
-      let previousTime = 0;
-
-      const animate = (time: number) => {
-        const elapsed = previousTime === 0 ? 0 : (time - previousTime) / 1000;
-        previousTime = time;
-        const step = stepHorizontalInertia(angularVelocity, elapsed);
-        angularVelocity = step.velocity;
-        theta += step.deltaRadians;
-        viewer.cameraOrbit = `${theta}rad ${orbit.phi}rad ${orbit.radius}m`;
-
-        if (Math.abs(angularVelocity) < 0.08) {
-          inertiaFrameRef.current = null;
-          return;
-        }
-
-        inertiaFrameRef.current = requestAnimationFrame(animate);
-      };
-
-      inertiaFrameRef.current = requestAnimationFrame(animate);
-    };
-
-    const handlePointerUp = (event: PointerEvent) => {
-      activePointers.delete(event.pointerId);
-      if (event.pointerId !== rotationPointerId) return;
-
-      rotationPointerId = null;
-      if (activePointers.size === 0) startInertia();
-    };
-
-    const handlePointerCancel = (event: PointerEvent) => {
-      activePointers.delete(event.pointerId);
-      if (event.pointerId === rotationPointerId) {
-        rotationPointerId = null;
-        angularVelocity = 0;
-      }
-      cancelInertia();
-    };
-
-    viewer.addEventListener('pointerdown', handlePointerDown);
-    viewer.addEventListener('pointermove', handlePointerMove);
-    viewer.addEventListener('pointerup', handlePointerUp);
-    viewer.addEventListener('pointercancel', handlePointerCancel);
-
-    const playIntroAnimations = async () => {
-      const animationNames = [...viewer.availableAnimations];
-      if (animationNames.length === 0) return;
-
-      viewer.animationName = animationNames[0];
-      await viewer.updateComplete;
-
-      for (const animationName of animationNames.slice(1)) {
-        viewer.appendAnimation(animationName, { repetitions: 1 });
-      }
-
-      viewer.currentTime = 0;
-      viewer.play({ repetitions: 1, pingpong: false });
-    };
-
-    const handleLoad = () => {
-      setLoaded(true);
-      if (!import.meta.env.DEV) {
-        const { radius } = viewer.getCameraOrbit();
-        const constraints = getCameraZoomLockConstraints(
-          radius,
-          viewer.getFieldOfView(),
-        );
-        viewer.minCameraOrbit = constraints.minCameraOrbit;
-        viewer.maxCameraOrbit = constraints.maxCameraOrbit;
-        viewer.minFieldOfView = constraints.minFieldOfView;
-        viewer.maxFieldOfView = constraints.maxFieldOfView;
-      }
-      void playIntroAnimations();
-    };
-
-    viewer.addEventListener('load', handleLoad);
-    return () => {
-      cancelInertia();
-      viewer.removeEventListener('load', handleLoad);
-      viewer.removeEventListener('pointerdown', handlePointerDown);
-      viewer.removeEventListener('pointermove', handlePointerMove);
-      viewer.removeEventListener('pointerup', handlePointerUp);
-      viewer.removeEventListener('pointercancel', handlePointerCancel);
-    };
-  }, []);
+    viewer.addEventListener('camera-change', handleCameraChange);
+    handleCameraChange();
+    return () => viewer.removeEventListener('camera-change', handleCameraChange);
+  }, [cameraZoomBaseRadiusM, loaded]);
 
   return (
     <div className="relative flex h-full w-full items-center justify-center">
@@ -222,68 +214,61 @@ export default function CoeBuildingViewer() {
         </div>
       )}
 
-      {import.meta.env.DEV && loaded && (
-        <div className="absolute bottom-3 right-3 z-10 max-w-[85%] rounded-lg bg-slate-950/90 p-3 text-xs text-white shadow-lg">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleCaptureCameraOrbit}
-              className="rounded-md bg-white px-3 py-1.5 font-semibold text-slate-900 hover:bg-slate-100"
-            >
-              Capture & copy camera defaults
-            </button>
-            <label className="inline-flex cursor-pointer items-center gap-2 font-medium">
-              <input
-                type="checkbox"
-                role="switch"
-                aria-label="Enable camera inertia"
-                checked={devInertiaEnabled}
-                onChange={(event) =>
-                  handleDevInertiaToggle(event.currentTarget.checked)
-                }
-                className="peer sr-only"
-              />
-              <span className="relative h-5 w-9 rounded-full bg-white/25 transition-colors peer-checked:bg-emerald-500 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-white" />
-              <span>Inertia {devInertiaEnabled ? 'on' : 'off'}</span>
-            </label>
-          </div>
-          {cameraPoseCapture && (
-            <div className="mt-2 space-y-1" aria-live="polite">
-              <p>
-                {cameraPoseCapture.copied
-                  ? 'Copied all camera defaults.'
-                  : 'Clipboard copy failed; select all values below.'}
-              </p>
-              <code className="block break-all rounded bg-white/10 p-2">
-                const DEFAULT_CAMERA_ORBIT = '{cameraPoseCapture.orbit}';
-                <br />
-                const DEFAULT_CAMERA_TARGET = '{cameraPoseCapture.target}';
-                <br />
-                const DEFAULT_CAMERA_FIELD_OF_VIEW = '{cameraPoseCapture.fieldOfView}';
-              </code>
-              <p>
-                Paste over the adjacent camera constants near the top of
-                CoeBuildingViewer.tsx.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      {import.meta.env.DEV &&
+        loaded &&
+        (devToolsVisible ? (
+          <CoeBuildingViewerDevControls
+            cameraAnimationPlaying={cameraAnimationPlaying}
+            cameraControlsEnabled={cameraControlsEnabled}
+            cameraKeyframeSource={cameraKeyframeSource}
+            cameraKeyframeStatus={cameraKeyframeStatus}
+            cameraKeyframes={cameraKeyframes}
+            cameraZoomPercent={cameraZoomPercent}
+            devInertiaEnabled={devInertiaEnabled}
+            keyframeDurationMs={keyframeDurationMs}
+            onCaptureCameraKeyframe={handleCaptureCameraKeyframe}
+            onCameraPreview={handleCameraPreview}
+            onCameraZoomChange={handleCameraZoomChange}
+            onCopyCameraKeyframes={handleCopyCameraKeyframes}
+            onDevInertiaChange={handleDevInertiaToggle}
+            onEnterPreview={() => setDevToolsVisible(false)}
+            onKeyframeDurationChange={handleKeyframeDurationChange}
+            onRemoveCameraKeyframe={handleRemoveCameraKeyframe}
+            onSetInitialCamera={handleSetInitialCamera}
+            onTransitionDurationChange={handleTransitionDurationChange}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setDevToolsVisible(true)}
+            className="absolute bottom-3 right-3 z-20 rounded-md bg-slate-950/85 px-3 py-2 text-xs font-semibold text-white shadow-lg hover:bg-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          >
+            Show camera tools
+          </button>
+        ))}
 
       <model-viewer
         ref={viewerRef}
         src={MODEL_SRC}
         alt="3D model of the College of Engineering building"
-        camera-controls=""
+        camera-controls={cameraControlsEnabled ? '' : undefined}
         interaction-prompt="none"
         shadow-intensity="0.8"
         exposure="1.1"
         environment-image="neutral"
-        camera-orbit={DEFAULT_CAMERA_ORBIT}
-        camera-target={DEFAULT_CAMERA_TARGET}
+        camera-orbit={`${CAMERA_INTRO_KEYFRAMES[0].orbit[0]}rad ${CAMERA_INTRO_KEYFRAMES[0].orbit[1]}rad ${CAMERA_INTRO_KEYFRAMES[0].orbit[2]}m`}
+        camera-target={`${CAMERA_INTRO_KEYFRAMES[0].target[0]}m ${CAMERA_INTRO_KEYFRAMES[0].target[1]}m ${CAMERA_INTRO_KEYFRAMES[0].target[2]}m`}
         field-of-view={DEFAULT_CAMERA_FIELD_OF_VIEW}
-        min-camera-orbit="auto auto 50%"
-        max-camera-orbit="auto auto 200%"
+        min-camera-orbit={
+          import.meta.env.DEV
+            ? `auto auto ${getCameraRadiusForZoom(cameraZoomBaseRadiusM, 50)}m`
+            : 'auto auto 50%'
+        }
+        max-camera-orbit={
+          import.meta.env.DEV
+            ? `auto auto ${getCameraRadiusForZoom(cameraZoomBaseRadiusM, 200)}m`
+            : 'auto auto 200%'
+        }
         style={
           {
             backgroundColor: 'transparent',

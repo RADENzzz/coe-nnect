@@ -16,6 +16,7 @@ import type {
 import { extractTextInRect } from '../hooks/useCellExtraction';
 import { loadPdfPageText, type TextItem } from '../hooks/usePdfTextLayer';
 import { tableLabel, yearTermLabel } from '../utils/labels';
+import MajorMinorClassifier from './MajorMinorClassifier';
 
 interface ImportProspectusDialogProps {
   open: boolean;
@@ -208,8 +209,6 @@ export default function ImportProspectusDialog({
   const [filter, setFilter] = useState('');
   const [draggedRowKey, setDraggedRowKey] = useState<string | null>(null);
   const [dragZone, setDragZone] = useState<'major' | 'minor' | null>(null);
-  const [classifyOpen, setClassifyOpen] = useState(false);
-  const [classifyGroup, setClassifyGroup] = useState('all');
 
   const { data: catalogSubjects = [] } = useQuery({
     queryKey: ['subjects', { includeInactive: false }],
@@ -551,51 +550,6 @@ export default function ImportProspectusDialog({
     (r) => r.checked && r.isMinor,
   ).length;
 
-  /** One tab per year/term in the import so classification stays reviewable. */
-  const classifyGroups = useMemo(() => {
-    const order: Record<string, number> = { '1st': 1, '2nd': 2, summer: 3 };
-    const map = new Map<
-      string,
-      {
-        key: string;
-        label: string;
-        yearLevel: number | null;
-        semester: SemesterType | null;
-      }
-    >();
-    for (const row of classifiableRows) {
-      const key = `${row.yearLevel ?? 'any'}-${row.semester ?? 'any'}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          label: yearTermLabel(row.yearLevel, row.semester),
-          yearLevel: row.yearLevel,
-          semester: row.semester,
-        });
-      }
-    }
-    return [...map.values()].sort((a, b) => {
-      const yearDelta = (a.yearLevel ?? 99) - (b.yearLevel ?? 99);
-      if (yearDelta !== 0) return yearDelta;
-      return (
-        (order[a.semester ?? ''] ?? 99) - (order[b.semester ?? ''] ?? 99)
-      );
-    });
-  }, [classifiableRows]);
-
-  const classifyRows = useMemo(
-    () =>
-      classifyGroup === 'all'
-        ? classifiableRows
-        : classifiableRows.filter(
-            (r) =>
-              `${r.yearLevel ?? 'any'}-${r.semester ?? 'any'}` === classifyGroup,
-          ),
-    [classifiableRows, classifyGroup],
-  );
-
-  const classifyMajorCount = classifyRows.filter((r) => !r.isMinor).length;
-  const classifyMinorCount = classifyRows.filter((r) => r.isMinor).length;
   const selectedElectiveTables = useMemo(
     () =>
       tables.filter(
@@ -712,6 +666,7 @@ export default function ImportProspectusDialog({
       open={open}
       onClose={handleClose}
       title="Import from PDF"
+      blurBackdrop={false}
       size="lg"
       footer={
         step === 'select' ? (
@@ -888,17 +843,11 @@ export default function ImportProspectusDialog({
                 <p className="text-xs font-semibold text-slate-700">
                   Separate major from minor
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setClassifyGroup('all');
-                    setClassifyOpen(true);
-                  }}
-                  className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-primary/40 text-primary hover:bg-primary/5 transition flex items-center gap-1"
-                >
-                  <Icon name="tune" size={13} />
-                  Open classifier
-                </button>
+                <MajorMinorClassifier
+                  rows={classifiableRows}
+                  onSetRowMinor={setRowMinor}
+                  onSetGroupMinor={setGroupMinor}
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
               <div
@@ -1599,158 +1548,6 @@ export default function ImportProspectusDialog({
         </div>
       )}
 
-      {/* ── Major/Minor classifier (stacked on every year/term in the import) ── */}
-      <Modal
-        open={classifyOpen && step === 'review'}
-        onClose={() => setClassifyOpen(false)}
-        title="Separate major and minor subjects"
-        description="Minor subjects are offered by another department. Everything is Major unless you mark it Minor here."
-        size="lg"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setGroupMinor(classifyGroup, false)}
-              className="px-3 py-2 text-xs font-semibold border border-surface-variant rounded-lg text-slate-700 hover:bg-surface-container-high transition"
-            >
-              All major
-            </button>
-            <button
-              type="button"
-              onClick={() => setGroupMinor(classifyGroup, true)}
-              className="px-3 py-2 text-xs font-semibold border border-purple-300 rounded-lg text-purple-800 hover:bg-purple-50 transition"
-            >
-              All minor
-            </button>
-            <button
-              type="button"
-              onClick={() => setClassifyOpen(false)}
-              className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg"
-            >
-              Done
-            </button>
-          </>
-        }
-      >
-        {classifiableRows.length === 0 ? (
-          <p className="text-sm text-on-surface-variant">
-            This import has no regular subjects to classify. Elective rows are
-            classified when they are filled later.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {/* Year/term tabs keep a multi-year import easy to review. */}
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setClassifyGroup('all')}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
-                  classifyGroup === 'all'
-                    ? 'bg-primary text-on-primary border-primary'
-                    : 'bg-surface-container-lowest text-slate-600 border-surface-variant hover:bg-surface-container-high'
-                }`}
-              >
-                All terms ({classifiableRows.length})
-              </button>
-              {classifyGroups.map((group) => {
-                const total = classifiableRows.filter(
-                  (r) =>
-                    `${r.yearLevel ?? 'any'}-${r.semester ?? 'any'}` ===
-                    group.key,
-                ).length;
-                return (
-                  <button
-                    key={group.key}
-                    type="button"
-                    onClick={() => setClassifyGroup(group.key)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
-                      classifyGroup === group.key
-                        ? 'bg-primary text-on-primary border-primary'
-                        : 'bg-surface-container-lowest text-slate-600 border-surface-variant hover:bg-surface-container-high'
-                    }`}
-                  >
-                    {group.label} ({total})
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
-              <span>
-                Major:{' '}
-                <strong className="text-primary">{classifyMajorCount}</strong>
-              </span>
-              <span>
-                Minor:{' '}
-                <strong className="text-purple-700">
-                  {classifyMinorCount}
-                </strong>
-              </span>
-            </div>
-
-            <ul className="divide-y divide-surface-variant border border-surface-variant rounded-lg overflow-hidden">
-              {classifyRows.map((row) => (
-                <li
-                  key={row.key}
-                  className={`px-3 py-2 flex items-center gap-3 ${
-                    row.checked ? '' : 'opacity-60'
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-bold text-slate-900">
-                        {row.typedCode.trim() || row.code || '(no code)'}
-                      </span>
-                      <span className="text-[10px] text-on-surface-variant">
-                        {yearTermLabel(row.yearLevel, row.semester)}
-                      </span>
-                      {!row.checked && (
-                        <span className="text-[10px] text-amber-700 font-semibold">
-                          Not selected
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-on-surface truncate">
-                      {row.title}
-                    </p>
-                  </div>
-                  <div className="flex rounded-lg overflow-hidden border border-surface-variant shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setRowMinor(row.key, false)}
-                      aria-pressed={!row.isMinor}
-                      className={`px-2.5 py-1 text-[10px] font-bold transition ${
-                        row.isMinor
-                          ? 'bg-white text-slate-600 hover:bg-slate-100'
-                          : 'bg-primary text-on-primary'
-                      }`}
-                    >
-                      Major
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRowMinor(row.key, true)}
-                      aria-pressed={row.isMinor}
-                      className={`px-2.5 py-1 text-[10px] font-bold transition ${
-                        row.isMinor
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-white text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      Minor
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            <p className="text-[11px] text-on-surface-variant">
-              Tip: you can also drag a regular row in the review list onto the
-              Major or Minor box, or click the badge beside its code.
-            </p>
-          </div>
-        )}
-      </Modal>
     </Modal>
   );
 }
