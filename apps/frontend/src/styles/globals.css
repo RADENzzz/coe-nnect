@@ -217,26 +217,25 @@
 }
 
 /* ── Theme switch transition ──
-   The theme store adds `.theme-transition` for ~280ms while `.dark` flips.
-   Opting in temporarily keeps hover states, drag animations, and the route
-   entrance from acquiring permanent color transitions. */
-html.theme-transition,
+   Limit theme color transitions to the app's large shared surfaces so a
+   theme change doesn't trigger repaints across every page element. */
 html.theme-transition body,
-html.theme-transition *,
-html.theme-transition *::before,
-html.theme-transition *::after {
-  transition-property: background-color, border-color, color, fill, stroke !important;
-  transition-duration: 240ms !important;
+html.theme-transition .app-shell,
+html.theme-transition .app-sidebar,
+html.theme-transition .app-shell > div > header,
+html.theme-transition .app-shell > div > main {
+  transition-property: background-color, border-color, color !important;
+  transition-duration: 120ms !important;
   transition-timing-function: ease !important;
   transition-delay: 0s !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html.theme-transition,
   html.theme-transition body,
-  html.theme-transition *,
-  html.theme-transition *::before,
-  html.theme-transition *::after {
+  html.theme-transition .app-shell,
+  html.theme-transition .app-sidebar,
+  html.theme-transition .app-shell > div > header,
+  html.theme-transition .app-shell > div > main {
     transition: none !important;
   }
 }

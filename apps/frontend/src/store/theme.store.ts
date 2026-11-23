@@ -37,8 +37,9 @@ export function applyTheme(theme: Theme) {
 let themeTransitionTimer: number | undefined;
 
 /**
- * Flips the theme with a short color transition. The initial hydration path
- * stays instant, and reduced-motion users keep the immediate switch.
+ * Flips the theme with a short color transition on shared app surfaces. The
+ * initial hydration path stays instant, and reduced-motion users keep the
+ * immediate switch.
  */
 function applyThemeWithTransition(theme: Theme) {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
@@ -62,7 +63,7 @@ function applyThemeWithTransition(theme: Theme) {
   window.clearTimeout(themeTransitionTimer);
   themeTransitionTimer = window.setTimeout(() => {
     root.classList.remove('theme-transition');
-  }, 280);
+  }, 140);
 }
 
 function getInitialTheme(): Theme {
