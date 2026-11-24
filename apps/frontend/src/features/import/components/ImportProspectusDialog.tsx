@@ -1180,12 +1180,9 @@ export default function ImportProspectusDialog({
                                           );
                                         }}
                                         className="w-28 text-[10px] border border-surface-variant rounded px-1 py-0.5 bg-white"
-                                        title="Total-only electives store only the total units"
+                                        title="Electives store lec and lab units"
                                       >
                                         <option value="lec_lab">Lec/Lab</option>
-                                        <option value="total_only">
-                                          Total only
-                                        </option>
                                       </select>
 
                                       {isEmptyElectiveRow(row) && (
@@ -1529,9 +1526,7 @@ export default function ImportProspectusDialog({
                               {yearTermLabel(slot.yearLevel, slot.semester)}
                             </span>
                             <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500">
-                              {slot.unitsMode === 'total_only'
-                                ? 'Total only'
-                                : 'Lec/Lab'}
+                              'Lec/Lab'
                             </span>
                           </div>
                           <p className="text-xs text-on-surface truncate mt-0.5">
