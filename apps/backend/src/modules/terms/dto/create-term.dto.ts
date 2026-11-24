@@ -19,17 +19,17 @@ export class CreateTermDto {
   })
   schoolYear!: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'startDate must be in the format YYYY-MM-DD.',
   })
-  startDate!: string;
+  startDate?: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'endDate must be in the format YYYY-MM-DD.',
   })
-  endDate!: string;
+  endDate?: string;
 
   @IsNotEmpty()
   @IsIn(['1st', '2nd', 'summer'], {

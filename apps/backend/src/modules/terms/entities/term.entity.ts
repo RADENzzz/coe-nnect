@@ -13,11 +13,11 @@ export class Term {
   @Column({ name: 'school_year' })
   schoolYear: string;
 
-  @Column({ name: 'start_date', type: 'date' })
-  startDate: string;
+  @Column({ name: 'start_date', type: 'date', nullable: true })
+  startDate: string | null;
 
-  @Column({ name: 'end_date', type: 'date' })
-  endDate: string;
+  @Column({ name: 'end_date', type: 'date', nullable: true })
+  endDate: string | null;
 
   @Column({ name: 'is_active', default: false })
   isActive: boolean;
