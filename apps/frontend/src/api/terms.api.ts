@@ -6,8 +6,8 @@ export interface Term {
   termId: string;
   termName: string;
   schoolYear: string;
-  startDate: string;
-  endDate: string;
+  startDate: string | null;
+  endDate: string | null;
   isActive: boolean;
   semester: SemesterType | null;
 }
@@ -15,8 +15,8 @@ export interface Term {
 export interface CreateTermInput {
   termName: string;
   schoolYear: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string | null;
+  endDate?: string | null;
   semester: SemesterType;
   setActive?: boolean;
 }

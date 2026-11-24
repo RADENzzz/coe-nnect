@@ -19,7 +19,8 @@ interface Props {
   isAdmin: boolean;
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-PH', {
@@ -27,6 +28,22 @@ function fmtDate(iso: string): string {
     month: 'short',
     day: '2-digit',
   });
+}
+
+/**
+ * Dates are optional, so show whichever ends are known instead of rendering
+ * an empty range or treating a blank value as a date.
+ */
+function fmtDateRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string {
+  const from = fmtDate(start);
+  const until = fmtDate(end);
+  if (from && until) return `${from} – ${until}`;
+  if (from) return `From ${from}`;
+  if (until) return `Until ${until}`;
+  return 'Dates not set';
 }
 
 /**
@@ -92,16 +109,20 @@ export default function TermsPanel({ isAdmin }: Props) {
   };
 
   const openForm = useCallback(() => {
-    const latest = [...terms].sort((a, b) =>
-      b.startDate.localeCompare(a.startDate),
-    )[0];
+    const latest = [...terms].sort((a, b) => {
+      const byStart = (b.startDate ?? '').localeCompare(a.startDate ?? '');
+      return byStart !== 0
+        ? byStart
+        : b.schoolYear.localeCompare(a.schoolYear);
+    })[0];
     if (latest) {
       const [start, end] = latest.schoolYear.split('-');
       const nextSy =
         start && end
           ? `${Number(start) + 1}-${Number(end) + 1}`
           : latest.schoolYear;
-      const shiftDate = (iso: string) => {
+      const shiftDate = (iso: string | null) => {
+        if (!iso) return '';
         const d = new Date(`${iso}T00:00:00`);
         if (Number.isNaN(d.getTime())) return '';
         d.setFullYear(d.getFullYear() + 1);
@@ -230,13 +251,7 @@ export default function TermsPanel({ isAdmin }: Props) {
       });
       return;
     }
-    if (!form.startDate || !form.endDate) {
-      feedback.error('Choose both a start date and an end date.', {
-        title: 'Missing dates',
-      });
-      return;
-    }
-    if (form.endDate <= form.startDate) {
+    if (form.startDate && form.endDate && form.endDate <= form.startDate) {
       feedback.error('End date must be after the start date.', {
         title: 'Invalid date range',
       });
@@ -251,8 +266,8 @@ export default function TermsPanel({ isAdmin }: Props) {
     createMutation.mutate({
       termName: form.termName.trim(),
       schoolYear: form.schoolYear.trim(),
-      startDate: form.startDate,
-      endDate: form.endDate,
+      startDate: form.startDate || null,
+      endDate: form.endDate || null,
       semester: form.semester,
       setActive: form.setActive,
     });
@@ -355,7 +370,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                       )}
                     </div>
                     <p className="text-xs text-on-surface-variant mt-1">
-                      {fmtDate(t.startDate)} – {fmtDate(t.endDate)}
+                      {fmtDateRange(t.startDate, t.endDate)}
                     </p>
                   </div>
                 </div>
@@ -491,11 +506,14 @@ export default function TermsPanel({ isAdmin }: Props) {
 
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Start Date *
+                Start Date
+                <span className="ml-1 font-normal normal-case tracking-normal text-on-surface-variant/70">
+                  (optional)
+                </span>
               </label>
               <input
                 type="date"
-                value={form.startDate}
+                value={form.startDate ?? ''}
                 onChange={(e) =>
                   setForm((p) => ({ ...p, startDate: e.target.value }))
                 }
@@ -505,11 +523,14 @@ export default function TermsPanel({ isAdmin }: Props) {
 
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                End Date *
+                End Date
+                <span className="ml-1 font-normal normal-case tracking-normal text-on-surface-variant/70">
+                  (optional)
+                </span>
               </label>
               <input
                 type="date"
-                value={form.endDate}
+                value={form.endDate ?? ''}
                 onChange={(e) =>
                   setForm((p) => ({ ...p, endDate: e.target.value }))
                 }
@@ -517,6 +538,11 @@ export default function TermsPanel({ isAdmin }: Props) {
               />
             </div>
           </div>
+
+          <p className="text-[11px] text-on-surface-variant">
+            Leave a date blank if it is not known yet. If both dates are set,
+            the end date must come after the start date.
+          </p>
 
           <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer select-none">
             <input

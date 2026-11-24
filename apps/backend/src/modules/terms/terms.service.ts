@@ -40,7 +40,11 @@ export class TermsService {
   }
 
   async create(dto: CreateTermDto): Promise<Term> {
-    if (dto.endDate <= dto.startDate) {
+    if (
+      dto.startDate &&
+      dto.endDate &&
+      dto.endDate <= dto.startDate
+    ) {
       throw new BadRequestException('endDate must be after startDate.');
     }
 
@@ -56,8 +60,8 @@ export class TermsService {
     const entity = this.repo.create({
       termName: dto.termName,
       schoolYear: dto.schoolYear,
-      startDate: dto.startDate,
-      endDate: dto.endDate,
+      startDate: dto.startDate ?? null,
+      endDate: dto.endDate ?? null,
       semester: dto.semester,   // ← NOW SAVED
       isActive: false,
     });
