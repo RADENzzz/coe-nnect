@@ -1,9 +1,14 @@
 /**
  * CoE-NNECT — Full Demo Data Seed
  * ─────────────────────────────────────────────────────────────────────────
- * Level A: academic data for all four departments (designations, programs,
- * subjects, prospectus, faculty + quals/prefs/unavail, rooms, room
- * preferences for shared rooms, sections, one active term).
+ * Level A: academic data for the demo. CPE and EE are the focus:
+ *   - full prospectus from the 2023-2024 CPE and EE curricula
+ *   - 10 faculty per focus department, with specialization-based quals
+ *   - 4 BSCPE sections (one per year) and 8 BSEE sections (two per year)
+ *   - CPE/EE labs, lecture rooms, drafting rooms, and shared COE rooms
+ *   - GEC and professional electives as catalog options
+ * GE and ENVE stay as small background programs so college-wide views still
+ * have data.
  *
  * Level B (withSchedules=true) is NOT implemented — see the comment on
  * seedSchedulesAndRequests at the bottom of this file. Building it correctly
@@ -21,7 +26,10 @@
  *   - Academic tables (designation, program, subject, prospectus, room,
  *     faculty, section, term): existence check on a natural key → update
  *     or insert.
- *   - faculty_qualification: upsert on (faculty_id, subject_id).
+ *   - subject, prospectus, and section rows that are no longer in the seed
+ *     are deactivated, not deleted, so linked schedules keep their FKs.
+ *   - faculty_qualification: upsert on (faculty_id, subject_id); stale quals
+ *     for seeded faculty are deleted.
  *   - faculty_preference / faculty_unavailability: delete-then-insert
  *     scoped to a single faculty (narrow scope, no marker needed).
  *   - room_preference: existence check on (room_id, dept_id).
@@ -55,6 +63,11 @@
  *   is the intended guard rail.
  *
  * SCHEMA NOTES (from test_2.sql)
+ *   - subject.dept_id is NOT NULL, so shared subjects name a catalog owner
+ *     (CPE or EE) while is_minor + source_dept mark their real source.
+ *   - subject_code is globally unique. The CPE and EE prospectuses collide
+ *     on BES 121, BES 123, and BEM 122, so the CPE offerings are suffixed
+ *     BES 121D, BES 123E, and BEM 122N.
  *   - term unique constraint is (term_name, school_year) — NOT including
  *     semester. Idempotency check must match that, and any found row's
  *     semester is overwritten to match the seed's intent.
@@ -66,8 +79,9 @@
  *   - faculty_unavailability.day_of_week is text with a CHECK constraint
  *     (also full names). term_id is nullable.
  *   - subject.title (not subject_title).
- *   - prospectus multi-session columns have CHECK constraints that the
- *     schema defaults (1/90/1/180) satisfy — this seeder relies on them.
+ *   - prospectus session columns are derived from units: lecture minutes =
+ *     lec × 60 (clamped to 30-240) and lab sessions = lab units at 180
+ *     minutes each, which stays inside the schema CHECK constraints.
  *
  * USAGE
  *   Local:    pnpm --filter @coe-nnect/backend seed:demo:full
@@ -128,121 +142,375 @@ const PROGRAMS: Array<{
   { dept_code: 'ENVE', program_code: 'BSENVE', program_name: 'BS Environmental Engineering' },
 ];
 
+/** Demo section counts: CPE has one block per year, EE has two. */
+const SECTION_LETTERS: Record<ProgramCode, string[]> = {
+  BSCPE: ['A'],
+  BSEE: ['A', 'B'],
+  BSGE: ['A'],
+  BSENVE: ['A'],
+};
+
+type ProgramCode = 'BSCPE' | 'BSEE' | 'BSGE' | 'BSENVE';
+type YearLevel = 1 | 2 | 3 | 4;
+type Semester = '1st' | '2nd' | 'summer';
+type RoomType =
+  | 'lecture_room'
+  | 'laboratory'
+  | 'computer_lab'
+  | 'drafting_room'
+  | 'other'
+  | 'any';
+
+type Placement = {
+  program_code: ProgramCode;
+  year: YearLevel;
+  semester: Semester;
+};
+
 type SubjectDef = {
   code: string;
   title: string;
   lec: number;
   lab: number;
-  required_room_type: string | null;
+  required_room_type: RoomType;
+  owner_dept: 'CPE' | 'EE' | 'GE' | 'ENVE';
   is_minor?: boolean;
   source_dept?: string;
-  placements: Array<{ year: 1 | 2 | 3 | 4; semester: '1st' | '2nd' }>;
+  is_elective?: boolean;
+  elective_category?: string;
+  elective_year_level?: YearLevel;
+  elective_semester?: Semester;
+  placements: Placement[];
 };
 
-const SUBJECTS: Record<string, SubjectDef[]> = {
-  CPE: [
-    { code: 'CPE 111', title: 'Computer Engineering as a Discipline', lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 1, semester: '1st' }] },
-    { code: 'CPE 113', title: 'Programming Logic and Design',         lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 1, semester: '1st' }] },
-    { code: 'MATH 100', title: 'College Algebra',                     lec: 3, lab: 0, required_room_type: 'lecture_room', is_minor: true, source_dept: 'Mathematics', placements: [{ year: 1, semester: '1st' }] },
-    { code: 'US 101',  title: 'Understanding the Self',               lec: 3, lab: 0, required_room_type: 'lecture_room', is_minor: true, source_dept: 'Liberal Arts', placements: [{ year: 1, semester: '1st' }] },
-    { code: 'PATHFit 1', title: 'Movement Competency Training',       lec: 2, lab: 0, required_room_type: 'other',        is_minor: true, source_dept: 'Physical Education', placements: [{ year: 1, semester: '1st' }] },
-    { code: 'CPE 121', title: 'Object-Oriented Programming',          lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 1, semester: '2nd' }] },
-    { code: 'CPE 123', title: 'Discrete Structures',                  lec: 3, lab: 0, required_room_type: 'lecture_room', placements: [{ year: 1, semester: '2nd' }] },
-    { code: 'CPE 211', title: 'Data Structures and Algorithms',       lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 2, semester: '1st' }] },
-    { code: 'CPE 213', title: 'Logic Circuit and Design',             lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 2, semester: '1st' }] },
-    { code: 'CPE 215', title: 'Numerical Methods',                    lec: 3, lab: 0, required_room_type: 'lecture_room', placements: [{ year: 2, semester: '1st' }] },
-    { code: 'CPE 221', title: 'Computer Architecture and Organization', lec: 2, lab: 1, required_room_type: 'laboratory', placements: [{ year: 2, semester: '2nd' }] },
-    { code: 'CPE 223', title: 'Operating Systems',                    lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 2, semester: '2nd' }] },
-    { code: 'CPE 311', title: 'Software Engineering',                 lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 3, semester: '1st' }] },
-    { code: 'CPE 313', title: 'Microprocessors',                      lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 3, semester: '1st' }] },
-    { code: 'CPE 315', title: 'Computer Networks',                    lec: 2, lab: 1, required_room_type: 'computer_lab', placements: [{ year: 3, semester: '1st' }] },
-    { code: 'CPE 411', title: 'Capstone Project 1',                   lec: 1, lab: 2, required_room_type: 'computer_lab', placements: [{ year: 4, semester: '1st' }] },
-    { code: 'CPE 413', title: 'Technopreneurship',                    lec: 3, lab: 0, required_room_type: 'lecture_room', placements: [{ year: 4, semester: '1st' }] },
+const bothPrograms = (year: YearLevel, semester: Semester): Placement[] => [
+  { program_code: 'BSCPE', year, semester },
+  { program_code: 'BSEE', year, semester },
+];
+const cpeOnly = (year: YearLevel, semester: Semester): Placement[] => [
+  { program_code: 'BSCPE', year, semester },
+];
+const eeOnly = (year: YearLevel, semester: Semester): Placement[] => [
+  { program_code: 'BSEE', year, semester },
+];
+const geOnly = (year: YearLevel, semester: Semester): Placement[] => [
+  { program_code: 'BSGE', year, semester },
+];
+const enveOnly = (year: YearLevel, semester: Semester): Placement[] => [
+  { program_code: 'BSENVE', year, semester },
+];
+
+const SUBJECTS: SubjectDef[] = [
+  // ── Shared mathematics and sciences ─────────────────────────────────────
+  // Minor subjects are offered by another department or college. They stay in
+  // the prospectus but auto-generate skips them (source_dept is set), so the
+  // department head plots them manually as fixed commitments.
+  //
+  // BES 121 and BES 123 are used by BOTH prospectuses for different courses.
+  // subject_code is globally unique, so the CPE offerings carry a suffix
+  // (BES 121D drafting, BES 123E economics). BEM 122 is likewise split into
+  // EE's Advanced Mathematics and CPE's Numerical Methods (BEM 122N).
+  { code: 'BEM 111', title: 'Engineering Calculus 1', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Mathematics', placements: bothPrograms(1, '1st') },
+  { code: 'BEM 112', title: 'Engineering Calculus 2', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Mathematics', placements: bothPrograms(1, '2nd') },
+  { code: 'BEM 114', title: 'Engineering Data Analysis', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Mathematics', placements: bothPrograms(1, '2nd') },
+  { code: 'BEM 121', title: 'Differential Equations', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Mathematics', placements: bothPrograms(2, '1st') },
+  { code: 'BEM 122', title: 'Advanced Mathematics for EE', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Mathematics', placements: eeOnly(2, '2nd') },
+  { code: 'BEM 122N', title: 'Numerical Methods', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Mathematics', placements: cpeOnly(2, '2nd') },
+  { code: 'BEM 131', title: 'Numerical Methods & Analysis', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'EE', is_minor: true, source_dept: 'Mathematics', placements: eeOnly(3, '1st') },
+  { code: 'BES 111', title: 'Chemistry for Engineers', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', is_minor: true, source_dept: 'Sciences', placements: bothPrograms(1, '1st') },
+  { code: 'BES 112', title: 'Physics for Engineers', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', is_minor: true, source_dept: 'Sciences', placements: bothPrograms(1, '2nd') },
+  { code: 'BES 113', title: 'Engineering Drawings and Plans', lec: 0, lab: 2, required_room_type: 'drafting_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(1, '1st') },
+  { code: 'BES 114', title: 'Computer-Aided Drafting', lec: 0, lab: 2, required_room_type: 'drafting_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(1, '2nd') },
+  { code: 'BES 116', title: 'Environmental Science', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Sciences', placements: eeOnly(1, '2nd') },
+  { code: 'BES 121', title: 'Engineering Mechanics', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(2, '1st') },
+  { code: 'BES 121D', title: 'Computer-Aided Drafting', lec: 0, lab: 1, required_room_type: 'drafting_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Engineering Sciences', placements: cpeOnly(2, '1st') },
+  { code: 'BES 122', title: 'Fundamentals of Deformable Bodies', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(2, '2nd') },
+  { code: 'BES 123', title: 'Computer Programming', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(2, '1st') },
+  { code: 'BES 123E', title: 'Engineering Economics', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Engineering Sciences', placements: cpeOnly(2, '1st') },
+  { code: 'BES 125', title: 'Engineering Economics', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(2, '1st') },
+  { code: 'BES 131', title: 'Fluid Mechanics', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(3, '1st') },
+  { code: 'BES 132', title: 'Technopreneurship', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(3, '2nd') },
+  { code: 'BES 141', title: 'Management of Engineering Projects', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'Engineering Sciences', placements: eeOnly(4, '1st') },
+  { code: 'BES 142', title: 'Technopreneurship 101', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Engineering Sciences', placements: cpeOnly(3, '2nd') },
+
+  // ── Shared general education, PE, and NSTP ──────────────────────────────
+  { code: 'US 101', title: 'Understanding the Self', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: bothPrograms(1, '1st') },
+  { code: 'MATH 100', title: 'Mathematics in the Modern World', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'Mathematics', placements: bothPrograms(1, '1st') },
+  { code: 'CAS 101', title: 'Purposive Communication', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: bothPrograms(1, '1st') },
+  { code: 'FIL 101', title: 'Wika at Kultura sa Mapayapang Lipunan', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_minor: true, source_dept: 'General Education', placements: eeOnly(1, '1st') },
+  { code: 'PHILCON', title: 'Philippine Constitution', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: [{ program_code: 'BSCPE', year: 2, semester: '2nd' }, { program_code: 'BSEE', year: 1, semester: '2nd' }] },
+  { code: 'STS 100', title: 'Science, Technology and Society', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: [{ program_code: 'BSCPE', year: 1, semester: '2nd' }, { program_code: 'BSEE', year: 3, semester: '1st' }] },
+  { code: 'ETHICS 101', title: 'Ethics', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: [{ program_code: 'BSCPE', year: 1, semester: '2nd' }, { program_code: 'BSEE', year: 3, semester: '1st' }] },
+  { code: 'CW 101', title: 'The Contemporary World', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: bothPrograms(2, '2nd') },
+  { code: 'HIST 100', title: 'Life & Works of Rizal', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: bothPrograms(2, '1st') },
+  { code: 'HIST 101', title: 'Readings in Philippine History', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: bothPrograms(3, '2nd') },
+  { code: 'A&H 100', title: 'Art Appreciation', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', placements: bothPrograms(3, '2nd') },
+  { code: 'PATHFit 1', title: 'Movement and Competency Training', lec: 2, lab: 0, required_room_type: 'other', owner_dept: 'CPE', is_minor: true, source_dept: 'Physical Education', placements: bothPrograms(1, '1st') },
+  { code: 'PATHFit 2', title: 'Exercise-based Fitness Activities', lec: 2, lab: 0, required_room_type: 'other', owner_dept: 'CPE', is_minor: true, source_dept: 'Physical Education', placements: bothPrograms(1, '2nd') },
+  { code: 'PATHFit 3', title: 'Physical Activities Toward Health and Fitness 3', lec: 2, lab: 0, required_room_type: 'other', owner_dept: 'CPE', is_minor: true, source_dept: 'Physical Education', placements: bothPrograms(2, '1st') },
+  { code: 'PATHFit 4', title: 'Physical Activities Toward Health and Fitness 4', lec: 2, lab: 0, required_room_type: 'other', owner_dept: 'CPE', is_minor: true, source_dept: 'Physical Education', placements: bothPrograms(2, '2nd') },
+  { code: 'NSTP 1', title: 'CWTS 1 / LTS 1 / ROTC 1', lec: 3, lab: 0, required_room_type: 'other', owner_dept: 'CPE', is_minor: true, source_dept: 'NSTP', placements: bothPrograms(1, '1st') },
+  { code: 'NSTP 2', title: 'CWTS 2 / LTS 2 / ROTC 2', lec: 3, lab: 0, required_room_type: 'other', owner_dept: 'CPE', is_minor: true, source_dept: 'NSTP', placements: bothPrograms(1, '2nd') },
+
+  // ── GEC electives ───────────────────────────────────────────────────────
+  // One option is placed in each GEC slot; the other options stay in the
+  // catalog so the elective picker has something to offer.
+  { code: 'MST 104', title: 'Living in the IT Era', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', is_elective: true, elective_category: 'GEC', elective_year_level: 1, elective_semester: '2nd', placements: bothPrograms(1, '2nd') },
+  { code: 'SSP 104', title: 'The Entrepreneurial Mind', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', is_elective: true, elective_category: 'GEC', elective_year_level: 2, elective_semester: '1st', placements: bothPrograms(2, '1st') },
+  { code: 'A&H 101', title: 'Great Books', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', is_elective: true, elective_category: 'GEC', elective_year_level: 2, elective_semester: '2nd', placements: bothPrograms(2, '2nd') },
+  { code: 'SSP 103', title: 'Gender and Society', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', is_elective: true, elective_category: 'GEC', elective_year_level: 2, elective_semester: '1st', placements: [] },
+  { code: 'MST 103', title: 'Human Reproduction', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', is_minor: true, source_dept: 'General Education', is_elective: true, elective_category: 'GEC', elective_year_level: 2, elective_semester: '1st', placements: [] },
+
+  // ── CPE major subjects ──────────────────────────────────────────────────
+  { code: 'CPE 111', title: 'Computer Engineering as Discipline', lec: 1, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(1, '1st') },
+  { code: 'CPE 113', title: 'Programming Logic and Design', lec: 0, lab: 2, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(1, '1st') },
+  { code: 'CPE 115', title: 'Computer Hardware Fundamentals', lec: 0, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(1, '1st') },
+  { code: 'CPE 114', title: 'Object-oriented Programming', lec: 0, lab: 2, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(1, '2nd') },
+  { code: 'CPE 112', title: 'Discrete Mathematics', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(1, '2nd') },
+  { code: 'CPE 121', title: 'Data Structures and Algorithms', lec: 0, lab: 2, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(2, '1st') },
+  { code: 'CPE 123', title: 'Fundamentals of Electrical Circuits', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(2, '1st') },
+  { code: 'CPE 125', title: 'Design Thinking and Innovation', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(2, '1st') },
+  { code: 'CPE 127', title: 'Fundamentals of Artificial Intelligence', lec: 1, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(2, '1st') },
+  { code: 'CPE 122', title: 'Software Design', lec: 3, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(2, '2nd') },
+  { code: 'CPE 124', title: 'Fundamentals of Digital Systems', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(2, '2nd') },
+  { code: 'CPE 126', title: 'Fundamentals of Electronic Circuits', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(2, '2nd') },
+  { code: 'CPE 128', title: 'Web Development', lec: 0, lab: 2, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(2, '2nd') },
+  { code: 'CPE 131', title: 'Logic Circuits and Design', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 133', title: 'Data and Digital Communication', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 135', title: 'Feedback and Control Systems', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 137', title: 'Computer Engineering Drafting and Design', lec: 0, lab: 1, required_room_type: 'drafting_room', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 141', title: 'Fundamentals of Mixed Signals and Sensors', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 143', title: 'Operating System', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 145', title: 'Introduction to HDL', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(3, '1st') },
+  { code: 'CPE 132', title: 'Microprocessors', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(3, '2nd') },
+  { code: 'CPE 134', title: 'Methods of Research (with Research Writing)', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(3, '2nd') },
+  { code: 'CPE 136', title: 'Computer Networks and Security', lec: 3, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(3, '2nd') },
+  { code: 'CPE 138', title: 'Digital Signal Processing', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(3, '2nd') },
+  { code: 'CPE 147', title: 'Embedded Systems', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(3, 'summer') },
+  { code: 'CPE 149', title: 'CpE Practice and Design 1', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(3, 'summer') },
+  { code: 'CPE 151', title: 'CpE Laws and Professional Practice', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(4, '1st') },
+  { code: 'CPE 153', title: 'Basic Occupational Health & Safety', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(4, '1st') },
+  { code: 'CPE 155', title: 'CpE Practice and Design 2', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(4, '1st') },
+  { code: 'CPE 152', title: 'Emerging Technologies in CpE', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'CPE', placements: cpeOnly(4, '2nd') },
+  { code: 'CPE 154', title: 'Computer Architecture and Organization', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'CPE', placements: cpeOnly(4, '2nd') },
+  { code: 'CPE 156', title: 'CpE Practice and Design 3', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', placements: cpeOnly(4, '2nd') },
+  { code: 'CPE 158', title: 'Seminars and Field Trips', lec: 0, lab: 1, required_room_type: 'other', owner_dept: 'CPE', placements: cpeOnly(4, '2nd') },
+  { code: 'CPE 160', title: 'On-the-Job Training (240 hours)', lec: 3, lab: 0, required_room_type: 'other', owner_dept: 'CPE', placements: cpeOnly(4, '2nd') },
+
+  // ── CPE professional electives (four tracks) ────────────────────────────
+  // The Software Development track is plotted in the prospectus. The other
+  // tracks remain available in the catalog for the elective picker.
+  { code: 'CPE SD 1', title: 'Database Management Systems', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Software Development', elective_year_level: 3, elective_semester: '1st', placements: cpeOnly(3, '1st') },
+  { code: 'CPE SD 2', title: 'Software Engineering', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Software Development', elective_year_level: 3, elective_semester: '2nd', placements: cpeOnly(3, '2nd') },
+  { code: 'CPE SD 3', title: 'Management Information System', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Software Development', elective_year_level: 4, elective_semester: '1st', placements: cpeOnly(4, '1st') },
+  { code: 'CPE RPA 1', title: 'Vision Intelligence and Machine Learning', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Robotics Process Automation', elective_year_level: 3, elective_semester: '1st', placements: [] },
+  { code: 'CPE RPA 2', title: 'Deep Learning', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Robotics Process Automation', elective_year_level: 3, elective_semester: '2nd', placements: [] },
+  { code: 'CPE RPA 3', title: 'Data Analytics', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Robotics Process Automation', elective_year_level: 4, elective_semester: '1st', placements: [] },
+  { code: 'CPE NETWORK 1', title: 'Fundamentals of Networking', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'System and Network Administration', elective_year_level: 3, elective_semester: '1st', placements: [] },
+  { code: 'CPE NETWORK 2', title: 'Routing Protocols and Concepts', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'System and Network Administration', elective_year_level: 3, elective_semester: '2nd', placements: [] },
+  { code: 'CPE NETWORK 3', title: 'LAN Switching and Wireless', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'System and Network Administration', elective_year_level: 4, elective_semester: '1st', placements: [] },
+  { code: 'CPE TECHNO 1', title: 'Basic Accounting', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Technopreneurship', elective_year_level: 3, elective_semester: '1st', placements: [] },
+  { code: 'CPE TECHNO 2', title: 'Development of Enterprise', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Technopreneurship', elective_year_level: 3, elective_semester: '2nd', placements: [] },
+  { code: 'CPE TECHNO 3', title: 'Management of Technology Enterprise', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'CPE', is_elective: true, elective_category: 'Technopreneurship', elective_year_level: 4, elective_semester: '1st', placements: [] },
+
+  // ── EE major subjects ───────────────────────────────────────────────────
+  { code: 'EE TECH 1', title: 'Wiring and Elementary Electrical Principles', lec: 0, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(1, '2nd') },
+  { code: 'EE 121', title: 'Electrical Circuits 1', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(2, '1st') },
+  { code: 'EE TECH 2', title: 'Power Wiring and Diagramming', lec: 0, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(2, '1st') },
+  { code: 'EE 122', title: 'Electrical Circuits 2', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(2, '2nd') },
+  { code: 'EE 124', title: 'Electronic Circuits: Devices and Analysis', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(2, '2nd') },
+  { code: 'EE 126', title: 'Basic Thermodynamics', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(2, '2nd') },
+  { code: 'EE 128', title: 'Electromagnetics', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(2, '2nd') },
+  { code: 'EE 131', title: 'Logic Circuits and Switching Theory', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(3, '1st') },
+  { code: 'BEE 133', title: 'Industrial Electronics', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(3, '1st') },
+  { code: 'BEE 135', title: 'Fundamentals of Electronic Communications', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(3, '1st') },
+  { code: 'EE 133', title: 'Electrical Machines 1', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(3, '1st') },
+  { code: 'EE 132', title: 'Microprocessor Systems', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(3, '2nd') },
+  { code: 'EE 134', title: 'Electrical Apparatus and Devices', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(3, '2nd') },
+  { code: 'EE 136', title: 'Electrical Machines 2', lec: 3, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(3, '2nd') },
+  { code: 'BEE 132', title: 'Basic Occupational Safety and Health', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(3, '2nd') },
+  { code: 'EEL 132', title: 'EE Laws, Codes and Personal Ethics', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(3, '2nd') },
+  { code: 'EE 138', title: 'Feedback Control Systems', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(3, '2nd') },
+  { code: 'EE 140', title: 'On the Job Training (240 hours)', lec: 2, lab: 0, required_room_type: 'other', owner_dept: 'EE', placements: eeOnly(3, 'summer') },
+  { code: 'BEE 141', title: 'Material Science & Engineering', lec: 2, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', placements: eeOnly(4, '1st') },
+  { code: 'EE 141', title: 'Electrical Standards and Practices', lec: 0, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(4, '1st') },
+  { code: 'EE 143', title: 'Instrumentation and Control', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(4, '1st') },
+  { code: 'EE 147', title: 'Electrical Systems & Illumination Engineering', lec: 3, lab: 2, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(4, '1st') },
+  { code: 'EE 149', title: 'Research Methods', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'EE', placements: eeOnly(4, '1st') },
+  { code: 'EE 142', title: 'Power System Analysis', lec: 3, lab: 2, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(4, '2nd') },
+  { code: 'EE 144', title: 'Distribution System & Substation Design', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(4, '2nd') },
+  { code: 'EE 146', title: 'Fundamentals of Power Plant Engineering Design', lec: 0, lab: 1, required_room_type: 'laboratory', owner_dept: 'EE', placements: eeOnly(4, '2nd') },
+  { code: 'EE 148', title: 'Research Project or Capstone Design', lec: 0, lab: 1, required_room_type: 'computer_lab', owner_dept: 'EE', placements: eeOnly(4, '2nd') },
+  { code: 'EE 152', title: 'Educational Tour, Field Trip and Seminars', lec: 0, lab: 1, required_room_type: 'other', owner_dept: 'EE', placements: eeOnly(4, '2nd') },
+
+  // ── EE professional electives ───────────────────────────────────────────
+  { code: 'EE 145', title: 'Power System Protection', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_elective: true, elective_category: 'EE Professional Elective', elective_year_level: 4, elective_semester: '1st', placements: eeOnly(4, '1st') },
+  { code: 'EE 150', title: 'Special Studies in Renewable Energy Resources', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_elective: true, elective_category: 'EE Professional Elective', elective_year_level: 4, elective_semester: '2nd', placements: eeOnly(4, '2nd') },
+  { code: 'EE 145.1', title: 'Advanced Electrical Systems Design', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_elective: true, elective_category: 'EE Professional Elective', elective_year_level: 4, elective_semester: '1st', placements: [] },
+  { code: 'EE 150.1', title: 'Entrepreneurship', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_elective: true, elective_category: 'EE Professional Elective', elective_year_level: 4, elective_semester: '2nd', placements: [] },
+  { code: 'EE 145.2', title: 'Machine Automation and Process Control', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'EE', is_elective: true, elective_category: 'EE Professional Elective', elective_year_level: 4, elective_semester: '1st', placements: [] },
+
+  // ── GE and ENVE stay in the seed as background departments ──────────────
+  { code: 'GE 111', title: 'Fundamentals of Surveying', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'GE', placements: geOnly(1, '1st') },
+  { code: 'GE 113', title: 'Geodetic Engineering Orientation', lec: 1, lab: 0, required_room_type: 'lecture_room', owner_dept: 'GE', placements: geOnly(1, '1st') },
+  { code: 'GE 211', title: 'Surveying Fieldwork', lec: 1, lab: 2, required_room_type: 'other', owner_dept: 'GE', placements: geOnly(2, '1st') },
+  { code: 'GE 213', title: 'Cartography', lec: 2, lab: 1, required_room_type: 'computer_lab', owner_dept: 'GE', placements: geOnly(2, '1st') },
+  { code: 'GE 311', title: 'Geodetic Positioning', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'GE', placements: geOnly(3, '1st') },
+  { code: 'GE 411', title: 'Geodetic Engineering Capstone', lec: 1, lab: 2, required_room_type: 'laboratory', owner_dept: 'GE', placements: geOnly(4, '1st') },
+  { code: 'ENVE 111', title: 'Intro to Environmental Engineering', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'ENVE', placements: enveOnly(1, '1st') },
+  { code: 'ENVE 113', title: 'Environmental Chemistry', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'ENVE', placements: enveOnly(1, '1st') },
+  { code: 'ENVE 211', title: 'Water Supply Engineering', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'ENVE', placements: enveOnly(2, '1st') },
+  { code: 'ENVE 213', title: 'Environmental Microbiology', lec: 2, lab: 1, required_room_type: 'laboratory', owner_dept: 'ENVE', placements: enveOnly(2, '1st') },
+  { code: 'ENVE 311', title: 'Air Pollution Control', lec: 3, lab: 0, required_room_type: 'lecture_room', owner_dept: 'ENVE', placements: enveOnly(3, '1st') },
+  { code: 'ENVE 411', title: 'Environmental Engineering Design', lec: 1, lab: 2, required_room_type: 'laboratory', owner_dept: 'ENVE', placements: enveOnly(4, '1st') },
+];
+
+/**
+ * Subject groups used to build faculty qualifications. A faculty member is
+ * qualified for every subject in each group listed on their record, plus a
+ * rotating pair of minor subjects from their program. The groups deliberately
+ * overlap so no major subject is left without at least one qualified teacher.
+ */
+const SPECIALIZATIONS: Record<string, string[]> = {
+  // CPE
+  cpe_core: [
+    'CPE 111', 'CPE 112', 'CPE 113', 'CPE 114', 'CPE 115', 'CPE 121',
+    'CPE 124', 'CPE 125', 'CPE 128', 'CPE 134', 'CPE 149', 'CPE 155',
+    'CPE 156', 'CPE 160',
   ],
-  EE: [
-    { code: 'EE 111',  title: 'Introduction to Electrical Engineering', lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 1, semester: '1st' }] },
-    { code: 'EE 113',  title: 'Engineering Drawing',                    lec: 1, lab: 1, required_room_type: 'drafting_room', placements: [{ year: 1, semester: '1st' }] },
-    { code: 'EE 211',  title: 'Circuit Analysis I',                     lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 2, semester: '1st' }] },
-    { code: 'EE 213',  title: 'Electrical Measurements',                lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 2, semester: '1st' }] },
-    { code: 'EE 221',  title: 'Circuit Analysis II',                    lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 2, semester: '2nd' }] },
-    { code: 'EE 311',  title: 'Electromagnetic Fields',                 lec: 3, lab: 0, required_room_type: 'lecture_room', placements: [{ year: 3, semester: '1st' }] },
-    { code: 'EE 313',  title: 'Power Systems Analysis',                 lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 3, semester: '1st' }] },
-    { code: 'EE 411',  title: 'Capstone Design Project',                lec: 1, lab: 2, required_room_type: 'laboratory',   placements: [{ year: 4, semester: '1st' }] },
+  cpe_software: [
+    'CPE 114', 'CPE 121', 'CPE 122', 'CPE 128', 'CPE 143',
+    'CPE SD 1', 'CPE SD 2', 'CPE SD 3',
   ],
-  GE: [
-    { code: 'GE 111',  title: 'Fundamentals of Surveying',              lec: 2, lab: 1, required_room_type: 'laboratory',    placements: [{ year: 1, semester: '1st' }] },
-    { code: 'GE 113',  title: 'Geodetic Engineering Orientation',       lec: 1, lab: 0, required_room_type: 'lecture_room',  placements: [{ year: 1, semester: '1st' }] },
-    { code: 'GE 211',  title: 'Surveying Fieldwork',                    lec: 1, lab: 2, required_room_type: 'other',         placements: [{ year: 2, semester: '1st' }] },
-    { code: 'GE 213',  title: 'Cartography',                            lec: 2, lab: 1, required_room_type: 'computer_lab',  placements: [{ year: 2, semester: '1st' }] },
-    { code: 'GE 311',  title: 'Geodetic Positioning',                   lec: 2, lab: 1, required_room_type: 'laboratory',    placements: [{ year: 3, semester: '1st' }] },
-    { code: 'GE 411',  title: 'Geodetic Engineering Capstone',          lec: 1, lab: 2, required_room_type: 'laboratory',    placements: [{ year: 4, semester: '1st' }] },
+  cpe_hardware: [
+    'CPE 115', 'CPE 123', 'CPE 124', 'CPE 126', 'CPE 131', 'CPE 132',
+    'CPE 135', 'CPE 137', 'CPE 138', 'CPE 141', 'CPE 145', 'CPE 147',
+    'CPE 154',
   ],
-  ENVE: [
-    { code: 'ENVE 111', title: 'Intro to Environmental Engineering',    lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 1, semester: '1st' }] },
-    { code: 'ENVE 113', title: 'Environmental Chemistry',               lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 1, semester: '1st' }] },
-    { code: 'ENVE 211', title: 'Water Supply Engineering',              lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 2, semester: '1st' }] },
-    { code: 'ENVE 213', title: 'Environmental Microbiology',            lec: 2, lab: 1, required_room_type: 'laboratory',   placements: [{ year: 2, semester: '1st' }] },
-    { code: 'ENVE 311', title: 'Air Pollution Control',                 lec: 3, lab: 0, required_room_type: 'lecture_room', placements: [{ year: 3, semester: '1st' }] },
-    { code: 'ENVE 411', title: 'Environmental Engineering Design',      lec: 1, lab: 2, required_room_type: 'laboratory',   placements: [{ year: 4, semester: '1st' }] },
+  cpe_networks: [
+    'CPE 133', 'CPE 136',
+    'CPE NETWORK 1', 'CPE NETWORK 2', 'CPE NETWORK 3',
+  ],
+  cpe_ai: ['CPE 127', 'CPE RPA 1', 'CPE RPA 2', 'CPE RPA 3'],
+  cpe_techno: [
+    'CPE 151', 'CPE 152', 'CPE 153', 'CPE 158', 'CPE 160', 'BES 142',
+    'CPE TECHNO 1', 'CPE TECHNO 2', 'CPE TECHNO 3',
+  ],
+
+  // EE
+  ee_power: [
+    'EE TECH 1', 'EE TECH 2', 'EE 126', 'EE 133', 'EE 136', 'EE 141',
+    'EE 142', 'EE 144', 'EE 145', 'EE 145.1', 'EE 145.2', 'EE 146',
+    'EE 147', 'EE 150', 'EE 150.1',
+  ],
+  ee_circuits: [
+    'EE 121', 'EE 122', 'EE 124', 'EE 128', 'EE 131', 'BEE 133', 'EE 134',
+  ],
+  ee_control: ['EE 132', 'EE 138', 'EE 143', 'BEE 135'],
+  ee_math: [
+    'BEM 111', 'BEM 112', 'BEM 114', 'BEM 121', 'BEM 122', 'BEM 131',
+    'MATH 100',
+  ],
+  ee_science: [
+    'BES 111', 'BES 112', 'BES 113', 'BES 114', 'BES 116', 'BES 121',
+    'BES 122', 'BES 123', 'BES 125', 'BES 131', 'BEE 141',
+  ],
+  ee_management: ['BES 132', 'BES 141', 'BEE 132', 'EEL 132'],
+  ee_research: ['EE 140', 'EE 148', 'EE 149', 'EE 152'],
+
+  // GE and ENVE (kept as background programs)
+  ge_surveying: ['GE 111', 'GE 113', 'GE 211', 'GE 213', 'GE 311', 'GE 411'],
+  enve_core: [
+    'ENVE 111', 'ENVE 113', 'ENVE 211', 'ENVE 213', 'ENVE 311', 'ENVE 411',
   ],
 };
 
-const FACULTY: Record<
-  string,
-  Array<{
-    first_name: string;
-    last_name: string;
-    email_local: string;
-    classification: 'regular' | 'part_time' | 'visiting_lecturer' | 'other';
-    designation?: string;
-  }>
-> = {
+type FacultyDef = {
+  first_name: string;
+  last_name: string;
+  email_local: string;
+  classification: 'regular' | 'part_time' | 'visiting_lecturer' | 'other';
+  designation?: string;
+  specializations: string[];
+};
+
+/**
+ * Ten CPE and ten EE faculty for the demo. GE and ENVE keep a small roster
+ * because they are background programs in this demo, not the focus.
+ */
+const FACULTY: Record<'CPE' | 'EE' | 'GE' | 'ENVE', FacultyDef[]> = {
   CPE: [
-    { first_name: 'Alvin',    last_name: 'Lorenzo',    email_local: 'a.lorenzo',    classification: 'regular', designation: 'Department Head' },
-    { first_name: 'Bianca',   last_name: 'Santos',     email_local: 'b.santos',     classification: 'regular' },
-    { first_name: 'Carlo',    last_name: 'Dela Cruz',  email_local: 'c.delacruz',   classification: 'regular' },
-    { first_name: 'Divina',   last_name: 'Reyes',      email_local: 'd.reyes',      classification: 'regular' },
-    { first_name: 'Enrico',   last_name: 'Bautista',   email_local: 'e.bautista',   classification: 'part_time' },
+    { first_name: 'Alvin',    last_name: 'Lorenzo',    email_local: 'a.lorenzo',    classification: 'regular', designation: 'Department Head', specializations: ['cpe_software', 'cpe_core'] },
+    { first_name: 'Bianca',   last_name: 'Santos',     email_local: 'b.santos',     classification: 'regular', specializations: ['cpe_software'] },
+    { first_name: 'Carlo',    last_name: 'Dela Cruz',  email_local: 'c.delacruz',   classification: 'regular', specializations: ['cpe_hardware'] },
+    { first_name: 'Divina',   last_name: 'Reyes',      email_local: 'd.reyes',      classification: 'regular', specializations: ['cpe_ai', 'cpe_software'] },
+    { first_name: 'Enrico',   last_name: 'Bautista',   email_local: 'e.bautista',   classification: 'part_time', specializations: ['cpe_networks'] },
+    { first_name: 'Faith',    last_name: 'Villamor',   email_local: 'f.villamor',   classification: 'regular', specializations: ['cpe_hardware', 'cpe_core'] },
+    { first_name: 'Gabriel',  last_name: 'Torres',     email_local: 'g.torres',     classification: 'regular', specializations: ['cpe_ai'] },
+    { first_name: 'Hazel',    last_name: 'Manalo',     email_local: 'h.manalo',     classification: 'regular', specializations: ['cpe_networks', 'cpe_techno'] },
+    { first_name: 'Ian',      last_name: 'Salazar',    email_local: 'i.salazar',    classification: 'visiting_lecturer', specializations: ['cpe_techno'] },
+    { first_name: 'Jasmine',  last_name: 'Ocampo',     email_local: 'j.ocampo',     classification: 'regular', specializations: ['cpe_core'] },
   ],
   EE: [
-    { first_name: 'Federico', last_name: 'Mendoza',    email_local: 'f.mendoza',    classification: 'regular', designation: 'Department Head' },
-    { first_name: 'Grace',    last_name: 'Aquino',     email_local: 'g.aquino',     classification: 'regular' },
-    { first_name: 'Hector',   last_name: 'Villanueva', email_local: 'h.villanueva', classification: 'regular' },
+    { first_name: 'Federico', last_name: 'Mendoza',    email_local: 'f.mendoza',    classification: 'regular', designation: 'Department Head', specializations: ['ee_power'] },
+    { first_name: 'Grace',    last_name: 'Aquino',     email_local: 'g.aquino',     classification: 'regular', specializations: ['ee_circuits'] },
+    { first_name: 'Hector',   last_name: 'Villanueva', email_local: 'h.villanueva', classification: 'regular', specializations: ['ee_control'] },
+    { first_name: 'Imelda',   last_name: 'Navarro',    email_local: 'i.navarro',    classification: 'regular', specializations: ['ee_power', 'ee_research'] },
+    { first_name: 'Joselito', last_name: 'Ramos',      email_local: 'j.ramos',      classification: 'regular', specializations: ['ee_circuits', 'ee_math'] },
+    { first_name: 'Katrina',  last_name: 'Flores',     email_local: 'k.flores',     classification: 'part_time', specializations: ['ee_power'] },
+    { first_name: 'Leonardo', last_name: 'Cruz',       email_local: 'l.cruz',       classification: 'regular', specializations: ['ee_control', 'ee_science'] },
+    { first_name: 'Maricel',  last_name: 'Domingo',    email_local: 'm.domingo',    classification: 'regular', specializations: ['ee_math'] },
+    { first_name: 'Nathaniel',last_name: 'Garcia',     email_local: 'n.garcia',     classification: 'visiting_lecturer', specializations: ['ee_management'] },
+    { first_name: 'Olivia',   last_name: 'Santiago',   email_local: 'o.santiago',   classification: 'regular', specializations: ['ee_research', 'ee_science'] },
   ],
   GE: [
-    { first_name: 'Isabel',   last_name: 'Ramos',      email_local: 'i.ramos',      classification: 'regular', designation: 'Department Head' },
-    { first_name: 'Joaquin',  last_name: 'Pascual',    email_local: 'j.pascual',    classification: 'regular' },
+    { first_name: 'Isabel',   last_name: 'Ramos',      email_local: 'i.ramos',      classification: 'regular', designation: 'Department Head', specializations: ['ge_surveying'] },
+    { first_name: 'Joaquin',  last_name: 'Pascual',    email_local: 'j.pascual',    classification: 'regular', specializations: ['ge_surveying'] },
   ],
   ENVE: [
-    { first_name: 'Karla',    last_name: 'Nuñez',      email_local: 'k.nunez',      classification: 'regular', designation: 'Department Head' },
-    { first_name: 'Lorenzo',  last_name: 'Castro',     email_local: 'l.castro',     classification: 'regular' },
-    { first_name: 'Marisol',  last_name: 'Tolentino',  email_local: 'm.tolentino',  classification: 'part_time' },
+    { first_name: 'Karla',    last_name: 'Nuñez',      email_local: 'k.nunez',      classification: 'regular', designation: 'Department Head', specializations: ['enve_core'] },
+    { first_name: 'Lorenzo',  last_name: 'Castro',     email_local: 'l.castro',     classification: 'regular', specializations: ['enve_core'] },
+    { first_name: 'Marisol',  last_name: 'Tolentino',  email_local: 'm.tolentino',  classification: 'part_time', specializations: ['enve_core'] },
   ],
 };
 
 const ROOMS: Array<{
   building: string;
   room_number: string;
-  room_type: string;
+  room_type: RoomType;
   capacity: number;
-  dept_code: string | null;
+  dept_code: 'CPE' | 'EE' | 'GE' | 'ENVE' | null;
 }> = [
   // CPE-owned
-  { building: 'Engineering Bldg', room_number: 'CPE-LAB1', room_type: 'computer_lab', capacity: 40, dept_code: 'CPE' },
-  { building: 'Engineering Bldg', room_number: 'CPE-LAB2', room_type: 'computer_lab', capacity: 40, dept_code: 'CPE' },
-  { building: 'Engineering Bldg', room_number: 'CPE-LEC1', room_type: 'lecture_room', capacity: 50, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-LEC1',  room_type: 'lecture_room',  capacity: 50, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-LEC2',  room_type: 'lecture_room',  capacity: 50, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-LAB1',  room_type: 'computer_lab',  capacity: 40, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-LAB2',  room_type: 'computer_lab',  capacity: 40, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-LAB3',  room_type: 'computer_lab',  capacity: 40, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-ELEC',  room_type: 'laboratory',    capacity: 35, dept_code: 'CPE' },
+  { building: 'Engineering Bldg', room_number: 'CPE-DRAFT', room_type: 'drafting_room', capacity: 40, dept_code: 'CPE' },
   // EE-owned
-  { building: 'Engineering Bldg', room_number: 'EE-LAB1',  room_type: 'laboratory',   capacity: 35, dept_code: 'EE' },
-  { building: 'Engineering Bldg', room_number: 'EE-LEC1',  room_type: 'lecture_room', capacity: 50, dept_code: 'EE' },
+  { building: 'Engineering Bldg', room_number: 'EE-LEC1',  room_type: 'lecture_room',  capacity: 50, dept_code: 'EE' },
+  { building: 'Engineering Bldg', room_number: 'EE-LEC2',  room_type: 'lecture_room',  capacity: 50, dept_code: 'EE' },
+  { building: 'Engineering Bldg', room_number: 'EE-LAB1',  room_type: 'laboratory',    capacity: 35, dept_code: 'EE' },
+  { building: 'Engineering Bldg', room_number: 'EE-LAB2',  room_type: 'laboratory',    capacity: 35, dept_code: 'EE' },
+  { building: 'Engineering Bldg', room_number: 'EE-LAB3',  room_type: 'laboratory',    capacity: 35, dept_code: 'EE' },
+  { building: 'Engineering Bldg', room_number: 'EE-DRAFT', room_type: 'drafting_room', capacity: 40, dept_code: 'EE' },
   // GE-owned
-  { building: 'Engineering Bldg', room_number: 'GE-LAB1',  room_type: 'laboratory',   capacity: 35, dept_code: 'GE' },
+  { building: 'Engineering Bldg', room_number: 'GE-LEC1',  room_type: 'lecture_room',  capacity: 50, dept_code: 'GE' },
+  { building: 'Engineering Bldg', room_number: 'GE-LAB1',  room_type: 'laboratory',    capacity: 35, dept_code: 'GE' },
   { building: 'Engineering Bldg', room_number: 'GE-DRAFT', room_type: 'drafting_room', capacity: 40, dept_code: 'GE' },
   // ENVE-owned
-  { building: 'Engineering Bldg', room_number: 'ENVE-LAB1', room_type: 'laboratory',   capacity: 35, dept_code: 'ENVE' },
   { building: 'Engineering Bldg', room_number: 'ENVE-LEC1', room_type: 'lecture_room', capacity: 50, dept_code: 'ENVE' },
-  // Shared (unowned)
-  { building: 'Main Bldg', room_number: 'AVR-1', room_type: 'lecture_room', capacity: 120, dept_code: null },
-  { building: 'Main Bldg', room_number: 'GYM',   room_type: 'other',        capacity: 300, dept_code: null },
+  { building: 'Engineering Bldg', room_number: 'ENVE-LAB1', room_type: 'laboratory',   capacity: 35, dept_code: 'ENVE' },
+  { building: 'Engineering Bldg', room_number: 'ENVE-LAB2', room_type: 'laboratory',   capacity: 35, dept_code: 'ENVE' },
+  // Shared (unowned) — used for minors and cross-department lecture demand.
+  { building: 'Main Bldg', room_number: 'AVR-1',    room_type: 'lecture_room',  capacity: 120, dept_code: null },
+  { building: 'Main Bldg', room_number: 'COE-LEC1', room_type: 'lecture_room',  capacity: 60,  dept_code: null },
+  { building: 'Main Bldg', room_number: 'COE-LEC2', room_type: 'lecture_room',  capacity: 60,  dept_code: null },
+  { building: 'Main Bldg', room_number: 'COE-LEC3', room_type: 'lecture_room',  capacity: 60,  dept_code: null },
+  { building: 'Main Bldg', room_number: 'COE-DRAFT', room_type: 'drafting_room', capacity: 40, dept_code: null },
+  { building: 'Main Bldg', room_number: 'GYM',      room_type: 'other',         capacity: 300, dept_code: null },
 ];
 
 
@@ -377,61 +645,104 @@ async function seedPrograms(): Promise<Record<string, string>> {
 async function seedSubjects(): Promise<Record<string, string>> {
   console.log('[3/9] Subjects');
   const ids: Record<string, string> = {};
+  const deptIds: Record<string, string | null> = {};
 
-  for (const [deptCode, subjects] of Object.entries(SUBJECTS)) {
-    const deptId = await deptIdFor(deptCode);
+  for (const deptCode of ['CPE', 'EE', 'GE', 'ENVE'] as const) {
+    deptIds[deptCode] = await deptIdFor(deptCode);
+  }
+
+  for (const s of SUBJECTS) {
+    const deptId = deptIds[s.owner_dept];
     if (!deptId) {
-      skip('subject', `department ${deptCode} missing`);
+      skip('subject', `${s.code}: owner department ${s.owner_dept} missing`);
       continue;
     }
 
-    for (const s of subjects) {
-      const { data: existing } = await supabase
+    const { data: existing } = await supabase
+      .from('subject')
+      .select('subject_id')
+      .eq('subject_code', s.code)
+      .maybeSingle();
+
+    const payload = {
+      subject_code: s.code,
+      title: s.title,
+      total_units: s.lec + s.lab,
+      lecture_units: s.lec,
+      lab_units: s.lab,
+      required_room_type: s.required_room_type,
+      dept_id: deptId,
+      is_minor: s.is_minor ?? false,
+      source_dept: s.source_dept ?? null,
+      is_elective: s.is_elective ?? false,
+      units_mode: 'lec_lab' as const,
+      elective_category: s.elective_category ?? null,
+      elective_year_level: s.elective_year_level ?? null,
+      elective_semester: s.elective_semester ?? null,
+      is_placeholder: false,
+      is_active: true,
+    };
+
+    if (existing) {
+      const { error } = await supabase
         .from('subject')
-        .select('subject_id')
-        .eq('subject_code', s.code)
-        .maybeSingle();
-
-      const payload = {
-        subject_code: s.code,
-        title: s.title,
-        total_units: s.lec + s.lab,
-        lecture_units: s.lec,
-        lab_units: s.lab,
-        required_room_type: s.required_room_type,
-        dept_id: deptId,
-        is_minor: s.is_minor ?? false,
-        source_dept: s.source_dept ?? null,
-        is_active: true,
-      };
-
-      if (existing) {
-        const { error } = await supabase
-          .from('subject')
-          .update(payload)
-          .eq('subject_id', existing.subject_id);
-        if (error) {
-          skip('subject', `${s.code}: ${error.message}`);
-          continue;
-        }
-        ids[s.code] = String(existing.subject_id);
-        bump('updated', 'subject');
-      } else {
-        const { data, error } = await supabase
-          .from('subject')
-          .insert(payload)
-          .select('subject_id')
-          .single();
-        if (error || !data) {
-          skip('subject', `${s.code}: ${error?.message}`);
-          continue;
-        }
-        ids[s.code] = String(data.subject_id);
-        bump('inserted', 'subject');
+        .update(payload)
+        .eq('subject_id', existing.subject_id);
+      if (error) {
+        skip('subject', `${s.code}: ${error.message}`);
+        continue;
       }
+      ids[s.code] = String(existing.subject_id);
+      bump('updated', 'subject');
+    } else {
+      const { data, error } = await supabase
+        .from('subject')
+        .insert(payload)
+        .select('subject_id')
+        .single();
+      if (error || !data) {
+        skip('subject', `${s.code}: ${error?.message}`);
+        continue;
+      }
+      ids[s.code] = String(data.subject_id);
+      bump('inserted', 'subject');
     }
-    console.log(`  ${deptCode}: ${subjects.length} subject(s)`);
   }
+
+  // Reconcile the catalog. Old demo rows that are no longer in SUBJECTS are
+  // deactivated, not deleted, so historical schedules keep their foreign keys.
+  const catalogCodes = new Set(SUBJECTS.map((s) => s.code));
+  for (const deptCode of ['CPE', 'EE', 'GE', 'ENVE'] as const) {
+    const deptId = deptIds[deptCode];
+    if (!deptId) continue;
+
+    const { data: activeRows } = await supabase
+      .from('subject')
+      .select('subject_id, subject_code')
+      .eq('dept_id', deptId)
+      .eq('is_active', true);
+
+    const stale = (activeRows ?? []).filter(
+      (row: { subject_code: string }) => !catalogCodes.has(row.subject_code),
+    );
+    if (stale.length === 0) continue;
+
+    const { error } = await supabase
+      .from('subject')
+      .update({ is_active: false })
+      .in(
+        'subject_id',
+        stale.map((row: { subject_id: unknown }) => row.subject_id),
+      );
+    if (error) {
+      skip('subject', `${deptCode} reconciliation: ${error.message}`);
+    } else {
+      bump('updated', 'subject');
+      console.log(`  ${deptCode}: ${stale.length} stale subject(s) deactivated`);
+    }
+  }
+
+  console.log(`  ${SUBJECTS.length} subject(s) ready`);
   return ids;
 }
 
@@ -445,51 +756,146 @@ async function seedProspectus(
 ): Promise<void> {
   console.log('[4/9] Prospectus');
 
-  for (const [deptCode, subjects] of Object.entries(SUBJECTS)) {
-    const programCode = PROGRAMS.find((p) => p.dept_code === deptCode)?.program_code;
-    if (!programCode) continue;
-    const programId = programIds[programCode];
+  // Flatten the catalog into the rows each program should end up with.
+  const desiredByProgram = new Map<
+    string,
+    Array<{
+      subjectCode: string;
+      subjectId: string;
+      year: YearLevel;
+      semester: Semester;
+      lec: number;
+      lab: number;
+    }>
+  >();
+
+  for (const s of SUBJECTS) {
+    const subjectId = subjectIds[s.code];
+    if (!subjectId) continue;
+
+    for (const placement of s.placements) {
+      const programId = programIds[placement.program_code];
+      if (!programId) {
+        skip('prospectus', `${placement.program_code}: program missing`);
+        continue;
+      }
+      const rows = desiredByProgram.get(programId) ?? [];
+      rows.push({
+        subjectCode: s.code,
+        subjectId,
+        year: placement.year,
+        semester: placement.semester,
+        lec: s.lec,
+        lab: s.lab,
+      });
+      desiredByProgram.set(programId, rows);
+    }
+  }
+
+  for (const p of PROGRAMS) {
+    const programId = programIds[p.program_code];
     if (!programId) {
-      skip('prospectus', `${programCode}: program missing`);
+      skip('prospectus', `${p.program_code}: program missing`);
       continue;
     }
 
-    let count = 0;
-    for (const s of subjects) {
-      const subjectId = subjectIds[s.code];
-      if (!subjectId) continue;
+    const desired = desiredByProgram.get(programId) ?? [];
+    const desiredKeys = new Set(
+      desired.map((d) => `${d.subjectId}:${d.year}:${d.semester}`),
+    );
 
-      for (const placement of s.placements) {
-        const { data: existing } = await supabase
+    const { data: existingRows, error: readError } = await supabase
+      .from('prospectus')
+      .select('prospectus_id, subject_id, year_level, semester, is_active')
+      .eq('program_id', programId);
+    if (readError) {
+      skip('prospectus', `${p.program_code}: ${readError.message}`);
+      continue;
+    }
+
+    const byKey = new Map<
+      string,
+      { prospectus_id: unknown; is_active: boolean }
+    >();
+    for (const row of existingRows ?? []) {
+      byKey.set(
+        `${row.subject_id}:${row.year_level}:${row.semester}`,
+        row,
+      );
+    }
+
+    let activeCount = 0;
+    let staleCount = 0;
+
+    for (const d of desired) {
+      const key = `${d.subjectId}:${d.year}:${d.semester}`;
+      const existing = byKey.get(key);
+
+      // Session lengths follow the unit load: a lecture unit is one contact
+      // hour per week and a lab unit is three contact hours. The values stay
+      // inside the prospectus CHECK constraints.
+      const payload = {
+        program_id: programId,
+        subject_id: d.subjectId,
+        year_level: d.year,
+        semester: d.semester,
+        is_active: true,
+        lecture_sessions_per_week: 1,
+        lecture_minutes_per_session: Math.min(240, Math.max(30, d.lec * 60)),
+        lab_sessions_per_week: Math.min(3, Math.max(1, d.lab)),
+        lab_minutes_per_session: 180,
+      };
+
+      if (existing) {
+        const { error } = await supabase
           .from('prospectus')
-          .select('prospectus_id')
-          .eq('program_id', programId)
-          .eq('subject_id', subjectId)
-          .eq('year_level', placement.year)
-          .eq('semester', placement.semester)
-          .maybeSingle();
-
-        if (existing) {
-          bump('updated', 'prospectus');
-          count++;
-        } else {
-          const { error } = await supabase.from('prospectus').insert({
-            program_id: programId,
-            subject_id: subjectId,
-            year_level: placement.year,
-            semester: placement.semester,
-            is_active: true,
-          });
-          if (error) {
-            skip('prospectus', `${s.code} Y${placement.year} ${placement.semester}: ${error.message}`);
-          } else {
-            bump('inserted', 'prospectus');
-            count++;
-          }
+          .update(payload)
+          .eq('prospectus_id', existing.prospectus_id);
+        if (error) {
+          skip(
+            'prospectus',
+            `${d.subjectCode} Y${d.year} ${d.semester}: ${error.message}`,
+          );
+          continue;
         }
+        bump('updated', 'prospectus');
+      } else {
+        const { error } = await supabase.from('prospectus').insert(payload);
+        if (error) {
+          skip(
+            'prospectus',
+            `${d.subjectCode} Y${d.year} ${d.semester}: ${error.message}`,
+          );
+          continue;
+        }
+        bump('inserted', 'prospectus');
+      }
+      activeCount++;
+    }
+
+    // Old demo rows that are no longer part of the curriculum are deactivated
+    // rather than deleted so any linked schedule keeps its reference.
+    for (const [key, row] of byKey) {
+      if (!row.is_active || desiredKeys.has(key)) continue;
+
+      const { error } = await supabase
+        .from('prospectus')
+        .update({ is_active: false })
+        .eq('prospectus_id', row.prospectus_id);
+      if (error) {
+        skip('prospectus', `${p.program_code} deactivate: ${error.message}`);
+      } else {
+        bump('updated', 'prospectus');
+        staleCount++;
       }
     }
-    console.log(`  ${programCode}: ${count} prospectus row(s)`);
+
+    console.log(
+      `  ${p.program_code}: ${activeCount} active row(s)` +
+        (staleCount > 0
+          ? `, ${staleCount} stale row(s) deactivated`
+          : ''),
+    );
   }
 }
 
@@ -558,16 +964,19 @@ async function seedRooms(): Promise<Record<string, string>> {
  * (prevent_owned_room_preference) that raises if the room has a non-null
  * dept_id. So preferences may only reference SHARED (dept_id IS NULL) rooms.
  *
- * For a demo, each dept gets a preference for both shared rooms at priority 1.
+ * For a demo, each dept gets a preference for every shared room at priority 1.
  * That exercises rule F3 / S-6 without tripping the trigger.
  */
 async function seedRoomPreferences(
   roomIds: Record<string, string>,
 ): Promise<void> {
   console.log('[6/9] Room preferences');
-  const sharedRoomKeys = ['Main Bldg::AVR-1', 'Main Bldg::GYM'];
-  const sharedRooms = sharedRoomKeys
-    .map((k) => ({ key: k, roomId: roomIds[k] }))
+  const sharedRooms = ROOMS
+    .filter((r) => r.dept_code === null)
+    .map((r) => ({
+      key: `${r.building}::${r.room_number}`,
+      roomId: roomIds[`${r.building}::${r.room_number}`],
+    }))
     .filter((r): r is { key: string; roomId: string } => !!r.roomId);
 
   if (sharedRooms.length === 0) {
@@ -619,14 +1028,26 @@ async function seedFaculty(
   console.log('[7/9] Faculty');
   const ids: Record<string, string> = {};
 
-  for (const [deptCode, people] of Object.entries(FACULTY)) {
+  for (const deptCode of ['CPE', 'EE', 'GE', 'ENVE'] as const) {
+    const people = FACULTY[deptCode];
     const deptId = await deptIdFor(deptCode);
     if (!deptId) {
       skip('faculty', `department ${deptCode} missing`);
       continue;
     }
 
-    for (const f of people) {
+    const programCode = PROGRAMS.find(
+      (p) => p.dept_code === deptCode,
+    )?.program_code;
+    const programMinorCodes = programCode
+      ? SUBJECTS.filter(
+          (s) =>
+            s.is_minor &&
+            s.placements.some((p) => p.program_code === programCode),
+        ).map((s) => s.code)
+      : [];
+
+    for (const [index, f] of people.entries()) {
       const email = `${f.email_local}@wmsu.edu.ph`;
       const { data: existing } = await supabase
         .from('faculty')
@@ -645,7 +1066,13 @@ async function seedFaculty(
       }
 
       const releaseHours = Number(designationRow?.release_hours ?? 0);
-      const requiredHours = Math.max(0, 18 - releaseHours);
+      const baseHours =
+        f.classification === 'part_time'
+          ? 12
+          : f.classification === 'visiting_lecturer'
+            ? 9
+            : 18;
+      const requiredHours = Math.max(0, baseHours - releaseHours);
 
       const payload = {
         first_name: f.first_name,
@@ -687,38 +1114,90 @@ async function seedFaculty(
       ids[`${deptCode}::${f.email_local}`] = facultyId;
 
       // ── Qualifications ──
-      // Each faculty is qualified to teach all non-minor subjects of their
-      // department, plus up to two minor subjects (shared with the dept).
-      const deptSubjects = SUBJECTS[deptCode] ?? [];
-      const majorCodes = deptSubjects
-        .filter((s) => !s.is_minor)
-        .map((s) => s.code);
-      const minorCodes = deptSubjects
-        .filter((s) => s.is_minor)
-        .slice(0, 2)
-        .map((s) => s.code);
-      const qualCodes = new Set([...majorCodes, ...minorCodes]);
+      // The specialization groups cover the major subjects. Minor subjects
+      // are assigned round-robin across the department so every shared
+      // subject has at least one qualified teacher for manual plotting.
+      const qualCodes = new Set<string>();
+      for (const spec of f.specializations) {
+        for (const code of SPECIALIZATIONS[spec] ?? []) {
+          qualCodes.add(code);
+        }
+      }
 
+      for (let i = index; i < programMinorCodes.length; i += people.length) {
+        qualCodes.add(programMinorCodes[i]);
+      }
+
+      // Read existing quals first so the report can distinguish inserts from
+      // updates and the stale cleanup can reuse the same rows.
+      const { data: existingQuals } = await supabase
+        .from('faculty_qualification')
+        .select('qual_id, subject_id')
+        .eq('faculty_id', facultyId);
+
+      const existingSubjectIds = new Set(
+        (existingQuals ?? []).map((q: { subject_id: unknown }) =>
+          String(q.subject_id),
+        ),
+      );
+
+      const desiredSubjectIds = new Set<string>();
       for (const code of qualCodes) {
         const subjectId = subjectIds[code];
         if (!subjectId) continue;
+        desiredSubjectIds.add(subjectId);
+
         const { error } = await supabase
           .from('faculty_qualification')
           .upsert(
-            { faculty_id: facultyId, subject_id: subjectId, source_system: 'demo-seed' },
+            {
+              faculty_id: facultyId,
+              subject_id: subjectId,
+              source_system: 'demo-seed',
+            },
             { onConflict: 'faculty_id,subject_id' },
           );
-        if (!error) bump('inserted', 'faculty_qualification');
+        if (!error) {
+          bump(
+            existingSubjectIds.has(subjectId) ? 'updated' : 'inserted',
+            'faculty_qualification',
+          );
+        }
+      }
+
+      // Drop quals that are no longer part of this faculty's load.
+      const staleQuals = (existingQuals ?? []).filter(
+        (q: { subject_id: unknown }) =>
+          !desiredSubjectIds.has(String(q.subject_id)),
+      );
+      if (staleQuals.length > 0) {
+        const { error } = await supabase
+          .from('faculty_qualification')
+          .delete()
+          .in(
+            'qual_id',
+            staleQuals.map((q: { qual_id: unknown }) => q.qual_id),
+          );
+        if (error) {
+          skip('faculty_qualification', `${email}: ${error.message}`);
+        } else {
+          bump('updated', 'faculty_qualification', staleQuals.length);
+        }
       }
 
       // ── Preferences ──
-      // A couple of faculty per dept prefer mornings. day_of_week column
-      // uses the public.day_of_week enum ('Monday', not 'MON').
-      if (people.indexOf(f) % 3 === 0) {
-        await supabase.from('faculty_preference').delete().eq('faculty_id', facultyId);
+      // Every third faculty member prefers a morning block. The day rotates
+      // so the demo does not stack every preference on Monday.
+      await supabase
+        .from('faculty_preference')
+        .delete()
+        .eq('faculty_id', facultyId);
+
+      if (index % 3 === 0) {
+        const preferredDays = ['Monday', 'Wednesday', 'Friday'] as const;
         const { error } = await supabase.from('faculty_preference').insert({
           faculty_id: facultyId,
-          preferred_day: 'Monday',
+          preferred_day: preferredDays[index % preferredDays.length],
           preferred_start_time: '07:00',
           preferred_end_time: '12:00',
         });
@@ -726,19 +1205,25 @@ async function seedFaculty(
       }
 
       // ── Unavailability ──
-      // One faculty per dept has a recurring Wednesday block.
-      // day_of_week is TEXT with a CHECK constraint, term_id is nullable.
-      if (people.indexOf(f) === people.length - 1) {
-        await supabase.from('faculty_unavailability').delete().eq('faculty_id', facultyId);
-        const { error } = await supabase.from('faculty_unavailability').insert({
-          faculty_id: facultyId,
-          term_id: null,
-          day_of_week: 'Wednesday',
-          start_time: '13:00',
-          end_time: '17:00',
-          reason: '[demo-seed] recurring department meeting',
-          source: 'local',
-        });
+      // The last two faculty in each department have a recurring afternoon
+      // block for department meetings.
+      await supabase
+        .from('faculty_unavailability')
+        .delete()
+        .eq('faculty_id', facultyId);
+
+      if (index >= people.length - 2) {
+        const { error } = await supabase
+          .from('faculty_unavailability')
+          .insert({
+            faculty_id: facultyId,
+            term_id: null,
+            day_of_week: index % 2 === 0 ? 'Wednesday' : 'Thursday',
+            start_time: '13:00',
+            end_time: '17:00',
+            reason: '[demo-seed] recurring department meeting',
+            source: 'local',
+          });
         if (!error) bump('inserted', 'faculty_unavailability');
       }
     }
@@ -752,12 +1237,12 @@ async function seedFaculty(
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * 4 sections per year level × 4 years = 16 sections per department.
- * section.student_count, not expected_enrollment.
+ * Section counts come from SECTION_LETTERS: BSCPE and the background
+ * programs get one section per year level; BSEE gets two. Old demo sections
+ * outside that set are deactivated rather than deleted.
  */
 async function seedSections(programIds: Record<string, string>): Promise<void> {
   console.log('[8/9] Sections');
-  const LETTERS = ['A', 'B', 'C', 'D'];
 
   for (const p of PROGRAMS) {
     const programId = programIds[p.program_code];
@@ -766,9 +1251,13 @@ async function seedSections(programIds: Record<string, string>): Promise<void> {
       continue;
     }
 
+    const letters = SECTION_LETTERS[p.program_code as ProgramCode] ?? ['A'];
+    const desiredCodes = new Set<string>();
+
     for (let year = 1; year <= 4; year++) {
-      for (const letter of LETTERS) {
+      for (const letter of letters) {
         const sectionCode = `${p.program_code}-${year}${letter}`;
+        desiredCodes.add(sectionCode);
 
         const { data: existing } = await supabase
           .from('section')
@@ -780,7 +1269,9 @@ async function seedSections(programIds: Record<string, string>): Promise<void> {
           section_code: sectionCode,
           program_id: programId,
           year_level: year,
-          student_count: 40,
+          // 35 fits every demo lab (the smallest rooms seat 35), so the
+          // cohort-overflow rule does not warn on every laboratory block.
+          student_count: 35,
           is_active: true,
         };
 
@@ -804,7 +1295,37 @@ async function seedSections(programIds: Record<string, string>): Promise<void> {
         }
       }
     }
-    console.log(`  ${p.program_code}: 16 section(s)`);
+
+    const { data: activeSections } = await supabase
+      .from('section')
+      .select('section_id, section_code')
+      .eq('program_id', programId)
+      .eq('is_active', true);
+
+    const stale = (activeSections ?? []).filter(
+      (s: { section_code: string }) => !desiredCodes.has(s.section_code),
+    );
+    if (stale.length > 0) {
+      const { error } = await supabase
+        .from('section')
+        .update({ is_active: false })
+        .in(
+          'section_id',
+          stale.map((s: { section_id: unknown }) => s.section_id),
+        );
+      if (error) {
+        skip('section', `${p.program_code} reconciliation: ${error.message}`);
+      } else {
+        bump('updated', 'section');
+      }
+    }
+
+    console.log(
+      `  ${p.program_code}: ${desiredCodes.size} section(s)` +
+        (stale.length > 0
+          ? `, ${stale.length} stale section(s) deactivated`
+          : ''),
+    );
   }
 }
 
@@ -1002,14 +1523,15 @@ export async function seedDemoData(
   console.log('  Next:');
   console.log('    1. Open Dev Tools as administrator -> Refresh now.');
   console.log('       Verify counts: subject>0, faculty>0, section>0, prospectus>0.');
+  console.log('       Expected demo shape: BSCPE 4 sections, BSEE 8 sections,');
+  console.log('       10 CPE faculty, 10 EE faculty, full CPE/EE prospectuses.');
   console.log('    2. Optional: check room sufficiency via');
   console.log('       GET /v1/scheduling/room-sufficiency?deptId=<CPE dept_id>');
   console.log('       If "sufficient": false, add rooms to ROOMS and re-run.');
-  console.log('    3. Open Timetable as head.cpe@wmsu.edu.ph and click');
-  console.log('       Auto-generate. Expect the pre-flight warning:');
-  console.log('       "3 minor subjects in the prospectus have not been plotted".');
-  console.log('       Click confirm to generate without minors, then manually');
-  console.log('       plot MATH 100 / US 101 / PATHFit 1 to clear the warning.');
+  console.log('    3. Open Timetable as head.cpe@wmsu.edu.ph (or head.ee@wmsu.edu.ph)');
+  console.log('       and click Auto-generate. The pre-flight warning lists the minor');
+  console.log('       subjects still unplotted. Confirm to generate without minors,');
+  console.log('       then plot those minors manually to clear the warning.');
   console.log('===============================================================');
 
   return report;
