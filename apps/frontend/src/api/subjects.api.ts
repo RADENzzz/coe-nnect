@@ -14,7 +14,7 @@ export type SubjectRoomType =
 
 export type UnitsMode = 'lec_lab' | 'total_only';
 
-export type ElectiveSemester = '1st' | '2nd' | 'summer';
+export type ElectiveSemester = string;
 
 export interface SubjectRecord {
   subjectId: string;

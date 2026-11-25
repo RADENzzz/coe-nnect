@@ -140,7 +140,8 @@ function isYearTermHeading(text: string): boolean {
     .trim();
   const yearWord = 'first|second|third|fourth|fifth|sixth';
   const yearNum = '[1-6](?:st|nd|rd|th)?';
-  const semesterWord = 'first|second|1st|2nd|summer|midyear|mid year';
+  const semesterWord =
+    'first|second|third|fourth|1st|2nd|3rd|4th|summer|midyear|mid year|trimester|quarter';
   const semesterSuffix = `(?:\\s+(?:${semesterWord})(?:\\s+(?:semester|sem|term))?)?`;
 
   return (

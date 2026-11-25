@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { SubjectsService } from '../src/modules/subjects/subjects.service';
 import { createFakeRepository } from './fakes/repository.fake';
+import { createFakeSemesters } from './fakes/semesters.fake';
 
 const admin = { role: 'administrator', deptId: null } as any;
 
@@ -74,6 +75,7 @@ describe('SubjectsService.toggleActive prospectus cascade', () => {
       prospectusRepo as any,
       emptyRepo as any,
       departments as any,
+      createFakeSemesters() as any,
     );
   });
 
@@ -129,6 +131,7 @@ describe('SubjectsService elective units', () => {
       emptyRepo as any,
       emptyRepo as any,
       departments as any,
+      createFakeSemesters() as any,
     );
     return { service, subjectRepo };
   }
@@ -265,6 +268,7 @@ describe('SubjectsService.remove', () => {
       prospectusRepo as any,
       qualificationRepo as any,
       departments as any,
+      createFakeSemesters() as any,
     );
     return {
       service,
@@ -377,6 +381,7 @@ describe('SubjectsService elective metadata', () => {
       emptyRepo as any,
       emptyRepo as any,
       departments as any,
+      createFakeSemesters() as any,
     );
     return { service, subjectRepo };
   }
@@ -474,5 +479,66 @@ describe('SubjectsService elective metadata', () => {
     await service.update('e1', { electiveCategory: '   ' } as any, admin);
 
     expect(subjectRepo.rows[0].electiveCategory).toBeNull();
+  });
+});
+
+describe('SubjectsService semester validation', () => {
+  function createService(semesters = createFakeSemesters()) {
+    const subjectRepo = createFakeRepository(
+      [
+        subjectRow({
+          subjectId: '1',
+          isElective: true,
+          electiveSemester: 'summer',
+        }),
+      ],
+      { idKey: 'subjectId' },
+    );
+    const emptyRepo = createFakeRepository([]);
+    const departments = {
+      assertDepartmentActive: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new SubjectsService(
+      subjectRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      departments as any,
+      semesters as any,
+    );
+    return { service, subjectRepo };
+  }
+
+  const electiveDto = (overrides: Record<string, any> = {}) => ({
+    subjectCode: 'GEC 101',
+    title: 'Gender and Society',
+    totalUnits: 3,
+    lectureUnits: 3,
+    labUnits: 0,
+    isElective: true,
+    unitsMode: 'lec_lab',
+    deptId: '7',
+    ...overrides,
+  });
+
+  it('rejects an unknown elective semester', async () => {
+    const { service } = createService();
+
+    await expect(
+      service.create(electiveDto({ electiveSemester: '3rd' }) as any, admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('does not revalidate an inactive semester when the update leaves it unchanged', async () => {
+    const semesters = createFakeSemesters(
+      ['1st', '2nd', 'summer'],
+      ['1st', '2nd'],
+    );
+    const { service } = createService(semesters);
+
+    await service.update('1', { title: 'Renamed' } as any, admin);
+
+    expect(semesters.assertUsable).not.toHaveBeenCalled();
   });
 });

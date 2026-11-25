@@ -64,7 +64,7 @@ export class Subject {
 
   /** Preferred semester, or null when the elective fits any term. */
   @Column({ name: 'elective_semester', type: 'text', nullable: true })
-  electiveSemester: '1st' | '2nd' | 'summer' | null;
+  electiveSemester: string | null;
 
   /**
    * Room type constraint for the subject.

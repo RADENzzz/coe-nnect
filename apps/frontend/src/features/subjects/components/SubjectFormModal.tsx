@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import type { Department } from '../../../api/departments.api';
 import {
   createSubject,
@@ -135,6 +136,7 @@ export default function SubjectFormModal({
   onSuccess,
 }: Props) {
   const qc = useQueryClient();
+  const { options } = useSemesterTypes();
   const isWizard = mode === 'create';
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -864,9 +866,11 @@ export default function SubjectFormModal({
                 className={inputClass(false)}
               >
                 <option value="">Any term</option>
-                <option value="1st">1st Semester</option>
-                <option value="2nd">2nd Semester</option>
-                <option value="summer">Summer</option>
+                {options(form.electiveSemester).map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
             </FormField>
           </div>

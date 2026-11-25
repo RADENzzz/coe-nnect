@@ -1,4 +1,5 @@
 import Icon from '@/components/ui/Icon';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 import type { ColumnRole, ProspectusPdfTable } from '../types';
 import type { ExtractedRow } from '../hooks/useExtractedTableData';
 import { tableLabel } from '../utils/labels';
@@ -42,6 +43,7 @@ export default function TableRowsEditor({
   onDelete,
   onCellChange,
 }: TableRowsEditorProps) {
+  const { shortLabelFor } = useSemesterTypes();
   const selectedIndex = extractedRows.findIndex(
     (row) => row.row_id === selectedRowId,
   );
@@ -60,7 +62,11 @@ export default function TableRowsEditor({
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-on-surface">
-            Rows — {tableLabel(table)}
+            Rows —{' '}
+            {tableLabel(
+              table,
+              table.semester ? shortLabelFor(table.semester) : null,
+            )}
           </div>
           <p className="text-[10px] text-on-surface-variant">
             Select a row to edit its cells or reorder it.

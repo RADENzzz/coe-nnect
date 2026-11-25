@@ -22,6 +22,7 @@ import {
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
 import { FacultyQualification } from '../faculty/entities/faculty-qualification.entity';
 import { DepartmentsService } from '../departments/departments.service';
+import { SemestersService } from '../semesters/semesters.service';
 
 const PG_FK_VIOLATION = '23503';
 
@@ -39,6 +40,7 @@ export class SubjectsService {
     @InjectRepository(FacultyQualification)
     private readonly qualificationRepo: Repository<FacultyQualification>,
     private readonly departments: DepartmentsService,
+    private readonly semesters: SemestersService,
   ) {}
 
   private async assertOwnership(
@@ -117,6 +119,10 @@ export class SubjectsService {
       unitsMode,
     });
 
+    if (dto.electiveSemester) {
+      await this.semesters.assertUsable(dto.electiveSemester);
+    }
+
     const entity = this.repo.create({
       subjectCode: dto.subjectCode,
       title: dto.title,
@@ -194,6 +200,10 @@ export class SubjectsService {
       isElective: nextIsElective,
       unitsMode: nextUnitsMode,
     });
+
+    if (dto.electiveSemester !== undefined && dto.electiveSemester !== null) {
+      await this.semesters.assertUsable(dto.electiveSemester);
+    }
 
     if (dto.subjectCode !== undefined) {
       found.subjectCode = dto.subjectCode;

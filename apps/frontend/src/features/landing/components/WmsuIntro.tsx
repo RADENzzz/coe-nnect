@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import WmsuSeal from '../../../components/brand/WmsuSeal';
 import { useMotionEnabled } from '../../../hooks/use-motion-enabled';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 /**
  * Session-scoped key: the splash plays on the first landing-page visit in a
@@ -47,11 +48,8 @@ export default function WmsuIntro() {
   // Hold the page still behind the splash.
   useEffect(() => {
     if (!visible) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [visible]);
 
   // Hand the page over after the hold, unless the visitor skips ahead.

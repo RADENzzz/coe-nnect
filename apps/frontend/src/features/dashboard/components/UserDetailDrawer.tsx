@@ -8,6 +8,7 @@ import type { FacultyRequest } from '../../../api/faculty-requests.api';
 import { humanizeRole, initials, relativeTime } from '../utils/dashboard.utils';
 import { useNow } from '../../../hooks/use-now';
 import { formatLastSeen } from '../../../lib/utils/format.util';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 export default function UserDetailDrawer({
   open,
@@ -35,11 +36,10 @@ export default function UserDetailDrawer({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const release = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
+      release();
     };
   }, [open, onClose]);
 

@@ -9,6 +9,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -83,8 +84,11 @@ export class CreateTableDto {
   year_level?: number | null;
 
   @IsOptional()
-  @IsIn(['1st', '2nd', 'summer'])
-  semester?: '1st' | '2nd' | 'summer' | null;
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9_-]{0,19}$/, {
+    message: 'semester must be a lowercase code of 1-20 letters, digits, hyphens, or underscores',
+  })
+  semester?: string | null;
 
   /**
    * `regular` (default) is the curriculum table for a year/semester.

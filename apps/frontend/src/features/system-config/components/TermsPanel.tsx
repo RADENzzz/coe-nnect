@@ -9,11 +9,16 @@ import {
   deleteTerm,
   type Term,
   type CreateTermInput,
-  type SemesterType,
 } from '../../../api/terms.api';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { useSemesterTypes } from '../../../hooks/use-semester-types';
+import { matchSemesterType } from '../../../lib/semester-match';
+import {
+  initialActiveSemesterCode,
+  nextActiveSemesterCode,
+} from './term-semester-suggestion';
 
 interface Props {
   isAdmin: boolean;
@@ -46,31 +51,12 @@ function fmtDateRange(
   return 'Dates not set';
 }
 
-/**
- * Pick the semester enum value from a term name like "2nd Semester" or
- * "Summer 2027". Returns null if nothing matches.
- */
-function inferSemesterFromName(name: string): SemesterType | null {
-  const n = name.toLowerCase();
-  if (/summer/.test(n)) return 'summer';
-  if (/2nd|second/.test(n)) return '2nd';
-  if (/1st|first/.test(n)) return '1st';
-  return null;
-}
-
-/**
- * Map a term name to the enum value. Also used for the initial form.
- */
-function defaultSemesterForTermName(name: string): SemesterType {
-  return inferSemesterFromName(name) ?? '1st';
-}
-
 const EMPTY_FORM: CreateTermInput = {
   termName: '1st Semester',
   schoolYear: '',
   startDate: '',
   endDate: '',
-  semester: '1st',
+  semester: '',
   setActive: false,
 };
 
@@ -87,6 +73,15 @@ function apiErrorMessage(err: any, fallback: string): string {
 export default function TermsPanel({ isAdmin }: Props) {
   const qc = useQueryClient();
   const feedback = useFeedback();
+  const {
+    types,
+    activeTypes,
+    options,
+    labelFor,
+    shortLabelFor,
+    isLoading: typesLoading,
+    isError: typesError,
+  } = useSemesterTypes();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const newTermRequested = searchParams.get('newTerm') === '1';
@@ -128,18 +123,11 @@ export default function TermsPanel({ isAdmin }: Props) {
         d.setFullYear(d.getFullYear() + 1);
         return d.toISOString().slice(0, 10);
       };
-      // Infer semester from the latest term's name, but shift forward if
-      // it was 1st sem (the natural next term is 2nd).
-      const inferred = inferSemesterFromName(latest.termName);
-      const nextSemester: SemesterType =
-        inferred === '1st' ? '2nd' : (inferred ?? '1st');
+      // Suggest the next catalog type after the latest term's semester.
+      const inferred = matchSemesterType(latest.termName, types)?.code;
+      const nextSemester = nextActiveSemesterCode(types, inferred) ?? '';
       setForm({
-        termName:
-          nextSemester === '2nd'
-            ? '2nd Semester'
-            : nextSemester === 'summer'
-            ? 'Summer'
-            : '1st Semester',
+        termName: nextSemester ? labelFor(nextSemester) : latest.termName,
         schoolYear: nextSy,
         startDate: shiftDate(latest.startDate),
         endDate: shiftDate(latest.endDate),
@@ -147,15 +135,31 @@ export default function TermsPanel({ isAdmin }: Props) {
         setActive: terms.length > 0 && !terms.some((t) => t.isActive),
       });
     } else {
-      setForm(EMPTY_FORM);
+      const defaultSemester = initialActiveSemesterCode(types) ?? '';
+      setForm({
+        ...EMPTY_FORM,
+        termName: defaultSemester
+          ? labelFor(defaultSemester)
+          : EMPTY_FORM.termName,
+        semester: defaultSemester,
+      });
     }
     setFormOpen(true);
-  }, [terms]);
+  }, [terms, types, labelFor]);
 
-  // A dashboard/search shortcut can deep-link here with ?newTerm=1.
-  // Wait for terms to load so the form can suggest the next school year.
+  // A dashboard/search shortcut can deep-link here with ?newTerm=1. Wait for
+  // both queries: terms supply the next school year, and the semester catalog
+  // supplies a usable semester. If the catalog fails, keep newTerm in the URL
+  // so a later successful refetch can still open a complete form.
   useEffect(() => {
-    if (!isAdmin || !newTermRequested || isLoading) return;
+    if (
+      !isAdmin ||
+      !newTermRequested ||
+      isLoading ||
+      typesLoading ||
+      typesError
+    )
+      return;
     openForm();
     setSearchParams(
       (prev) => {
@@ -165,7 +169,15 @@ export default function TermsPanel({ isAdmin }: Props) {
       },
       { replace: true },
     );
-  }, [isAdmin, isLoading, newTermRequested, openForm, setSearchParams]);
+  }, [
+    isAdmin,
+    isLoading,
+    typesLoading,
+    typesError,
+    newTermRequested,
+    openForm,
+    setSearchParams,
+  ]);
 
   // A term search result links here with ?termId=...; make the row easy to find.
   useEffect(() => {
@@ -360,7 +372,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                       </span>
                       {t.semester && (
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded">
-                          {t.semester}
+                          {shortLabelFor(t.semester)}
                         </span>
                       )}
                       {t.isActive && (
@@ -449,7 +461,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                 value={form.termName}
                 onChange={(e) => {
                   const name = e.target.value;
-                  const inferred = inferSemesterFromName(name);
+                  const inferred = matchSemesterType(name, types)?.code;
                   setForm((p) => ({
                     ...p,
                     termName: name,
@@ -459,9 +471,11 @@ export default function TermsPanel({ isAdmin }: Props) {
                 }}
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
-                <option value="1st Semester">1st Semester</option>
-                <option value="2nd Semester">2nd Semester</option>
-                <option value="Summer">Summer</option>
+                {activeTypes.map((t) => (
+                  <option key={t.code} value={t.label}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -474,14 +488,16 @@ export default function TermsPanel({ isAdmin }: Props) {
                 onChange={(e) =>
                   setForm((p) => ({
                     ...p,
-                    semester: e.target.value as SemesterType,
+                    semester: e.target.value,
                   }))
                 }
                 className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
               >
-                <option value="1st">1st Semester</option>
-                <option value="2nd">2nd Semester</option>
-                <option value="summer">Summer</option>
+                {options(form.semester).map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
               <p className="text-[10px] text-on-surface-variant mt-1">
                 Controls which prospectus subjects the solver schedules for

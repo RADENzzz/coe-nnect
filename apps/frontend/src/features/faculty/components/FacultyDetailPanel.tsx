@@ -4,6 +4,7 @@ import Icon from '../../../components/ui/Icon';
 import StatusBadge, { ActiveBadge } from '../../../components/ui/StatusBadge';
 import { isAnyModalOpen } from '../../../components/ui/Modal';
 import type { FacultyRecord, FacultyClass } from '../../../api/faculty.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 const CLASS_TONE: Record<FacultyClass, 'info' | 'warning' | 'purple' | 'neutral'> = {
   regular: 'info',
@@ -81,11 +82,8 @@ export default function FacultyDetailPanel({
   // Lock body scroll while open
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   const copy = async (key: string, value: string) => {

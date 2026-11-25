@@ -11,6 +11,7 @@ import {
 } from '../../api/system-config.api';
 import Icon from '../../components/ui/Icon';
 import TermsPanel from './components/TermsPanel';
+import SemesterTypesPanel from './components/SemesterTypesPanel';
 import Modal from '../../components/ui/Modal';
 import { useFeedback } from '../../components/ui/FeedbackToast';
 
@@ -407,8 +408,9 @@ export default function SystemConfigPage() {
       )}
 
       {/* Academic Terms — FR 7.1.4 */}
-      <div data-tour="sysconfig-terms">
+      <div data-tour="sysconfig-terms" className="space-y-5">
         <TermsPanel isAdmin={isAdmin} />
+        <SemesterTypesPanel isAdmin={isAdmin} />
       </div>
 
       {isLoading ? (

@@ -3,6 +3,7 @@ import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
 import type { ProspectusPdfTable } from '../types';
 import { tableLabel } from '../utils/labels';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 import type { TextItem } from '../hooks/usePdfTextLayer';
 import ExtractedTable from './ExtractedTable';
 import {
@@ -28,6 +29,7 @@ export default function ExtractedTableModal({
   table,
   textItems,
 }: ExtractedTableModalProps) {
+  const { shortLabelFor } = useSemesterTypes();
   const { rows, columnStats, totalCellsFilled } = useExtractedTableData(
     table,
     textItems,
@@ -53,7 +55,10 @@ export default function ExtractedTableModal({
   };
 
   const title = table
-    ? `Extracted · ${tableLabel(table)}`
+    ? `Extracted · ${tableLabel(
+        table,
+        table.semester ? shortLabelFor(table.semester) : null,
+      )}`
     : 'Extracted table';
 
   return (

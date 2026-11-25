@@ -1,3 +1,4 @@
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 import type { ProspectusPdfTable, RowBox } from '../types';
 import { pdfRectToScreen, type PageView } from '../utils/coords';
 import { tableLabel } from '../utils/labels';
@@ -54,6 +55,7 @@ export default function TableRegion({
   onCancelTable,
   isSaving,
 }: TableRegionProps) {
+  const { shortLabelFor } = useSemesterTypes();
   const regionScreen = pdfRectToScreen(
     {
       x_start_pt: Number(table.regionXStartPt),
@@ -64,7 +66,10 @@ export default function TableRegion({
     pageView,
   );
 
-  const label = tableLabel(table);
+  const label = tableLabel(
+    table,
+    table.semester ? shortLabelFor(table.semester) : null,
+  );
   const sortedRows = [...table.rows].sort(
     (a, b) => b.y_top_pt - a.y_top_pt,
   );

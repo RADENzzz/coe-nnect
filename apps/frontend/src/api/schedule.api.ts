@@ -55,7 +55,7 @@ export interface Term {
   termId: string;
   termName: string;
   schoolYear: string;
-  semester: '1st' | '2nd' | 'summer' | null;
+  semester: string | null;
   startDate: string;
   endDate: string;
   isActive: boolean;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
 import type {
@@ -6,12 +6,8 @@ import type {
   SemesterType,
   TableKind,
 } from '../types';
-import {
-  MAX_TABLES,
-  nextFreeCombination,
-  SEMESTERS,
-  YEAR_LEVELS,
-} from '../constants';
+import { maxTables, nextFreeCombination, YEAR_LEVELS } from '../constants';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 
 interface AddTableDialogProps {
   open: boolean;
@@ -32,10 +28,19 @@ export default function AddTableDialog({
   onConfirm,
   existingTables,
 }: AddTableDialogProps) {
+  const {
+    activeTypes,
+    shortLabelFor,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useSemesterTypes();
   const [year, setYear] = useState(1);
-  const [semester, setSemester] = useState<SemesterType>('1st');
+  const [semester, setSemester] = useState<SemesterType>(
+    () => activeTypes[0]?.code ?? '',
+  );
   const [tableKind, setTableKind] = useState<TableKind>('regular');
   const [label, setLabel] = useState('');
+  const wasOpenRef = useRef(false);
 
   const regularTables = useMemo(
     () =>
@@ -54,29 +59,48 @@ export default function AddTableDialog({
   );
 
   const free = useMemo(
-    () => nextFreeCombination(regularTables),
-    [regularTables],
+    () => nextFreeCombination(regularTables, activeTypes),
+    [regularTables, activeTypes],
   );
-  const maxTablesReached = existingTables.length >= MAX_TABLES;
+  const catalogReady = !catalogLoading && !catalogError;
+  const totalTables = maxTables(activeTypes.length);
+  const maxTablesReached =
+    catalogReady && existingTables.length >= totalTables;
   const isElective = tableKind === 'elective';
+  const missingSemester = !isElective && catalogReady && !semester;
+  const catalogUnavailableForRegular = !isElective && !catalogReady;
 
   useEffect(() => {
-    if (!open) return;
-    const start = nextFreeCombination(regularTables);
-    setYear(start?.yearLevel ?? 1);
-    setSemester(start?.semester ?? '1st');
-    setTableKind('regular');
-    setLabel('');
-  }, [open, regularTables]);
+    if (open && !wasOpenRef.current) {
+      const start = nextFreeCombination(regularTables, activeTypes);
+      setYear(start?.yearLevel ?? 1);
+      setSemester(start?.semester ?? activeTypes[0]?.code ?? '');
+      setTableKind('regular');
+      setLabel('');
+    }
+    wasOpenRef.current = open;
+  }, [open, regularTables, activeTypes]);
+
+  // The catalog loads asynchronously. Repair an unfilled selection once its
+  // active types arrive, without overwriting a type the user already picked.
+  useEffect(() => {
+    if (activeTypes.length === 0) return;
+    if (semester && activeTypes.some((t) => t.code === semester)) return;
+    const start = nextFreeCombination(regularTables, activeTypes);
+    setSemester(start?.semester ?? activeTypes[0].code);
+    if (start) setYear(start.yearLevel);
+  }, [activeTypes, semester, regularTables]);
 
   const taken = (y: number, s: SemesterType) =>
     tableKind === 'regular' &&
     regularTables.some((t) => t.yearLevel === y && t.semester === s);
 
   const conflict = !isElective && taken(year, semester);
+  const blocked =
+    conflict || missingSemester || maxTablesReached || catalogUnavailableForRegular;
 
   const handleConfirm = () => {
-    if (conflict || maxTablesReached) return;
+    if (blocked) return;
     const trimmedLabel = label.trim().slice(0, 200);
     if (isElective) {
       // Electives are optioned: they are assigned to a year/term later.
@@ -104,7 +128,7 @@ export default function AddTableDialog({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={conflict || maxTablesReached}
+            disabled={blocked}
             className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50"
           >
             Next: Draw region
@@ -201,17 +225,17 @@ export default function AddTableDialog({
               </label>
               <div className="grid grid-cols-6 gap-2">
                 {YEAR_LEVELS.map((y) => {
-                  const allTaken = SEMESTERS.every((s) => taken(y, s.value));
+                  const allTaken = activeTypes.every((s) => taken(y, s.code));
                   return (
                     <button
                       key={y}
                       type="button"
                       onClick={() => {
                         setYear(y);
-                        const firstFree = SEMESTERS.find(
-                          (s) => !taken(y, s.value),
+                        const firstFree = activeTypes.find(
+                          (s) => !taken(y, s.code),
                         );
-                        if (firstFree) setSemester(firstFree.value);
+                        if (firstFree) setSemester(firstFree.code);
                       }}
                       disabled={maxTablesReached || allTaken}
                       title={
@@ -242,13 +266,13 @@ export default function AddTableDialog({
                 Semester
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {SEMESTERS.map((s) => {
-                  const isTaken = taken(year, s.value);
+                {activeTypes.map((s) => {
+                  const isTaken = taken(year, s.code);
                   return (
                     <button
-                      key={s.value}
+                      key={s.code}
                       type="button"
-                      onClick={() => setSemester(s.value)}
+                      onClick={() => setSemester(s.code)}
                       disabled={maxTablesReached || isTaken}
                       title={
                         isTaken
@@ -259,7 +283,7 @@ export default function AddTableDialog({
                         py-2 rounded-lg text-sm font-semibold transition
                         disabled:opacity-40 disabled:cursor-not-allowed
                         ${
-                          semester === s.value
+                          semester === s.code
                             ? 'bg-primary text-on-primary'
                             : 'bg-surface-container-low text-on-surface hover:bg-surface-container-high'
                         }
@@ -281,28 +305,52 @@ export default function AddTableDialog({
 
         {conflict && (
           <div className="p-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 text-xs">
-            A regular table for Year {year} {semester} already exists. Pick
-            another combination or switch the table type to Elective.
+            A regular table for Year {year} {shortLabelFor(semester)} already
+            exists. Pick another combination or switch the table type to
+            Elective.
+          </div>
+        )}
+
+        {catalogUnavailableForRegular && catalogLoading && (
+          <div className="p-3 rounded-lg bg-slate-100 border border-slate-300 text-slate-700 text-xs">
+            Loading semester types… Choose a semester before creating a
+            regular table.
+          </div>
+        )}
+
+        {catalogUnavailableForRegular && catalogError && (
+          <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-800 text-xs">
+            Semester types could not be loaded, so a regular table cannot be
+            created right now. Retry after the catalog service recovers.
+          </div>
+        )}
+
+        {missingSemester && (
+          <div className="p-3 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 text-xs">
+            No semester types are configured yet. Add one in System Config
+            before creating a regular table.
           </div>
         )}
 
         {maxTablesReached && (
           <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-800 text-xs">
-            All {MAX_TABLES} table slots are already mapped for this PDF (
-            {YEAR_LEVELS.length} years × {SEMESTERS.length} semesters). Delete a
-            table before adding another.
+            All {totalTables} table slots are already mapped for this PDF (
+            {YEAR_LEVELS.length} years × {activeTypes.length} semesters). Delete
+            a table before adding another.
           </div>
         )}
 
-        {!conflict && !maxTablesReached && (
+        {!blocked && (
           <p className="text-xs text-on-surface-variant">
             {!isElective && free
-              ? `Next free regular combination: Year ${free.yearLevel} ${free.semester}. `
+              ? `Next free regular combination: Year ${free.yearLevel} ${shortLabelFor(
+                  free.semester,
+                )}. `
               : ''}
             After clicking next, drag a rectangle on the PDF to mark the{' '}
             {isElective
               ? 'elective table'
-              : `Year ${year} ${semester} table`}
+              : `Year ${year} ${shortLabelFor(semester)} table`}
             .
           </p>
         )}

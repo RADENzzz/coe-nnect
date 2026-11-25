@@ -6,7 +6,7 @@ export type ColumnRole =
   | 'lab'
   | 'total';
 
-export type SemesterType = '1st' | '2nd' | 'summer';
+export type SemesterType = string;
 
 /** Regular curriculum tables are unique per year/semester; electives may repeat. */
 export type TableKind = 'regular' | 'elective';

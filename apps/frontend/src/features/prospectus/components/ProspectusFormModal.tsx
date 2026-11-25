@@ -11,14 +11,9 @@ import type { ProgramRecord } from '../../../api/programs.api';
 import type { SubjectRecord } from '../../../api/subjects.api';
 import Modal from '../../../components/ui/Modal';
 import Icon from '../../../components/ui/Icon';
+import { useSemesterTypes } from '../../../hooks/use-semester-types';
 
 // ── Constants ──
-
-const SEMESTERS: { value: SemesterType; label: string; short: string }[] = [
-  { value: '1st', label: '1st Semester', short: '1st' },
-  { value: '2nd', label: '2nd Semester', short: '2nd' },
-  { value: 'summer', label: 'Summer', short: 'Summer' },
-];
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
 
@@ -130,7 +125,7 @@ const EMPTY_FORM: FormState = {
   programId: '',
   subjectId: '',
   yearLevel: 1,
-  semester: '1st',
+  semester: '',
   lectureSessionsPerWeek: 1,
   lectureMinutesPerSession: 90,
   labSessionsPerWeek: 1,
@@ -176,6 +171,11 @@ export default function ProspectusFormModal({
 }: Props) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { activeTypes, labelFor } = useSemesterTypes();
+  const createSemesterDefault =
+    (defaultSemester && activeTypes.some((t) => t.code === defaultSemester)
+      ? defaultSemester
+      : activeTypes[0]?.code) ?? '';
 
   const isWizard = !editing;
 
@@ -254,7 +254,7 @@ export default function ProspectusFormModal({
         ...EMPTY_FORM,
         programId: defaultProgramId ?? '',
         yearLevel: defaultYearLevel ?? 1,
-        semester: defaultSemester ?? '1st',
+        semester: createSemesterDefault,
       });
       setSubjectSearch('');
     }
@@ -265,6 +265,15 @@ export default function ProspectusFormModal({
     setConfirmClose(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing?.prospectusId, defaultProgramId, defaultYearLevel, defaultSemester]);
+
+  // The catalog may resolve after the modal opens; repair a create-mode
+  // semester that is empty or no longer active without touching editing rows.
+  useEffect(() => {
+    if (!open || editing || activeTypes.length === 0) return;
+    if (!activeTypes.some((t) => t.code === form.semester)) {
+      setForm((p) => ({ ...p, semester: activeTypes[0].code }));
+    }
+  }, [open, editing, activeTypes, form.semester]);
 
   // ── Close dropdown on outside click ──
   useEffect(() => {
@@ -463,7 +472,7 @@ export default function ProspectusFormModal({
       form.programId !== (defaultProgramId ?? '') ||
       !!form.subjectId ||
       form.yearLevel !== (defaultYearLevel ?? 1) ||
-      form.semester !== (defaultSemester ?? '1st') ||
+      form.semester !== createSemesterDefault ||
       stepIdx > 0
     );
   };
@@ -485,11 +494,10 @@ export default function ProspectusFormModal({
     );
     if (program) parts.push(`[${program.programCode}]`);
     if (form.yearLevel) parts.push(`${form.yearLevel}${ordinalSuffix(form.yearLevel)} Year`);
-    const sem = SEMESTERS.find((s) => s.value === form.semester);
-    if (sem) parts.push(sem.label);
+    if (form.semester) parts.push(labelFor(form.semester));
     if (selectedSubject) parts.push(`${selectedSubject.subjectCode} · ${selectedSubject.title}`);
     return parts.join(' · ');
-  }, [programs, form.programId, form.yearLevel, form.semester, selectedSubject]);
+  }, [programs, form.programId, form.yearLevel, form.semester, selectedSubject, labelFor]);
 
   // ── Apply preset ──
   const applyLecturePreset = (preset: Preset) => {
@@ -782,6 +790,7 @@ function PlacementStep({
   subjectsInCurrentProgram: Set<string>;
   editing: ProspectusRecord | null;
 }) {
+  const { options, shortLabelFor } = useSemesterTypes();
   const isElective = selectedSubject?.isElective ?? false;
   return (
     <FormSection title="Placement" icon="place">
@@ -948,10 +957,8 @@ function PlacementStep({
                                       : 'Any year'}
                                   </span>
                                   <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600">
-                                    {s.electiveSemester === 'summer'
-                                      ? 'Summer'
-                                      : s.electiveSemester
-                                      ? `${s.electiveSemester} sem`
+                                    {s.electiveSemester
+                                      ? shortLabelFor(s.electiveSemester)
                                       : 'Any term'}
                                   </span>
                                 </>
@@ -1005,9 +1012,9 @@ function PlacementStep({
               }
               className={inputClass(!!fieldErrors.semester)}
             >
-              {SEMESTERS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
+              {options(form.semester).map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.label}
                 </option>
               ))}
             </select>
@@ -1039,10 +1046,8 @@ function PlacementStep({
                   ? `Year ${selectedSubject.electiveYearLevel}`
                   : 'Any year'}
                 {' · '}
-                {selectedSubject.electiveSemester === 'summer'
-                  ? 'Summer'
-                  : selectedSubject.electiveSemester
-                  ? `${selectedSubject.electiveSemester} semester`
+                {selectedSubject.electiveSemester
+                  ? shortLabelFor(selectedSubject.electiveSemester)
                   : 'Any term'}
                 . Electives can also fill code-less elective rows in a
                 prospectus.
@@ -1342,10 +1347,11 @@ function ReviewStep({
   totalHours: number;
   isMinor: boolean;
 }) {
+  const { labelFor } = useSemesterTypes();
   const program = programs.find(
     (p) => String(p.programId) === String(form.programId),
   );
-  const semLabel = SEMESTERS.find((s) => s.value === form.semester)?.label ?? '';
+  const semLabel = labelFor(form.semester);
 
   return (
     <div className="space-y-3">

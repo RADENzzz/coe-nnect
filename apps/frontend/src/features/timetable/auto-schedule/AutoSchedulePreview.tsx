@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import TimetableGrid from '../components/TimetableGrid';
 import Icon from '../../../components/ui/Icon';
 import type { ScheduleEntry } from '../types';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface Props {
   solvedSchedule: ScheduleEntry[];
@@ -37,11 +38,8 @@ export default function AutoSchedulePreview({
   // The route wrapper keeps a transform after its entrance animation, so a
   // `fixed` child would size itself to the page instead of the viewport.
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, []);
 
   const total = solvedSchedule.length;

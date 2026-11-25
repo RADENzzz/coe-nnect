@@ -10,6 +10,7 @@ import {
   type SubjectRoomType,
   type SubjectRestriction,
 } from '../../../api/subjects.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 type Tab = 'details' | 'restrictions';
 
@@ -77,11 +78,8 @@ export default function SubjectDetailPanel({
   // Lock body scroll.
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   // Restrictions — shared cache with the RestrictionsPanel.

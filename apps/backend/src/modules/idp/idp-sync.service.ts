@@ -18,6 +18,7 @@ import { IdpProcessedEvent } from './entities/idp-processed-event.entity';
 import { IdpClientService, IdpUpstreamError } from './idp-client.service';
 import { IdpError, idpErrors } from './idp.errors';
 import { isUniqueViolation } from './idp-persistence.util';
+import { TERM_CODE_PATTERN } from './term-code';
 import type {
   IdpFacultyChangeEvent,
   IdpFacultyInboxBody,
@@ -838,11 +839,13 @@ export class IdpSyncService {
     if (!value) throw idpErrors.unknownTerm(termCode);
 
     // term_code = school_year + "-" + semester
-    const match = /^(\d{4}-\d{4})-(1st|2nd|summer)$/.exec(value);
-    if (!match) throw idpErrors.unknownTerm(value);
+    if (!TERM_CODE_PATTERN.test(value)) throw idpErrors.unknownTerm(value);
 
     const term = await this.termRepo.findOne({
-      where: { schoolYear: match[1], semester: match[2] as any },
+      where: {
+        schoolYear: value.slice(0, 9),
+        semester: value.slice(10) as any,
+      },
     });
     if (!term) throw idpErrors.unknownTerm(value);
     return String(term.termId);

@@ -4,7 +4,7 @@ import { api } from './client';
 // Core types
 // ────────────────────────────────────────────
 
-export type SemesterType = '1st' | '2nd' | 'summer';
+export type SemesterType = string;
 
 export interface ProgramRef {
   programId: string;

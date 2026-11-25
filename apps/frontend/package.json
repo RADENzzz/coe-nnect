@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test server-csp.test.mjs src/features/landing/camera-inertia.test.ts src/features/landing/camera-orbit-capture.test.ts src/features/import/components/classifier-logic.test.ts src/components/ui/modal-backdrop.test.ts src/store/theme-transition.test.mjs",
+    "test": "node --test server-csp.test.mjs src/features/landing/camera-inertia.test.ts src/features/landing/camera-orbit-capture.test.ts src/features/import/constants.test.ts src/features/import/utils/draftSelection.test.ts src/features/import/components/classifier-logic.test.ts src/components/ui/modal-backdrop.test.ts src/store/theme-transition.test.mjs src/lib/semester-match.test.ts src/hooks/semester-type-options.test.ts src/features/system-config/components/term-semester-suggestion.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },

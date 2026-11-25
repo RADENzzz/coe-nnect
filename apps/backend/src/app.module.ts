@@ -19,6 +19,7 @@ import { ProgramsModule } from './modules/programs/programs.module';
 import { SystemConfigModule } from './modules/system-config/system-config.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { TermsModule } from './modules/terms/terms.module';
+import { SemestersModule } from './modules/semesters/semesters.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { ProspectusPdfsModule } from './modules/prospectus-pdfs/prospectus-pdfs.module';
@@ -61,6 +62,7 @@ import { RecoveryModule } from './modules/recovery/recovery.module';
     SystemConfigModule,
     AuditModule,
     TermsModule,
+    SemestersModule,
     ChatModule,
     ProspectusPdfsModule,
     NotificationsModule,

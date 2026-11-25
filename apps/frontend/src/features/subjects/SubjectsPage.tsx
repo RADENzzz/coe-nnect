@@ -12,6 +12,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import { useSemesterTypes } from '../../hooks/use-semester-types';
 import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
@@ -76,6 +77,7 @@ function extractErrorMessage(err: any, fallback: string): string {
 
 export default function SubjectsPage() {
   const qc = useQueryClient();
+  const { shortLabelFor } = useSemesterTypes();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
@@ -910,9 +912,7 @@ export default function SubjectsPage() {
       const termLabel =
         electiveSemesterFilter === 'none'
           ? 'Unassigned'
-          : electiveSemesterFilter === 'summer'
-          ? 'Summer'
-          : `${electiveSemesterFilter} semester`;
+          : shortLabelFor(electiveSemesterFilter);
       pills.push({
         label: `Elective term: ${termLabel}`,
         onRemove: () => setFilter('eterm', ''),
@@ -931,6 +931,7 @@ export default function SubjectsPage() {
     electiveSemesterFilter,
     departments,
     setFilter,
+    shortLabelFor,
   ]);
 
   // ── Sorting header helper ──
@@ -1023,12 +1024,9 @@ export default function SubjectsPage() {
   const renderElectiveMeta = (s: SubjectRecord) => {
     if (!s.isElective) return <span className="text-slate-400">—</span>;
     const category = s.electiveCategory?.trim();
-    const term =
-      s.electiveSemester === 'summer'
-        ? 'Summer'
-        : s.electiveSemester
-        ? `${s.electiveSemester} sem`
-        : null;
+    const term = s.electiveSemester
+      ? shortLabelFor(s.electiveSemester)
+      : null;
     return (
       <span className="inline-flex flex-wrap items-center gap-1 text-[10px]">
         <span

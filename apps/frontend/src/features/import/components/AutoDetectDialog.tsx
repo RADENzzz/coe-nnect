@@ -5,6 +5,8 @@ import {
   createProspectusPdfTable,
   detectProspectusPdfTables,
 } from '@/api/prospectus-pdfs.api';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
+import { matchSemesterType, type SemesterLike } from '@/lib/semester-match';
 import type {
   DetectedTableProposal,
   ProspectusPdfTable,
@@ -12,14 +14,21 @@ import type {
   TableKind,
 } from '../types';
 import { COLUMN_LABELS, COLUMN_ORDER } from '../types';
+import {
+  mergeCatalogSeededDrafts,
+  partitionSelectedDrafts,
+} from '../utils/draftSelection';
 import { isElectiveGroupHeading } from '../utils/rowDetection';
-import { MAX_TABLES, SEMESTERS, YEAR_LEVELS } from '../constants';
+import { maxTables, YEAR_LEVELS } from '../constants';
 
 interface DraftProposal extends DetectedTableProposal {
   selected: boolean;
   year: number;
-  semester: SemesterType;
+  /** Null until a recognized catalog type is chosen (required for regular tables). */
+  semester: SemesterType | null;
   tableKind: TableKind;
+  /** Parser text that did not resolve to a catalog type. */
+  unrecognizedSemester: string | null;
   /** Elective group name typed by the user before creating. */
   name: string;
 }
@@ -39,6 +48,7 @@ function pairKey(year: number, semester: SemesterType) {
 /** First free (year, semester) across mapped tables plus drafts already chosen. */
 function firstFreePair(
   taken: { yearLevel: number; semester: SemesterType }[],
+  semesters: string[],
   preferredYear?: number | null,
 ): { year: number; semester: SemesterType } {
   const isTaken = (year: number, semester: SemesterType) =>
@@ -48,11 +58,11 @@ function firstFreePair(
     ? [preferredYear, ...YEAR_LEVELS.filter((y) => y !== preferredYear)]
     : [...YEAR_LEVELS];
   for (const year of years) {
-    for (const { value: semester } of SEMESTERS) {
+    for (const semester of semesters) {
       if (!isTaken(year, semester)) return { year, semester };
     }
   }
-  return { year: YEAR_LEVELS[0], semester: '1st' };
+  return { year: YEAR_LEVELS[0], semester: semesters[0] ?? '' };
 }
 
 /**
@@ -72,6 +82,8 @@ function proposalLooksElective(proposal: DetectedTableProposal): boolean {
 function seedDrafts(
   proposals: DetectedTableProposal[],
   existing: ProspectusPdfTable[],
+  semesters: string[],
+  types: SemesterLike[],
 ): DraftProposal[] {
   const assigned: { yearLevel: number; semester: SemesterType }[] = existing
     .filter(
@@ -94,27 +106,35 @@ function seedDrafts(
     const tableKind: TableKind = proposalLooksElective(proposal)
       ? 'elective'
       : 'regular';
-    let year = proposal.yearLevel;
-    let semester = proposal.semester;
+    const detectedYear = proposal.yearLevel;
+    let year = detectedYear ?? YEAR_LEVELS[0];
+    const matched = proposal.semester
+      ? matchSemesterType(proposal.semester, types)
+      : null;
+    let unrecognizedSemester =
+      proposal.semester && !matched ? proposal.semester : null;
+    let semester: SemesterType | null = matched?.code ?? null;
 
     if (tableKind === 'elective') {
-      // Electives are not tied to a year/term. The selects below still need a
-      // value, but it is never sent to the API for an elective table.
-      year = year ?? YEAR_LEVELS[0];
-      semester = semester ?? '1st';
-    } else if (year != null && semester != null) {
+      // Electives are not tied to a year/term, so the semester is never sent.
+      semester = null;
+      unrecognizedSemester = null;
+    } else if (unrecognizedSemester) {
+      // Leave the type unset. The user must pick one; no hard-coded fallback.
+    } else if (detectedYear != null && semester != null) {
       // Keep the parser's inference even when it collides — the user needs
       // to see the conflict, not have it silently replaced.
-    } else if (year != null) {
-      semester = firstFreePair(assigned, year).semester;
+    } else if (detectedYear != null) {
+      semester =
+        firstFreePair(assigned, semesters, detectedYear).semester || null;
     } else {
-      const free = firstFreePair(assigned);
+      const free = firstFreePair(assigned, semesters);
       year = free.year;
-      semester = free.semester;
+      semester = free.semester || null;
     }
 
     // Only regular tables reserve a year/term; electives may repeat freely.
-    if (tableKind === 'regular') {
+    if (tableKind === 'regular' && semester) {
       assigned.push({ yearLevel: year, semester });
     }
 
@@ -124,6 +144,7 @@ function seedDrafts(
       year,
       semester,
       tableKind,
+      unrecognizedSemester,
       name:
         tableKind === 'elective' && isElectiveGroupHeading(proposal.label)
           ? proposal.label
@@ -139,7 +160,22 @@ export default function AutoDetectDialog({
   existingTables,
   onCreated,
 }: AutoDetectDialogProps) {
+  const {
+    activeTypes,
+    types,
+    options,
+    shortLabelFor,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useSemesterTypes();
+  const catalogReady = !catalogLoading && !catalogError;
   const [drafts, setDrafts] = useState<DraftProposal[]>([]);
+  const [rawProposals, setRawProposals] = useState<DetectedTableProposal[]>([]);
+  const editedProposalIdsRef = useRef<Set<string>>(new Set());
+  const seededCatalogKeyRef = useRef('');
+  const catalogKey = `${types.map((t) => t.code).join('|')}:${activeTypes
+    .map((t) => t.code)
+    .join('|')}`;
   const [warnings, setWarnings] = useState<string[]>([]);
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -149,14 +185,33 @@ export default function AutoDetectDialog({
   const wasOpenRef = useRef(false);
 
   const runDetect = useCallback(async () => {
+    // The cap comes from the catalog; scanning with an unresolved one would
+    // silently truncate proposals before the late-catalog re-seed can help.
+    if (catalogLoading) return;
+    if (catalogError) {
+      setError(
+        'Semester types could not be loaded. Re-scan after the catalog is available.',
+      );
+      return;
+    }
     setLoading(true);
     setError(null);
     setScanned(false);
     try {
       const result = await detectProspectusPdfTables(pdfId, {
-        maxTables: MAX_TABLES,
+        maxTables: maxTables(activeTypes.length),
       });
-      setDrafts(seedDrafts(result.proposals, existingTables));
+      setRawProposals(result.proposals);
+      setDrafts(
+        seedDrafts(
+          result.proposals,
+          existingTables,
+          activeTypes.map((t) => t.code),
+          types,
+        ),
+      );
+      editedProposalIdsRef.current = new Set();
+      seededCatalogKeyRef.current = catalogKey;
       setWarnings(result.warnings ?? []);
       setPageCount(result.pageCount);
       setScanned(true);
@@ -168,17 +223,52 @@ export default function AutoDetectDialog({
     } finally {
       setLoading(false);
     }
-  }, [pdfId, existingTables]);
+  }, [
+    pdfId,
+    existingTables,
+    activeTypes,
+    types,
+    catalogKey,
+    catalogLoading,
+    catalogError,
+  ]);
 
   useEffect(() => {
-    if (open && !wasOpenRef.current) {
-      setDrafts([]);
-      setWarnings([]);
-      setError(null);
-      void runDetect();
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
     }
-    wasOpenRef.current = open;
-  }, [open, runDetect]);
+    if (!catalogReady || wasOpenRef.current) return;
+    setDrafts([]);
+    setRawProposals([]);
+    setWarnings([]);
+    setError(null);
+    setScanned(false);
+    void runDetect();
+    wasOpenRef.current = true;
+  }, [open, catalogReady, runDetect]);
+
+  // Detection may finish before the catalog query does. Re-resolve untouched
+  // drafts when types arrive or change; dean edits are keyed by proposal ID.
+  useEffect(() => {
+    if (!scanned || rawProposals.length === 0) return;
+    if (seededCatalogKeyRef.current === catalogKey) return;
+    seededCatalogKeyRef.current = catalogKey;
+
+    const freshDrafts = seedDrafts(
+      rawProposals,
+      existingTables,
+      activeTypes.map((t) => t.code),
+      types,
+    );
+    const editedProposalIds = editedProposalIdsRef.current;
+    setDrafts((prev) =>
+      mergeCatalogSeededDrafts(prev, freshDrafts, editedProposalIds),
+    );
+    // `activeTypes` and `types` are fresh arrays on each render; catalogKey
+    // carries the values that matter here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogKey, scanned, rawProposals]);
 
   const existingPairs = useMemo(
     () =>
@@ -204,10 +294,10 @@ export default function AutoDetectDialog({
     const counts = new Map<string, number>();
     for (const draft of drafts) {
       if (!draft.selected || draft.tableKind === 'elective') continue;
-      // A regular table without all six roles cannot be created, so it must
-      // not reserve a year/term and block a valid proposal.
+      // A regular table without all six roles or a semester cannot be
+      // created, so it must not reserve a year/term and block a valid one.
       const roles = new Set(draft.columns.map((column) => column.role));
-      if (roles.size !== 6) continue;
+      if (roles.size !== 6 || !draft.semester) continue;
       const key = pairKey(draft.year, draft.semester);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
@@ -220,6 +310,15 @@ export default function AutoDetectDialog({
     // Electives are optioned subjects and may repeat for any year/term.
     if (draft.tableKind === 'elective') return null;
 
+    if (!draft.semester) {
+      return {
+        kind: 'invalid',
+        message: draft.unrecognizedSemester
+          ? `Not recognized: ${draft.unrecognizedSemester}. Pick a semester for Year ${draft.year} before creating this table.`
+          : `Pick a semester for Year ${draft.year} before creating this table.`,
+      };
+    }
+
     const roles = new Set(draft.columns.map((column) => column.role));
     if (roles.size !== 6) {
       return {
@@ -231,24 +330,23 @@ export default function AutoDetectDialog({
     }
 
     const key = pairKey(draft.year, draft.semester);
+    const semesterLabel = shortLabelFor(draft.semester);
     if (existingPairs.has(key)) {
       return {
         kind: 'conflict',
-        message: `Year ${draft.year} ${draft.semester} is already mapped. Pick another semester or year.`,
+        message: `Year ${draft.year} ${semesterLabel} is already mapped. Pick another semester or year.`,
       };
     }
     if ((selectedPairCounts.get(key) ?? 0) > 1) {
       return {
         kind: 'conflict',
-        message: `Another selected proposal also uses Year ${draft.year} ${draft.semester}. Pick another semester or year.`,
+        message: `Another selected proposal also uses Year ${draft.year} ${semesterLabel}. Pick another semester or year.`,
       };
     }
     return null;
   };
 
-  const ready = drafts.filter(
-    (draft) => draft.selected && issueFor(draft) == null,
-  );
+  const { ready, blocking } = partitionSelectedDrafts(drafts, issueFor);
 
   const updateDraft = (
     proposalId: string,
@@ -259,6 +357,7 @@ export default function AutoDetectDialog({
       >
     >,
   ) => {
+    editedProposalIdsRef.current.add(proposalId);
     setDrafts((prev) =>
       prev.map((draft) =>
         draft.proposalId === proposalId ? { ...draft, ...patch } : draft,
@@ -267,7 +366,7 @@ export default function AutoDetectDialog({
   };
 
   const handleCreate = async () => {
-    if (ready.length === 0) return;
+    if (blocking.length > 0 || ready.length === 0) return;
     setCreating(true);
     setError(null);
     const created: ProspectusPdfTable[] = [];
@@ -334,7 +433,7 @@ export default function AutoDetectDialog({
           <button
             type="button"
             onClick={() => void runDetect()}
-            disabled={loading || creating}
+            disabled={loading || creating || catalogLoading || catalogError}
             className="px-3 py-2 text-sm font-semibold border border-surface-variant rounded-lg hover:bg-surface-container-low transition disabled:opacity-50 flex items-center gap-1.5"
           >
             <Icon
@@ -356,7 +455,9 @@ export default function AutoDetectDialog({
           <button
             type="button"
             onClick={() => void handleCreate()}
-            disabled={creating || ready.length === 0}
+            disabled={
+              creating || catalogError || blocking.length > 0 || ready.length === 0
+            }
             className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
           >
             {creating && (
@@ -368,14 +469,40 @@ export default function AutoDetectDialog({
             )}
             {creating
               ? 'Creating…'
-              : ready.length > 0
-                ? `Create ${ready.length} table${ready.length === 1 ? '' : 's'}`
-                : 'Create tables'}
+              : blocking.length > 0
+                ? `Resolve ${blocking.length} issue${blocking.length === 1 ? '' : 's'}`
+                : ready.length > 0
+                  ? `Create ${ready.length} table${ready.length === 1 ? '' : 's'}`
+                  : 'Create tables'}
           </button>
         </>
       }
     >
       <div className="space-y-4">
+        {catalogLoading && (
+          <div className="flex items-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
+            <Icon
+              name="progress_activity"
+              size={16}
+              className="animate-spin text-primary"
+            />
+            Loading semester types before scanning…
+          </div>
+        )}
+
+        {catalogError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+          >
+            <Icon name="error" size={17} className="shrink-0 mt-0.5" />
+            <span className="flex-1">
+              Semester types could not be loaded. Re-scan after the catalog is
+              available.
+            </span>
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center gap-3 rounded-lg border border-surface-variant bg-surface-container-low px-4 py-6">
             <Icon
@@ -394,7 +521,7 @@ export default function AutoDetectDialog({
           </div>
         )}
 
-        {error && (
+        {error && !catalogError && (
           <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
             <Icon name="error" size={17} className="shrink-0 mt-0.5" />
             <div className="flex-1">{error}</div>
@@ -434,15 +561,19 @@ export default function AutoDetectDialog({
             </span>
             <button
               type="button"
-              onClick={() =>
-                setDrafts((prev) =>
-                  prev.map((draft) => ({
+              onClick={() => {
+                setDrafts((prev) => {
+                  // This action changes every draft's `selected` field.
+                  editedProposalIdsRef.current = new Set(
+                    prev.map((draft) => draft.proposalId),
+                  );
+                  return prev.map((draft) => ({
                     ...draft,
                     selected:
                       draft.status === 'new' && issueFor(draft) == null,
-                  })),
-                )
-              }
+                  }));
+                });
+              }}
               className="ml-auto text-xs font-semibold text-primary hover:underline"
             >
               Select all without conflicts
@@ -588,26 +719,30 @@ export default function AutoDetectDialog({
                         <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant">
                           Semester
                           <select
-                            value={draft.semester}
+                            value={draft.semester ?? ''}
                             onChange={(e) =>
                               updateDraft(draft.proposalId, {
-                                semester: e.target.value as SemesterType,
+                                semester: e.target.value || null,
                               })
                             }
                             disabled={creating}
                             className="rounded-md border border-surface-variant bg-white px-2 py-1 text-xs font-semibold text-on-surface focus:border-primary focus:outline-none"
                           >
-                            {SEMESTERS.map((semester) => (
-                              <option
-                                key={semester.value}
-                                value={semester.value}
-                              >
+                            <option value="" disabled>
+                              {draft.unrecognizedSemester
+                                ? 'Pick a semester'
+                                : 'Select semester'}
+                            </option>
+                            {options(draft.semester).map((semester) => (
+                              <option key={semester.code} value={semester.code}>
                                 {semester.label}
                               </option>
                             ))}
                           </select>
                         </label>
-                        {draft.yearLevel == null || draft.semester == null ? (
+                        {draft.yearLevel == null ||
+                        (draft.semester == null &&
+                          !draft.unrecognizedSemester) ? (
                           <span className="text-[10px] italic text-on-surface-variant">
                             not printed near the table — confirm before creating
                           </span>

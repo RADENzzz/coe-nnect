@@ -1,32 +1,22 @@
-import type { SemesterType } from './types';
-
 /** Year levels a prospectus can define. Keep in sync with the backend DTO. */
 export const YEAR_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 
-export const SEMESTERS: { value: SemesterType; label: string }[] = [
-  { value: '1st', label: '1st Semester' },
-  { value: '2nd', label: '2nd Semester' },
-  { value: 'summer', label: 'Summer' },
-];
-
 /**
- * One table per (year level, semester). This used to be hard-coded to 12
- * (4 years × 3 semesters), which made Summer impossible to add for 5- and
- * 6-year programs once the other pairs were mapped.
+ * One table per (year level, semester). The semester count comes from the
+ * catalog, so dean-configured types such as 3rd automatically get their own
+ * slots. Keep at least one slot so the grid stays usable before the catalog
+ * loads.
  */
-export const MAX_TABLES = YEAR_LEVELS.length * SEMESTERS.length;
-
-export const SEMESTER_ORDER: Record<SemesterType, number> = {
-  '1st': 1,
-  '2nd': 2,
-  summer: 3,
-};
+export function maxTables(semesterCount: number): number {
+  return YEAR_LEVELS.length * Math.max(1, semesterCount);
+}
 
 export function nextFreeCombination(
-  existing: { yearLevel: number | null; semester: SemesterType | null }[],
-): { yearLevel: number; semester: SemesterType } | null {
+  existing: { yearLevel: number | null; semester: string | null }[],
+  semesters: { code: string }[],
+): { yearLevel: number; semester: string } | null {
   for (const yearLevel of YEAR_LEVELS) {
-    for (const { value: semester } of SEMESTERS) {
+    for (const { code: semester } of semesters) {
       if (
         !existing.some(
           (t) => t.yearLevel === yearLevel && t.semester === semester,

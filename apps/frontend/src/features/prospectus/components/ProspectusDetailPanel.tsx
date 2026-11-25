@@ -5,6 +5,7 @@ import { ActiveBadge } from '../../../components/ui/StatusBadge';
 import { isAnyModalOpen } from '../../../components/ui/Modal';
 import type { ProspectusRecord } from '../../../api/prospectus.api';
 import type { SubjectRecord } from '../../../api/subjects.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 type Tab = 'overview' | 'schedule';
 
@@ -89,11 +90,8 @@ export default function ProspectusDetailPanel({
   // Lock body scroll while open.
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   if (!entry) return null;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 import { yearTermLabel } from '../utils/labels';
 import {
   classifierGroupKeyOf,
@@ -16,8 +17,6 @@ interface MajorMinorClassifierProps {
   onSetGroupMinor: (groupKey: string, isMinor: boolean) => void;
 }
 
-const TERM_ORDER: Record<string, number> = { '1st': 1, '2nd': 2, summer: 3 };
-
 /**
  * Modal for separating regular subjects into Major and Minor.
  *
@@ -31,6 +30,7 @@ export default function MajorMinorClassifier({
   onSetRowMinor,
   onSetGroupMinor,
 }: MajorMinorClassifierProps) {
+  const { sortOrderFor, shortLabelFor } = useSemesterTypes();
   const [open, setOpen] = useState(false);
   const [group, setGroup] = useState('all');
 
@@ -44,7 +44,11 @@ export default function MajorMinorClassifier({
       if (!map.has(key)) {
         map.set(key, {
           key,
-          label: yearTermLabel(row.yearLevel, row.semester),
+          label: yearTermLabel(
+            row.yearLevel,
+            row.semester,
+            row.semester ? shortLabelFor(row.semester) : null,
+          ),
           yearLevel: row.yearLevel,
           semester: row.semester,
         });
@@ -53,9 +57,11 @@ export default function MajorMinorClassifier({
     return [...map.values()].sort((a, b) => {
       const yearDelta = (a.yearLevel ?? 99) - (b.yearLevel ?? 99);
       if (yearDelta !== 0) return yearDelta;
-      return (TERM_ORDER[a.semester ?? ''] ?? 99) - (TERM_ORDER[b.semester ?? ''] ?? 99);
+      return (
+        sortOrderFor(a.semester ?? '') - sortOrderFor(b.semester ?? '')
+      );
     });
-  }, [rows]);
+  }, [rows, sortOrderFor, shortLabelFor]);
 
   const visibleRows = useMemo(
     () => getClassifierRowsForGroup(rows, group),
@@ -182,7 +188,11 @@ export default function MajorMinorClassifier({
                         {row.typedCode.trim() || row.code || '(no code)'}
                       </span>
                       <span className="text-[10px] text-on-surface-variant">
-                        {yearTermLabel(row.yearLevel, row.semester)}
+                        {yearTermLabel(
+                          row.yearLevel,
+                          row.semester,
+                          row.semester ? shortLabelFor(row.semester) : null,
+                        )}
                       </span>
                       {!row.checked && (
                         <span className="text-[10px] text-amber-700 font-semibold">

@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
+import { TERM_CODE_PATTERN } from '../term-code';
 
 /**
  * Options for `POST /api/v1/idp/faculty/sync` ("Refresh from IDP").
@@ -23,7 +24,7 @@ export class SyncFacultyDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^\d{4}-\d{4}-(1st|2nd|summer)$/, {
+  @Matches(TERM_CODE_PATTERN, {
     message: 'termCode must look like 2026-2027-1st.',
   })
   termCode?: string;

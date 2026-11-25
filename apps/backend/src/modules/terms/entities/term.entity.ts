@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-export type SemesterType = '1st' | '2nd' | 'summer';
+export type SemesterType = string;
 
 @Entity('term')
 export class Term {

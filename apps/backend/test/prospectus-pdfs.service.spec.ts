@@ -9,6 +9,7 @@ import {
   inferRoomTypeFromUnits,
 } from '../src/modules/prospectus-pdfs/prospectus-pdfs.service';
 import { createFakeRepository } from './fakes/repository.fake';
+import { createFakeSemesters } from './fakes/semesters.fake';
 
 function createService() {
   const storage = {
@@ -42,6 +43,7 @@ function createService() {
     storage as any,
     parser as any,
     dispatcher as any,
+    createFakeSemesters() as any,
   );
 
   return { service, storage, parser, pdfRepo, tableRepo };
@@ -147,6 +149,7 @@ describe('ProspectusPdfsService confirmImport room types', () => {
       { uploadPdf: jest.fn() } as any,
       { getPageInfo: jest.fn() } as any,
       { dispatch: jest.fn().mockResolvedValue(undefined) } as any,
+      createFakeSemesters() as any,
     );
 
     return { service, subjectRepo, prospectusRepo };
@@ -326,6 +329,7 @@ describe('ProspectusPdfsService elective imports', () => {
       { uploadPdf: jest.fn() } as any,
       { getPageInfo: jest.fn() } as any,
       { dispatch: jest.fn().mockResolvedValue(undefined) } as any,
+      createFakeSemesters() as any,
     );
 
     return { service, subjectRepo, prospectusRepo };
@@ -1005,6 +1009,21 @@ describe('ProspectusPdfsService table kinds', () => {
       ),
     ).rejects.toThrow(/require a year level and semester/);
     expect(tableRepo.rows).toHaveLength(0);
+  });
+});
+
+describe('ProspectusPdfsService semester validation', () => {
+  it('rejects an unknown table semester', async () => {
+    const { service, pdfRepo } = createService();
+    seedPdf(pdfRepo);
+
+    await expect(
+      service.createTable(
+        'pdf-1',
+        { ...tableDto([]), semester: '3rd' } as any,
+        ADMIN_USER,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
