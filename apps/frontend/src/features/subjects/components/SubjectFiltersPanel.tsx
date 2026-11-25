@@ -1,5 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import Icon from '../../../components/ui/Icon';
+import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import type { Department } from '../../../api/departments.api';
 import type { SubjectRoomType } from '../../../api/subjects.api';
 
@@ -87,6 +88,7 @@ export default function SubjectFiltersPanel({
   deptCounts,
   ROOM_TYPES,
 }: SubjectFiltersPanelProps) {
+  const { options } = useSemesterTypes();
   return (
       <div className="rounded-xl border border-surface-variant bg-surface-container-lowest overflow-hidden">
         {/* Panel header */}
@@ -357,9 +359,11 @@ export default function SubjectFiltersPanel({
                     className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
                   >
                     <option value="">All terms</option>
-                    <option value="1st">1st semester</option>
-                    <option value="2nd">2nd semester</option>
-                    <option value="summer">Summer</option>
+                    {options(electiveSemesterFilter).map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.label}
+                      </option>
+                    ))}
                     <option value="none">Unassigned</option>
                   </select>
                 </div>

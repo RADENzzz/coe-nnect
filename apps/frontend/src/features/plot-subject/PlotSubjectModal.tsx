@@ -11,6 +11,7 @@ import {
 import { fetchSections } from '../../api/sections.api';
 import type { ScheduleEntry } from '../timetable/types';
 import Icon from '../../components/ui/Icon';
+import { useSemesterTypes } from '../../hooks/use-semester-types';
 import {
   generateSlotBoundaries,
   formatTime,
@@ -121,6 +122,7 @@ export default function PlotSubjectModal({
   presetLoadType,
 }: Props) {
   const queryClient = useQueryClient();
+  const { options } = useSemesterTypes();
   const profile = useAuthStore((s) => s.profile);
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : '';
   const isEditMode = !!editing;
@@ -1042,9 +1044,11 @@ export default function PlotSubjectModal({
                     className="w-full bg-white border border-surface-variant rounded-md px-2 py-1.5 text-xs focus:outline-none focus:border-primary"
                   >
                     <option value="">Any semester</option>
-                    <option value="1st">1st</option>
-                    <option value="2nd">2nd</option>
-                    <option value="summer">Summer</option>
+                    {options(filterSem).map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
