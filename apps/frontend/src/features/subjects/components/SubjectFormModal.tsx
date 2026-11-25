@@ -161,14 +161,14 @@ export default function SubjectFormModal({
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (errors.length > 0) {
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
       errorSummaryRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-      });
-    }
-  }, [errors]);
+      }),
+    );
+  };
 
   // Reset state when the modal opens.
   useEffect(() => {
@@ -406,6 +406,7 @@ export default function SubjectFormModal({
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
+      scrollToErrorSummary();
       const errs: FieldErrors = {};
       for (const problem of problems) {
         errs[problem.field as keyof FormState] = problem.message;

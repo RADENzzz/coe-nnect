@@ -71,14 +71,14 @@ export default function RoomFormModal({
   const [confirmClose, setConfirmClose] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (errors.length > 0) {
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
       errorSummaryRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-      });
-    }
-  }, [errors]);
+      }),
+    );
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -274,6 +274,7 @@ export default function RoomFormModal({
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
+      scrollToErrorSummary();
       const errs: FieldErrors = {};
       for (const problem of problems) {
         errs[problem.field as keyof FormState] = problem.message;

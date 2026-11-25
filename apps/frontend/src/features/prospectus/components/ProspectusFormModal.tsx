@@ -212,14 +212,14 @@ export default function ProspectusFormModal({
   const firstFieldRef = useRef<HTMLSelectElement>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (errors.length > 0) {
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
       errorSummaryRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-      });
-    }
-  }, [errors]);
+      }),
+    );
+  };
 
   // ── Derived: selected subject ──
   const selectedSubject = useMemo(
@@ -479,6 +479,7 @@ export default function ProspectusFormModal({
     setErrors(problems);
     setFieldErrors(toFieldErrors(problems));
     if (problems.length > 0) {
+      scrollToErrorSummary();
       if (isWizard && problems.some((error) => PLACEMENT_FIELDS.has(error.field))) {
         setStepIdx(0);
       } else if (

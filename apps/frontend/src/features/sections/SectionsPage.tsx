@@ -77,14 +77,14 @@ export default function SectionsPage() {
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (errors.length > 0) {
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
       errorSummaryRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-      });
-    }
-  }, [errors]);
+      }),
+    );
+  };
 
   // ── URL state ──
   const [searchParams, setSearchParams] = useSearchParams();
@@ -551,6 +551,7 @@ export default function SectionsPage() {
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
+      scrollToErrorSummary();
       syncFieldErrors(problems);
       return;
     }

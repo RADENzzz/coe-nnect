@@ -106,14 +106,14 @@ export default function TermsPanel({ isAdmin }: Props) {
   const [deactivateTarget, setDeactivateTarget] = useState<Term | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (errors.length > 0) {
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
       errorSummaryRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-      });
-    }
-  }, [errors]);
+      }),
+    );
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['terms'] });
@@ -314,7 +314,10 @@ export default function TermsPanel({ isAdmin }: Props) {
     e.preventDefault();
     const problems = collectErrors();
     setErrors(problems);
-    if (problems.length > 0) return;
+    if (problems.length > 0) {
+      scrollToErrorSummary();
+      return;
+    }
 
     createMutation.mutate({
       termName: form.termName.trim(),

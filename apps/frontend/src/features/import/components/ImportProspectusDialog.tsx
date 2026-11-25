@@ -227,14 +227,14 @@ export default function ImportProspectusDialog({
   const [dragZone, setDragZone] = useState<'major' | 'minor' | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (errors.length > 0) {
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
       errorSummaryRef.current?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
-      });
-    }
-  }, [errors]);
+      }),
+    );
+  };
 
   const { data: catalogSubjects = [] } = useQuery({
     queryKey: ['subjects', { includeInactive: false }],
@@ -381,7 +381,10 @@ export default function ImportProspectusDialog({
     setError(null);
     const problems = collectImportErrors('read');
     setErrors(problems);
-    if (problems.length > 0) return;
+    if (problems.length > 0) {
+      scrollToErrorSummary();
+      return;
+    }
     // Already reported in the summary; this guard only narrows the type.
     if (!pdf) return;
 
@@ -553,7 +556,10 @@ export default function ImportProspectusDialog({
   const handleImportRequest = () => {
     const problems = collectImportErrors('import');
     setErrors(problems);
-    if (problems.length > 0) return;
+    if (problems.length > 0) {
+      scrollToErrorSummary();
+      return;
+    }
     setImportConfirmOpen(true);
   };
 
