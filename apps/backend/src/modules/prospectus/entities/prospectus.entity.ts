@@ -8,7 +8,7 @@ import {
 import { Program } from '../../programs/entities/program.entity';
 import { Subject } from '../../subjects/entities/subject.entity';
 
-export type SemesterType = '1st' | '2nd' | 'summer';
+export type SemesterType = string;
 
 @Entity('prospectus')
 export class Prospectus {
@@ -27,11 +27,7 @@ export class Prospectus {
   @Column({ name: 'year_level', type: 'smallint' })
   yearLevel: number;
 
-  @Column({
-    type: 'enum',
-    enum: ['1st', '2nd', 'summer'],
-    enumName: 'semester_type',
-  })
+  @Column({ type: 'text' })
   semester: SemesterType;
 
   @Column({ name: 'is_active', default: true })

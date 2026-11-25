@@ -7,10 +7,12 @@ import { User } from '../users/entities/user.entity';
 import { ProspectusService } from './prospectus.service';
 import { ProspectusController } from './prospectus.controller';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { SemestersModule } from '../semesters/semesters.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Prospectus, Program, Subject, User]),
+    SemestersModule,
   ],
   controllers: [ProspectusController],
   providers: [ProspectusService, RolesGuard],

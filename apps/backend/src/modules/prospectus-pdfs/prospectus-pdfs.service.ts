@@ -33,6 +33,7 @@ import { Subject } from '../subjects/entities/subject.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
 import { Program } from '../programs/entities/program.entity';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
+import { SemestersService } from '../semesters/semesters.service';
 
 export interface UploadedPdfFile {
   mimetype: string;
@@ -94,6 +95,7 @@ export class ProspectusPdfsService {
     private readonly storage: ProspectusStorageService,
     private readonly parser: ProspectusParserClient,
     private readonly dispatcher: NotificationDispatcherService,
+    private readonly semesters: SemestersService,
   ) {}
 
   // ============================================================
@@ -267,6 +269,10 @@ export class ProspectusPdfsService {
     const yearLevel = dto.year_level ?? null;
     const semester = dto.semester ?? null;
 
+    if (dto.semester) {
+      await this.semesters.assertUsable(dto.semester);
+    }
+
     // Regular curriculum tables are year/term specific and unique per
     // combination. Elective tables are optioned subjects: they may be
     // yearless and may repeat.
@@ -335,6 +341,10 @@ export class ProspectusPdfsService {
       throw new NotFoundException(
         `Table ${tableId} not found in PDF ${pdfId}`,
       );
+    }
+
+    if (dto.semester !== undefined && dto.semester !== null) {
+      await this.semesters.assertUsable(dto.semester);
     }
 
     const nextYear =
@@ -457,7 +467,7 @@ export class ProspectusPdfsService {
       proposalId: string;
       pageIndex: number;
       yearLevel: number | null;
-      semester: '1st' | '2nd' | 'summer' | null;
+      semester: string | null;
       confidence: number;
       label: string;
       headerText: string;

@@ -9,6 +9,7 @@ import {
   MaxLength,
   IsNumberString,
   IsIn,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -80,8 +81,11 @@ export class CreateSubjectDto {
 
   /** Preferred semester; null means any term. */
   @IsOptional()
-  @IsIn(['1st', '2nd', 'summer'])
-  electiveSemester?: '1st' | '2nd' | 'summer' | null;
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9_-]{0,19}$/, {
+    message: 'electiveSemester must be a lowercase code of 1-20 letters, digits, hyphens, or underscores',
+  })
+  electiveSemester?: string | null;
 
   @IsNumberString()
   deptId: string;

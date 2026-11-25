@@ -14,6 +14,7 @@ import { ProspectusPdfsService } from './prospectus-pdfs.service';
 import { ProspectusStorageService } from './storage.service';
 import { ProspectusParserClient } from './parser.client';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SemestersModule } from '../semesters/semesters.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Program,
     ]),
     NotificationsModule,
+    SemestersModule,
   ],
   controllers: [ProspectusPdfsController],
   providers: [

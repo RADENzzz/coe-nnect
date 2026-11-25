@@ -9,6 +9,7 @@ import { Term } from './entities/term.entity';
 import { CreateTermDto } from './dto/create-term.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
+import { SemestersService } from '../semesters/semesters.service';
 
 @Injectable()
 export class TermsService {
@@ -18,6 +19,7 @@ export class TermsService {
     private readonly dataSource: DataSource,
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
+    private readonly semesters: SemestersService,
   ) {}
 
   findAll(): Promise<Term[]> {
@@ -48,6 +50,8 @@ export class TermsService {
       throw new BadRequestException('endDate must be after startDate.');
     }
 
+    await this.semesters.assertUsable(dto.semester);
+
     const existing = await this.repo.findOne({
       where: { termName: dto.termName, schoolYear: dto.schoolYear },
     });
@@ -62,7 +66,7 @@ export class TermsService {
       schoolYear: dto.schoolYear,
       startDate: dto.startDate ?? null,
       endDate: dto.endDate ?? null,
-      semester: dto.semester,   // ← NOW SAVED
+      semester: dto.semester,
       isActive: false,
     });
     const saved = await this.repo.save(entity);

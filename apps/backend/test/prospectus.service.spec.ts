@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { ProspectusService } from '../src/modules/prospectus/prospectus.service';
 import { createFakeRepository } from './fakes/repository.fake';
+import { createFakeSemesters } from './fakes/semesters.fake';
 
 const admin = { role: 'administrator', deptId: null } as any;
 
@@ -58,6 +59,7 @@ describe('ProspectusService subject-active guard', () => {
       prospectusRepo as any,
       programRepo as any,
       subjectRepo as any,
+      createFakeSemesters() as any,
     );
   };
 
@@ -89,6 +91,22 @@ describe('ProspectusService subject-active guard', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(prospectusRepo.rows[0].isActive).toBe(false);
+  });
+
+  it('rejects an unknown semester on create', async () => {
+    build(true);
+
+    await expect(
+      service.create(
+        {
+          programId: '10',
+          subjectId: '1',
+          yearLevel: 1,
+          semester: '3rd',
+        } as any,
+        admin,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -164,6 +182,7 @@ describe('ProspectusService fillSlot elective guard', () => {
       prospectusRepo as any,
       programRepo as any,
       subjectRepo as any,
+      createFakeSemesters() as any,
     );
 
     return { service, prospectusRepo, subjectRepo };

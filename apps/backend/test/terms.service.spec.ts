@@ -1,8 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { TermsService } from '../src/modules/terms/terms.service';
 import { createFakeRepository } from './fakes/repository.fake';
+import { createFakeSemesters } from './fakes/semesters.fake';
 
-function buildService() {
+function buildService(known = ['1st', '2nd', 'summer']) {
+  const semesters = createFakeSemesters(known);
   const repo = createFakeRepository([], { idKey: 'termId', autoId: true });
   const dataSource = {
     transaction: jest.fn(),
@@ -23,6 +25,7 @@ function buildService() {
       dataSource as any,
       dispatcher as any,
       recipients as any,
+      semesters as any,
     ),
   };
 }
@@ -88,4 +91,30 @@ describe('TermsService optional dates', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     },
   );
+});
+
+describe('TermsService semester validation', () => {
+  it('rejects a semester type that is not in the catalog', async () => {
+    const { service } = buildService();
+
+    await expect(
+      service.create({
+        termName: 'Third',
+        schoolYear: '2026-2027',
+        semester: '3rd',
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('accepts a newly added 3rd semester', async () => {
+    const { service } = buildService(['1st', '2nd', 'summer', '3rd']);
+
+    const created = await service.create({
+      termName: 'Third Semester',
+      schoolYear: '2026-2027',
+      semester: '3rd',
+    } as any);
+
+    expect(created.semester).toBe('3rd');
+  });
 });

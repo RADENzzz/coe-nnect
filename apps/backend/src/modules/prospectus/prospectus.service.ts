@@ -12,6 +12,7 @@ import { Program } from '../programs/entities/program.entity';
 import { Subject } from '../subjects/entities/subject.entity';
 import { CreateProspectusDto } from './dto/create-prospectus.dto';
 import { UpdateProspectusDto } from './dto/update-prospectus.dto';
+import { SemestersService } from '../semesters/semesters.service';
 
 export interface ProspectusCaller {
   role: string;
@@ -35,6 +36,7 @@ export class ProspectusService {
     private readonly programs: Repository<Program>,
     @InjectRepository(Subject)
     private readonly subjects: Repository<Subject>,
+    private readonly semesters: SemestersService,
   ) {}
 
   // ────────────────────────────────────────────
@@ -138,6 +140,8 @@ export class ProspectusService {
       );
     }
 
+    await this.semesters.assertUsable(dto.semester);
+
     const existing = await this.repo.findOne({
       where: {
         programId: dto.programId,
@@ -214,7 +218,10 @@ export class ProspectusService {
     }
 
     if (dto.yearLevel !== undefined) found.yearLevel = dto.yearLevel;
-    if (dto.semester !== undefined) found.semester = dto.semester;
+    if (dto.semester !== undefined) {
+      await this.semesters.assertUsable(dto.semester);
+      found.semester = dto.semester;
+    }
     if (dto.isActive !== undefined) {
       // Activating a mapping is only allowed while its subject is active.
       if (dto.isActive && !found.isActive) {

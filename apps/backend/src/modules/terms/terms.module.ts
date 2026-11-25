@@ -6,9 +6,14 @@ import { TermsController } from './terms.controller';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { User } from '../users/entities/user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SemestersModule } from '../semesters/semesters.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Term, User]), NotificationsModule],
+  imports: [
+    TypeOrmModule.forFeature([Term, User]),
+    NotificationsModule,
+    SemestersModule,
+  ],
   controllers: [TermsController],
   providers: [TermsService, RolesGuard],
   exports: [TermsService],

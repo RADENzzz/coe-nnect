@@ -10,6 +10,7 @@ import { Schedule } from '../scheduling/entities/schedule.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
 import { FacultyQualification } from '../faculty/entities/faculty-qualification.entity';
 import { DepartmentsModule } from '../departments/departments.module';
+import { SemestersModule } from '../semesters/semesters.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       FacultyQualification, // removed with the subject in remove()
     ]),
     DepartmentsModule,
+    SemestersModule,
   ],
   controllers: [SubjectsController],
   providers: [SubjectsService],

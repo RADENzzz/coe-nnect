@@ -66,7 +66,7 @@ export interface ParserPageInfo {
 export interface ParserDetectedTable {
   page_index: number;
   year_level: number | null;
-  semester: '1st' | '2nd' | 'summer' | null;
+  semester: string | null;
   confidence: number;
   label: string;
   header_text: string;

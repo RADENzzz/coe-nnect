@@ -58,7 +58,7 @@ export class ProspectusPdfTable {
    * and a database check constraint).
    */
   @Column({ name: 'semester', type: 'text', nullable: true })
-  semester!: '1st' | '2nd' | 'summer' | null;
+  semester!: string | null;
 
   @Column({ name: 'label', type: 'text', nullable: true })
   label!: string | null;
