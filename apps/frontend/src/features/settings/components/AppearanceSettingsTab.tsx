@@ -490,7 +490,7 @@ export default function AppearanceSettingsTab({
         open={resetOpen}
         onClose={() => setResetOpen(false)}
         title="Reset appearance colours?"
-        description="Reset the accent colour and surface tint to their defaults? Your custom colours will be removed from this browser."
+        description="Reset the accent colour and surface tint, which removes your custom colours from this browser?"
         confirmLabel="Reset colours"
         tone="danger"
         onConfirm={() => {
