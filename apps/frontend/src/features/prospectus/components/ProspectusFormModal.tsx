@@ -18,7 +18,10 @@ import {
   type FieldError,
 } from '../../../components/ui/form-errors';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
-import { validateProspectusForm } from '../utils/validate-prospectus-form';
+import {
+  validateProspectusForm,
+  withDuplicateSubjectError,
+} from '../utils/validate-prospectus-form';
 
 // ── Constants ──
 
@@ -407,23 +410,17 @@ export default function ProspectusFormModal({
         !SCHEDULE_FIELDS.has(error.field) ||
         (error.field.startsWith('lecture') ? hasLecture : hasLab),
     );
+    let duplicateSubject = false;
     if (!editing && form.programId && form.subjectId) {
-      const dup = existingEntries.find(
+      duplicateSubject = existingEntries.some(
         (e) =>
           String(e.programId) === String(form.programId) &&
           String(e.subjectId) === String(form.subjectId) &&
           e.yearLevel === form.yearLevel &&
           e.semester === form.semester,
       );
-      if (dup) {
-        return mergeFieldError(
-          problems,
-          'subjectId',
-          'This subject is already mapped to this slot',
-        );
-      }
     }
-    return problems;
+    return withDuplicateSubjectError(problems, duplicateSubject);
   };
 
   const toFieldErrors = (problems: FieldError[]): FieldErrors => {

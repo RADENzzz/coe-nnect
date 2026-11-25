@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateProspectusForm } from './validate-prospectus-form.ts';
+import {
+  validateProspectusForm,
+  withDuplicateSubjectError,
+} from './validate-prospectus-form.ts';
 
 const valid = {
   programId: '1',
@@ -39,4 +42,15 @@ test('rejects out-of-range sessions and minutes', () => {
     errors.map((e) => e.field).sort(),
     ['labMinutesPerSession', 'labSessionsPerWeek', 'lectureMinutesPerSession', 'lectureSessionsPerWeek'],
   );
+});
+
+test('keeping an existing error when a duplicate subject is added', () => {
+  const problems = validateProspectusForm({ ...valid, semester: '' });
+  assert.deepEqual(withDuplicateSubjectError(problems, true), [
+    { field: 'semester', message: 'Choose a semester.' },
+    {
+      field: 'subjectId',
+      message: 'This subject is already mapped to this slot',
+    },
+  ]);
 });

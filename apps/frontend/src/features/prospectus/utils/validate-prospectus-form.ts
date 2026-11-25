@@ -1,4 +1,7 @@
-import type { FieldError } from '../../../components/ui/form-errors';
+import {
+  mergeFieldError,
+  type FieldError,
+} from '../../../components/ui/form-errors.ts';
 
 export interface ProspectusFormValues {
   programId: string;
@@ -65,4 +68,17 @@ export function validateProspectusForm(
   }
 
   return errors;
+}
+
+/** Add the duplicate-slot error without dropping other validation problems. */
+export function withDuplicateSubjectError(
+  problems: FieldError[],
+  isDuplicate: boolean,
+): FieldError[] {
+  if (!isDuplicate) return problems;
+  return mergeFieldError(
+    problems,
+    'subjectId',
+    'This subject is already mapped to this slot',
+  );
 }
