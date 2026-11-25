@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import { fetchSubjects, type SubjectRecord } from '@/api/subjects.api';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 
 export interface FillSlotValue {
   subjectId?: string;
@@ -23,18 +24,18 @@ interface FillSlotModalProps {
 
 type FillMode = 'existing' | 'typed';
 
-function electiveOptionLabel(s: SubjectRecord): string {
+function electiveOptionLabel(
+  s: SubjectRecord,
+  shortLabelFor: (code: string) => string,
+): string {
   const code = s.subjectCode?.trim();
   const prefix = code ? `[${code}] ` : '';
   const year = s.electiveYearLevel
     ? `Year ${s.electiveYearLevel}`
     : 'Any year';
-  const term =
-    s.electiveSemester === 'summer'
-      ? 'Summer'
-      : s.electiveSemester
-      ? `${s.electiveSemester} sem`
-      : 'Any term';
+  const term = s.electiveSemester
+    ? shortLabelFor(s.electiveSemester)
+    : 'Any term';
   return `${prefix}${s.title} · ${year} · ${term}`;
 }
 
@@ -48,6 +49,7 @@ export default function FillSlotModal({
   semester,
   isPending,
 }: FillSlotModalProps) {
+  const { options, shortLabelFor } = useSemesterTypes();
   const [mode, setMode] = useState<FillMode>('existing');
   const [selectedId, setSelectedId] = useState('');
   const [typedCode, setTypedCode] = useState('');
@@ -299,9 +301,11 @@ export default function FillSlotModal({
                     className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-primary"
                   >
                     <option value="">All terms</option>
-                    <option value="1st">1st semester</option>
-                    <option value="2nd">2nd semester</option>
-                    <option value="summer">Summer</option>
+                    {options(semesterFilter).map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.label}
+                      </option>
+                    ))}
                     <option value="none">Unassigned</option>
                   </select>
                 </div>
@@ -326,7 +330,7 @@ export default function FillSlotModal({
                   >
                     {group.items.map((s) => (
                       <option key={s.subjectId} value={s.subjectId}>
-                        {electiveOptionLabel(s)}
+                        {electiveOptionLabel(s, shortLabelFor)}
                       </option>
                     ))}
                   </optgroup>

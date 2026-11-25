@@ -23,13 +23,9 @@ import { ActiveBadge } from '../../components/ui/StatusBadge';
 import ProspectusFormModal from './components/ProspectusFormModal';
 import FillSlotModal from './components/FillSlotModal';
 import ProspectusDetailPanel from './components/ProspectusDetailPanel';
+import { useSemesterTypes } from '../../hooks/use-semester-types';
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
-const SEMESTERS: { value: SemesterType; label: string; short: string }[] = [
-  { value: '1st', label: '1st Semester', short: '1st Sem' },
-  { value: '2nd', label: '2nd Semester', short: '2nd Sem' },
-  { value: 'summer', label: 'Summer', short: 'Summer' },
-];
 
 function ordinalSuffix(n: number): string {
   const rem10 = n % 10;
@@ -46,6 +42,7 @@ export default function ProspectusPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const { activeTypes, labelFor, options } = useSemesterTypes();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ProspectusRecord | null>(null);
@@ -75,7 +72,7 @@ export default function ProspectusPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const programParam = searchParams.get('program') ?? '';
   const yearParam = searchParams.get('year') ?? '';
-  const semesterParam = (searchParams.get('semester') ?? '1st') as SemesterType;
+  const semesterParam = searchParams.get('semester') ?? '';
   const detailId = searchParams.get('detail');
 
   const [selectedProgramId, setSelectedProgramId] = useState(programParam);
@@ -83,8 +80,17 @@ export default function ProspectusPage() {
     yearParam ? Number(yearParam) : 1,
   );
   const [selectedSemester, setSelectedSemester] = useState<SemesterType>(
-    semesterParam,
+    () => semesterParam || activeTypes[0]?.code || '',
   );
+
+  // The catalog loads asynchronously; repair an empty or stale selection once
+  // its active types are available.
+  useEffect(() => {
+    if (activeTypes.length === 0) return;
+    if (!activeTypes.some((t) => t.code === selectedSemester)) {
+      setSelectedSemester(activeTypes[0].code);
+    }
+  }, [activeTypes, selectedSemester]);
 
   // Sync URL when selections change
   useEffect(() => {
@@ -92,7 +98,8 @@ export default function ProspectusPage() {
     if (selectedProgramId) next.set('program', selectedProgramId);
     else next.delete('program');
     next.set('year', String(selectedYearLevel));
-    next.set('semester', selectedSemester);
+    if (selectedSemester) next.set('semester', selectedSemester);
+    else next.delete('semester');
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProgramId, selectedYearLevel, selectedSemester]);
@@ -612,8 +619,8 @@ export default function ProspectusPage() {
 
   // ── Formatting helpers ──
   const semesterLabel = useMemo(
-    () => SEMESTERS.find((s) => s.value === selectedSemester)?.label ?? '',
-    [selectedSemester],
+    () => labelFor(selectedSemester),
+    [labelFor, selectedSemester],
   );
 
   const renderUnits = (e: ProspectusRecord) => {
@@ -1130,18 +1137,18 @@ export default function ProspectusPage() {
                 Semester
               </label>
               <div className="flex gap-1 p-1 rounded-lg bg-surface-container-low border border-surface-variant">
-                {SEMESTERS.map((s) => (
+                {activeTypes.map((t) => (
                   <button
-                    key={s.value}
+                    key={t.code}
                     type="button"
-                    onClick={() => setSelectedSemester(s.value)}
+                    onClick={() => setSelectedSemester(t.code)}
                     className={`flex-1 px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                      selectedSemester === s.value
+                      selectedSemester === t.code
                         ? 'bg-primary text-on-primary shadow-sm'
                         : 'text-slate-600 hover:bg-white'
                     }`}
                   >
-                    {s.short}
+                    {t.shortLabel}
                   </button>
                 ))}
               </div>
@@ -1385,9 +1392,7 @@ export default function ProspectusPage() {
               ? subjectById.get(String(detailLive.subjectId))
               : undefined
           }
-          semesterLabel={
-            SEMESTERS.find((s) => s.value === detailLive.semester)?.label ?? ''
-          }
+          semesterLabel={labelFor(detailLive.semester)}
           isPlaceholder={
             !!(
               detailLive.subjectId &&
@@ -1619,10 +1624,20 @@ function CopyFromModal({
   allEntries: ProspectusRecord[];
   onCopied: (count: number) => void;
 }) {
+  const { activeTypes, options, shortLabelFor } = useSemesterTypes();
   const [sourceYear, setSourceYear] = useState<number>(currentYear);
-  const [sourceSemester, setSourceSemester] = useState<SemesterType>('1st');
+  const [sourceSemester, setSourceSemester] = useState<SemesterType>(
+    () => activeTypes[0]?.code ?? '',
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeTypes.length === 0) return;
+    if (!activeTypes.some((t) => t.code === sourceSemester)) {
+      setSourceSemester(activeTypes[0].code);
+    }
+  }, [activeTypes, sourceSemester]);
 
   const sourceEntries = useMemo(
     () =>
@@ -1675,13 +1690,7 @@ function CopyFromModal({
           : currentYear === 3
           ? 'rd'
           : 'th'
-      } Year · ${
-        currentSemester === '1st'
-          ? '1st'
-          : currentSemester === '2nd'
-          ? '2nd'
-          : 'Summer'
-      } Semester`}
+      } Year · ${shortLabelFor(currentSemester)} Semester`}
       size="md"
       footer={
         <>
@@ -1754,9 +1763,9 @@ function CopyFromModal({
               }
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
             >
-              {SEMESTERS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
+              {options(sourceSemester).map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.label}
                 </option>
               ))}
             </select>
