@@ -10,11 +10,14 @@ import type { ProspectusPdfTable, SemesterType } from '../types';
 export function yearTermLabel(
   yearLevel: number | null,
   semester: SemesterType | null,
+  /** Catalog display text; falls back to the stored code. */
+  semesterText?: string | null,
 ): string {
-  if (yearLevel == null && semester == null) return 'Any year / term';
-  if (yearLevel == null) return `Any year · ${semester}`;
-  if (semester == null) return `Year ${yearLevel} · any term`;
-  return `Year ${yearLevel} · ${semester}`;
+  const term = semesterText ?? semester;
+  if (yearLevel == null && term == null) return 'Any year / term';
+  if (yearLevel == null) return `Any year · ${term}`;
+  if (term == null) return `Year ${yearLevel} · any term`;
+  return `Year ${yearLevel} · ${term}`;
 }
 
 /**
@@ -30,17 +33,22 @@ export function tableLabel(
     ProspectusPdfTable,
     'tableKind' | 'yearLevel' | 'semester' | 'label'
   >,
+  semesterText?: string | null,
 ): string {
   const kind = table.tableKind ?? 'regular';
   if (kind === 'elective') {
     const stored = table.label?.trim();
     if (stored) return stored;
-    const identity = yearTermLabel(table.yearLevel, table.semester);
+    const identity = yearTermLabel(
+      table.yearLevel,
+      table.semester,
+      semesterText,
+    );
     return identity === 'Any year / term'
       ? 'Elective · any year / term'
       : `Elective · ${identity}`;
   }
-  return yearTermLabel(table.yearLevel, table.semester);
+  return yearTermLabel(table.yearLevel, table.semester, semesterText);
 }
 
 /** Short label for compact chips and quick-nav buttons. */
@@ -49,15 +57,20 @@ export function shortTableLabel(
     ProspectusPdfTable,
     'tableKind' | 'yearLevel' | 'semester' | 'label'
   >,
+  semesterText?: string | null,
 ): string {
   const kind = table.tableKind ?? 'regular';
   if (kind === 'elective') {
     const stored = table.label?.trim();
     if (stored) return stored;
     if (table.yearLevel == null && table.semester == null) return 'Elective';
-    return `Elective · ${yearTermLabel(table.yearLevel, table.semester)}`;
+    return `Elective · ${yearTermLabel(
+      table.yearLevel,
+      table.semester,
+      semesterText,
+    )}`;
   }
-  return yearTermLabel(table.yearLevel, table.semester);
+  return yearTermLabel(table.yearLevel, table.semester, semesterText);
 }
 
 /** True when a table has the year/term identity a regular table needs. */

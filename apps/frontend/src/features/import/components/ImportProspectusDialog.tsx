@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
 import { confirmImport } from '@/api/prospectus-pdfs.api';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
 import { fetchSubjects, type SubjectRecord } from '@/api/subjects.api';
 import type {
   ProspectusPdfTable,
@@ -194,6 +195,12 @@ export default function ImportProspectusDialog({
   pdf,
 }: ImportProspectusDialogProps) {
   const qc = useQueryClient();
+  const {
+    types,
+    shortLabelFor,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useSemesterTypes();
 
   const [step, setStep] = useState<Step>('select');
   const [programId, setProgramId] = useState<string>('');
@@ -257,6 +264,23 @@ export default function ImportProspectusDialog({
     if (!stillValid) setProgramId(String(visiblePrograms[0].programId));
   }, [visiblePrograms, programId]);
 
+  // Only a successfully loaded catalog can say a stored code is unknown.
+  // A pending or failed query must not produce a false "not in the catalog"
+  // message. Existing rows keep any known code, including inactive types.
+  const catalogReady = !catalogLoading && !catalogError;
+  const missingSemesterTables = useMemo(
+    () =>
+      !catalogReady
+        ? []
+        : tables.filter(
+            (t) =>
+              (t.tableKind ?? 'regular') === 'regular' &&
+              !types.some((type) => type.code === t.semester),
+          ),
+    [tables, types, catalogReady],
+  );
+  const catalogBlocksImport = catalogError || missingSemesterTables.length > 0;
+
   const toggleTable = (tableId: string) => {
     setSelectedTableIds((prev) => {
       const next = new Set(prev);
@@ -280,6 +304,7 @@ export default function ImportProspectusDialog({
       setError('The PDF is still loading. Please wait a moment.');
       return;
     }
+    if (catalogBlocksImport) return;
 
     const selectedTables = tables.filter((t) =>
       selectedTableIds.has(t.tableId),
@@ -403,7 +428,10 @@ export default function ImportProspectusDialog({
           const suspicious = isSuspiciousTitle(title);
           if (suspicious) {
             newWarnings.push(
-              `Table ${tableLabel(table)}: suspicious title "${title}" (row ${row.row_id})`,
+              `Table ${tableLabel(
+                table,
+                table.semester ? shortLabelFor(table.semester) : null,
+              )}: suspicious title "${title}" (row ${row.row_id})`,
             );
           }
 
@@ -448,6 +476,7 @@ export default function ImportProspectusDialog({
   };
 
   const handleImport = async () => {
+    if (catalogBlocksImport) return;
     setError(null);
     setImporting(true);
     try {
@@ -683,7 +712,8 @@ export default function ImportProspectusDialog({
                 selectedTableIds.size === 0 ||
                 !programId ||
                 !pdf ||
-                extracting
+                extracting ||
+                catalogBlocksImport
               }
               className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
@@ -712,7 +742,11 @@ export default function ImportProspectusDialog({
             </button>
             <button
               onClick={handleImport}
-              disabled={importing || readyCount === 0}
+              disabled={
+                importing ||
+                readyCount === 0 ||
+                catalogBlocksImport
+              }
               className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
               {importing ? 'Importing…' : `Import ${readyCount} row${readyCount === 1 ? '' : 's'}`}
@@ -732,6 +766,50 @@ export default function ImportProspectusDialog({
         <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
           <Icon name="error" size={16} className="shrink-0 mt-0.5" />
           <span className="flex-1">{error}</span>
+        </div>
+      )}
+
+      {catalogLoading && (
+        <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-300 text-slate-700 text-xs flex items-start gap-2">
+          <Icon
+            name="progress_activity"
+            size={16}
+            className="shrink-0 mt-0.5 animate-spin"
+          />
+          <span className="flex-1">
+            Checking the semester catalog… Import stays available while it
+            loads; codes will be validated when it finishes.
+          </span>
+        </div>
+      )}
+
+      {catalogError && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-300 text-red-900 text-xs flex items-start gap-2">
+          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">
+            The semester catalog could not be loaded, so Import is unavailable.
+            Reload the page or retry after the catalog service recovers.
+          </span>
+        </div>
+      )}
+
+      {missingSemesterTables.length > 0 && (
+        <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+          <Icon name="warning" size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">
+            These tables have a semester that is not in the catalog:{' '}
+            <strong>
+              {missingSemesterTables
+                .map((t) =>
+                  tableLabel(
+                    t,
+                    t.semester ? shortLabelFor(t.semester) : null,
+                  ),
+                )
+                .join(', ')}
+            </strong>
+            . Edit or delete them before importing.
+          </span>
         </div>
       )}
 
@@ -772,7 +850,10 @@ export default function ImportProspectusDialog({
                   />
                   <div className="flex-1">
                     <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
-                      {tableLabel(t)}
+                      {tableLabel(
+                        t,
+                        t.semester ? shortLabelFor(t.semester) : null,
+                      )}
                     </div>
                     <div className="text-xs text-on-surface-variant">
                       {t.rows.length} row{t.rows.length === 1 ? '' : 's'}
@@ -780,6 +861,7 @@ export default function ImportProspectusDialog({
                         ? ` · Elective · ${yearTermLabel(
                             t.yearLevel,
                             t.semester,
+                            t.semester ? shortLabelFor(t.semester) : null,
                           )}`
                         : ''}
                     </div>
@@ -920,7 +1002,14 @@ export default function ImportProspectusDialog({
                       className="text-slate-500"
                     />
                     <span className="text-xs font-bold text-slate-900">
-                      {table ? tableLabel(table) : 'Table'}
+                      {table
+                        ? tableLabel(
+                            table,
+                            table.semester
+                              ? shortLabelFor(table.semester)
+                              : null,
+                          )
+                        : 'Table'}
                     </span>
                     <span className="text-[10px] text-slate-500 font-normal">
                       {rows.length} row{rows.length === 1 ? '' : 's'}
@@ -1481,7 +1570,13 @@ export default function ImportProspectusDialog({
                               {temp.subjectCode}
                             </span>
                             <span className="text-[10px] text-on-surface-variant font-mono">
-                              {yearTermLabel(temp.yearLevel, temp.semester)}
+                              {yearTermLabel(
+                                temp.yearLevel,
+                                temp.semester,
+                                temp.semester
+                                  ? shortLabelFor(temp.semester)
+                                  : null,
+                              )}
                             </span>
                           </div>
                           <p className="text-xs text-on-surface truncate mt-0.5">
@@ -1523,7 +1618,13 @@ export default function ImportProspectusDialog({
                               {slot.subjectCode}
                             </span>
                             <span className="text-[10px] text-on-surface-variant font-mono">
-                              {yearTermLabel(slot.yearLevel, slot.semester)}
+                              {yearTermLabel(
+                                slot.yearLevel,
+                                slot.semester,
+                                slot.semester
+                                  ? shortLabelFor(slot.semester)
+                                  : null,
+                              )}
                             </span>
                             <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500">
                               'Lec/Lab'

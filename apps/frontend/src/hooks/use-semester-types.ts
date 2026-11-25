@@ -7,7 +7,7 @@ import {
 
 /** One cached source of semester labels, short labels, and display order. */
 export function useSemesterTypes() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isError } = useQuery({
     queryKey: ['semester-types'],
     queryFn: fetchSemesterTypes,
     staleTime: 5 * 60 * 1000,
@@ -26,5 +26,6 @@ export function useSemesterTypes() {
     sortOrderFor: (code: string) =>
       byCode.get(code)?.sortOrder ?? Number.MAX_SAFE_INTEGER,
     isLoading,
+    isError,
   };
 }

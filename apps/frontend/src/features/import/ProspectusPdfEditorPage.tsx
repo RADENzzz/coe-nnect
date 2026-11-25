@@ -52,7 +52,8 @@ import { detectColumns } from './utils/columnDetection';
 import { shortTableLabel, yearTermLabel } from './utils/labels';
 import { fetchPrograms } from '@/api/programs.api';
 import { useUiStore } from '@/store/ui.store';
-import { MAX_TABLES, SEMESTER_ORDER } from './constants';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
+import { maxTables } from './constants';
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.0;
@@ -62,6 +63,13 @@ export default function ProspectusPdfEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const {
+    activeTypes,
+    sortOrderFor,
+    shortLabelFor,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useSemesterTypes();
   const setSidebarHidden = useUiStore((s) => s.setSidebarHidden);
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
 
@@ -134,6 +142,14 @@ export default function ProspectusPdfEditorPage() {
     setLabel,
     setRegion,
   } = useRegionState(initialTables);
+
+  // While the catalog is unresolved, use the current table count as the floor
+  // so a large PDF is not shown against the helper's 6-slot minimum.
+  const catalogPending = catalogLoading || catalogError;
+  const catalogTableCap = maxTables(activeTypes.length);
+  const totalTables = catalogPending
+    ? Math.max(tables.length, catalogTableCap)
+    : catalogTableCap;
 
   // Refetching the PDF record (after a save or an import) must not overwrite
   // tables that still have unsaved local edits.
@@ -1109,12 +1125,14 @@ export default function ProspectusPdfEditorPage() {
         const bYear = b.yearLevel ?? 99;
         if (aYear !== bYear) return aYear - bYear;
         return (
-          (a.semester ? SEMESTER_ORDER[a.semester] ?? 9 : 9) -
-          (b.semester ? SEMESTER_ORDER[b.semester] ?? 9 : 9)
+          sortOrderFor(a.semester ?? '') - sortOrderFor(b.semester ?? '')
         );
       }),
-    [tables],
+    [tables, sortOrderFor],
   );
+  const navTotal = catalogPending
+    ? Math.max(sortedTablesForNav.length, catalogTableCap)
+    : catalogTableCap;
 
   if (metaLoading) {
     return (
@@ -1160,7 +1178,7 @@ export default function ProspectusPdfEditorPage() {
           </div>
           <p className="text-on-surface-variant text-xs mt-0.5">
             {totalPages} page{totalPages === 1 ? '' : 's'} · {tables.length} of{' '}
-            {MAX_TABLES} tables mapped
+            {totalTables} tables mapped
           </p>
         </div>
 
@@ -1260,6 +1278,9 @@ export default function ProspectusPdfEditorPage() {
                     : `${yearTermLabel(
                         drawingMode.yearLevel,
                         drawingMode.semester,
+                        drawingMode.semester
+                          ? shortLabelFor(drawingMode.semester)
+                          : null,
                       )} table`}
                 </strong>
                 . Rows will be created automatically from the PDF text
@@ -1473,7 +1494,7 @@ export default function ProspectusPdfEditorPage() {
                   Mapped tables
                 </div>
                 <span className="text-[10px] text-on-surface-variant font-mono">
-                  {sortedTablesForNav.length}/{MAX_TABLES}
+                  {sortedTablesForNav.length}/{navTotal}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-1">
@@ -1505,7 +1526,10 @@ export default function ProspectusPdfEditorPage() {
                       }`}
                     >
                       <div className="font-bold flex items-center gap-1 flex-wrap">
-                        {shortTableLabel(t)}
+                        {shortTableLabel(
+                          t,
+                          t.semester ? shortLabelFor(t.semester) : null,
+                        )}
                       </div>
                       <div className="text-[10px] opacity-70">
                         p.{t.regionPageIndex + 1} · {t.rows.length} row
@@ -1629,7 +1653,7 @@ export default function ProspectusPdfEditorPage() {
             electives are not tied to a year/term), then drag a rectangle over
             that table in the PDF. Rows are created from every text line in the
             region. One regular table is allowed per year/semester, up to{' '}
-            {MAX_TABLES} tables in total.
+            {totalTables} tables in total.
           </li>
           <li>
             Select a table to open its{' '}

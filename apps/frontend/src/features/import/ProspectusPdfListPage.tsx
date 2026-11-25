@@ -14,7 +14,8 @@ import {
 } from '@/api/prospectus-pdfs.api';
 import type { ProspectusPdf } from './types';
 import UploadDropzone from './components/UploadDropzone';
-import { MAX_TABLES } from './constants';
+import { useSemesterTypes } from '@/hooks/use-semester-types';
+import { maxTables } from './constants';
 import { readPdfPageCount } from '@/lib/pdf';
 
 export default function ProspectusPdfListPage() {
@@ -23,6 +24,13 @@ export default function ProspectusPdfListPage() {
   const location = useLocation();
   const profile = useAuthStore((s) => s.profile);
   const shell = shellForPath(location.pathname);
+  const {
+    activeTypes,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useSemesterTypes();
+  const catalogPending = catalogLoading || catalogError;
+  const catalogTableCap = maxTables(activeTypes.length);
   const openPdf = (pdfId: string) => navigate(`${shell}/import/${pdfId}`);
 
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -125,11 +133,15 @@ export default function ProspectusPdfListPage() {
       cardVariant: 'badge',
       render: (p) => {
         const count = p.tables?.length ?? 0;
-        const pct = Math.min(100, (count / MAX_TABLES) * 100);
+        const total = catalogPending
+          ? Math.max(count, catalogTableCap)
+          : catalogTableCap;
+        const pct = Math.min(100, (count / total) * 100);
+        const complete = !catalogPending && count >= catalogTableCap;
         const tone =
           count === 0
             ? 'bg-slate-100 text-slate-600'
-            : count >= MAX_TABLES
+            : complete
             ? 'bg-emerald-100 text-emerald-800'
             : 'bg-primary/10 text-primary';
         return (
@@ -137,12 +149,12 @@ export default function ProspectusPdfListPage() {
             <span
               className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${tone}`}
             >
-              {count}/{MAX_TABLES}
+              {count}/{total}
             </span>
             <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden">
               <div
                 className={`h-full transition-all ${
-                  count >= MAX_TABLES ? 'bg-emerald-500' : 'bg-primary'
+                  complete ? 'bg-emerald-500' : 'bg-primary'
                 }`}
                 style={{ width: `${pct}%` }}
               />
