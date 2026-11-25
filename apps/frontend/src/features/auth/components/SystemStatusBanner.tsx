@@ -7,6 +7,7 @@ import {
   fetchSystemStatus,
   type SystemStatusSeverity,
 } from '../../../api/system-status.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 const DISMISSED_KEY = 'coe-nnect:dismissed-status';
 /** How long the popup stays un-closable before the close button appears. */
@@ -186,11 +187,8 @@ export default function SystemStatusBanner() {
   // Lock background scrolling while the popup is open.
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   const panelRef = useRef<HTMLDivElement>(null);

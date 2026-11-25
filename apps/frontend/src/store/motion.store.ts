@@ -5,11 +5,12 @@ export const LOADING_ANIMATIONS_STORAGE_KEY = 'coe-nnect:loading-animations';
 function readStoredLoadingAnimations(): boolean {
   try {
     const stored = localStorage.getItem(LOADING_ANIMATIONS_STORAGE_KEY);
-    // Default on: the animation is the intended experience.
-    return stored === null ? true : stored === 'true';
+    // Default off: scrambled placeholder text reads as a glitch to most users.
+    // Anyone who wants it can turn it on in Settings → Appearance.
+    return stored === null ? false : stored === 'true';
   } catch {
     /* Storage can be unavailable in private mode. */
-    return true;
+    return false;
   }
 }
 

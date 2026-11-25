@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import clsx from 'clsx';
 import Icon from './Icon';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface BottomSheetProps {
   open: boolean;
@@ -34,8 +35,7 @@ export default function BottomSheet({
     };
     document.addEventListener('keydown', onKey);
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const release = lockBodyScroll();
 
     const timer = window.setTimeout(() => {
       const panel = panelRef.current;
@@ -47,7 +47,7 @@ export default function BottomSheet({
 
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      release();
       window.clearTimeout(timer);
     };
   }, [open]);

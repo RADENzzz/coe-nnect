@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import { formatTime } from '../utils/time.util';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface Props {
   entries: ScheduleEntry[] | null;
@@ -28,11 +29,10 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const release = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      release();
     };
   }, [entries, onClose]);
 

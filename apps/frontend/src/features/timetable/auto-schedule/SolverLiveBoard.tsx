@@ -6,6 +6,7 @@ import Icon from '../../../components/ui/Icon';
 import { useMotionEnabled } from '../../../hooks/use-motion-enabled';
 import { colorForSubject } from '../utils/color.util';
 import { getGenerationProgressMessage } from './auto-generate.utils';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 export interface SolverBlock {
   id: string;
@@ -271,11 +272,8 @@ export default function SolverLiveBoard({
   // would make `position: fixed` relative to the page instead of the viewport.
   // Portaling to <body> keeps the overlay truly full-screen.
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, []);
 
   // Rebuild the board if the subject list arrives after the overlay opens.

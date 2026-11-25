@@ -5,6 +5,7 @@ import StatusBadge, { ActiveBadge } from '@/components/ui/StatusBadge';
 import { isAnyModalOpen } from '@/components/ui/Modal';
 import { ROLE_LABELS, ROLE_TONE, initials } from './constants';
 import type { UserRecord, DeptLite, FacultyLite } from './types';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface Props {
   open: boolean;
@@ -48,11 +49,8 @@ export default function UserDrawer({
   // Lock body scroll while open, restore exactly what was there before.
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   // Reset copy state when target changes.

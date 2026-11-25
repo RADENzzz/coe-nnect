@@ -10,6 +10,7 @@ import {
   type RoomRecord,
   type RoomType,
 } from '../../../api/rooms.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 const TYPE_ICON: Record<RoomType, string> = {
   lecture_room: 'meeting_room',
@@ -104,11 +105,8 @@ export default function RoomDetailPanel({
   // Lock body scroll while open
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   const copy = async (key: string, value: string) => {

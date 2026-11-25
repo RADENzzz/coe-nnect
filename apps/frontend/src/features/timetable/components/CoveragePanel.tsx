@@ -5,6 +5,7 @@ import type {
   CoverageReport,
   CoverageMissingItem,
 } from '../../../api/schedule.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface Props {
   open: boolean;
@@ -34,11 +35,10 @@ export default function CoveragePanel({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const release = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      release();
     };
   }, [open, onClose]);
 

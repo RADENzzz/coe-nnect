@@ -6,6 +6,7 @@ import {
   fetchVersions,
   type ScheduleVersionSummary,
 } from '../../../api/schedule.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface VersionHistoryDrawerProps {
   open: boolean;
@@ -58,11 +59,8 @@ export default function VersionHistoryDrawer({
   // Lock the page behind the drawer and restore the previous value on close.
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    const release = lockBodyScroll();
+    return release;
   }, [open]);
 
   const { data: versions = [], isLoading, error } = useQuery({

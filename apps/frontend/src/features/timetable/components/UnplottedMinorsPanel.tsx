@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../../../components/ui/Icon';
 import type { UnplottedMinor } from '../../../api/schedule.api';
+import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 interface Props {
   open: boolean;
@@ -21,12 +22,11 @@ export default function UnplottedMinorsPanel({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    const previousOverflow = document.body.style.overflow;
     document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
+    const release = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      release();
     };
   }, [open, onClose]);
 
