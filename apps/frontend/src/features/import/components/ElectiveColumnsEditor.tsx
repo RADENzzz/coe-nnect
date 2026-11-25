@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import { COLUMN_LABELS, COLUMN_ORDER } from '../types';
 
-type ElectiveLayout = 'lec-lab-total' | 'lec-lab' | 'lec' | 'lab' | 'total';
+type ElectiveLayout = 'lec-lab-total' | 'lec-lab' | 'lec' | 'lab';
 
 interface LayoutOption {
   key: ElectiveLayout;
@@ -40,12 +40,6 @@ const LAYOUTS: LayoutOption[] = [
     hint: 'All units are laboratory units',
     roles: ['lab'],
   },
-  {
-    key: 'total',
-    label: 'Total only',
-    hint: 'One "No. Units" column',
-    roles: ['total'],
-  },
 ];
 
 const LAYOUT_WEIGHTS: Record<
@@ -62,7 +56,6 @@ const LAYOUT_WEIGHTS: Record<
   'lec-lab': { code: 0.16, title: 0.52, lec: 0.16, lab: 0.16 },
   lec: { code: 0.15, title: 0.65, lec: 0.2 },
   lab: { code: 0.15, title: 0.65, lab: 0.2 },
-  total: { code: 0.18, title: 0.52, total: 0.3 },
 };
 
 interface ElectiveColumnsEditorProps {
@@ -80,7 +73,6 @@ function layoutForRoles(roles: Set<ColumnRole>): ElectiveLayout | null {
   if (roles.has('lec') && roles.has('lab')) return 'lec-lab';
   if (roles.has('lec')) return 'lec';
   if (roles.has('lab')) return 'lab';
-  if (roles.has('total')) return 'total';
   return null;
 }
 
@@ -88,9 +80,9 @@ function layoutForRoles(roles: Set<ColumnRole>): ElectiveLayout | null {
  * Build a complete column layout for an elective table.
  *
  * Electives are not fixed to the six-column curriculum contract: a table can
- * have only lecture units, only laboratory units, a lec/lab/total split, or a
- * single total. Some also omit the prerequisite column, so that column is
- * opt-in.
+ * have only lecture units, only laboratory units, a lec/lab split, or a
+ * lec/lab/total split. Some also omit the prerequisite column, so that column
+ * is opt-in.
  */
 export function buildElectiveColumns(
   table: ProspectusPdfTable,

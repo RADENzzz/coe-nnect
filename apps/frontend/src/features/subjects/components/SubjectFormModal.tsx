@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import {
+  clearFieldError,
+  mergeFieldError,
+  type FieldError,
+} from '../../../components/ui/form-errors';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import type { Department } from '../../../api/departments.api';
 import {
@@ -67,6 +73,13 @@ const STEP_DEFS: StepDef[] = [
 ];
 
 const LAST_STEP = STEP_DEFS.length - 1;
+
+const IDENTITY_FIELDS = new Set(['subjectCode', 'deptId', 'title']);
+const UNITS_FIELDS = new Set([
+  'lectureUnits',
+  'labUnits',
+  'totalOnlyUnits',
+]);
 
 interface FormState {
   subjectCode: string;
@@ -141,10 +154,21 @@ export default function SubjectFormModal({
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errors.length > 0) {
+      errorSummaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [errors]);
 
   // Reset state when the modal opens.
   useEffect(() => {
@@ -180,6 +204,7 @@ export default function SubjectFormModal({
     }
     setStepIdx(0);
     setFieldErrors({});
+    setErrors([]);
     setFormError(null);
     setConfirmClose(false);
     setTimeout(() => firstFieldRef.current?.focus(), 60);
@@ -287,11 +312,47 @@ export default function SubjectFormModal({
     return errs;
   };
 
+  const collectErrors = (): FieldError[] => {
+    const all = { ...validateIdentity(), ...validateUnits() };
+    return Object.entries(all)
+      .filter((entry): entry is [string, string] => !!entry[1])
+      .map(([field, message]) => ({ field, message }));
+  };
+
   const validateStep = (idx: number): boolean => {
-    const errs =
-      idx === 0 ? validateIdentity() : idx === 1 ? validateUnits() : {};
+    const fields = idx === 0 ? IDENTITY_FIELDS : UNITS_FIELDS;
+    const scoped =
+      idx === LAST_STEP
+        ? []
+        : collectErrors().filter((error) => fields.has(error.field));
+    const errs: FieldErrors = {};
+    for (const error of scoped) errs[error.field as keyof FormState] = error.message;
     setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+    return scoped.length === 0;
+  };
+
+  const handleFieldChange = (event: React.FormEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (field) setErrors((prev) => clearFieldError(prev, field));
+  };
+
+  const handleFieldBlur = (event: React.FocusEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (!field) return;
+    const problem = collectErrors().find((error) => error.field === field);
+    setErrors((prev) =>
+      problem
+        ? mergeFieldError(prev, field, problem.message)
+        : clearFieldError(prev, field),
+    );
+  };
+
+  const jumpToField = (field: string) => {
+    if (isWizard) {
+      if (UNITS_FIELDS.has(field)) setStepIdx(1);
+      else if (IDENTITY_FIELDS.has(field)) setStepIdx(0);
+    }
+    requestAnimationFrame(() => document.getElementById(field)?.focus());
   };
 
   const goNext = () => {
@@ -342,14 +403,21 @@ export default function SubjectFormModal({
   const handleSubmit = () => {
     setFormError(null);
 
-    const idErrs = validateIdentity();
-    const unitErrs = validateUnits();
-    const allErrs = { ...idErrs, ...unitErrs };
-
-    if (Object.keys(allErrs).length > 0) {
-      setFieldErrors(allErrs);
-      if (Object.keys(idErrs).length > 0) setStepIdx(0);
-      else setStepIdx(1);
+    const problems = collectErrors();
+    setErrors(problems);
+    if (problems.length > 0) {
+      const errs: FieldErrors = {};
+      for (const problem of problems) {
+        errs[problem.field as keyof FormState] = problem.message;
+      }
+      setFieldErrors(errs);
+      if (isWizard) {
+        if (problems.some((error) => IDENTITY_FIELDS.has(error.field))) {
+          setStepIdx(0);
+        } else {
+          setStepIdx(1);
+        }
+      }
       return;
     }
 
@@ -469,6 +537,7 @@ export default function SubjectFormModal({
         >
           <input
             ref={firstFieldRef}
+            id="subjectCode"
             type="text"
             value={form.subjectCode}
             onChange={(e) => setField('subjectCode', e.target.value)}
@@ -483,6 +552,7 @@ export default function SubjectFormModal({
           hint={isDH ? 'Locked to your department.' : undefined}
         >
           <select
+            id="deptId"
             value={form.deptId}
             onChange={(e) => setField('deptId', e.target.value)}
             disabled={isDH}
@@ -502,6 +572,7 @@ export default function SubjectFormModal({
         <div className="md:col-span-2">
           <FormField label="Title" required error={fieldErrors.title}>
             <input
+              id="title"
               type="text"
               value={form.title}
               onChange={(e) => setField('title', e.target.value)}
@@ -549,6 +620,12 @@ export default function SubjectFormModal({
                   labUnits: undefined,
                   totalOnlyUnits: undefined,
                 }));
+                setErrors((prev) =>
+                  [...UNITS_FIELDS].reduce(
+                    (acc, field) => clearFieldError(acc, field),
+                    prev,
+                  ),
+                );
               }}
               className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
                 active
@@ -576,6 +653,7 @@ export default function SubjectFormModal({
             hint="Used when the prospectus lists only a total for this elective."
           >
             <input
+              id="totalOnlyUnits"
               type="number"
               step="0.5"
               min="0"
@@ -595,6 +673,7 @@ export default function SubjectFormModal({
             error={fieldErrors.lectureUnits}
           >
             <input
+              id="lectureUnits"
               type="number"
               step="0.5"
               min="0"
@@ -611,6 +690,7 @@ export default function SubjectFormModal({
             error={fieldErrors.labUnits}
           >
             <input
+              id="labUnits"
               type="number"
               step="0.5"
               min="0"
@@ -1029,10 +1109,18 @@ export default function SubjectFormModal({
         }
         size="lg"
       >
-        <div className="space-y-4">
+        <div
+          className="space-y-4"
+          onChangeCapture={handleFieldChange}
+          onBlurCapture={handleFieldBlur}
+        >
           {isWizard && (
             <StepIndicator currentIdx={stepIdx} steps={STEP_DEFS} />
           )}
+
+          <div ref={errorSummaryRef}>
+            <FormErrorSummary errors={errors} onJump={jumpToField} />
+          </div>
 
           {(!isWizard || stepIdx < LAST_STEP) &&
             (form.subjectCode || form.title) && (

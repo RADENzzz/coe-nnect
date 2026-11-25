@@ -11,11 +11,31 @@ import type { ProgramRecord } from '../../../api/programs.api';
 import type { SubjectRecord } from '../../../api/subjects.api';
 import Modal from '../../../components/ui/Modal';
 import Icon from '../../../components/ui/Icon';
+import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import {
+  clearFieldError,
+  mergeFieldError,
+  type FieldError,
+} from '../../../components/ui/form-errors';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
+import { validateProspectusForm } from '../utils/validate-prospectus-form';
 
 // ── Constants ──
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
+
+const PLACEMENT_FIELDS = new Set([
+  'programId',
+  'subjectId',
+  'yearLevel',
+  'semester',
+]);
+const SCHEDULE_FIELDS = new Set([
+  'lectureSessionsPerWeek',
+  'lectureMinutesPerSession',
+  'labSessionsPerWeek',
+  'labMinutesPerSession',
+]);
 
 interface StepDef {
   label: string;
@@ -181,6 +201,7 @@ export default function ProspectusFormModal({
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [subjectSearch, setSubjectSearch] = useState('');
@@ -189,6 +210,16 @@ export default function ProspectusFormModal({
 
   const subjectDropdownRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLSelectElement>(null);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errors.length > 0) {
+      errorSummaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [errors]);
 
   // ── Derived: selected subject ──
   const selectedSubject = useMemo(
@@ -261,6 +292,7 @@ export default function ProspectusFormModal({
     setStepIdx(0);
     setFormError(null);
     setFieldErrors({});
+    setErrors([]);
     setSubjectDropdownOpen(false);
     setConfirmClose(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -369,13 +401,12 @@ export default function ProspectusFormModal({
   });
 
   // ── Validation ──
-  const validatePlacement = (): FieldErrors => {
-    const errs: FieldErrors = {};
-    if (!form.programId) errs.programId = 'Program is required';
-    if (!form.subjectId) errs.subjectId = 'Subject is required';
-    if (!form.yearLevel) errs.yearLevel = 'Year level is required';
-    if (!form.semester) errs.semester = 'Semester is required';
-
+  const collectErrors = (): FieldError[] => {
+    const problems = validateProspectusForm(form).filter(
+      (error) =>
+        !SCHEDULE_FIELDS.has(error.field) ||
+        (error.field.startsWith('lecture') ? hasLecture : hasLab),
+    );
     if (!editing && form.programId && form.subjectId) {
       const dup = existingEntries.find(
         (e) =>
@@ -384,39 +415,55 @@ export default function ProspectusFormModal({
           e.yearLevel === form.yearLevel &&
           e.semester === form.semester,
       );
-      if (dup) errs.subjectId = 'This subject is already mapped to this slot';
+      if (dup) {
+        return mergeFieldError(
+          problems,
+          'subjectId',
+          'This subject is already mapped to this slot',
+        );
+      }
     }
-    return errs;
+    return problems;
   };
 
-  const validateSchedule = (): FieldErrors => {
+  const toFieldErrors = (problems: FieldError[]): FieldErrors => {
     const errs: FieldErrors = {};
-    if (hasLecture) {
-      if (form.lectureSessionsPerWeek < 1 || form.lectureSessionsPerWeek > 5) {
-        errs.lectureSessionsPerWeek = 'Between 1 and 5';
-      }
-      if (
-        form.lectureMinutesPerSession < 30 ||
-        form.lectureMinutesPerSession > 240
-      ) {
-        errs.lectureMinutesPerSession = 'Between 30 and 240';
-      }
-    }
-    if (hasLab) {
-      if (form.labSessionsPerWeek < 1 || form.labSessionsPerWeek > 3) {
-        errs.labSessionsPerWeek = 'Between 1 and 3';
-      }
-      if (form.labMinutesPerSession < 60 || form.labMinutesPerSession > 300) {
-        errs.labMinutesPerSession = 'Between 60 and 300';
-      }
+    for (const problem of problems) {
+      errs[problem.field as keyof FormState] = problem.message;
     }
     return errs;
   };
 
   const validateStep = (idx: number): boolean => {
-    const errs = idx === 0 ? validatePlacement() : idx === 1 ? validateSchedule() : {};
-    setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+    const fields = idx === 0 ? PLACEMENT_FIELDS : SCHEDULE_FIELDS;
+    const scoped =
+      idx === LAST_STEP ? [] : collectErrors().filter((error) => fields.has(error.field));
+    setFieldErrors(toFieldErrors(scoped));
+    return scoped.length === 0;
+  };
+
+  const handleFieldChange = (event: React.FormEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (field) setErrors((prev) => clearFieldError(prev, field));
+  };
+
+  const handleFieldBlur = (event: React.FocusEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (!field) return;
+    const problem = collectErrors().find((error) => error.field === field);
+    setErrors((prev) =>
+      problem
+        ? mergeFieldError(prev, field, problem.message)
+        : clearFieldError(prev, field),
+    );
+  };
+
+  const jumpToField = (field: string) => {
+    if (isWizard) {
+      if (SCHEDULE_FIELDS.has(field)) setStepIdx(1);
+      else if (PLACEMENT_FIELDS.has(field)) setStepIdx(0);
+    }
+    requestAnimationFrame(() => document.getElementById(field)?.focus());
   };
 
   const goNext = () => {
@@ -428,10 +475,18 @@ export default function ProspectusFormModal({
     e?.preventDefault();
     setFormError(null);
 
-    const errs = { ...validatePlacement(), ...validateSchedule() };
-    setFieldErrors(errs);
-    if (Object.keys(errs).length > 0) {
-      setStepIdx(0);
+    const problems = collectErrors();
+    setErrors(problems);
+    setFieldErrors(toFieldErrors(problems));
+    if (problems.length > 0) {
+      if (isWizard && problems.some((error) => PLACEMENT_FIELDS.has(error.field))) {
+        setStepIdx(0);
+      } else if (
+        isWizard &&
+        problems.some((error) => SCHEDULE_FIELDS.has(error.field))
+      ) {
+        setStepIdx(1);
+      }
       return;
     }
 
@@ -511,6 +566,12 @@ export default function ProspectusFormModal({
       lectureSessionsPerWeek: undefined,
       lectureMinutesPerSession: undefined,
     }));
+    setErrors((prev) =>
+      clearFieldError(
+        clearFieldError(prev, 'lectureSessionsPerWeek'),
+        'lectureMinutesPerSession',
+      ),
+    );
   };
 
   const applyLabPreset = (preset: Preset) => {
@@ -524,6 +585,12 @@ export default function ProspectusFormModal({
       labSessionsPerWeek: undefined,
       labMinutesPerSession: undefined,
     }));
+    setErrors((prev) =>
+      clearFieldError(
+        clearFieldError(prev, 'labSessionsPerWeek'),
+        'labMinutesPerSession',
+      ),
+    );
   };
 
   // ── Step renderer ──
@@ -536,6 +603,7 @@ export default function ProspectusFormModal({
             setForm={setForm}
             fieldErrors={fieldErrors}
             setFieldErrors={setFieldErrors}
+            setErrors={setErrors}
             programs={programs}
             subjects={subjects}
             filteredSubjects={filteredSubjects}
@@ -683,6 +751,10 @@ export default function ProspectusFormModal({
             </div>
           )}
 
+          <div ref={errorSummaryRef}>
+            <FormErrorSummary errors={errors} onJump={jumpToField} />
+          </div>
+
           {formError && (
             <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2 rounded-lg">
               <Icon name="error" size={16} className="shrink-0 mt-0.5" />
@@ -698,7 +770,12 @@ export default function ProspectusFormModal({
             </div>
           )}
 
-          <form id="prospectus-form" onSubmit={handleSubmit}>
+          <form
+            id="prospectus-form"
+            onSubmit={handleSubmit}
+            onChangeCapture={handleFieldChange}
+            onBlurCapture={handleFieldBlur}
+          >
             {isWizard ? (
               renderStep(stepIdx)
             ) : (
@@ -756,6 +833,7 @@ function PlacementStep({
   setForm,
   fieldErrors,
   setFieldErrors,
+  setErrors,
   programs,
   subjects,
   filteredSubjects,
@@ -775,6 +853,7 @@ function PlacementStep({
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   fieldErrors: FieldErrors;
   setFieldErrors: React.Dispatch<React.SetStateAction<FieldErrors>>;
+  setErrors: React.Dispatch<React.SetStateAction<FieldError[]>>;
   programs: ProgramRecord[];
   subjects: SubjectRecord[];
   filteredSubjects: SubjectRecord[];
@@ -798,6 +877,7 @@ function PlacementStep({
         <FormField label="Program" required error={fieldErrors.programId}>
           <select
             ref={firstFieldRef}
+            id="programId"
             value={form.programId}
             onChange={(e) => {
               setForm((p) => ({ ...p, programId: e.target.value }));
@@ -834,6 +914,7 @@ function PlacementStep({
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
               />
               <input
+                id="subjectId"
                 type="text"
                 value={subjectSearch}
                 onChange={(e) => {
@@ -841,6 +922,7 @@ function PlacementStep({
                   setSubjectDropdownOpen(true);
                   if (e.target.value === '') {
                     setForm((p) => ({ ...p, subjectId: '' }));
+                    setErrors((prev) => clearFieldError(prev, 'subjectId'));
                   }
                 }}
                 onFocus={() => setSubjectDropdownOpen(true)}
@@ -853,6 +935,7 @@ function PlacementStep({
                   onClick={() => {
                     setSubjectSearch('');
                     setForm((p) => ({ ...p, subjectId: '' }));
+                    setErrors((prev) => clearFieldError(prev, 'subjectId'));
                   }}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
                   aria-label="Clear"
@@ -912,6 +995,9 @@ function PlacementStep({
                                 ...fe,
                                 subjectId: undefined,
                               }));
+                              setErrors((prev) =>
+                                clearFieldError(prev, 'subjectId'),
+                              );
                             }}
                             className="w-full text-left px-3 py-2 hover:bg-primary/5 transition border-b border-slate-100 last:border-0"
                           >
@@ -987,6 +1073,7 @@ function PlacementStep({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Year Level" required error={fieldErrors.yearLevel}>
             <select
+              id="yearLevel"
               value={form.yearLevel}
               onChange={(e) =>
                 setForm((p) => ({ ...p, yearLevel: Number(e.target.value) }))
@@ -1003,6 +1090,7 @@ function PlacementStep({
           </FormField>
           <FormField label="Semester" required error={fieldErrors.semester}>
             <select
+              id="semester"
               value={form.semester}
               onChange={(e) =>
                 setForm((p) => ({
@@ -1164,6 +1252,7 @@ function ScheduleStep({
                 min={1}
                 max={5}
                 step={1}
+                id="lectureSessionsPerWeek"
                 value={form.lectureSessionsPerWeek}
                 onChange={(e) => {
                   setForm((p) => ({
@@ -1188,6 +1277,7 @@ function ScheduleStep({
                 min={30}
                 max={240}
                 step={15}
+                id="lectureMinutesPerSession"
                 value={form.lectureMinutesPerSession}
                 onChange={(e) => {
                   setForm((p) => ({
@@ -1252,6 +1342,7 @@ function ScheduleStep({
                 min={1}
                 max={3}
                 step={1}
+                id="labSessionsPerWeek"
                 value={form.labSessionsPerWeek}
                 onChange={(e) => {
                   setForm((p) => ({
@@ -1276,6 +1367,7 @@ function ScheduleStep({
                 min={60}
                 max={300}
                 step={30}
+                id="labMinutesPerSession"
                 value={form.labMinutesPerSession}
                 onChange={(e) => {
                   setForm((p) => ({

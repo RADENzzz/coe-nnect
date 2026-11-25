@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import {
+  clearFieldError,
+  mergeFieldError,
+  type FieldError,
+} from '../../../components/ui/form-errors';
 import type { Department } from '../../../api/departments.api';
 import {
   createRoom,
@@ -39,6 +45,10 @@ interface Props {
 const LAST_STEP = STEP_DEFS.length - 1;
 const ROOMS_KEY = ['rooms', { includeInactive: true }] as const;
 
+const BASICS_FIELDS = new Set(['roomNumber', 'building']);
+const DETAILS_FIELDS = new Set(['capacity']);
+const OWNERSHIP_FIELDS = new Set(['deptId']);
+
 export default function RoomFormModal({
   mode,
   room,
@@ -55,9 +65,20 @@ export default function RoomFormModal({
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (errors.length > 0) {
+      errorSummaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [errors]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +96,7 @@ export default function RoomFormModal({
     }
     setStepIdx(0);
     setFieldErrors({});
+    setErrors([]);
     setFormError(null);
     setConfirmClose(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,6 +108,7 @@ export default function RoomFormModal({
   ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+    setErrors((prev) => clearFieldError(prev, key));
   };
 
   const setShared = (isShared: boolean) => {
@@ -96,6 +119,7 @@ export default function RoomFormModal({
         ? ''
         : prev.deptId || (isDH && myDeptId ? myDeptId : ''),
     }));
+    setErrors((prev) => clearFieldError(prev, 'deptId'));
   };
 
   const duplicateRoom = useMemo(() => {
@@ -112,28 +136,64 @@ export default function RoomFormModal({
     );
   }, [form.building, form.roomNumber, rooms, mode, room?.roomId]);
 
-  const validateStep = (idx: number): boolean => {
+  const collectErrors = (): FieldError[] => {
     const errs: FieldErrors = {};
-    if (idx === 0) {
-      if (!form.roomNumber.trim()) errs.roomNumber = 'Room number is required';
-      if (!form.building.trim()) errs.building = 'Building is required';
-      if (duplicateRoom) {
-        errs.roomNumber = `Room ${form.roomNumber} already exists in ${form.building}`;
-      }
-    } else if (idx === 1) {
-      if (form.capacity) {
-        const n = Number(form.capacity);
-        if (isNaN(n) || n < 0 || n > 1000) {
-          errs.capacity = 'Capacity must be between 0 and 1000';
-        }
-      }
-    } else if (idx === 2) {
-      if (!form.isShared && !form.deptId) {
-        errs.deptId = 'Select a department or mark this room as shared';
+    if (!form.roomNumber.trim()) errs.roomNumber = 'Room number is required';
+    else if (duplicateRoom) {
+      errs.roomNumber = `Room ${form.roomNumber} already exists in ${form.building}`;
+    }
+    if (!form.building.trim()) errs.building = 'Building is required';
+    if (form.capacity) {
+      const n = Number(form.capacity);
+      if (isNaN(n) || n < 0 || n > 1000) {
+        errs.capacity = 'Capacity must be between 0 and 1000';
       }
     }
+    if (!form.isShared && !form.deptId) {
+      errs.deptId = 'Select a department or mark this room as shared';
+    }
+    return Object.entries(errs)
+      .filter((entry): entry is [string, string] => !!entry[1])
+      .map(([field, message]) => ({ field, message }));
+  };
+
+  const validateStep = (idx: number): boolean => {
+    const fields =
+      idx === 0
+        ? BASICS_FIELDS
+        : idx === 1
+          ? DETAILS_FIELDS
+          : OWNERSHIP_FIELDS;
+    const scoped = idx === LAST_STEP ? [] : collectErrors().filter((error) => fields.has(error.field));
+    const errs: FieldErrors = {};
+    for (const error of scoped) errs[error.field as keyof FormState] = error.message;
     setFieldErrors((prev) => ({ ...prev, ...errs }));
-    return Object.keys(errs).length === 0;
+    return scoped.length === 0;
+  };
+
+  const handleFieldChange = (event: React.FormEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (field) setErrors((prev) => clearFieldError(prev, field));
+  };
+
+  const handleFieldBlur = (event: React.FocusEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (!field) return;
+    const problem = collectErrors().find((error) => error.field === field);
+    setErrors((prev) =>
+      problem
+        ? mergeFieldError(prev, field, problem.message)
+        : clearFieldError(prev, field),
+    );
+  };
+
+  const jumpToField = (field: string) => {
+    if (isCreateWizard) {
+      if (DETAILS_FIELDS.has(field)) setStepIdx(1);
+      else if (OWNERSHIP_FIELDS.has(field)) setStepIdx(2);
+      else if (BASICS_FIELDS.has(field)) setStepIdx(0);
+    }
+    requestAnimationFrame(() => document.getElementById(field)?.focus());
   };
 
   const goNext = () => {
@@ -211,27 +271,19 @@ export default function RoomFormModal({
   const handleSubmit = () => {
     setFormError(null);
 
-    const allErrs: FieldErrors = {};
-    if (!form.roomNumber.trim()) allErrs.roomNumber = 'Room number is required';
-    if (!form.building.trim()) allErrs.building = 'Building is required';
-    if (duplicateRoom) {
-      allErrs.roomNumber = `Room ${form.roomNumber} already exists in ${form.building}`;
-    }
-    if (form.capacity) {
-      const n = Number(form.capacity);
-      if (isNaN(n) || n < 0 || n > 1000) {
-        allErrs.capacity = 'Capacity must be between 0 and 1000';
+    const problems = collectErrors();
+    setErrors(problems);
+    if (problems.length > 0) {
+      const errs: FieldErrors = {};
+      for (const problem of problems) {
+        errs[problem.field as keyof FormState] = problem.message;
       }
-    }
-    if (!form.isShared && !form.deptId) {
-      allErrs.deptId = 'Select a department or mark this room as shared';
-    }
-
-    if (Object.keys(allErrs).length > 0) {
-      setFieldErrors(allErrs);
-      if (allErrs.roomNumber || allErrs.building) setStepIdx(0);
-      else if (allErrs.capacity) setStepIdx(1);
-      else if (allErrs.deptId) setStepIdx(2);
+      setFieldErrors(errs);
+      if (isCreateWizard) {
+        if (problems.some((error) => BASICS_FIELDS.has(error.field))) setStepIdx(0);
+        else if (problems.some((error) => DETAILS_FIELDS.has(error.field))) setStepIdx(1);
+        else if (problems.some((error) => OWNERSHIP_FIELDS.has(error.field))) setStepIdx(2);
+      }
       return;
     }
 
@@ -344,10 +396,18 @@ export default function RoomFormModal({
         }
         size="lg"
       >
-        <div className="space-y-4">
+        <div
+          className="space-y-4"
+          onChangeCapture={handleFieldChange}
+          onBlurCapture={handleFieldBlur}
+        >
           {isCreateWizard && (
             <StepIndicator currentIdx={stepIdx} steps={STEP_DEFS} />
           )}
+
+          <div ref={errorSummaryRef}>
+            <FormErrorSummary errors={errors} onJump={jumpToField} />
+          </div>
 
           <LivePreview form={form} departments={departments} />
 

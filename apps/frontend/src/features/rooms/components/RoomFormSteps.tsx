@@ -40,6 +40,7 @@ export function BasicsStep({
           }
         >
           <input
+            id="roomNumber"
             type="text"
             name="roomNumber"
             value={form.roomNumber}
@@ -51,6 +52,7 @@ export function BasicsStep({
         </FormField>
         <FormField label="Building" required error={fieldErrors.building}>
           <input
+            id="building"
             type="text"
             name="building"
             value={form.building}
@@ -109,6 +111,7 @@ export function DetailsStep({ form, setField, fieldErrors }: StepProps) {
           >
             <div className="relative">
               <input
+                id="capacity"
                 type="number"
                 min={0}
                 max={1000}
@@ -188,6 +191,7 @@ export function OwnershipStep({
             hint={isDH ? 'Locked to your department.' : undefined}
           >
             <select
+              id="deptId"
               name="deptId"
               value={form.deptId}
               onChange={(e) => setField('deptId', e.target.value)}
