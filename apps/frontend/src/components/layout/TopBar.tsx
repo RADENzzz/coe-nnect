@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useLogout } from '../../hooks/use-logout';
 import { getNavForRole } from '../../lib/constants/nav-config';
 import NotificationBell from '../notifications/NotificationBell';
+import PageHelpButton from '../../features/help/components/PageHelpButton';
 import TutorialLauncher from '../../features/tutorial/TutorialLauncher';
 import { searchApi, type SearchResult } from '../../api/search.api';
 import { useChatControl } from '../../features/chat/ChatWidget';
@@ -577,6 +578,7 @@ export default function TopBar({ label }: TopBarProps) {
           {!isDevAccount && (
             <div className="md:hidden flex items-center gap-1" data-tour="notifications">
               <NotificationBell />
+              <PageHelpButton />
             </div>
           )}
 
@@ -677,8 +679,9 @@ export default function TopBar({ label }: TopBarProps) {
           )}
 
           {!isDevAccount && (
-            <div className="hidden md:block" data-tour="notifications">
+            <div className="hidden md:flex items-center gap-1" data-tour="notifications">
               <NotificationBell />
+              <PageHelpButton />
             </div>
           )}
 

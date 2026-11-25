@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
 import TimetableGrid from './components/TimetableGrid';
@@ -42,6 +42,7 @@ import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import RollingValue, {
   RollingNumber,
 } from '../../components/ui/RollingValue';
@@ -245,6 +246,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [autoUnscheduled, setAutoUnscheduled] = useState<UnscheduledBlock[]>([]);
   const [serverSideGenerating, setServerSideGenerating] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const [discardAutoOpen, setDiscardAutoOpen] = useState(false);
+  const blockedMinorsCancelRef = useRef<HTMLButtonElement>(null);
   const [blockedMinors, setBlockedMinors] = useState<{
     message: string;
     minors: BlockedMinorSummary[];
@@ -905,6 +908,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
     refetchPendingAutoGenerate,
     invalidateAfterAutoGenerate,
   ]);
+
+  const confirmDiscardAuto = useCallback(() => {
+    setDiscardAutoOpen(false);
+    if (autoPreview) void handleDiscardPreview();
+    else void handleDiscardPendingPreview();
+  }, [autoPreview, handleDiscardPreview, handleDiscardPendingPreview]);
 
   const {
     moveEntry: handleMove,
@@ -1634,7 +1643,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={handleDiscardPendingPreview}
+                  onClick={() => setDiscardAutoOpen(true)}
                   className="px-3 py-2 text-xs font-semibold text-amber-800 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 transition"
                 >
                   Discard
@@ -1984,63 +1993,53 @@ export default function TimetablePage({ readOnly = false }: Props) {
                 : undefined
             }
             onAccept={handleAcceptPreview}
-            onCancel={handleDiscardPreview}
+            onCancel={() => setDiscardAutoOpen(true)}
           />
         )}
 
-        <Modal
+        <ConfirmDialog
           open={confirmOverwrite}
           onClose={() => setConfirmOverwrite(false)}
           title="Replace existing auto-generated drafts?"
-          size="sm"
-          footer={
+          description={
             <>
-              <button
-                type="button"
-                onClick={() => setConfirmOverwrite(false)}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmOverwrite}
-                className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition rounded-lg"
-              >
-                Replace and Generate
-              </button>
+              Replace {autoDraftCount} existing auto-generated draft
+              {autoDraftCount === 1 ? '' : 's'} for{' '}
+              <strong>{activeTerm?.termName ?? 'this term'}</strong>, which
+              discards any manual changes to those drafts?
             </>
           }
-        >
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-              <Icon
-                name="warning"
-                size={18}
-                className="text-amber-700 shrink-0 mt-0.5"
-              />
-              <div className="text-sm text-amber-900">
-                <p className="font-semibold">
-                  {autoDraftCount} existing auto-generated draft
-                  {autoDraftCount === 1 ? '' : 's'} will be replaced.
-                </p>
-              </div>
-            </div>
-            <p className="text-sm text-slate-600">
-              Any manual changes made to those drafts after generation will be
-              lost. The solver will produce a fresh set of drafts.
-            </p>
-          </div>
-        </Modal>
+          confirmLabel="Replace and generate"
+          tone="danger"
+          onConfirm={() => void handleConfirmOverwrite()}
+        />
+
+        <ConfirmDialog
+          open={discardAutoOpen}
+          onClose={() => setDiscardAutoOpen(false)}
+          title="Discard generated schedule?"
+          description={
+            <>
+              Discard the generated schedule for{' '}
+              <strong>{activeTerm?.termName ?? 'this term'}</strong>, which
+              permanently deletes the preview and its draft entries?
+            </>
+          }
+          confirmLabel="Discard preview"
+          tone="danger"
+          onConfirm={confirmDiscardAuto}
+        />
 
         <Modal
           open={!!blockedMinors}
           onClose={() => setBlockedMinors(null)}
           title="Minor subjects not yet plotted"
           size="md"
+          initialFocusRef={blockedMinorsCancelRef}
           footer={
             <>
               <button
+                ref={blockedMinorsCancelRef}
                 type="button"
                 onClick={() => setBlockedMinors(null)}
                 className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"

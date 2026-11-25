@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,6 +12,13 @@ import {
 } from '../../../api/terms.api';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
+import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import {
+  clearFieldError,
+  mergeFieldError,
+  type FieldError,
+} from '../../../components/ui/form-errors';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import { matchSemesterType } from '../../../lib/semester-match';
@@ -94,8 +101,19 @@ export default function TermsPanel({ isAdmin }: Props) {
 
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<CreateTermInput>(EMPTY_FORM);
+  const [errors, setErrors] = useState<FieldError[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Term | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<Term | null>(null);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
+      errorSummaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      }),
+    );
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['terms'] });
@@ -144,6 +162,7 @@ export default function TermsPanel({ isAdmin }: Props) {
         semester: defaultSemester,
       });
     }
+    setErrors([]);
     setFormOpen(true);
   }, [terms, types, labelFor]);
 
@@ -255,26 +274,51 @@ export default function TermsPanel({ isAdmin }: Props) {
       }),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.termName.trim() || !form.schoolYear.trim()) {
-      feedback.error('Enter a term name and school year.', {
-        title: 'Missing details',
-      });
-      return;
+  const collectErrors = (): FieldError[] => {
+    const problems: FieldError[] = [];
+    if (!form.termName.trim()) {
+      problems.push({ field: 'termName', message: 'Choose a term name.' });
     }
-    if (form.startDate && form.endDate && form.endDate <= form.startDate) {
-      feedback.error('End date must be after the start date.', {
-        title: 'Invalid date range',
-      });
-      return;
+    if (!form.schoolYear.trim()) {
+      problems.push({ field: 'schoolYear', message: 'Enter a school year.' });
     }
     if (!form.semester) {
-      feedback.error('Please select a semester.', {
-        title: 'Missing semester',
+      problems.push({ field: 'semester', message: 'Choose a semester.' });
+    }
+    if (form.startDate && form.endDate && form.endDate <= form.startDate) {
+      problems.push({
+        field: 'endDate',
+        message: 'End date must be after the start date.',
       });
+    }
+    return problems;
+  };
+
+  const handleFieldChange = (event: React.FormEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (field) setErrors((prev) => clearFieldError(prev, field));
+  };
+
+  const handleFieldBlur = (event: React.FocusEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (!field) return;
+    const problem = collectErrors().find((error) => error.field === field);
+    setErrors((prev) =>
+      problem
+        ? mergeFieldError(prev, field, problem.message)
+        : clearFieldError(prev, field),
+    );
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const problems = collectErrors();
+    setErrors(problems);
+    if (problems.length > 0) {
+      scrollToErrorSummary();
       return;
     }
+
     createMutation.mutate({
       termName: form.termName.trim(),
       schoolYear: form.schoolYear.trim(),
@@ -451,17 +495,31 @@ export default function TermsPanel({ isAdmin }: Props) {
           </>
         }
       >
-        <div className="space-y-4">
+        <div
+          className="space-y-4"
+          onChangeCapture={handleFieldChange}
+          onBlurCapture={handleFieldBlur}
+        >
+          <div ref={errorSummaryRef}>
+            <FormErrorSummary
+              errors={errors}
+              onJump={(field) => document.getElementById(field)?.focus()}
+            />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                 Term Name *
               </label>
               <select
+                id="termName"
                 value={form.termName}
                 onChange={(e) => {
                   const name = e.target.value;
                   const inferred = matchSemesterType(name, types)?.code;
+                  if (inferred) {
+                    setErrors((prev) => clearFieldError(prev, 'semester'));
+                  }
                   setForm((p) => ({
                     ...p,
                     termName: name,
@@ -484,6 +542,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                 Semester *
               </label>
               <select
+                id="semester"
                 value={form.semester}
                 onChange={(e) =>
                   setForm((p) => ({
@@ -510,6 +569,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                 School Year *
               </label>
               <input
+                id="schoolYear"
                 type="text"
                 value={form.schoolYear}
                 onChange={(e) =>
@@ -528,6 +588,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                 </span>
               </label>
               <input
+                id="startDate"
                 type="date"
                 value={form.startDate ?? ''}
                 onChange={(e) =>
@@ -545,6 +606,7 @@ export default function TermsPanel({ isAdmin }: Props) {
                 </span>
               </label>
               <input
+                id="endDate"
                 type="date"
                 value={form.endDate ?? ''}
                 onChange={(e) =>
@@ -579,87 +641,38 @@ export default function TermsPanel({ isAdmin }: Props) {
       </Modal>
 
       {/* Deactivate confirmation */}
-      <Modal
+      <ConfirmDialog
         open={!!deactivateTarget}
         onClose={() => setDeactivateTarget(null)}
         title="Deactivate term?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeactivateTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (deactivateTarget) {
-                  deactivateMutation.mutate(deactivateTarget.termId);
-                }
-              }}
-              disabled={deactivateMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
-            >
-              {deactivateMutation.isPending ? 'Deactivating…' : 'Deactivate'}
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-slate-600">
-          Deactivate{' '}
-          <strong>
-            "{deactivateTarget?.termName} — AY {deactivateTarget?.schoolYear}"
-          </strong>
-          ?
-        </p>
-        <p className="text-sm text-slate-500 mt-2">
-          Schedules for this term will remain in the database, but the
-          Timetable won't display anything until a term is reactivated.
-        </p>
-      </Modal>
+        description={`Deactivate term "${deactivateTarget?.termName} — AY ${deactivateTarget?.schoolYear}", which leaves no active term and hides the timetable until one is activated?`}
+        confirmLabel="Deactivate term"
+        tone="danger"
+        busy={deactivateMutation.isPending}
+        requireText="DEACTIVATE"
+        onConfirm={() => {
+          if (deactivateTarget) {
+            deactivateMutation.mutate(deactivateTarget.termId);
+          }
+        }}
+      />
 
       {/* Delete confirmation */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete term?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (deleteTarget) {
-                  deleteMutation.mutate(deleteTarget.termId);
-                }
-              }}
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-slate-600">
-          Delete{' '}
-          <strong>
-            "{deleteTarget?.termName} — AY {deleteTarget?.schoolYear}"
-          </strong>
-          ? Schedules belonging to this term will remain in the database but
-          won't be accessible from the UI. This cannot be undone.
-        </p>
-      </Modal>
+        description={`Delete term "${deleteTarget?.termName} — AY ${deleteTarget?.schoolYear}", which keeps its schedules in the database but makes them inaccessible from the UI and cannot be undone?`}
+        confirmLabel="Delete term"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        requireText={deleteTarget?.termName}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.termId);
+          }
+        }}
+      />
     </section>
   );
 }

@@ -13,7 +13,7 @@ import {
 } from '../../api/rooms.api';
 import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
-import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -888,65 +888,21 @@ export default function RoomsPage() {
         </div>
       )}
 
-      {/* Delete confirmation — closes instantly on confirm */}
-      <Modal
+      {/* Delete confirmation */}
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete room?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.roomId)
-              }
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg flex items-center gap-2"
-            >
-              <Icon name="delete" size={14} />
-              Delete
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          {deleteTarget && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-              <div className="w-10 h-10 rounded-lg bg-rose-100 flex items-center justify-center shrink-0">
-                <Icon
-                  name={TYPE_ICON[deleteTarget.roomType]}
-                  size={20}
-                  className="text-rose-600"
-                />
-              </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-sm text-on-surface">
-                  Room {deleteTarget.roomNumber}
-                </p>
-                <p className="text-xs text-on-surface-variant truncate">
-                  {deleteTarget.building} ·{' '}
-                  {deleteTarget.roomType.replace('_', ' ')}
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              This will remove any saved room preferences and prevent the
-              scheduler from assigning classes here. This action cannot be
-              undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        description={`Delete room ${deleteTarget?.roomNumber} in ${deleteTarget?.building}, which removes its saved preferences, prevents the scheduler from assigning classes there, and cannot be undone?`}
+        confirmLabel="Delete room"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.roomId);
+          }
+        }}
+      />
 
       <RoomPreferencesModal
         open={!!preferencesTarget}

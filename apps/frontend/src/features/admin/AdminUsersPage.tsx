@@ -17,6 +17,7 @@ import Icon from '@/components/ui/Icon';
 import ResponsiveTable, { type Column } from '@/components/ui/ResponsiveTable';
 import type { RowAction } from '@/components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '@/components/ui/StatusBadge';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import {
   UserStatsCards,
   UserFilters,
@@ -38,6 +39,9 @@ export default function AdminUsersPage() {
   const [editing, setEditing] = useState<UserRecord | null>(null);
   const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
   const [actionTarget, setActionTarget] = useState<UserRecord | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<UserRecord | null>(
+    null,
+  );
 
   const [pageError, setPageError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -285,6 +289,14 @@ export default function AdminUsersPage() {
     { key: 'actions', header: 'Actions', cardVariant: 'actions', render: () => null },
   ];
 
+  const requestToggle = (u: UserRecord) => {
+    if (!u.isActive) {
+      toggleMutation.mutate(u.userId);
+      return;
+    }
+    setDeactivateTarget(u);
+  };
+
   const getActions = (u: UserRecord): RowAction[] => {
     const isSelf = user?.id === u.userId;
     return [
@@ -293,7 +305,7 @@ export default function AdminUsersPage() {
       {
         label: u.isActive ? 'Deactivate' : 'Activate',
         icon: u.isActive ? 'toggle_off' : 'toggle_on',
-        onClick: () => toggleMutation.mutate(u.userId),
+        onClick: () => requestToggle(u),
         disabled: toggleMutation.isPending || isSelf,
       },
       {
@@ -392,7 +404,7 @@ export default function AdminUsersPage() {
           setDrawerUserId(null);
           setActionTarget(u);
         }}
-        onToggleActive={(u) => toggleMutation.mutate(u.userId)}
+        onToggleActive={requestToggle}
         departments={departments}
         faculty={faculty}
         isSelf={!!drawerUser && user?.id === drawerUser.userId}
@@ -414,6 +426,22 @@ export default function AdminUsersPage() {
           onUpdate={(id, input) => updateMutation.mutate({ id, input })}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        title="Deactivate user?"
+        description={`Deactivate user "${deactivateTarget?.username}" (${deactivateTarget?.email}), which revokes their access immediately until an administrator reactivates them?`}
+        confirmLabel="Deactivate user"
+        tone="danger"
+        busy={toggleMutation.isPending}
+        onConfirm={() => {
+          if (deactivateTarget) {
+            toggleMutation.mutate(deactivateTarget.userId);
+            setDeactivateTarget(null);
+          }
+        }}
+      />
 
       <DeleteUserModal
         open={!!actionTarget}

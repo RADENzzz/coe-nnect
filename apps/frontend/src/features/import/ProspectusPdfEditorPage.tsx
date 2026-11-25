@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import {
   fetchProspectusPdf,
   fetchSignedUrl,
@@ -91,6 +92,7 @@ export default function ProspectusPdfEditorPage() {
   const [howToOpen, setHowToOpen] = useState(false);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const canvasScrollRef = useRef<HTMLDivElement>(null);
+  const unsavedCancelRef = useRef<HTMLButtonElement>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
@@ -197,6 +199,34 @@ export default function ProspectusPdfEditorPage() {
     if (selection.kind === 'none') return null;
     return tables.find((t) => t.tableId === selection.tableId) ?? null;
   }, [selection, tables]);
+
+  const tableToDelete = tables.find((t) => t.tableId === deleteTableId) ?? null;
+  const deleteTableLabel = tableToDelete
+    ? shortTableLabel(
+        tableToDelete,
+        tableToDelete.semester
+          ? shortLabelFor(tableToDelete.semester)
+          : null,
+      )
+    : 'this table';
+  const deleteRowTable = deleteRowTarget
+    ? tables.find((t) => t.tableId === deleteRowTarget.tableId) ?? null
+    : null;
+  const rowToDelete = deleteRowTable
+    ? deleteRowTable.rows.find((r) => r.row_id === deleteRowTarget?.rowId) ?? null
+    : null;
+  const deleteRowLabel =
+    rowToDelete?.cells?.code?.trim() ||
+    rowToDelete?.cells?.title?.trim() ||
+    'this row';
+  const deleteRowTableLabel = deleteRowTable
+    ? shortTableLabel(
+        deleteRowTable,
+        deleteRowTable.semester
+          ? shortLabelFor(deleteRowTable.semester)
+          : null,
+      )
+    : 'this table';
 
   // Extraction always reads the selected table's own page, which is not
   // necessarily the page currently displayed on the canvas.
@@ -1714,59 +1744,36 @@ export default function ProspectusPdfEditorPage() {
         }}
       />
 
-      <Modal
+      <ConfirmDialog
         open={!!deleteTableId}
         onClose={() => setDeleteTableId(null)}
         title="Delete this table?"
-        size="sm"
-        footer={
+        description={
           <>
-            <button
-              onClick={() => setDeleteTableId(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmDeleteTable}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg"
-            >
-              Delete
-            </button>
+            Delete <strong>{deleteTableLabel}</strong>, which removes its
+            region and all rows and cannot be undone?
           </>
         }
-      >
-        <p className="text-sm text-slate-600">
-          This will also delete all rows in the table. This cannot be undone.
-        </p>
-      </Modal>
+        confirmLabel="Delete table"
+        tone="danger"
+        onConfirm={() => void confirmDeleteTable()}
+      />
 
-      <Modal
+      <ConfirmDialog
         open={!!deleteRowTarget}
         onClose={() => setDeleteRowTarget(null)}
         title="Delete this row?"
-        size="sm"
-        footer={
+        description={
           <>
-            <button
-              onClick={() => setDeleteRowTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmDeleteRow}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition rounded-lg"
-            >
-              Delete
-            </button>
+            Delete row <strong>{deleteRowLabel}</strong> from{' '}
+            <strong>{deleteRowTableLabel}</strong>, which removes it when you
+            save the table?
           </>
         }
-      >
-        <p className="text-sm text-slate-600">
-          Remove this subject row from the table?
-        </p>
-      </Modal>
+        confirmLabel="Delete row"
+        tone="danger"
+        onConfirm={() => void confirmDeleteRow()}
+      />
 
       <ImportProspectusDialog
         open={importOpen}
@@ -1781,14 +1788,18 @@ export default function ProspectusPdfEditorPage() {
       {/* Unsaved Changes Blocker Modal */}
       <Modal
         open={!!pendingNavigation}
-        onClose={() => setPendingNavigation(null)}
+        onClose={() => !isSaving && setPendingNavigation(null)}
         title="Unsaved changes"
         size="md"
+        initialFocusRef={unsavedCancelRef}
         footer={
           <>
             <button
+              ref={unsavedCancelRef}
+              type="button"
+              disabled={isSaving}
               onClick={() => setPendingNavigation(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>

@@ -93,7 +93,6 @@ export default function TutorialLauncher() {
   const navigate = useNavigate();
   const profile = useAuthStore((s) => s.profile);
   const guidesOpen = useTutorialStore((s) => s.guidesOpen);
-  const openGuides = useTutorialStore((s) => s.openGuides);
   const closeGuides = useTutorialStore((s) => s.closeGuides);
   const startTour = useTutorialStore((s) => s.startTour);
   const queueTour = useTutorialStore((s) => s.queueTour);
@@ -166,17 +165,6 @@ export default function TutorialLauncher() {
 
   return (
     <>
-      <button
-        type="button"
-        data-tour="tutorial-help"
-        onClick={openGuides}
-        className="tap-target hover:bg-surface-container transition-colors flex items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        aria-label="Tutorials and guides"
-        title="Tutorials and guides"
-      >
-        <Icon name="help" />
-      </button>
-
       {/* The dialog must not live inside the TopBar: under the glass theme
           the header gets a backdrop-filter, which makes it the positioning
           parent for any `fixed` descendant — pinning this dialog to the top

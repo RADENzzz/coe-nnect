@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import FormErrorSummary from '@/components/ui/FormErrorSummary';
+import {
+  clearFieldError,
+  mergeFieldError,
+  type FieldError,
+} from '@/components/ui/form-errors';
 import { confirmImport } from '@/api/prospectus-pdfs.api';
 import { useSemesterTypes } from '@/hooks/use-semester-types';
 import { fetchSubjects, type SubjectRecord } from '@/api/subjects.api';
@@ -211,11 +218,23 @@ export default function ImportProspectusDialog({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldError[]>([]);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [filter, setFilter] = useState('');
   const [draggedRowKey, setDraggedRowKey] = useState<string | null>(null);
   const [dragZone, setDragZone] = useState<'major' | 'minor' | null>(null);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
+      errorSummaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      }),
+    );
+  };
 
   const { data: catalogSubjects = [] } = useQuery({
     queryKey: ['subjects', { includeInactive: false }],
@@ -281,6 +300,65 @@ export default function ImportProspectusDialog({
   );
   const catalogBlocksImport = catalogError || missingSemesterTables.length > 0;
 
+  const collectImportErrors = (stage: 'read' | 'import'): FieldError[] => {
+    const problems: FieldError[] = [];
+    if (!programId) {
+      problems.push({ field: 'programId', message: 'Choose a target program.' });
+    }
+    if (!pdf) {
+      problems.push({
+        field: 'tables',
+        message: 'The PDF is still loading. Wait a moment.',
+      });
+    }
+    if (catalogError) {
+      problems.push({
+        field: 'catalog-error',
+        message: 'The semester catalog could not be loaded. Reload or retry.',
+      });
+    }
+    for (const table of missingSemesterTables) {
+      problems.push({
+        field: `table-${table.tableId}`,
+        message: `${tableLabel(
+          table,
+          table.semester ? shortLabelFor(table.semester) : null,
+        )} has a semester that is not in the catalog. Edit or delete it first.`,
+      });
+    }
+    if (stage === 'read' && selectedTableIds.size === 0) {
+      problems.push({
+        field: 'tables',
+        message: 'Select at least one table to import.',
+      });
+    }
+    if (stage === 'import' && readyCount === 0) {
+      problems.push({
+        field: 'rows',
+        message: 'Select at least one ready row to import.',
+      });
+    }
+    return problems;
+  };
+
+  const handleFieldChange = (event: React.FormEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (field) setErrors((prev) => clearFieldError(prev, field));
+  };
+
+  const handleFieldBlur = (event: React.FocusEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (!field) return;
+    const problem = collectImportErrors(
+      step === 'review' ? 'import' : 'read',
+    ).find((item) => item.field === field);
+    setErrors((prev) =>
+      problem
+        ? mergeFieldError(prev, field, problem.message)
+        : clearFieldError(prev, field),
+    );
+  };
+
   const toggleTable = (tableId: string) => {
     setSelectedTableIds((prev) => {
       const next = new Set(prev);
@@ -295,24 +373,24 @@ export default function ImportProspectusDialog({
   useEffect(() => {
     if (!open) return;
     setSelectedTableIds(new Set(tables.map((t) => t.tableId)));
+    setErrors([]);
   }, [open, tables]);
 
   // ── Build review rows from each table's own page text layer ──
   const handleExtractLocal = async () => {
     setError(null);
-    if (!pdf) {
-      setError('The PDF is still loading. Please wait a moment.');
+    const problems = collectImportErrors('read');
+    setErrors(problems);
+    if (problems.length > 0) {
+      scrollToErrorSummary();
       return;
     }
-    if (catalogBlocksImport) return;
+    // Already reported in the summary; this guard only narrows the type.
+    if (!pdf) return;
 
     const selectedTables = tables.filter((t) =>
       selectedTableIds.has(t.tableId),
     );
-    if (selectedTables.length === 0) {
-      setError('Select at least one table to import.');
-      return;
-    }
 
     setExtracting(true);
     try {
@@ -475,6 +553,16 @@ export default function ImportProspectusDialog({
     }
   };
 
+  const handleImportRequest = () => {
+    const problems = collectImportErrors('import');
+    setErrors(problems);
+    if (problems.length > 0) {
+      scrollToErrorSummary();
+      return;
+    }
+    setImportConfirmOpen(true);
+  };
+
   const handleImport = async () => {
     if (catalogBlocksImport) return;
     setError(null);
@@ -537,6 +625,7 @@ export default function ImportProspectusDialog({
 
   const handleClose = () => {
     if (importing) return;
+    setImportConfirmOpen(false);
     onClose();
     setTimeout(() => {
       setStep('select');
@@ -544,12 +633,16 @@ export default function ImportProspectusDialog({
       setWarnings([]);
       setResult(null);
       setError(null);
+      setErrors([]);
       setProgramId('');
       setFilter('');
     }, 200);
   };
 
   // ── Derived stats ──
+  const targetProgramName =
+    visiblePrograms.find((p) => String(p.programId) === String(programId))
+      ?.programName ?? 'the selected program';
   const readyCount = reviewRows.filter(
     (r) => r.checked && r.status === 'new' && r.action !== 'skip',
   ).length;
@@ -691,6 +784,7 @@ export default function ImportProspectusDialog({
   };
 
   return (
+    <>
     <Modal
       open={open}
       onClose={handleClose}
@@ -708,13 +802,7 @@ export default function ImportProspectusDialog({
             </button>
             <button
               onClick={handleExtractLocal}
-              disabled={
-                selectedTableIds.size === 0 ||
-                !programId ||
-                !pdf ||
-                extracting ||
-                catalogBlocksImport
-              }
+              disabled={extracting}
               className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
               {extracting ? (
@@ -741,12 +829,8 @@ export default function ImportProspectusDialog({
               Back
             </button>
             <button
-              onClick={handleImport}
-              disabled={
-                importing ||
-                readyCount === 0 ||
-                catalogBlocksImport
-              }
+              onClick={handleImportRequest}
+              disabled={importing}
               className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
             >
               {importing ? 'Importing…' : `Import ${readyCount} row${readyCount === 1 ? '' : 's'}`}
@@ -762,6 +846,14 @@ export default function ImportProspectusDialog({
         )
       }
     >
+      <div onChangeCapture={handleFieldChange} onBlurCapture={handleFieldBlur}>
+        <div ref={errorSummaryRef}>
+          <FormErrorSummary
+            errors={errors}
+            onJump={(field) => document.getElementById(field)?.focus()}
+          />
+        </div>
+
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
           <Icon name="error" size={16} className="shrink-0 mt-0.5" />
@@ -784,7 +876,11 @@ export default function ImportProspectusDialog({
       )}
 
       {catalogError && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-300 text-red-900 text-xs flex items-start gap-2">
+        <div
+          id="catalog-error"
+          tabIndex={-1}
+          className="mb-4 p-3 rounded-lg bg-red-50 border border-red-300 text-red-900 text-xs flex items-start gap-2"
+        >
           <Icon name="error" size={16} className="shrink-0 mt-0.5" />
           <span className="flex-1">
             The semester catalog could not be loaded, so Import is unavailable.
@@ -820,6 +916,7 @@ export default function ImportProspectusDialog({
               Target Program
             </label>
             <select
+              id="programId"
               value={programId}
               onChange={(e) => setProgramId(e.target.value)}
               className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
@@ -836,13 +933,18 @@ export default function ImportProspectusDialog({
             <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5">
               Tables to Import
             </label>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto border border-surface-variant rounded-lg p-2">
+            <div
+              id="tables"
+              tabIndex={-1}
+              className="space-y-2 max-h-[300px] overflow-y-auto border border-surface-variant rounded-lg p-2"
+            >
               {tables.map((t) => (
                 <label
                   key={t.tableId}
                   className="flex items-center gap-3 p-2 rounded hover:bg-surface-container-low cursor-pointer"
                 >
                   <input
+                    id={`table-${t.tableId}`}
                     type="checkbox"
                     checked={selectedTableIds.has(t.tableId)}
                     onChange={() => toggleTable(t.tableId)}
@@ -984,7 +1086,11 @@ export default function ImportProspectusDialog({
             </div>
           )}
 
-          <div className="max-h-[400px] overflow-auto border border-surface-variant rounded-lg">
+          <div
+            id="rows"
+            tabIndex={-1}
+            className="max-h-[400px] overflow-auto border border-surface-variant rounded-lg"
+          >
             {[...rowsByTable.entries()].map(([tableId, rows]) => {
               const table = tables.find((t) => String(t.tableId) === String(tableId));
               const collapsed = collapsedTables.has(tableId);
@@ -1643,8 +1749,27 @@ export default function ImportProspectusDialog({
           )}
         </div>
       )}
-
+      </div>
     </Modal>
+    <ConfirmDialog
+      open={importConfirmOpen && step === 'review'}
+      onClose={() => setImportConfirmOpen(false)}
+      title="Import and overwrite existing records?"
+      description={
+        <>
+          Import {readyCount} row{readyCount === 1 ? '' : 's'} into{' '}
+          <strong>{targetProgramName}</strong>, which updates or reactivates
+          existing subjects and prospectus entries with the same codes?
+        </>
+      }
+      confirmLabel={`Import ${readyCount} row${readyCount === 1 ? '' : 's'}`}
+      tone="danger"
+      onConfirm={() => {
+        setImportConfirmOpen(false);
+        void handleImport();
+      }}
+    />
+    </>
   );
 }
 

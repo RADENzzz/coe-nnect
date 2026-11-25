@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Icon from '@/components/ui/Icon';
 import FormField from './FormField';
 import PasswordStrength from './PasswordStrength';
-import { ASSIGNABLE_ROLES, PASSWORD_REGEX } from './constants';
+import { ASSIGNABLE_ROLES, PASSWORD_REGEX, ROLE_LABELS } from './constants';
 import type { UserRecord, UserRole, DeptLite, FacultyLite } from './types';
 
 type Mode = 'create' | 'edit';
@@ -65,10 +66,15 @@ export default function UserFormModal({
 }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pendingRoleChange, setPendingRoleChange] = useState<{
+    role: UserRole;
+    payload: Record<string, unknown>;
+  } | null>(null);
 
   // Reset whenever opened or target changes.
   useEffect(() => {
     if (!open) return;
+    setPendingRoleChange(null);
     if (mode === 'edit' && editing) {
       setForm({
         email: editing.email,
@@ -183,11 +189,22 @@ export default function UserFormModal({
         setErrors({ _: 'No changes to save.' });
         return;
       }
+      if (payload.role !== undefined) {
+        setPendingRoleChange({ role: form.role, payload });
+        return;
+      }
       onUpdate(editing.userId, payload);
     }
   };
 
+  const confirmRoleChange = () => {
+    if (!editing || !pendingRoleChange) return;
+    onUpdate(editing.userId, pendingRoleChange.payload);
+    setPendingRoleChange(null);
+  };
+
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -404,5 +421,21 @@ export default function UserFormModal({
         </div>
       </form>
     </Modal>
+    <ConfirmDialog
+      open={!!pendingRoleChange}
+      onClose={() => setPendingRoleChange(null)}
+      title="Change this user's role?"
+      description={
+        <>
+          Change <strong>{editing?.username ?? 'this user'}</strong> to{' '}
+          <strong>
+            {pendingRoleChange ? ROLE_LABELS[pendingRoleChange.role] : ''}
+          </strong>, which updates their access as soon as you confirm?
+        </>
+      }
+      confirmLabel="Change role"
+      onConfirm={confirmRoleChange}
+    />
+    </>
   );
 }

@@ -13,7 +13,7 @@ import {
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchDesignations } from '@/api/system-config.api';
 import Icon from '../../components/ui/Icon';
-import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -65,6 +65,8 @@ export default function FacultyPage() {
   }, [searchParams]);
 
   const [deleteTarget, setDeleteTarget] = useState<FacultyRecord | null>(null);
+  const [deactivateTarget, setDeactivateTarget] =
+    useState<FacultyRecord | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -594,6 +596,14 @@ export default function FacultyPage() {
     },
   ];
 
+  const requestToggle = (f: FacultyRecord) => {
+    if (!f.isActive) {
+      toggleMutation.mutate(f.facultyId);
+      return;
+    }
+    setDeactivateTarget(f);
+  };
+
   const getActions = (f: FacultyRecord): RowAction[] => {
     if (isForeign(f)) {
       return [
@@ -610,7 +620,7 @@ export default function FacultyPage() {
       {
         label: f.isActive ? 'Deactivate' : 'Activate',
         icon: f.isActive ? 'toggle_off' : 'toggle_on',
-        onClick: () => toggleMutation.mutate(f.facultyId),
+        onClick: () => requestToggle(f),
         disabled: toggleMutation.isPending,
       },
     ...(isCollegeWide || isDH
@@ -948,9 +958,7 @@ export default function FacultyPage() {
         onOpenUnavailability={() =>
           detailFaculty && openUnavail(detailFaculty)
         }
-        onToggleActive={() =>
-          detailFaculty && toggleMutation.mutate(detailFaculty.facultyId)
-        }
+        onToggleActive={() => detailFaculty && requestToggle(detailFaculty)}
         onDelete={
           isCollegeWide || isDH
             ? () => detailFaculty && setDeleteTarget(detailFaculty)
@@ -959,58 +967,41 @@ export default function FacultyPage() {
         togglePending={toggleMutation.isPending}
       />
 
+      {/* ── Deactivate confirmation ── */}
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        title="Deactivate faculty?"
+        description={`Deactivate ${deactivateTarget?.lastName}, ${deactivateTarget?.firstName}, which removes them from scheduling until an administrator reactivates them?`}
+        confirmLabel="Deactivate faculty"
+        tone="danger"
+        busy={
+          toggleMutation.isPending &&
+          toggleMutation.variables === deactivateTarget?.facultyId
+        }
+        onConfirm={() => {
+          if (deactivateTarget) {
+            toggleMutation.mutate(deactivateTarget.facultyId);
+            setDeactivateTarget(null);
+          }
+        }}
+      />
+
       {/* ── Delete confirmation ── */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete faculty?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.facultyId)
-              }
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {deleteMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Delete{' '}
-            <strong>
-              "{deleteTarget?.lastName}, {deleteTarget?.firstName}"
-            </strong>
-            ?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              This will also remove all associated qualifications, preferences,
-              and unavailability blocks. This action cannot be undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        description={`Delete ${deleteTarget?.lastName}, ${deleteTarget?.firstName}, which also removes their qualifications, preferences, and unavailability blocks and cannot be undone?`}
+        confirmLabel="Delete faculty"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.facultyId);
+          }
+        }}
+      />
 
       {/* ── Nested modals ── */}
       <QualificationsModal

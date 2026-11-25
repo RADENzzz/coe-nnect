@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Icon from '../../../components/ui/Icon';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import { useThemeStore } from '../../../store/theme.store';
 import { useMotionStore } from '../../../store/motion.store';
 import {
@@ -96,6 +97,7 @@ export default function AppearanceSettingsTab({
   const setLoadingAnimations = useMotionStore((s) => s.setLoadingAnimations);
 
   const [hexDraft, setHexDraft] = useState(appearance.accent);
+  const [resetOpen, setResetOpen] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -147,7 +149,7 @@ export default function AppearanceSettingsTab({
         </div>
         <button
           type="button"
-          onClick={resetAppearance}
+          onClick={() => setResetOpen(true)}
           disabled={isDefault}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-surface-variant text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -483,6 +485,19 @@ export default function AppearanceSettingsTab({
         Appearance preferences are stored in this browser. They do not change
         other users’ screens.
       </p>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        title="Reset appearance colours?"
+        description="Reset the accent colour and surface tint, which removes your custom colours from this browser?"
+        confirmLabel="Reset colours"
+        tone="danger"
+        onConfirm={() => {
+          resetAppearance();
+          setResetOpen(false);
+        }}
+      />
     </div>
   );
 }

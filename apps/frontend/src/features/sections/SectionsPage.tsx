@@ -13,6 +13,13 @@ import {
 import { fetchPrograms } from '../../api/programs.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import FormErrorSummary from '../../components/ui/FormErrorSummary';
+import {
+  clearFieldError,
+  mergeFieldError,
+  type FieldError,
+} from '../../components/ui/form-errors';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -58,14 +65,26 @@ export default function SectionsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Section | null>(null);
   const [confirmCloseForm, setConfirmCloseForm] = useState(false);
+  const discardCancelRef = useRef<HTMLButtonElement>(null);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
+  const [errors, setErrors] = useState<FieldError[]>([]);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
+
+  const scrollToErrorSummary = () => {
+    requestAnimationFrame(() =>
+      errorSummaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      }),
+    );
+  };
 
   // ── URL state ──
   const [searchParams, setSearchParams] = useSearchParams();
@@ -362,6 +381,7 @@ export default function SectionsPage() {
     setForm(EMPTY_FORM);
     setError(null);
     setFieldErrors({});
+    setErrors([]);
   };
 
   /** Suggest the next available section code given a program + year.
@@ -401,6 +421,7 @@ export default function SectionsPage() {
     setError(null);
     setSuccess(null);
     setFieldErrors({});
+    setErrors([]);
     setTimeout(() => firstFieldRef.current?.focus(), 50);
   };
 
@@ -417,6 +438,7 @@ export default function SectionsPage() {
     setError(null);
     setSuccess(null);
     setFieldErrors({});
+    setErrors([]);
     setTimeout(() => firstFieldRef.current?.focus(), 50);
   };
 
@@ -424,6 +446,10 @@ export default function SectionsPage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
+    const maySuggestCode =
+      !editing &&
+      (name === 'programId' || name === 'yearLevel') &&
+      !form.sectionCode;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
       // Auto-suggest section code when program or year changes AND the
@@ -438,21 +464,38 @@ export default function SectionsPage() {
       }
       return next;
     });
-    setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    setFieldErrors((prev) => {
+      const next = { ...prev, [name]: undefined };
+      if (maySuggestCode) next.sectionCode = undefined;
+      return next;
+    });
+    setErrors((prev) => {
+      let next = clearFieldError(prev, name);
+      if (maySuggestCode) next = clearFieldError(next, 'sectionCode');
+      return next;
+    });
   };
 
-  const validateForm = (): boolean => {
-    const errs: Partial<Record<keyof FormState, string>> = {};
-    if (!form.sectionCode.trim()) errs.sectionCode = 'Section code is required';
-    if (!form.programId) errs.programId = 'Program is required';
-    if (!form.yearLevel) errs.yearLevel = 'Year level is required';
-    if (form.yearLevel && !YEAR_LEVELS.includes(Number(form.yearLevel))) {
-      errs.yearLevel = 'Year must be between 1 and 5';
+  const collectErrors = (): FieldError[] => {
+    let problems: FieldError[] = [];
+    if (!form.sectionCode.trim()) {
+      problems.push({ field: 'sectionCode', message: 'Section code is required' });
+    }
+    if (!form.programId) {
+      problems.push({ field: 'programId', message: 'Program is required' });
+    }
+    if (!form.yearLevel) {
+      problems.push({ field: 'yearLevel', message: 'Year level is required' });
+    } else if (!YEAR_LEVELS.includes(Number(form.yearLevel))) {
+      problems.push({ field: 'yearLevel', message: 'Year must be between 1 and 5' });
     }
     if (form.studentCount) {
       const n = Number(form.studentCount);
       if (isNaN(n) || n < 0 || n > 500) {
-        errs.studentCount = 'Student count must be between 0 and 500';
+        problems.push({
+          field: 'studentCount',
+          message: 'Student count must be between 0 and 500',
+        });
       }
     }
     // Duplicate check: same code in the same program
@@ -464,17 +507,55 @@ export default function SectionsPage() {
         String(s.programId) === String(form.programId),
     );
     if (dup) {
-      errs.sectionCode = `"${form.sectionCode}" already exists in this program`;
+      problems = mergeFieldError(
+        problems,
+        'sectionCode',
+        `"${form.sectionCode}" already exists in this program`,
+      );
+    }
+    return problems;
+  };
+
+  const syncFieldErrors = (problems: FieldError[]) => {
+    const errs: Partial<Record<keyof FormState, string>> = {};
+    for (const problem of problems) {
+      errs[problem.field as keyof FormState] = problem.message;
     }
     setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+  };
+
+  const handleFieldChange = (event: React.FormEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (field) setErrors((prev) => clearFieldError(prev, field));
+  };
+
+  const handleFieldBlur = (event: React.FocusEvent<HTMLElement>) => {
+    const field = (event.target as HTMLElement).id;
+    if (!field) return;
+    const problem = collectErrors().find((error) => error.field === field);
+    setErrors((prev) =>
+      problem
+        ? mergeFieldError(prev, field, problem.message)
+        : clearFieldError(prev, field),
+    );
+  };
+
+  const jumpToField = (field: string) => {
+    document.getElementById(field)?.focus();
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (!validateForm()) return;
+    const problems = collectErrors();
+    setErrors(problems);
+    if (problems.length > 0) {
+      scrollToErrorSummary();
+      syncFieldErrors(problems);
+      return;
+    }
+    setFieldErrors({});
 
     const payload = {
       sectionCode: form.sectionCode.trim(),
@@ -1089,7 +1170,16 @@ export default function SectionsPage() {
         }
         size="md"
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          onChangeCapture={handleFieldChange}
+          onBlurCapture={handleFieldBlur}
+          className="space-y-5"
+        >
+          <div ref={errorSummaryRef}>
+            <FormErrorSummary errors={errors} onJump={jumpToField} />
+          </div>
+
           {/* Live preview */}
           {formPreview && (
             <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary">
@@ -1115,6 +1205,7 @@ export default function SectionsPage() {
             >
               <input
                 ref={firstFieldRef}
+                id="sectionCode"
                 type="text"
                 name="sectionCode"
                 value={form.sectionCode}
@@ -1139,6 +1230,7 @@ export default function SectionsPage() {
                 }
               >
                 <select
+                  id="programId"
                   name="programId"
                   value={form.programId}
                   onChange={handleChange}
@@ -1174,6 +1266,7 @@ export default function SectionsPage() {
                 error={fieldErrors.yearLevel}
               >
                 <select
+                  id="yearLevel"
                   name="yearLevel"
                   value={form.yearLevel}
                   onChange={handleChange}
@@ -1199,6 +1292,7 @@ export default function SectionsPage() {
             >
               <div className="relative">
                 <input
+                  id="studentCount"
                   type="number"
                   name="studentCount"
                   min={0}
@@ -1252,9 +1346,11 @@ export default function SectionsPage() {
         onClose={() => setConfirmCloseForm(false)}
         title="Discard changes?"
         size="sm"
+        initialFocusRef={discardCancelRef}
         footer={
           <>
             <button
+              ref={discardCancelRef}
               type="button"
               onClick={() => setConfirmCloseForm(false)}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
@@ -1277,53 +1373,20 @@ export default function SectionsPage() {
       </Modal>
 
       {/* ── Delete confirmation ── */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete section?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.sectionId)
-              }
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {deleteMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Delete section <strong>"{deleteTarget?.sectionCode}"</strong>?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              Any timetable entries and coverage records referencing this
-              section will become invalid. This action cannot be undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        description={`Delete section "${deleteTarget?.sectionCode}", which invalidates any timetable entries and coverage records that reference it and cannot be undone?`}
+        confirmLabel="Delete section"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.sectionId);
+          }
+        }}
+      />
     </div>
   );
 }
