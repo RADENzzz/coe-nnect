@@ -7,8 +7,10 @@ import { getTourForPath } from '../../tutorial/tours';
 
 const OFFER_KEY_PREFIX = 'coe-nnect:tour-offered:';
 const OFFER_CHANGED_EVENT = 'coe-nnect:tour-offered-changed';
+const OFFERED_FALLBACK = new Set<string>();
 
 function wasOffered(tourId: string): boolean {
+  if (OFFERED_FALLBACK.has(tourId)) return true;
   try {
     return localStorage.getItem(`${OFFER_KEY_PREFIX}${tourId}`) !== null;
   } catch {
@@ -17,6 +19,9 @@ function wasOffered(tourId: string): boolean {
 }
 
 function markOffered(tourId: string): void {
+  // Keep the flag even when storage is blocked, so a dismissed or started
+  // offer cannot reappear later in this session.
+  OFFERED_FALLBACK.add(tourId);
   try {
     localStorage.setItem(`${OFFER_KEY_PREFIX}${tourId}`, '1');
   } catch {
