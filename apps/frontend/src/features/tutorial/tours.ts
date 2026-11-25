@@ -933,6 +933,13 @@ const SYSTEM_SETTINGS_TOUR: Tour = {
       icon: 'calendar_month',
     },
     {
+      title: 'Semester types',
+      body: 'Below the terms, the dean can add a third term, rename a period, or deactivate one without changing its code — but only while no term is active.',
+      target: '[data-tour="sysconfig-terms"]',
+      placement: 'top',
+      icon: 'date_range',
+    },
+    {
       title: 'Scheduling rules',
       body: 'Groups below control constraints such as time limits, room rules, and load policies. Change a value, review it, then save.',
       target: '[data-tour="sysconfig-groups"]',
