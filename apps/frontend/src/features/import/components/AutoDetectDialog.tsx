@@ -160,7 +160,15 @@ export default function AutoDetectDialog({
   existingTables,
   onCreated,
 }: AutoDetectDialogProps) {
-  const { activeTypes, types, options, shortLabelFor } = useSemesterTypes();
+  const {
+    activeTypes,
+    types,
+    options,
+    shortLabelFor,
+    isLoading: catalogLoading,
+    isError: catalogError,
+  } = useSemesterTypes();
+  const catalogReady = !catalogLoading && !catalogError;
   const [drafts, setDrafts] = useState<DraftProposal[]>([]);
   const [rawProposals, setRawProposals] = useState<DetectedTableProposal[]>([]);
   const editedProposalIdsRef = useRef<Set<string>>(new Set());
@@ -177,6 +185,15 @@ export default function AutoDetectDialog({
   const wasOpenRef = useRef(false);
 
   const runDetect = useCallback(async () => {
+    // The cap comes from the catalog; scanning with an unresolved one would
+    // silently truncate proposals before the late-catalog re-seed can help.
+    if (catalogLoading) return;
+    if (catalogError) {
+      setError(
+        'Semester types could not be loaded. Re-scan after the catalog is available.',
+      );
+      return;
+    }
     setLoading(true);
     setError(null);
     setScanned(false);
@@ -206,17 +223,30 @@ export default function AutoDetectDialog({
     } finally {
       setLoading(false);
     }
-  }, [pdfId, existingTables, activeTypes, types, catalogKey]);
+  }, [
+    pdfId,
+    existingTables,
+    activeTypes,
+    types,
+    catalogKey,
+    catalogLoading,
+    catalogError,
+  ]);
 
   useEffect(() => {
-    if (open && !wasOpenRef.current) {
-      setDrafts([]);
-      setWarnings([]);
-      setError(null);
-      void runDetect();
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
     }
-    wasOpenRef.current = open;
-  }, [open, runDetect]);
+    if (!catalogReady || wasOpenRef.current) return;
+    setDrafts([]);
+    setRawProposals([]);
+    setWarnings([]);
+    setError(null);
+    setScanned(false);
+    void runDetect();
+    wasOpenRef.current = true;
+  }, [open, catalogReady, runDetect]);
 
   // Detection may finish before the catalog query does. Re-resolve untouched
   // drafts when types arrive or change; dean edits are keyed by proposal ID.
@@ -403,7 +433,7 @@ export default function AutoDetectDialog({
           <button
             type="button"
             onClick={() => void runDetect()}
-            disabled={loading || creating}
+            disabled={loading || creating || catalogLoading || catalogError}
             className="px-3 py-2 text-sm font-semibold border border-surface-variant rounded-lg hover:bg-surface-container-low transition disabled:opacity-50 flex items-center gap-1.5"
           >
             <Icon
@@ -425,7 +455,9 @@ export default function AutoDetectDialog({
           <button
             type="button"
             onClick={() => void handleCreate()}
-            disabled={creating || blocking.length > 0 || ready.length === 0}
+            disabled={
+              creating || catalogError || blocking.length > 0 || ready.length === 0
+            }
             className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-lg hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
           >
             {creating && (
@@ -447,6 +479,30 @@ export default function AutoDetectDialog({
       }
     >
       <div className="space-y-4">
+        {catalogLoading && (
+          <div className="flex items-center gap-2 rounded-lg border border-surface-variant bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
+            <Icon
+              name="progress_activity"
+              size={16}
+              className="animate-spin text-primary"
+            />
+            Loading semester types before scanning…
+          </div>
+        )}
+
+        {catalogError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+          >
+            <Icon name="error" size={17} className="shrink-0 mt-0.5" />
+            <span className="flex-1">
+              Semester types could not be loaded. Re-scan after the catalog is
+              available.
+            </span>
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center gap-3 rounded-lg border border-surface-variant bg-surface-container-low px-4 py-6">
             <Icon
@@ -465,7 +521,7 @@ export default function AutoDetectDialog({
           </div>
         )}
 
-        {error && (
+        {error && !catalogError && (
           <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
             <Icon name="error" size={17} className="shrink-0 mt-0.5" />
             <div className="flex-1">{error}</div>

@@ -73,8 +73,15 @@ function apiErrorMessage(err: any, fallback: string): string {
 export default function TermsPanel({ isAdmin }: Props) {
   const qc = useQueryClient();
   const feedback = useFeedback();
-  const { types, activeTypes, options, labelFor, shortLabelFor } =
-    useSemesterTypes();
+  const {
+    types,
+    activeTypes,
+    options,
+    labelFor,
+    shortLabelFor,
+    isLoading: typesLoading,
+    isError: typesError,
+  } = useSemesterTypes();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const newTermRequested = searchParams.get('newTerm') === '1';
@@ -140,10 +147,19 @@ export default function TermsPanel({ isAdmin }: Props) {
     setFormOpen(true);
   }, [terms, types, labelFor]);
 
-  // A dashboard/search shortcut can deep-link here with ?newTerm=1.
-  // Wait for terms to load so the form can suggest the next school year.
+  // A dashboard/search shortcut can deep-link here with ?newTerm=1. Wait for
+  // both queries: terms supply the next school year, and the semester catalog
+  // supplies a usable semester. If the catalog fails, keep newTerm in the URL
+  // so a later successful refetch can still open a complete form.
   useEffect(() => {
-    if (!isAdmin || !newTermRequested || isLoading) return;
+    if (
+      !isAdmin ||
+      !newTermRequested ||
+      isLoading ||
+      typesLoading ||
+      typesError
+    )
+      return;
     openForm();
     setSearchParams(
       (prev) => {
@@ -153,7 +169,15 @@ export default function TermsPanel({ isAdmin }: Props) {
       },
       { replace: true },
     );
-  }, [isAdmin, isLoading, newTermRequested, openForm, setSearchParams]);
+  }, [
+    isAdmin,
+    isLoading,
+    typesLoading,
+    typesError,
+    newTermRequested,
+    openForm,
+    setSearchParams,
+  ]);
 
   // A term search result links here with ?termId=...; make the row easy to find.
   useEffect(() => {
