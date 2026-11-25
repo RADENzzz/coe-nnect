@@ -28,6 +28,7 @@ import { UpdateTableDto } from './dto/update-table.dto';
 import { UpdatePdfDto } from './dto/update-pdf.dto';
 import { DetectTablesDto } from './dto/detect-tables.dto';
 import { ImportConfirmDto } from './dto/extract.dto';
+import { semesterCodeToken } from './semester-code-token';
 
 import { Subject } from '../subjects/entities/subject.entity';
 import { Prospectus } from '../prospectus/entities/prospectus.entity';
@@ -1458,14 +1459,7 @@ export class ProspectusPdfsService {
     legacySlot: boolean;
     copyIndex: number;
   }): string {
-    const sem =
-      params.table.semester === '1st'
-        ? '1'
-        : params.table.semester === '2nd'
-        ? '2'
-        : params.table.semester === 'summer'
-        ? 'S'
-        : 'X';
+    const sem = semesterCodeToken(params.table.semester);
     // Yearless elective tables still need a deterministic, valid code. `X`
     // marks the missing identity so the code stays unique and readable.
     const year =
