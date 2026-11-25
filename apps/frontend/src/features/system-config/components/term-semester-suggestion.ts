@@ -1,4 +1,16 @@
 import type { SemesterTypeRecord } from '../../../api/semesters.api';
+import { buildSemesterOptions } from '../../../hooks/semester-type-options.ts';
+
+/**
+ * Default type for the first term when no terms exist yet. Only active types
+ * are eligible: an inactive `1st` would be accepted by the form but rejected
+ * by the backend's assertUsable, leaving term creation blocked.
+ */
+export function initialActiveSemesterCode(
+  types: SemesterTypeRecord[],
+): string | undefined {
+  return buildSemesterOptions(types)[0]?.code;
+}
 
 /**
  * Next selectable type after `currentCode`, ordered by sort order and wrapping

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { nextActiveSemesterCode } from './term-semester-suggestion.ts';
+import {
+  initialActiveSemesterCode,
+  nextActiveSemesterCode,
+} from './term-semester-suggestion.ts';
 
 function type(code: string, sortOrder: number, isActive: boolean) {
   return {
@@ -39,6 +42,26 @@ test('wraps among active types and ignores an inactive or unknown current code',
 test('returns undefined when no active type exists', () => {
   assert.equal(
     nextActiveSemesterCode([type('summer', 10, false)], 'summer'),
+    undefined,
+  );
+});
+
+test('initial default skips an inactive 1st rather than blocking term creation', () => {
+  const before = types.map((type) => ({ ...type }));
+  const withInactiveFirst = types.map((type) =>
+    type.code === '1st' ? { ...type, isActive: false } : type,
+  );
+
+  assert.equal(initialActiveSemesterCode(types), '1st');
+  assert.equal(initialActiveSemesterCode(withInactiveFirst), '2nd');
+  assert.deepEqual(types, before);
+});
+
+test('initial default has no value when every type is inactive', () => {
+  assert.equal(
+    initialActiveSemesterCode(
+      types.map((type) => ({ ...type, isActive: false })),
+    ),
     undefined,
   );
 });

@@ -15,7 +15,10 @@ import Modal from '../../../components/ui/Modal';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import { matchSemesterType } from '../../../lib/semester-match';
-import { nextActiveSemesterCode } from './term-semester-suggestion';
+import {
+  initialActiveSemesterCode,
+  nextActiveSemesterCode,
+} from './term-semester-suggestion';
 
 interface Props {
   isAdmin: boolean;
@@ -125,10 +128,7 @@ export default function TermsPanel({ isAdmin }: Props) {
         setActive: terms.length > 0 && !terms.some((t) => t.isActive),
       });
     } else {
-      const defaultSemester =
-        matchSemesterType(EMPTY_FORM.termName, types)?.code ??
-        activeTypes[0]?.code ??
-        '';
+      const defaultSemester = initialActiveSemesterCode(types) ?? '';
       setForm({
         ...EMPTY_FORM,
         termName: defaultSemester
@@ -138,7 +138,7 @@ export default function TermsPanel({ isAdmin }: Props) {
       });
     }
     setFormOpen(true);
-  }, [terms, types, activeTypes, labelFor]);
+  }, [terms, types, labelFor]);
 
   // A dashboard/search shortcut can deep-link here with ?newTerm=1.
   // Wait for terms to load so the form can suggest the next school year.
