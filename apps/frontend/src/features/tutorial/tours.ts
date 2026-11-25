@@ -163,8 +163,8 @@ const WELCOME_TOUR: Tour = {
     },
     {
       title: 'Need help on a page?',
-      body: 'This Help button opens the guide library and can start a tour of the page you are on right now.',
-      target: '[data-tour="tutorial-help"]',
+      body: 'This Help button starts a tour of the page you are on and links to the full help library.',
+      target: '[data-tour="page-help"]',
       placement: 'bottom',
       icon: 'help',
     },

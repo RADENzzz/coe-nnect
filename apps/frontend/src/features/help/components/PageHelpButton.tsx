@@ -116,6 +116,7 @@ export default function PageHelpButton() {
     <div ref={rootRef} className="relative">
       <button
         type="button"
+        data-tour="page-help"
         onClick={() => setOpen((value) => !value)}
         className="tap-target hover:bg-surface-container transition-colors flex items-center justify-center text-slate-500 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         aria-label="Page help"
