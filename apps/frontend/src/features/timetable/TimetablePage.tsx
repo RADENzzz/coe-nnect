@@ -2005,8 +2005,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
             <>
               Replace {autoDraftCount} existing auto-generated draft
               {autoDraftCount === 1 ? '' : 's'} for{' '}
-              <strong>{activeTerm?.termName ?? 'this term'}</strong>? Manual
-              changes to those drafts will be lost.
+              <strong>{activeTerm?.termName ?? 'this term'}</strong>, which
+              discards any manual changes to those drafts?
             </>
           }
           confirmLabel="Replace and generate"
@@ -2021,8 +2021,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
           description={
             <>
               Discard the generated schedule for{' '}
-              <strong>{activeTerm?.termName ?? 'this term'}</strong>? The preview
-              and its draft entries will be deleted and cannot be recovered.
+              <strong>{activeTerm?.termName ?? 'this term'}</strong>, which
+              permanently deletes the preview and its draft entries?
             </>
           }
           confirmLabel="Discard preview"

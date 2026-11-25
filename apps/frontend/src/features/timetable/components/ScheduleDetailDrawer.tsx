@@ -773,9 +773,9 @@ export default function ScheduleDetailDrawer({
         title="Delete entry?"
         description={
           <>
-            Delete <strong>{entry.subjectCode}</strong> (
-            {entry.sectionCode || 'no section'})? This removes the schedule
-            entry and cannot be undone.
+            Delete the <strong>{entry.subjectCode}</strong> (
+            {entry.sectionCode || 'no section'}) schedule entry, which removes
+            it and cannot be undone?
           </>
         }
         confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete entry'}
@@ -796,14 +796,14 @@ export default function ScheduleDetailDrawer({
           <>
             {entry.status === 'published' ? (
               <>
-                Unfinalize <strong>{entry.subjectCode}</strong>? It will be
-                removed from the public planner and IDP feed and set back to{' '}
-                <strong>Draft</strong>.
+                Unfinalize <strong>{entry.subjectCode}</strong>, which removes
+                it from the public planner and IDP feed and returns it to{' '}
+                <strong>Draft</strong>?
               </>
             ) : (
               <>
-                Unfinalize <strong>{entry.subjectCode}</strong>? It will be
-                editable again and set back to <strong>Draft</strong>.
+                Unfinalize <strong>{entry.subjectCode}</strong>, which makes it
+                editable again and returns it to <strong>Draft</strong>?
               </>
             )}
           </>

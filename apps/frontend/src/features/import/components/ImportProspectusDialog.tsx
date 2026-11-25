@@ -1659,8 +1659,8 @@ export default function ImportProspectusDialog({
       description={
         <>
           Import {readyCount} row{readyCount === 1 ? '' : 's'} into{' '}
-          <strong>{targetProgramName}</strong>? Existing subjects and
-          prospectus entries with the same codes will be updated or reactivated.
+          <strong>{targetProgramName}</strong>, which updates or reactivates
+          existing subjects and prospectus entries with the same codes?
         </>
       }
       confirmLabel={`Import ${readyCount} row${readyCount === 1 ? '' : 's'}`}

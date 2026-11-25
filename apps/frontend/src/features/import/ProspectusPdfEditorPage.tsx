@@ -1750,8 +1750,8 @@ export default function ProspectusPdfEditorPage() {
         title="Delete this table?"
         description={
           <>
-            Delete <strong>{deleteTableLabel}</strong>? Its region and all rows
-            will be removed. This cannot be undone.
+            Delete <strong>{deleteTableLabel}</strong>, which removes its
+            region and all rows and cannot be undone?
           </>
         }
         confirmLabel="Delete table"
@@ -1765,9 +1765,9 @@ export default function ProspectusPdfEditorPage() {
         title="Delete this row?"
         description={
           <>
-            Remove <strong>{deleteRowLabel}</strong> from{' '}
-            <strong>{deleteRowTableLabel}</strong>? The row is deleted when you
-            save the table.
+            Delete row <strong>{deleteRowLabel}</strong> from{' '}
+            <strong>{deleteRowTableLabel}</strong>, which removes it when you
+            save the table?
           </>
         }
         confirmLabel="Delete row"

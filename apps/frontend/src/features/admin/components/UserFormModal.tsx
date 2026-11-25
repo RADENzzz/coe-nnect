@@ -430,8 +430,7 @@ export default function UserFormModal({
           Change <strong>{editing?.username ?? 'this user'}</strong> to{' '}
           <strong>
             {pendingRoleChange ? ROLE_LABELS[pendingRoleChange.role] : ''}
-          </strong>
-          ? Their access changes as soon as you confirm.
+          </strong>, which updates their access as soon as you confirm?
         </>
       }
       confirmLabel="Change role"

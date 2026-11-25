@@ -385,11 +385,11 @@ export default function ProspectusPdfListPage() {
         title="Delete this prospectus PDF?"
         description={
           <>
-            Delete <strong>{deleteTarget?.originalFilename}</strong>? This
-            removes the PDF, all{' '}
+            Delete <strong>{deleteTarget?.originalFilename}</strong>, which
+            permanently removes the PDF, all{' '}
             <strong>{deleteTarget?.tables?.length ?? 0}</strong> mapped
             table{(deleteTarget?.tables?.length ?? 0) === 1 ? '' : 's'}, and any
-            subjects imported from it. This cannot be undone.
+            subjects imported from it?
           </>
         }
         confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete PDF'}

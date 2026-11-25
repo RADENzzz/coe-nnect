@@ -69,9 +69,9 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
         <div className="flex items-start gap-3 p-3 rounded-lg bg-red-50 border border-red-200">
           <Icon name="warning" size={18} className="text-red-600 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-semibold text-red-900">This action cannot be undone.</p>
-            <p className="text-red-700 text-xs mt-0.5">
-              <strong>{user?.username}</strong> ({user?.email}) will be permanently removed.
+            <p className="font-semibold text-red-900">
+              Delete <strong>{user?.username}</strong> ({user?.email}), which
+              permanently removes the account and cannot be undone.
             </p>
           </div>
         </div>
