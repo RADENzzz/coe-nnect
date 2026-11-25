@@ -14,6 +14,7 @@ import { IdpOutboxItem } from './entities/idp-outbox.entity';
 import { IdpClientService, IdpUpstreamError } from './idp-client.service';
 import { idpErrors } from './idp.errors';
 import { IdpOutboxService } from './idp-outbox.service';
+import { TERM_CODE_HINT, TERM_CODE_PATTERN } from './term-code';
 import type {
   IdpClassReference,
   IdpPublishedScheduleEntry,
@@ -303,17 +304,16 @@ export class IdpSchedulePublisherService {
 
   private async resolveTerm(termCode: string): Promise<Term> {
     const value = String(termCode ?? '').trim();
-    const match = /^(\d{4}-\d{4})-(1st|2nd|summer)$/.exec(value);
-    if (!match) {
+    if (!TERM_CODE_PATTERN.test(value)) {
       throw new BadRequestException(
-        `term_code '${value}' is not YYYY-YYYY-1st|2nd|summer.`,
+        `term_code '${value}' is not ${TERM_CODE_HINT}.`,
       );
     }
 
     const term = await this.termRepo.findOne({
       where: {
-        schoolYear: match[1],
-        semester: match[2] as Term['semester'],
+        schoolYear: value.slice(0, 9),
+        semester: value.slice(10) as Term['semester'],
       },
     });
     if (!term) {

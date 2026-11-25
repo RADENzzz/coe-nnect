@@ -19,6 +19,7 @@ import { IdpClientService, IdpUpstreamError } from './idp-client.service';
 import { IdpOutboxService } from './idp-outbox.service';
 import { idpErrors } from './idp.errors';
 import { isUniqueViolation } from './idp-persistence.util';
+import { TERM_CODE_PATTERN } from './term-code';
 import {
   IDP_AUTO_ACCEPTED_CHANGE_REQUEST_TYPES,
   IDP_PENDING_CHANGE_REQUEST_TYPES,
@@ -711,11 +712,13 @@ export class IdpChangeRequestService {
     const value = normalizeKey(termCode);
     if (!value) throw idpErrors.unknownTerm(termCode);
 
-    const match = /^(\d{4}-\d{4})-(1st|2nd|summer)$/.exec(value);
-    if (!match) throw idpErrors.unknownTerm(value);
+    if (!TERM_CODE_PATTERN.test(value)) throw idpErrors.unknownTerm(value);
 
     const term = await this.termRepo.findOne({
-      where: { schoolYear: match[1], semester: match[2] as any },
+      where: {
+        schoolYear: value.slice(0, 9),
+        semester: value.slice(10) as any,
+      },
     });
     if (!term) throw idpErrors.unknownTerm(value);
     return String(term.termId);
