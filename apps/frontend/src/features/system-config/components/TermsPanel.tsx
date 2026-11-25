@@ -12,6 +12,7 @@ import {
 } from '../../../api/terms.api';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import { matchSemesterType } from '../../../lib/semester-match';
@@ -579,87 +580,38 @@ export default function TermsPanel({ isAdmin }: Props) {
       </Modal>
 
       {/* Deactivate confirmation */}
-      <Modal
+      <ConfirmDialog
         open={!!deactivateTarget}
         onClose={() => setDeactivateTarget(null)}
         title="Deactivate term?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeactivateTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (deactivateTarget) {
-                  deactivateMutation.mutate(deactivateTarget.termId);
-                }
-              }}
-              disabled={deactivateMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
-            >
-              {deactivateMutation.isPending ? 'Deactivating…' : 'Deactivate'}
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-slate-600">
-          Deactivate{' '}
-          <strong>
-            "{deactivateTarget?.termName} — AY {deactivateTarget?.schoolYear}"
-          </strong>
-          ?
-        </p>
-        <p className="text-sm text-slate-500 mt-2">
-          Schedules for this term will remain in the database, but the
-          Timetable won't display anything until a term is reactivated.
-        </p>
-      </Modal>
+        description={`Deactivate term "${deactivateTarget?.termName} — AY ${deactivateTarget?.schoolYear}", which leaves no active term and hides the timetable until one is activated?`}
+        confirmLabel="Deactivate term"
+        tone="danger"
+        busy={deactivateMutation.isPending}
+        requireText="DEACTIVATE"
+        onConfirm={() => {
+          if (deactivateTarget) {
+            deactivateMutation.mutate(deactivateTarget.termId);
+          }
+        }}
+      />
 
       {/* Delete confirmation */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete term?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (deleteTarget) {
-                  deleteMutation.mutate(deleteTarget.termId);
-                }
-              }}
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-slate-600">
-          Delete{' '}
-          <strong>
-            "{deleteTarget?.termName} — AY {deleteTarget?.schoolYear}"
-          </strong>
-          ? Schedules belonging to this term will remain in the database but
-          won't be accessible from the UI. This cannot be undone.
-        </p>
-      </Modal>
+        description={`Delete term "${deleteTarget?.termName} — AY ${deleteTarget?.schoolYear}", which keeps its schedules in the database but makes them inaccessible from the UI and cannot be undone?`}
+        confirmLabel="Delete term"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        requireText={deleteTarget?.termName}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.termId);
+          }
+        }}
+      />
     </section>
   );
 }

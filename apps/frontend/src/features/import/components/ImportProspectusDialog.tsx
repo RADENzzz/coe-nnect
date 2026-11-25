@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { confirmImport } from '@/api/prospectus-pdfs.api';
 import { useSemesterTypes } from '@/hooks/use-semester-types';
 import { fetchSubjects, type SubjectRecord } from '@/api/subjects.api';
@@ -211,6 +212,7 @@ export default function ImportProspectusDialog({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [filter, setFilter] = useState('');
@@ -537,6 +539,7 @@ export default function ImportProspectusDialog({
 
   const handleClose = () => {
     if (importing) return;
+    setImportConfirmOpen(false);
     onClose();
     setTimeout(() => {
       setStep('select');
@@ -550,6 +553,9 @@ export default function ImportProspectusDialog({
   };
 
   // ── Derived stats ──
+  const targetProgramName =
+    visiblePrograms.find((p) => String(p.programId) === String(programId))
+      ?.programName ?? 'the selected program';
   const readyCount = reviewRows.filter(
     (r) => r.checked && r.status === 'new' && r.action !== 'skip',
   ).length;
@@ -691,6 +697,7 @@ export default function ImportProspectusDialog({
   };
 
   return (
+    <>
     <Modal
       open={open}
       onClose={handleClose}
@@ -741,7 +748,7 @@ export default function ImportProspectusDialog({
               Back
             </button>
             <button
-              onClick={handleImport}
+              onClick={() => setImportConfirmOpen(true)}
               disabled={
                 importing ||
                 readyCount === 0 ||
@@ -1645,6 +1652,25 @@ export default function ImportProspectusDialog({
       )}
 
     </Modal>
+    <ConfirmDialog
+      open={importConfirmOpen && step === 'review'}
+      onClose={() => setImportConfirmOpen(false)}
+      title="Import and overwrite existing records?"
+      description={
+        <>
+          Import {readyCount} row{readyCount === 1 ? '' : 's'} into{' '}
+          <strong>{targetProgramName}</strong>? Existing subjects and
+          prospectus entries with the same codes will be updated or reactivated.
+        </>
+      }
+      confirmLabel={`Import ${readyCount} row${readyCount === 1 ? '' : 's'}`}
+      tone="danger"
+      onConfirm={() => {
+        setImportConfirmOpen(false);
+        void handleImport();
+      }}
+    />
+    </>
   );
 }
 

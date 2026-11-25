@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
 import Icon from '@/components/ui/Icon';
 import Modal from '@/components/ui/Modal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '@/components/ui/ResponsiveTable';
 import type { RowAction } from '@/components/ui/RowActionMenu';
 import { shellForPath } from '@/lib/notification-target';
@@ -378,58 +379,26 @@ export default function ProspectusPdfListPage() {
         )}
       </Modal>
 
-      {/* Delete modal */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => !deleteMutation.isPending && setDeleteTarget(null)}
         title="Delete this prospectus PDF?"
-        size="sm"
-        footer={
+        description={
           <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.pdfId)
-              }
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {deleteMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
+            Delete <strong>{deleteTarget?.originalFilename}</strong>? This
+            removes the PDF, all{' '}
+            <strong>{deleteTarget?.tables?.length ?? 0}</strong> mapped
+            table{(deleteTarget?.tables?.length ?? 0) === 1 ? '' : 's'}, and any
+            subjects imported from it. This cannot be undone.
           </>
         }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Delete{' '}
-            <strong>"{deleteTarget?.originalFilename}"</strong>?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              This removes the PDF, all{' '}
-              <strong>{deleteTarget?.tables?.length ?? 0}</strong> mapped
-              table{(deleteTarget?.tables?.length ?? 0) === 1 ? '' : 's'}, and
-              any subjects imported from it. Subjects already added to the
-              prospectus will be orphaned. This cannot be undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete PDF'}
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() =>
+          deleteTarget && deleteMutation.mutate(deleteTarget.pdfId)
+        }
+      />
     </div>
   );
 }

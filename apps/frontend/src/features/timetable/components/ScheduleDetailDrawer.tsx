@@ -15,6 +15,7 @@ import {
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import clsx from 'clsx';
 import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
@@ -766,81 +767,52 @@ export default function ScheduleDetailDrawer({
         />
       )}
 
-      <Modal
+      <ConfirmDialog
         open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        onClose={() => !deleteMutation.isPending && setDeleteOpen(false)}
         title="Delete entry?"
-        size="sm"
-        footer={
+        description={
           <>
-            <button
-              type="button"
-              onClick={() => setDeleteOpen(false)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={confirmDelete}
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
+            Delete <strong>{entry.subjectCode}</strong> (
+            {entry.sectionCode || 'no section'})? This removes the schedule
+            entry and cannot be undone.
           </>
         }
-      >
-        <p className="text-sm text-slate-600">
-          Delete <strong>"{entry.subjectCode}"</strong> (
-          {entry.sectionCode || 'no section'})? This action cannot be undone.
-        </p>
-      </Modal>
+        confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete entry'}
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={confirmDelete}
+      />
 
-      <Modal
+      <ConfirmDialog
         open={unfinalizeOpen}
-        onClose={() => setUnfinalizeOpen(false)}
+        onClose={() => !statusMutation.isPending && setUnfinalizeOpen(false)}
         title={
           entry.status === 'published'
             ? 'Unfinalize published entry?'
             : 'Unfinalize entry?'
         }
-        size="sm"
-        footer={
+        description={
           <>
-            <button
-              type="button"
-              onClick={() => setUnfinalizeOpen(false)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => statusMutation.mutate('draft')}
-              disabled={statusMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
-            >
-              {statusMutation.isPending ? 'Unfinalizing…' : 'Unfinalize'}
-            </button>
+            {entry.status === 'published' ? (
+              <>
+                Unfinalize <strong>{entry.subjectCode}</strong>? It will be
+                removed from the public planner and IDP feed and set back to{' '}
+                <strong>Draft</strong>.
+              </>
+            ) : (
+              <>
+                Unfinalize <strong>{entry.subjectCode}</strong>? It will be
+                editable again and set back to <strong>Draft</strong>.
+              </>
+            )}
           </>
         }
-      >
-        <p className="text-sm text-slate-600">
-          {entry.status === 'published' ? (
-            <>
-              This entry is on the public planner and the IDP feed.
-              Unfinalizing removes it from both and sets it back to{' '}
-              <strong>Draft</strong>.
-            </>
-          ) : (
-            <>
-              Unfinalize this entry? It will be editable again and set back to{' '}
-              <strong>Draft</strong>.
-            </>
-          )}
-        </p>
-      </Modal>
+        confirmLabel={statusMutation.isPending ? 'Unfinalizing…' : 'Unfinalize'}
+        tone="danger"
+        busy={statusMutation.isPending}
+        onConfirm={() => statusMutation.mutate('draft')}
+      />
 
       <Modal
         open={requestOpen}

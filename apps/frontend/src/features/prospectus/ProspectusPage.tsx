@@ -17,6 +17,7 @@ import { fetchPrograms } from '../../api/programs.api';
 import { fetchSubjects } from '../../api/subjects.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -1491,112 +1492,43 @@ export default function ProspectusPage() {
       )}
 
       {/* ── Delete confirmation (single) ── */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Remove from prospectus?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.prospectusId)
-              }
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {deleteMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {deleteMutation.isPending ? 'Removing…' : 'Remove'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Remove <strong>"{deleteTarget?.subject?.subjectCode}"</strong> from
-            the prospectus?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              Removing this mapping will not delete the subject itself — only
-              its placement in {currentProgram?.programCode}. Existing
-              timetable entries referencing this subject may become orphaned.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        description={`Remove subject "${deleteTarget?.subject?.subjectCode}" from the prospectus for ${currentProgram?.programCode}, which deletes only its mapping and may orphan timetable entries that reference it?`}
+        confirmLabel="Remove mapping"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.prospectusId);
+          }
+        }}
+      />
 
       {/* ── Bulk delete confirmation ── */}
-      <Modal
+      <ConfirmDialog
         open={bulkDeleteConfirmOpen}
         onClose={() => setBulkDeleteConfirmOpen(false)}
         title={`Remove ${selectedIds.size} entr${
           selectedIds.size === 1 ? 'y' : 'ies'
         }?`}
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setBulkDeleteConfirmOpen(false)}
-              disabled={bulkActionPending}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleBulkRemove}
-              disabled={bulkActionPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {bulkActionPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {bulkActionPending
-                ? 'Removing…'
-                : `Remove ${selectedIds.size}`}
-            </button>
-          </>
+        description={`Remove ${selectedIds.size} entr${
+          selectedIds.size === 1 ? 'y' : 'ies'
+        } from the prospectus for ${currentProgram?.programCode}, which deletes only their mappings and may orphan timetable entries that reference them?`}
+        confirmLabel={`Remove ${selectedIds.size} entr${
+          selectedIds.size === 1 ? 'y' : 'ies'
+        }`}
+        tone="danger"
+        busy={bulkActionPending}
+        requireText={
+          selectedIds.size > 1
+            ? `Remove ${selectedIds.size} entries`
+            : undefined
         }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Remove{' '}
-            <strong>
-              {selectedIds.size} entr{selectedIds.size === 1 ? 'y' : 'ies'}
-            </strong>{' '}
-            from the prospectus?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              This only removes the mappings — the subjects themselves are
-              untouched. Existing timetable entries referencing these subjects
-              may become orphaned.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={handleBulkRemove}
+      />
     </div>
   );
 }

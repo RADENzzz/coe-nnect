@@ -15,6 +15,7 @@ export interface ConfirmDialogProps {
 }
 
 interface ConfirmationState {
+  open: boolean;
   requireText?: string;
   value: string;
 }
@@ -34,18 +35,21 @@ export default function ConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmationInputId = useId();
   const [confirmation, setConfirmation] = useState<ConfirmationState>({
+    open,
     requireText,
     value: '',
   });
 
   useEffect(() => {
-    setConfirmation({ requireText, value: '' });
+    setConfirmation({ open, requireText, value: '' });
   }, [open, requireText]);
 
-  // Comparing the remembered prompt as well as the value keeps the button
-  // disabled on the render where requireText changes, before the reset runs.
+  // Comparing the remembered prompt and open state as well as the value keeps
+  // confirm disabled on renders where the dialog reopens or the prompt changes,
+  // before the reset effect runs.
   const confirmationMatches =
     requireText !== undefined &&
+    confirmation.open === open &&
     confirmation.requireText === requireText &&
     confirmation.value.trim() === requireText;
   const confirmDisabled =

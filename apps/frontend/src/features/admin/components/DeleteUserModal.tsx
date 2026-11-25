@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
 import type { UserRecord } from './types';
@@ -14,6 +14,7 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
   const [password, setPassword] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -40,12 +41,16 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
       onClose={onClose}
       title="Confirm deletion"
       size="sm"
+      busy={verifying}
+      initialFocusRef={cancelRef}
       footer={
         <>
           <button
+            ref={cancelRef}
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg select-none active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40"
+            disabled={verifying}
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg select-none active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
@@ -77,7 +82,6 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
           </label>
           <input
             type="password"
-            autoFocus
             placeholder="Your admin password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

@@ -13,6 +13,7 @@ import {
 import { fetchPrograms } from '../../api/programs.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -58,6 +59,7 @@ export default function SectionsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Section | null>(null);
   const [confirmCloseForm, setConfirmCloseForm] = useState(false);
+  const discardCancelRef = useRef<HTMLButtonElement>(null);
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
@@ -1252,9 +1254,11 @@ export default function SectionsPage() {
         onClose={() => setConfirmCloseForm(false)}
         title="Discard changes?"
         size="sm"
+        initialFocusRef={discardCancelRef}
         footer={
           <>
             <button
+              ref={discardCancelRef}
               type="button"
               onClick={() => setConfirmCloseForm(false)}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
@@ -1277,53 +1281,20 @@ export default function SectionsPage() {
       </Modal>
 
       {/* ── Delete confirmation ── */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete section?"
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.sectionId)
-              }
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {deleteMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Delete section <strong>"{deleteTarget?.sectionCode}"</strong>?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              Any timetable entries and coverage records referencing this
-              section will become invalid. This action cannot be undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        description={`Delete section "${deleteTarget?.sectionCode}", which invalidates any timetable entries and coverage records that reference it and cannot be undone?`}
+        confirmLabel="Delete section"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.sectionId);
+          }
+        }}
+      />
     </div>
   );
 }

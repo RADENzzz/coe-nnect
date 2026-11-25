@@ -10,8 +10,10 @@ import {
   type SubjectRoomType,
 } from '../../api/subjects.api';
 import { fetchDepartments } from '../../api/departments.api';
+import { fetchProspectus } from '../../api/prospectus.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { useSemesterTypes } from '../../hooks/use-semester-types';
 import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
@@ -94,6 +96,8 @@ export default function SubjectsPage() {
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<SubjectRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubjectRecord | null>(null);
+  const [deactivateTarget, setDeactivateTarget] =
+    useState<SubjectRecord | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   // ── Multi-select state (mirrors the Prospectus page) ──
@@ -232,6 +236,18 @@ export default function SubjectsPage() {
     queryFn: () => fetchSubjects(true),
     enabled: !!user,
   });
+
+  // Shared with the Prospectus page. Deactivating a subject cascades to its
+  // active mappings, so the confirmation needs their count.
+  const { data: prospectusEntries = [] } = useQuery({
+    queryKey: ['prospectus'],
+    queryFn: fetchProspectus,
+    enabled: !!user,
+  });
+  const activeMappingCount = (subjectId: string) =>
+    prospectusEntries.filter(
+      (e) => String(e.subjectId) === String(subjectId) && e.isActive,
+    ).length;
 
   // Placeholder rows are empty prospectus fields, not catalog subjects. They
   // are filled from the Prospectus page, so they must stay out of every list,
@@ -677,10 +693,20 @@ export default function SubjectsPage() {
     setSuccess(null);
   };
 
+  // Activation is quick; deactivation cascades to mappings and gets a
+  // confirmation that names how many active mappings are affected.
+  const requestToggle = (s: SubjectRecord) => {
+    if (!s.isActive) {
+      toggleMutation.mutate(s.subjectId);
+      return;
+    }
+    setDeactivateTarget(s);
+  };
+
   const handleToggleFromDetail = () => {
     if (!detailLive) return;
     if (isForeign(detailLive)) return;
-    toggleMutation.mutate(detailLive.subjectId);
+    requestToggle(detailLive);
   };
 
   const handleDeleteFromDetail = () => {
@@ -1163,7 +1189,7 @@ export default function SubjectsPage() {
         icon: s.isActive ? 'toggle_off' : 'toggle_on',
         loading:
           toggleMutation.isPending && toggleMutation.variables === s.subjectId,
-        onClick: () => toggleMutation.mutate(s.subjectId),
+        onClick: () => requestToggle(s),
       },
       { divider: true },
       {
@@ -1558,63 +1584,25 @@ export default function SubjectsPage() {
       )}
 
       {/* ── Bulk delete confirmation ── */}
-      <Modal
+      <ConfirmDialog
         open={bulkDeleteConfirmOpen}
         onClose={() => setBulkDeleteConfirmOpen(false)}
         title={`Delete ${selectedIds.size} subject${
           selectedIds.size === 1 ? '' : 's'
         }?`}
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setBulkDeleteConfirmOpen(false)}
-              disabled={bulkActionPending}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleBulkDelete}
-              disabled={bulkActionPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {bulkActionPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {bulkActionPending
-                ? 'Deleting…'
-                : `Delete ${selectedIds.size}`}
-            </button>
-          </>
+        description={`Delete ${selectedIds.size} subject${
+          selectedIds.size === 1 ? '' : 's'
+        }, which removes their prospectus mappings and draft, review, and finalized schedule entries while skipping subjects with published schedules or restrictions?`}
+        confirmLabel={`Delete ${selectedIds.size} subject${
+          selectedIds.size === 1 ? '' : 's'
+        }`}
+        tone="danger"
+        busy={bulkActionPending}
+        requireText={
+          selectedIds.size > 1 ? `Delete ${selectedIds.size} subjects` : undefined
         }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Delete{' '}
-            <strong>
-              {selectedIds.size} subject
-              {selectedIds.size === 1 ? '' : 's'}
-            </strong>
-            ?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              Prospectus mappings and draft, review, and finalized schedule
-              entries are removed with the subject. Subjects with published
-              schedules or restrictions are skipped — deactivate them instead.
-              This action cannot be undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={handleBulkDelete}
+      />
 
       {/* ── Detail side panel ── */}
       {detailLive && (
@@ -1650,81 +1638,76 @@ export default function SubjectsPage() {
         onSuccess={(message) => setSuccess(message)}
       />
 
+      {/* ── Deactivate confirmation ── */}
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        title="Deactivate subject?"
+        description={`Deactivate subject "${
+          deactivateTarget?.subjectCode
+        } — ${deactivateTarget?.title}", which also deactivates ${activeMappingCount(
+          deactivateTarget?.subjectId ?? '',
+        )} active prospectus mapping${
+          activeMappingCount(deactivateTarget?.subjectId ?? '') === 1 ? '' : 's'
+        } and removes it from scheduling until reactivated?`}
+        confirmLabel="Deactivate subject"
+        tone="danger"
+        busy={
+          toggleMutation.isPending &&
+          toggleMutation.variables === deactivateTarget?.subjectId
+        }
+        onConfirm={() => {
+          const target = deactivateTarget;
+          if (!target) return;
+          const count = activeMappingCount(target.subjectId);
+          setDeactivateTarget(null);
+          toggleMutation.mutate(target.subjectId, {
+            onSuccess: () =>
+              setSuccess(
+                `Subject "${target.subjectCode}" deactivated (not deleted)${
+                  count > 0 ? ` along with ${count} active mapping${count === 1 ? '' : 's'}` : ''
+                }.`,
+              ),
+          });
+        }}
+      />
+
       {/* ── Delete confirmation (with Deactivate escape hatch) ── */}
-      <Modal
+      <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete subject?"
-        size="sm"
-        footer={
+        description={
           <>
-            <button
-              type="button"
-              onClick={() => setDeleteTarget(null)}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
+            Delete subject "{deleteTarget?.subjectCode} — {deleteTarget?.title}",
+            which removes it from all prospectuses, deletes its draft, review,
+            and finalized schedules and faculty qualifications, and cannot be
+            undone because published schedules block deletion?
             {deleteTarget?.isActive && (
               <button
                 type="button"
                 onClick={() => {
-                  if (!deleteTarget) return;
                   const target = deleteTarget;
-                  toggleMutation.mutate(target.subjectId, {
-                    onSuccess: () =>
-                      setSuccess(
-                        `Subject "${target.subjectCode}" deactivated (not deleted).`,
-                      ),
-                  });
                   setDeleteTarget(null);
+                  setDeactivateTarget(target);
                 }}
-                className="px-4 py-2 text-sm font-semibold border border-amber-500/40 bg-amber-50 text-amber-800 hover:bg-amber-100 transition rounded-lg flex items-center gap-2"
+                disabled={deleteMutation.isPending}
+                className="mt-3 block text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900 disabled:opacity-50"
               >
-                <Icon name="toggle_off" size={14} />
                 Deactivate instead
               </button>
             )}
-            <button
-              type="button"
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.subjectId)
-              }
-              disabled={deleteMutation.isPending}
-              className="px-4 py-2 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 rounded-lg flex items-center gap-2"
-            >
-              {deleteMutation.isPending && (
-                <Icon
-                  name="progress_activity"
-                  size={14}
-                  className="animate-spin"
-                />
-              )}
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
           </>
         }
-      >
-        <div className="space-y-2">
-          <p className="text-sm text-slate-600">
-            Delete subject{' '}
-            <strong>
-              "{deleteTarget?.subjectCode} — {deleteTarget?.title}"
-            </strong>
-            ?
-          </p>
-          <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-            <Icon name="warning" size={14} className="shrink-0 mt-0.5" />
-            <span>
-              This removes the subject from all prospectuses, deletes its
-              draft, review, and finalized schedule entries, and removes it from
-              every faculty qualification list. Published schedule entries block
-              deletion — move them back to draft first. This action cannot be
-              undone.
-            </span>
-          </div>
-        </div>
-      </Modal>
+        confirmLabel="Delete subject"
+        tone="danger"
+        busy={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.subjectId);
+          }
+        }}
+      />
 
       {/* ── Delete blocked — dedicated error modal ── */}
       <Modal
