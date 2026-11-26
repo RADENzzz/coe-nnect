@@ -20,6 +20,7 @@ import {
   type FieldError,
 } from '../../../components/ui/form-errors';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import { matchSemesterType } from '../../../lib/semester-match';
 import {
@@ -66,16 +67,6 @@ const EMPTY_FORM: CreateTermInput = {
   semester: '',
   setActive: false,
 };
-
-function apiErrorMessage(err: any, fallback: string): string {
-  const message = err?.response?.data?.message;
-  if (Array.isArray(message)) return message.join(' ');
-  if (typeof message === 'string' && message.trim()) return message;
-  if (typeof err?.message === 'string' && err.message.trim()) {
-    return err.message;
-  }
-  return fallback;
-}
 
 export default function TermsPanel({ isAdmin }: Props) {
   const qc = useQueryClient();
@@ -226,7 +217,7 @@ export default function TermsPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to create term'), {
+      feedback.failed(extractApiError(err, 'Failed to create term'), {
         title: 'Could not create term',
       }),
   });
@@ -240,7 +231,7 @@ export default function TermsPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to activate term'), {
+      feedback.failed(extractApiError(err, 'Failed to activate term'), {
         title: 'Could not activate term',
       }),
   });
@@ -256,7 +247,7 @@ export default function TermsPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to deactivate term'), {
+      feedback.failed(extractApiError(err, 'Failed to deactivate term'), {
         title: 'Could not deactivate term',
       }),
   });
@@ -269,7 +260,7 @@ export default function TermsPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to delete term'), {
+      feedback.failed(extractApiError(err, 'Failed to delete term'), {
         title: 'Could not delete term',
       }),
   });

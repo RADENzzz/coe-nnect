@@ -13,6 +13,7 @@ import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 
 interface Props {
@@ -42,16 +43,6 @@ interface UpdateAction {
 }
 
 const CODE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,19}$/;
-
-function apiErrorMessage(err: any, fallback: string): string {
-  const message = err?.response?.data?.message;
-  if (Array.isArray(message)) return message.join(' ');
-  if (typeof message === 'string' && message.trim()) return message;
-  if (typeof err?.message === 'string' && err.message.trim()) {
-    return err.message;
-  }
-  return fallback;
-}
 
 /** Mirrors the backend's create rule so the form can explain the problem. */
 function codeFromLabel(label: string): string {
@@ -153,7 +144,7 @@ export default function SemesterTypesPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to add semester type'), {
+      feedback.failed(extractApiError(err, 'Failed to add semester type'), {
         title: 'Could not add semester type',
       }),
   });
@@ -176,7 +167,7 @@ export default function SemesterTypesPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to update semester type'), {
+      feedback.failed(extractApiError(err, 'Failed to update semester type'), {
         title: 'Could not update semester type',
       }),
   });
@@ -190,7 +181,7 @@ export default function SemesterTypesPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to change the order'), {
+      feedback.failed(extractApiError(err, 'Failed to change the order'), {
         title: 'Could not change order',
       }),
   });
@@ -205,7 +196,7 @@ export default function SemesterTypesPanel({ isAdmin }: Props) {
       invalidate();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'Failed to delete semester type'), {
+      feedback.failed(extractApiError(err, 'Failed to delete semester type'), {
         title: 'Could not delete semester type',
       }),
   });

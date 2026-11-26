@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
 import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   clearFieldError,
   mergeFieldError,
@@ -115,13 +117,6 @@ const EMPTY_FORM: FormState = {
   electiveSemester: '',
 };
 
-function extractErrorMessage(err: any, fallback: string): string {
-  const raw = err?.response?.data?.message;
-  if (Array.isArray(raw)) return raw[0] ?? fallback;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  return err?.message ?? fallback;
-}
-
 interface Props {
   open: boolean;
   mode: 'create' | 'edit' | null;
@@ -133,7 +128,6 @@ interface Props {
   /** Pre-select the elective flag when creating from the Elective tab. */
   defaultElective?: boolean;
   onClose: () => void;
-  onSuccess: (message: string) => void;
 }
 
 export default function SubjectFormModal({
@@ -146,17 +140,16 @@ export default function SubjectFormModal({
   myDeptId,
   defaultElective = false,
   onClose,
-  onSuccess,
 }: Props) {
   const qc = useQueryClient();
   const { options } = useSemesterTypes();
+  const feedback = useFeedback();
   const isWizard = mode === 'create';
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
-  const [formError, setFormError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
@@ -173,7 +166,7 @@ export default function SubjectFormModal({
   // Reset state when the modal opens.
   useEffect(() => {
     if (!open) return;
-    if (mode === 'create') {
+    if (isWizard) {
       setForm({
         ...EMPTY_FORM,
         deptId: isDH && myDeptId ? myDeptId : '',
@@ -205,7 +198,6 @@ export default function SubjectFormModal({
     setStepIdx(0);
     setFieldErrors({});
     setErrors([]);
-    setFormError(null);
     setConfirmClose(false);
     setTimeout(() => firstFieldRef.current?.focus(), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -271,18 +263,50 @@ export default function SubjectFormModal({
     [subjects],
   );
 
+  // Unlabeling a MINOR transfers ownership to the acting department. The
+  // backend reads the department from the submitted payload, so validation,
+  // the dirty check and the payload must all use the effective department.
+  const effectiveDeptId =
+    mode === 'edit' && subject?.isMinor && !form.isMinor
+      ? myDeptId || form.deptId
+      : form.deptId;
+
+  // A department editing another department's MINOR cannot pick an owner in
+  // the select (its options are scoped to the actor's department). Keep the
+  // field read-only in both states: while MINOR it shows the current owner;
+  // once unlabeled it shows the department that will actually own the subject
+  // on save — the same effectiveDeptId submitted as payload.deptId.
+  const lockedMinorOwner =
+    mode === 'edit' &&
+    !!subject?.isMinor &&
+    !!myDeptId &&
+    String(subject.deptId ?? '') !== myDeptId;
+  const unlabelTransfer = lockedMinorOwner && !form.isMinor;
+  const lockedDeptId = unlabelTransfer
+    ? effectiveDeptId
+    : String(subject?.deptId ?? '');
+  const lockedDepartment = departments.find(
+    (d) => String(d.deptId) === lockedDeptId,
+  );
+  const lockedOwnerLabel = lockedDepartment
+    ? `[${lockedDepartment.deptCode}] ${lockedDepartment.deptName}`
+    : lockedDeptId || '—';
+  const lockedOwnerHint = unlabelTransfer
+    ? 'Ownership will transfer to your department on save.'
+    : 'Locked to owning department. Unlabel the MINOR to transfer it to your department.';
+
   // ── Per-step validation ──
 
   const validateIdentity = (): FieldErrors => {
     const errs: FieldErrors = {};
     if (!form.subjectCode.trim()) errs.subjectCode = 'Subject code is required';
     if (!form.title.trim()) errs.title = 'Title is required';
-    if (!form.deptId) errs.deptId = 'Department is required';
+    if (!effectiveDeptId) errs.deptId = 'Department is required';
     const code = form.subjectCode.trim().toLowerCase();
     const dup = subjects.find(
       (s) =>
         s.subjectId !== subject?.subjectId &&
-        String(s.deptId) === form.deptId &&
+        String(s.deptId) === effectiveDeptId &&
         (s.subjectCode ?? '').trim().toLowerCase() === code,
     );
     if (dup)
@@ -372,11 +396,11 @@ export default function SubjectFormModal({
     mutationFn: createSubject,
     onSuccess: (s) => {
       invalidateAfterSubjectChange();
-      onSuccess(`Subject "${s.subjectCode}" created.`);
+      feedback.success(`Subject "${s.subjectCode}" created.`);
       onClose();
     },
     onError: (err: any) =>
-      setFormError(extractErrorMessage(err, 'Failed to create')),
+      feedback.failed(extractApiError(err, 'Failed to create')),
   });
 
   const updateMutation = useMutation({
@@ -389,11 +413,11 @@ export default function SubjectFormModal({
     }) => updateSubject(id, input),
     onSuccess: (s) => {
       invalidateAfterSubjectChange();
-      onSuccess(`Subject "${s.subjectCode}" updated.`);
+      feedback.success(`Subject "${s.subjectCode}" updated.`);
       onClose();
     },
     onError: (err: any) =>
-      setFormError(extractErrorMessage(err, 'Failed to update')),
+      feedback.failed(extractApiError(err, 'Failed to update')),
   });
 
   const busy = createMutation.isPending || updateMutation.isPending;
@@ -401,8 +425,6 @@ export default function SubjectFormModal({
   // ── Submit ──
 
   const handleSubmit = () => {
-    setFormError(null);
-
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
@@ -464,7 +486,9 @@ export default function SubjectFormModal({
       electiveSemester: form.isElective
         ? form.electiveSemester || null
         : null,
-      deptId: form.deptId,
+      // Unlabeling a MINOR (subject.isMinor && !form.isMinor) hands ownership
+      // to myDeptId, so the submitted owner is the effective department.
+      deptId: effectiveDeptId,
     };
 
     if (mode === 'create') createMutation.mutate(payload);
@@ -507,7 +531,7 @@ export default function SubjectFormModal({
         form.unitsMode !== (subject.unitsMode ?? 'lec_lab') ||
         form.requiredRoomType !==
           ((subject.requiredRoomType ?? '') as '' | SubjectRoomType) ||
-        form.deptId !== (subject.deptId ?? '') ||
+        effectiveDeptId !== (subject.deptId ?? '') ||
         form.isMinor !== (subject.isMinor ?? false) ||
         form.isElective !== (subject.isElective ?? false) ||
         form.electiveCategory !== (subject.electiveCategory ?? '') ||
@@ -550,25 +574,41 @@ export default function SubjectFormModal({
           label="Department"
           required
           error={fieldErrors.deptId}
-          hint={isDH ? 'Locked to your department.' : undefined}
+          hint={
+            lockedMinorOwner
+              ? lockedOwnerHint
+              : isDH
+              ? 'Locked to your department.'
+              : undefined
+          }
         >
-          <select
-            id="deptId"
-            value={form.deptId}
-            onChange={(e) => setField('deptId', e.target.value)}
-            disabled={isDH}
-            className={`${inputClass(!!fieldErrors.deptId)} disabled:opacity-60 disabled:cursor-not-allowed`}
-          >
-            <option value="">Select a department…</option>
-            {departments
-              .filter((d) => d.isActive)
-              .filter((d) => !isDH || String(d.deptId) === myDeptId)
-              .map((d) => (
-                <option key={d.deptId} value={d.deptId}>
-                  [{d.deptCode}] {d.deptName}
-                </option>
-              ))}
-          </select>
+          {lockedMinorOwner ? (
+            <div
+              id="deptId"
+              className={`${inputClass(false)} flex items-center gap-2 bg-surface-container text-on-surface-variant`}
+            >
+              <Icon name="lock" size={14} className="shrink-0" />
+              <span className="truncate">{lockedOwnerLabel}</span>
+            </div>
+          ) : (
+            <select
+              id="deptId"
+              value={form.deptId}
+              onChange={(e) => setField('deptId', e.target.value)}
+              disabled={isDH}
+              className={`${inputClass(!!fieldErrors.deptId)} disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              <option value="">Select a department…</option>
+              {departments
+                .filter((d) => d.isActive)
+                .filter((d) => !isDH || String(d.deptId) === myDeptId)
+                .map((d) => (
+                  <option key={d.deptId} value={d.deptId}>
+                    [{d.deptCode}] {d.deptName}
+                  </option>
+                ))}
+            </select>
+          )}
         </FormField>
         <div className="md:col-span-2">
           <FormField label="Title" required error={fieldErrors.title}>
@@ -1132,21 +1172,6 @@ export default function SubjectFormModal({
                 isMixed={isMixed}
               />
             )}
-
-          {formError && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span className="flex-1">{formError}</span>
-              <button
-                type="button"
-                onClick={() => setFormError(null)}
-                className="text-red-600 hover:text-red-800"
-                aria-label="Dismiss"
-              >
-                <Icon name="close" size={14} />
-              </button>
-            </div>
-          )}
 
           {isWizard ? (
             <form

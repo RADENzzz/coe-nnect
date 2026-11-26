@@ -3,34 +3,29 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { changeOwnPassword } from '../../../api/users.api';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 
 const PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
 export default function SecuritySection() {
+  const feedback = useFeedback();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: changeOwnPassword,
     onSuccess: () => {
-      setSuccess('Password updated successfully.');
-      setError(null);
+      feedback.success('Password updated successfully.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     },
-    onError: (err: any) => {
-      setError(
-        err?.response?.data?.message ??
-          err?.message ??
-          'Failed to update password.',
-      );
-      setSuccess(null);
+    onError: (err) => {
+      feedback.failed(extractApiError(err, 'Failed to update password.'));
     },
   });
 
@@ -84,19 +79,6 @@ export default function SecuritySection() {
           Change the password for your account.
         </p>
       </div>
-
-      {error && (
-        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="mt-0.5 shrink-0" />
-          <span>{success}</span>
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
         {/* Current password */}

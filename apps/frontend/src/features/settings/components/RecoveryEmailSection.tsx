@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   fetchRecoverySettings,
   removeRecoveryEmail,
@@ -10,21 +12,14 @@ import { useAuthStore } from '../../../store/auth.store';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function apiError(error: any): string {
-  const message = error?.response?.data?.message;
-  if (Array.isArray(message)) return String(message[0] ?? '');
-  if (typeof message === 'string' && message.trim()) return message;
-  return error?.message ?? 'Something went wrong. Please try again.';
-}
-
 export default function RecoveryEmailSection() {
   const queryClient = useQueryClient();
+  const feedback = useFeedback();
   const profile = useAuthStore((s) => s.profile);
 
   const [email, setEmail] = useState('');
   const [editing, setEditing] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const settingsQuery = useQuery({
     queryKey: ['recovery-settings'],
@@ -39,8 +34,8 @@ export default function RecoveryEmailSection() {
   const saveMutation = useMutation({
     mutationFn: setRecoveryEmail,
     onSuccess: (result) => {
-      setError(null);
-      setFeedback(
+      setValidationError(null);
+      feedback.success(
         result.verificationSent
           ? `Verification email sent to ${result.recoveryEmail}. Check your inbox.`
           : result.verified
@@ -52,26 +47,27 @@ export default function RecoveryEmailSection() {
         queryKey: ['recovery-settings'],
       });
     },
-    onError: (err: any) => {
-      setFeedback(null);
-      setError(apiError(err));
+    onError: (err) => {
+      feedback.failed(
+        extractApiError(err, 'Something went wrong. Please try again.'),
+      );
     },
   });
 
   const removeMutation = useMutation({
     mutationFn: removeRecoveryEmail,
     onSuccess: () => {
-      setError(null);
-      setFeedback('Recovery email removed.');
+      feedback.success('Recovery email removed.');
       setEmail('');
       setEditing(false);
       void queryClient.invalidateQueries({
         queryKey: ['recovery-settings'],
       });
     },
-    onError: (err: any) => {
-      setFeedback(null);
-      setError(apiError(err));
+    onError: (err) => {
+      feedback.failed(
+        extractApiError(err, 'Something went wrong. Please try again.'),
+      );
     },
   });
 
@@ -79,10 +75,10 @@ export default function RecoveryEmailSection() {
     event.preventDefault();
     const value = email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(value)) {
-      setError('Enter a valid email address.');
-      setFeedback(null);
+      setValidationError('Enter a valid email address.');
       return;
     }
+    setValidationError(null);
     saveMutation.mutate(value);
   };
 
@@ -100,19 +96,6 @@ export default function RecoveryEmailSection() {
           this address instead of your login email.
         </p>
       </div>
-
-      {error && (
-        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-      {feedback && (
-        <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="mt-0.5 shrink-0" />
-          <span>{feedback}</span>
-        </div>
-      )}
 
       {settingsQuery.isLoading ? (
         <div className="h-10 rounded-lg bg-slate-100 animate-pulse" />
@@ -170,8 +153,7 @@ export default function RecoveryEmailSection() {
                   onClick={() => {
                     setEmail(settings.recoveryEmail ?? '');
                     setEditing(true);
-                    setError(null);
-                    setFeedback(null);
+                    setValidationError(null);
                   }}
                   className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-40"
                 >
@@ -211,11 +193,19 @@ export default function RecoveryEmailSection() {
                   id="recovery-email"
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setValidationError(null);
+                  }}
                   autoComplete="email"
                   placeholder="you@example.com"
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
                 />
+                {validationError && (
+                  <p className="text-[11px] text-red-600 mt-1.5">
+                    {validationError}
+                  </p>
+                )}
                 <p className="text-[11px] text-slate-500 mt-1.5">
                   Your login email
                   {profile?.email ? (
@@ -241,7 +231,7 @@ export default function RecoveryEmailSection() {
                     onClick={() => {
                       setEditing(false);
                       setEmail(settings.recoveryEmail ?? '');
-                      setError(null);
+                      setValidationError(null);
                     }}
                     className="px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                   >

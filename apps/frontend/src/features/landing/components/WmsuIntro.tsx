@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import WmsuSeal from '../../../components/brand/WmsuSeal';
-import { useMotionEnabled } from '../../../hooks/use-motion-enabled';
+import { useLandingIntroEnabled } from '../../../hooks/use-motion-enabled';
 import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 /**
@@ -26,10 +26,10 @@ function shouldPlayIntro(): boolean {
 /**
  * A brief WMSU seal splash for the public landing page. It plays once per
  * browser tab, can be skipped with a click or key, and is skipped entirely
- * when the Motion setting or prefers-reduced-motion asks for less movement.
+ * when the Landing intro setting or reduced motion asks for less movement.
  */
 export default function WmsuIntro() {
-  const motion = useMotionEnabled();
+  const motion = useLandingIntroEnabled();
   const [visible, setVisible] = useState(() => motion && shouldPlayIntro());
   const [leaving, setLeaving] = useState(false);
 

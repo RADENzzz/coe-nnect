@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
+import { useFeedback } from '@/components/ui/FeedbackToast';
+import { extractApiError } from '@/lib/api-error';
 import type { UserRecord } from './types';
 
 interface Props {
@@ -11,26 +13,24 @@ interface Props {
 }
 
 export default function DeleteUserModal({ open, user, onClose, onConfirm }: Props) {
+  const feedback = useFeedback();
   const [password, setPassword] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) {
       setPassword('');
-      setError(null);
       setVerifying(false);
     }
   }, [open]);
 
   const submit = async () => {
     setVerifying(true);
-    setError(null);
     try {
       await onConfirm(password);
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? err?.message ?? 'Incorrect password');
+    } catch (err) {
+      feedback.failed(extractApiError(err, 'Incorrect password'));
       setVerifying(false);
     }
   };
@@ -75,7 +75,6 @@ export default function DeleteUserModal({ open, user, onClose, onConfirm }: Prop
             </p>
           </div>
         </div>
-        {error && <div className="p-2 bg-red-100 text-red-700 text-xs rounded-lg">{error}</div>}
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wider">
             Confirm with your password

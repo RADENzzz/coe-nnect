@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import Icon from '@/components/ui/Icon';
+import { useFeedback } from '@/components/ui/FeedbackToast';
+import { extractApiError } from '@/lib/api-error';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import FormErrorSummary from '@/components/ui/FormErrorSummary';
@@ -202,6 +204,7 @@ export default function ImportProspectusDialog({
   pdf,
 }: ImportProspectusDialogProps) {
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const {
     types,
     shortLabelFor,
@@ -219,7 +222,6 @@ export default function ImportProspectusDialog({
   const [extracting, setExtracting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [filter, setFilter] = useState('');
@@ -378,7 +380,6 @@ export default function ImportProspectusDialog({
 
   // ── Build review rows from each table's own page text layer ──
   const handleExtractLocal = async () => {
-    setError(null);
     const problems = collectImportErrors('read');
     setErrors(problems);
     if (problems.length > 0) {
@@ -542,11 +543,14 @@ export default function ImportProspectusDialog({
       setReviewRows(rows);
       setWarnings(newWarnings);
       setStep('review');
-    } catch (err: any) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Could not read the PDF text layer.',
+    } catch (err: unknown) {
+      feedback.error(
+        extractApiError(
+          err,
+          err instanceof Error
+            ? err.message
+            : 'Could not read the PDF text layer.',
+        ),
       );
     } finally {
       setExtracting(false);
@@ -565,7 +569,6 @@ export default function ImportProspectusDialog({
 
   const handleImport = async () => {
     if (catalogBlocksImport) return;
-    setError(null);
     setImporting(true);
     try {
       const checkedRows = reviewRows.filter((r) => r.checked && r.action !== 'skip');
@@ -616,8 +619,8 @@ export default function ImportProspectusDialog({
       qc.invalidateQueries({ queryKey: ['subjects'] });
       qc.invalidateQueries({ queryKey: ['prospectus'] });
       qc.invalidateQueries({ queryKey: ['prospectus-pdf', pdfId] });
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Import failed');
+    } catch (err: unknown) {
+      feedback.failed(extractApiError(err, 'Import failed'));
     } finally {
       setImporting(false);
     }
@@ -632,7 +635,6 @@ export default function ImportProspectusDialog({
       setReviewRows([]);
       setWarnings([]);
       setResult(null);
-      setError(null);
       setErrors([]);
       setProgramId('');
       setFilter('');
@@ -789,7 +791,6 @@ export default function ImportProspectusDialog({
       open={open}
       onClose={handleClose}
       title="Import from PDF"
-      blurBackdrop={false}
       size="lg"
       footer={
         step === 'select' ? (
@@ -853,13 +854,6 @@ export default function ImportProspectusDialog({
             onJump={(field) => document.getElementById(field)?.focus()}
           />
         </div>
-
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-        </div>
-      )}
 
       {catalogLoading && (
         <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-300 text-slate-700 text-xs flex items-start gap-2">

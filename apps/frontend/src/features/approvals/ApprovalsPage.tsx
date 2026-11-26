@@ -24,6 +24,8 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { fetchFaculty } from '../../api/faculty.api';
 import RequestFormModal from './components/RequestFormModal';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 type FilterTab = 'all' | FacultyRequestStatus;
 type ScopeFilter = 'all' | 'waiting-on-me' | 'waiting-on-them';
@@ -64,12 +66,11 @@ function relativeTime(iso: string | null | undefined): string {
   return `${yr} yr ago`;
 }
 
-const TOAST_DURATION_MS = 4000;
-
 export default function ApprovalsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
   const myDeptId = profile?.dept_id ? String(profile.dept_id) : '';
 
   // ── Filters / view state ────────────────────────────────
@@ -88,9 +89,6 @@ export default function ApprovalsPage() {
   const [respondRemarks, setRespondRemarks] = useState('');
   const [cancelTarget, setCancelTarget] = useState<FacultyRequest | null>(null);
 
-  // ── Feedback ────────────────────────────────────────────
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // In-flight row mutation (for disabling per-row actions)
@@ -99,19 +97,6 @@ export default function ApprovalsPage() {
   // Deep-link receiver: /approvals?request=<id> or /dean/requests?request=<id>
   const [searchParams, setSearchParams] = useSearchParams();
   const lastRequestParam = useRef<string | null>(null);
-
-  // Auto-dismiss toasts
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), TOAST_DURATION_MS);
-    return () => clearTimeout(t);
-  }, [success]);
-
-  useEffect(() => {
-    if (!error) return;
-    const t = setTimeout(() => setError(null), TOAST_DURATION_MS);
-    return () => clearTimeout(t);
-  }, [error]);
 
   // ── Clipboard helper ────────────────────────────────────
   const copyToClipboard = useCallback(
@@ -152,13 +137,13 @@ export default function ApprovalsPage() {
     if (match) {
       setDetailTarget(match);
     } else {
-      setError(`Request #${requestId} is not visible to you.`);
+      feedback.error(`Request #${requestId} is not visible to you.`);
     }
 
     const next = new URLSearchParams(searchParams);
     next.delete('request');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, requests, isLoading]);
+  }, [searchParams, setSearchParams, requests, isLoading, feedback]);
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -274,13 +259,13 @@ export default function ApprovalsPage() {
       approveFacultyRequest(id, remarks),
     onMutate: ({ id }) => setMutatingId(id),
     onSuccess: () => {
-      setSuccess('Request approved.');
+      feedback.success('Request approved.');
       setRespondTarget(null);
       setRespondRemarks('');
       invalidateAfterMutation();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Approve failed'),
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Approve failed')),
     onSettled: () => setMutatingId(null),
   });
 
@@ -289,13 +274,13 @@ export default function ApprovalsPage() {
       rejectFacultyRequest(id, remarks),
     onMutate: ({ id }) => setMutatingId(id),
     onSuccess: () => {
-      setSuccess('Request rejected.');
+      feedback.success('Request rejected.');
       setRespondTarget(null);
       setRespondRemarks('');
       invalidateAfterMutation();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Reject failed'),
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Reject failed')),
     onSettled: () => setMutatingId(null),
   });
 
@@ -303,18 +288,17 @@ export default function ApprovalsPage() {
     mutationFn: cancelFacultyRequest,
     onMutate: (id: string) => setMutatingId(id),
     onSuccess: () => {
-      setSuccess('Request cancelled.');
+      feedback.success('Request cancelled.');
       setCancelTarget(null);
       invalidateAfterMutation();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Cancel failed'),
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Cancel failed')),
     onSettled: () => setMutatingId(null),
   });
 
   // ── Called by RequestFormModal after a successful submit ──
-  const handleCreateSuccess = (message: string) => {
-    setSuccess(message);
+  const handleCreateSuccess = () => {
     setShowForm(false);
     invalidateAfterMutation();
   };
@@ -622,11 +606,7 @@ export default function ApprovalsPage() {
             />
           </button>
           <button
-            onClick={() => {
-              setShowForm(true);
-              setError(null);
-              setSuccess(null);
-            }}
+            onClick={() => setShowForm(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
           >
             <Icon name="add" size={18} />
@@ -634,41 +614,6 @@ export default function ApprovalsPage() {
           </button>
         </div>
       </div>
-
-      {/* Toasts */}
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-300 text-red-700 text-sm"
-        >
-          <Icon name="error" size={18} className="mt-0.5 shrink-0" />
-          <span className="flex-1">{error}</span>
-          <button
-            type="button"
-            onClick={() => setError(null)}
-            aria-label="Dismiss"
-            className="text-red-500 hover:text-red-700"
-          >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div
-          role="status"
-          className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-300 text-green-700 text-sm"
-        >
-          <Icon name="check_circle" size={18} className="mt-0.5 shrink-0" />
-          <span className="flex-1">{success}</span>
-          <button
-            type="button"
-            onClick={() => setSuccess(null)}
-            aria-label="Dismiss"
-                     >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      )}
 
       {/* Consolidated toolbar */}
       <div

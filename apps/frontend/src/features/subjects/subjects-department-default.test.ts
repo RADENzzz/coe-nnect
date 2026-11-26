@@ -6,10 +6,10 @@ import {
   restoreSubjectsDepartmentFilter,
 } from './subjects-department-default.ts';
 
-test('department head defaults to own department when no department is selected', () => {
+test('department head defaults to all departments when no department is selected', () => {
   assert.equal(
     getSubjectsDefaultDepartment('department_head', 'dept-a', ''),
-    'dept-a',
+    '',
   );
 });
 
@@ -36,15 +36,15 @@ test('a head without a department does not get an invalid filter', () => {
   );
 });
 
-test('clear all restores department head default but leaves college roles unfiltered', () => {
+test('clear all clears every subject filter including dept for every role', () => {
   const headParams = restoreSubjectsDepartmentFilter(
     'department_head',
     'dept-a',
-    new URLSearchParams('q=math&dept=dept-b&kind=elective'),
+    new URLSearchParams('q=math&dept=dept-b&minor=minor'),
   );
-  assert.equal(headParams.get('dept'), 'dept-a');
   assert.equal(headParams.get('q'), null);
-  assert.equal(headParams.get('kind'), null);
+  assert.equal(headParams.get('dept'), null);
+  assert.equal(headParams.get('minor'), null);
 
   const secretaryParams = restoreSubjectsDepartmentFilter(
     'college_secretary',

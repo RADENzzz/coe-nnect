@@ -8,7 +8,9 @@ import {
   type SubjectRecord,
 } from '../../../api/subjects.api';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import Modal from '../../../components/ui/Modal';
+import { extractApiError } from '../../../lib/api-error';
 import ResponsiveTable, { type Column } from '../../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../../components/ui/StatusBadge';
@@ -29,7 +31,8 @@ interface RestrictionRow {
 
 export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
+  const feedback = useFeedback();
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RestrictionRow | null>(null);
   const [form, setForm] = useState({
     subjectId1: '',
@@ -58,10 +61,10 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
     onSuccess: () => {
       invalidateAfterRestrictionChange();
       setForm({ subjectId1: '', subjectId2: '', warningMessage: '' });
-      setError(null);
+      feedback.success('Restriction created.');
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
+    onError: (err) =>
+      feedback.failed(extractApiError(err, 'Failed to create')),
   });
 
   const updateMutation = useMutation({
@@ -72,9 +75,12 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
       id: string;
       input: { warningMessage?: string; isActive?: boolean };
     }) => updateSubjectRestriction(id, input),
-    onSuccess: () => invalidateAfterRestrictionChange(),
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Update failed'),
+    onSuccess: () => {
+      invalidateAfterRestrictionChange();
+      feedback.success('Restriction updated.');
+    },
+    onError: (err) =>
+      feedback.failed(extractApiError(err, 'Failed to update')),
   });
 
   const deleteMutation = useMutation({
@@ -82,9 +88,10 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
     onSuccess: () => {
       invalidateAfterRestrictionChange();
       setDeleteTarget(null);
+      feedback.success('Restriction deleted.');
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Delete failed'),
+    onError: (err) =>
+      feedback.failed(extractApiError(err, 'Failed to delete')),
   });
 
   const subjectLabel = (id: string) => {
@@ -94,10 +101,10 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setValidationError(null);
     if (!form.subjectId1 || !form.subjectId2) return;
     if (form.subjectId1 === form.subjectId2) {
-      setError('Pick two different subjects.');
+      setValidationError('Pick two different subjects.');
       return;
     }
     createMutation.mutate({
@@ -182,12 +189,6 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
         }
       >
         <div className="space-y-5">
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm">
-              {error}
-            </div>
-          )}
-
           {/* Explainer — helps the DH understand what S-11 does */}
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900 flex items-start gap-2">
             <Icon name="info" size={16} className="shrink-0 mt-0.5" />
@@ -244,6 +245,9 @@ export default function RestrictionsPanel({ open, onClose, subjects }: Props) {
                   ))}
               </select>
             </div>
+            {validationError && (
+              <p className="text-[11px] text-red-600">{validationError}</p>
+            )}
             <input
               type="text"
               placeholder="Warning message (optional)"

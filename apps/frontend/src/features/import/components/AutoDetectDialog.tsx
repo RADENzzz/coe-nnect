@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/Icon';
+import { useFeedback } from '@/components/ui/FeedbackToast';
+import { extractApiError } from '@/lib/api-error';
 import {
   createProspectusPdfTable,
   detectProspectusPdfTables,
@@ -160,6 +162,7 @@ export default function AutoDetectDialog({
   existingTables,
   onCreated,
 }: AutoDetectDialogProps) {
+  const feedback = useFeedback();
   const {
     activeTypes,
     types,
@@ -180,7 +183,6 @@ export default function AutoDetectDialog({
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [scanned, setScanned] = useState(false);
   const wasOpenRef = useRef(false);
 
@@ -189,13 +191,12 @@ export default function AutoDetectDialog({
     // silently truncate proposals before the late-catalog re-seed can help.
     if (catalogLoading) return;
     if (catalogError) {
-      setError(
+      feedback.error(
         'Semester types could not be loaded. Re-scan after the catalog is available.',
       );
       return;
     }
     setLoading(true);
-    setError(null);
     setScanned(false);
     try {
       const result = await detectProspectusPdfTables(pdfId, {
@@ -215,11 +216,8 @@ export default function AutoDetectDialog({
       setWarnings(result.warnings ?? []);
       setPageCount(result.pageCount);
       setScanned(true);
-    } catch (err) {
-      const message =
-        (err as { response?: { data?: { message?: string | string[] } } })
-          ?.response?.data?.message ?? 'Table detection failed';
-      setError(Array.isArray(message) ? message.join(', ') : String(message));
+    } catch (err: unknown) {
+      feedback.failed(extractApiError(err, 'Table detection failed'));
     } finally {
       setLoading(false);
     }
@@ -231,6 +229,7 @@ export default function AutoDetectDialog({
     catalogKey,
     catalogLoading,
     catalogError,
+    feedback,
   ]);
 
   useEffect(() => {
@@ -242,7 +241,6 @@ export default function AutoDetectDialog({
     setDrafts([]);
     setRawProposals([]);
     setWarnings([]);
-    setError(null);
     setScanned(false);
     void runDetect();
     wasOpenRef.current = true;
@@ -368,7 +366,6 @@ export default function AutoDetectDialog({
   const handleCreate = async () => {
     if (blocking.length > 0 || ready.length === 0) return;
     setCreating(true);
-    setError(null);
     const created: ProspectusPdfTable[] = [];
     const createdIds = new Set<string>();
 
@@ -394,14 +391,12 @@ export default function AutoDetectDialog({
         });
         created.push(table);
         createdIds.add(draft.proposalId);
-      } catch (err) {
-        const message =
-          (err as { response?: { data?: { message?: string | string[] } } })
-            ?.response?.data?.message ?? 'Could not create the table';
-        setError(
-          `Created ${created.length} of ${ready.length} tables. ${
-            Array.isArray(message) ? message.join(', ') : String(message)
-          }`,
+      } catch (err: unknown) {
+        feedback.error(
+          `Created ${created.length} of ${ready.length} tables. ${extractApiError(
+            err,
+            'Could not create the table',
+          )}`,
         );
         break;
       }
@@ -518,20 +513,6 @@ export default function AutoDetectDialog({
                 Reading glyph positions, headers, and course-code lines.
               </p>
             </div>
-          </div>
-        )}
-
-        {error && !catalogError && (
-          <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
-            <Icon name="error" size={17} className="shrink-0 mt-0.5" />
-            <div className="flex-1">{error}</div>
-            <button
-              type="button"
-              onClick={() => setError(null)}
-              className="rounded px-1.5 py-0.5 text-xs font-semibold hover:bg-white/70"
-            >
-              Dismiss
-            </button>
           </div>
         )}
 

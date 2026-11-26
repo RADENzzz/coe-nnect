@@ -6,13 +6,14 @@
  * listeners and every play attempt also resumes a suspended context.
  */
 
-export type SoundKind = 'notification' | 'chat';
+export type SoundKind = 'notification' | 'chat' | 'success' | 'error';
 
 export interface SoundPreferences {
   notifications: boolean;
   chat: boolean;
   /** 0–1 */
   volume: number;
+  feedback: boolean;
 }
 
 const STORAGE_KEY = 'coe-nnect:sound-preferences';
@@ -21,6 +22,7 @@ export const DEFAULT_SOUND_PREFERENCES: SoundPreferences = {
   notifications: true,
   chat: true,
   volume: 0.7,
+  feedback: true,
 };
 
 let audioContext: AudioContext | null = null;
@@ -44,6 +46,7 @@ export function getSoundPreferences(): SoundPreferences {
         parsed.volume,
         DEFAULT_SOUND_PREFERENCES.volume,
       ),
+      feedback: parsed.feedback !== false,
     };
   } catch {
     return DEFAULT_SOUND_PREFERENCES;
@@ -62,6 +65,7 @@ export function setSoundPreferences(preferences: SoundPreferences): void {
           preferences.volume,
           DEFAULT_SOUND_PREFERENCES.volume,
         ),
+        feedback: !!preferences.feedback,
       }),
     );
   } catch {
@@ -144,7 +148,11 @@ function tone(
 function play(kind: SoundKind, force: boolean): void {
   const preferences = getSoundPreferences();
   const enabled =
-    kind === 'notification' ? preferences.notifications : preferences.chat;
+    kind === 'notification'
+      ? preferences.notifications
+      : kind === 'chat'
+        ? preferences.chat
+        : preferences.feedback;
   if (!force && !enabled) return;
   if (preferences.volume <= 0) return;
 
@@ -161,14 +169,18 @@ function play(kind: SoundKind, force: boolean): void {
   const volume = preferences.volume;
 
   try {
-    if (kind === 'notification') {
+    if (kind === 'notification' || kind === 'success') {
       // A soft ascending two-note chime.
       tone(ctx, now, 880, 0.34, 0.18 * volume);
       tone(ctx, now + 0.12, 1318.51, 0.42, 0.16 * volume);
-    } else {
+    } else if (kind === 'chat') {
       // A shorter, lower two-note pop for chat.
       tone(ctx, now, 740, 0.1, 0.13 * volume);
       tone(ctx, now + 0.08, 587.33, 0.14, 0.11 * volume);
+    } else {
+      // A shorter, lower two-note pop for error feedback.
+      tone(ctx, now, 587.33, 0.08, 0.1 * volume);
+      tone(ctx, now + 0.05, 440, 0.12, 0.08 * volume);
     }
   } catch {
     /* audio unavailable */
@@ -181,6 +193,14 @@ export function playNotificationSound(): void {
 
 export function playChatSound(): void {
   play('chat', false);
+}
+
+export function playSuccessSound(): void {
+  play('success', false);
+}
+
+export function playErrorSound(): void {
+  play('error', false);
 }
 
 /** Preview a sound from the settings UI, even while it is toggled off. */

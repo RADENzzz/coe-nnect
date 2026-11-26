@@ -12,6 +12,7 @@ import type {
   PublicSchedules,
 } from '../../api/public.api';
 import Icon from '../../components/ui/Icon';
+import { useFeedback } from '../../components/ui/FeedbackToast';
 import Modal, { isAnyModalOpen } from '../../components/ui/Modal';
 import { lockBodyScroll } from '../../lib/body-scroll-lock';
 import {
@@ -695,6 +696,7 @@ export default function StudentPlannerPanel({
   selectedTermId: string;
   onTermChange: (termId: string) => void;
 }) {
+  const feedback = useFeedback();
   const [plans, setPlans] = useState<PlannerPlans>(() =>
     readPlannerPlans(),
   );
@@ -709,7 +711,6 @@ export default function StudentPlannerPanel({
     useState<PlannerEditorState>(null);
   const [clearOpen, setClearOpen] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const lastScopeRef = useRef('');
 
@@ -1110,7 +1111,6 @@ export default function StudentPlannerPanel({
   const exportPlanner = async (format: 'pdf' | 'png') => {
     if (!selectedTermId || planEntries.length === 0 || exporting) return;
     setExporting(format);
-    setExportError(null);
 
     try {
       const { downloadStudentPlannerPdf, downloadStudentPlannerPng } =
@@ -1126,7 +1126,7 @@ export default function StudentPlannerPanel({
         await downloadStudentPlannerPng(props, `${fileBase}.png`);
       }
     } catch (error) {
-      setExportError(
+      feedback.failed(
         error instanceof Error
           ? error.message
           : 'Export failed. Please try again.',
@@ -1754,17 +1754,6 @@ export default function StudentPlannerPanel({
                 </button>
               </div>
             </div>
-
-            {exportError && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-800">
-                <Icon
-                  name="warning"
-                  size={14}
-                  className="mt-0.5 shrink-0"
-                />
-                <span>{exportError}</span>
-              </div>
-            )}
 
             {conflicts.length > 0 && (
               <div className="mt-3 rounded-xl border border-amber-300/70 bg-amber-50 p-3 text-amber-900">

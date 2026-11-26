@@ -154,10 +154,10 @@ export default function NotificationBell() {
 
   return (
     <>
-      {/* Desktop: dim + blur the page so the notification popover owns focus. */}
+      {/* Desktop: dims the page and frosts it in glass theme so the notification popover owns focus. */}
       {open && (
         <div
-          className="fixed inset-0 z-[45] hidden animate-backdrop-in bg-black/30 backdrop-blur-[2px] md:block"
+          className="fixed inset-0 z-[45] hidden animate-backdrop-in bg-black/30 overlay-backdrop-blur-xs md:block"
           onClick={() => setOpen(false)}
           aria-hidden="true"
         />

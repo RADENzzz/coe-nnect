@@ -11,6 +11,8 @@ import type { FacultyRecord } from '../../../api/faculty.api';
 import type { SubjectRecord } from '../../../api/subjects.api';
 import type { ProgramRecord } from '../../../api/programs.api';
 import type { Term } from '../../../api/schedule.api';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   EMPTY_FORM,
   STEP_DEFS,
@@ -37,7 +39,7 @@ export interface ProspectusEntry {
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSuccess: (message: string) => void;
+  onSuccess: () => void;
   departments: Department[];
   facultyList: FacultyRecord[];
   subjects: SubjectRecord[];
@@ -61,10 +63,10 @@ export default function RequestFormModal({
   activeTerm,
   myDeptId,
 }: Props) {
+  const feedback = useFeedback();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [stepIdx, setStepIdx] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
 
   // Reset every time the modal opens
@@ -73,7 +75,6 @@ export default function RequestFormModal({
     setForm(EMPTY_FORM);
     setStepIdx(0);
     setFieldErrors({});
-    setFormError(null);
     setConfirmClose(false);
   }, [open]);
 
@@ -220,22 +221,17 @@ export default function RequestFormModal({
   const createMutation = useMutation({
     mutationFn: createFacultyRequest,
     onSuccess: () => {
-      onSuccess('Request submitted for approval.');
+      feedback.success('Request submitted for approval.');
+      onSuccess();
     },
-    onError: (err: any) => {
-      setFormError(
-        err?.response?.data?.message ??
-          err.message ??
-          'Failed to submit request',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Failed to submit request'));
     },
   });
 
   const busy = createMutation.isPending;
 
   const handleSubmit = () => {
-    setFormError(null);
-
     const allErrs: FieldErrors = {};
     if (!form.targetDeptId) allErrs.targetDeptId = 'Select a target department';
     if (form.facultyMode === 'specific' && !form.specificFacultyId) {
@@ -253,12 +249,12 @@ export default function RequestFormModal({
     }
 
     if (!activeTerm) {
-      setFormError('No active term. Cannot create requests.');
+      feedback.error('No active term. Cannot create requests.');
       return;
     }
 
     if (duplicateRequest && !form.ackDuplicate) {
-      setFormError(
+      feedback.error(
         'Please confirm you want to submit a duplicate request for this subject.',
       );
       return;
@@ -382,21 +378,6 @@ export default function RequestFormModal({
               subjects={subjects}
               requestingDeptLabel={requestingDeptLabel}
             />
-          )}
-
-          {formError && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span className="flex-1">{formError}</span>
-              <button
-                type="button"
-                onClick={() => setFormError(null)}
-                className="text-red-600 hover:text-red-800"
-                aria-label="Dismiss error"
-              >
-                <Icon name="close" size={14} />
-              </button>
-            </div>
           )}
 
           {renderStep(stepIdx)}

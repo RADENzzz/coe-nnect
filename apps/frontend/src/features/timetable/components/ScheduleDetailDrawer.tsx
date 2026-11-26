@@ -21,6 +21,8 @@ import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
 import { useAuthStore } from '../../../store/auth.store';
 import { lockBodyScroll } from '../../../lib/body-scroll-lock';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 
 interface Props {
   entry: ScheduleEntry | null;
@@ -66,10 +68,9 @@ export default function ScheduleDetailDrawer({
 }: Props) {
   const queryClient = useQueryClient();
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
   const [remarks, setRemarks] = useState('');
-  const [remarksSaved, setRemarksSaved] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [unfinalizeOpen, setUnfinalizeOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -80,8 +81,6 @@ export default function ScheduleDetailDrawer({
 
   useEffect(() => {
     setRemarks(entry?.remarks ?? '');
-    setRemarksSaved(false);
-    setError(null);
     setMoveOpen(false);
     setDeleteOpen(false);
     setUnfinalizeOpen(false);
@@ -151,8 +150,8 @@ export default function ScheduleDetailDrawer({
       invalidateAfterMutation();
       onClose();
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? err?.message ?? 'Delete failed');
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Delete failed'));
       setDeleteOpen(false);
     },
   });
@@ -162,16 +161,13 @@ export default function ScheduleDetailDrawer({
       updateScheduleStatus(entry!.id, status),
     onSuccess: () => {
       invalidateAfterMutation();
-      setError(null);
       setUnfinalizeOpen(false);
       queryClient.invalidateQueries({
         queryKey: ['schedule-unfinalize-request', entry!.id],
       });
     },
-    onError: (err: any) => {
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Status update failed',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Status update failed'));
       setUnfinalizeOpen(false);
     },
   });
@@ -180,11 +176,10 @@ export default function ScheduleDetailDrawer({
     mutationFn: (text: string) => updateRemarks(entry!.id, text),
     onSuccess: () => {
       invalidateAfterMutation();
-      setRemarksSaved(true);
-      setTimeout(() => setRemarksSaved(false), 1500);
+      feedback.success('Remarks saved.');
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? err?.message ?? 'Save failed');
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Save failed'));
     },
   });
 
@@ -194,10 +189,9 @@ export default function ScheduleDetailDrawer({
       invalidateAfterMutation();
       setFlagOpen(false);
       setFlagReason('');
-      setError(null);
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? err?.message ?? 'Flag failed');
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Flag failed'));
       setFlagOpen(false);
     },
   });
@@ -206,10 +200,9 @@ export default function ScheduleDetailDrawer({
     mutationFn: () => unflagSchedule(entry!.id),
     onSuccess: () => {
       invalidateAfterMutation();
-      setError(null);
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? err?.message ?? 'Unflag failed');
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Unflag failed'));
     },
   });
 
@@ -222,12 +215,9 @@ export default function ScheduleDetailDrawer({
       });
       setRequestOpen(false);
       setRequestReason('');
-      setError(null);
     },
-    onError: (err: any) => {
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Request failed',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Request failed'));
     },
   });
 
@@ -252,7 +242,6 @@ export default function ScheduleDetailDrawer({
         // A published entry is public; the DH asks the Dean instead of
         // changing the status directly.
         if (!pendingRequest) {
-          setError(null);
           setRequestOpen(true);
         }
         return;
@@ -293,7 +282,7 @@ export default function ScheduleDetailDrawer({
     <>
       <div className="fixed inset-0 z-50">
         <div
-          className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-backdrop-in"
+          className="absolute inset-0 bg-black/30 overlay-backdrop-blur-xs animate-backdrop-in"
           onClick={onClose}
         />
 
@@ -439,12 +428,6 @@ export default function ScheduleDetailDrawer({
                   {unflagMutation.isPending ? '…' : 'Clear flag'}
                 </button>
               )}
-            </div>
-          )}
-
-          {error && (
-            <div className="px-5 py-3 bg-red-50 border-b border-red-200 text-xs text-red-700 whitespace-pre-wrap">
-              {error}
             </div>
           )}
 
@@ -665,11 +648,6 @@ export default function ScheduleDetailDrawer({
                   {remarks.length}/1000
                 </span>
                 <div className="flex items-center gap-2">
-                  {remarksSaved && (
-                    <span className="text-xs text-green-700 flex items-center gap-1">
-                      <Icon name="check" size={14} /> Saved
-                    </span>
-                  )}
                   {writable && (
                     <button
                       onClick={() => remarksMutation.mutate(remarks)}
@@ -852,12 +830,6 @@ export default function ScheduleDetailDrawer({
           can unfinalize it. Explain why it needs to go back to Draft; the Dean
           will approve or reject the request.
         </p>
-        {error && (
-          <div className="mb-3 flex items-start gap-2 border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
-            <Icon name="error" size={14} className="mt-0.5 shrink-0" />
-            <span className="flex-1">{error}</span>
-          </div>
-        )}
         <textarea
           value={requestReason}
           onChange={(e) => setRequestReason(e.target.value)}

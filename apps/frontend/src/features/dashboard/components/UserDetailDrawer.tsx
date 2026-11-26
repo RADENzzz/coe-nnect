@@ -72,7 +72,7 @@ export default function UserDetailDrawer({
       <div
         onClick={onClose}
         aria-hidden
-        className={`fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40 ${
+        className={`fixed inset-0 bg-slate-900/30 overlay-backdrop-blur-sm z-40 ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />

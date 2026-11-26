@@ -4,36 +4,31 @@ import { useMutation } from '@tanstack/react-query';
 import { resetPasswordWithToken } from '../../api/recovery.api';
 import Icon from '../../components/ui/Icon';
 import ThemeToggle from '../../components/ui/ThemeToggle';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 const PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-function apiError(error: any): string {
-  const message = error?.response?.data?.message;
-  if (Array.isArray(message)) return String(message[0] ?? '');
-  if (typeof message === 'string' && message.trim()) return message;
-  return error?.message ?? 'Could not reset your password.';
-}
-
 export default function ResetPasswordPage() {
+  const feedback = useFeedback();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const mutation = useMutation({
     mutationFn: () => resetPasswordWithToken(token, newPassword),
     onSuccess: () => {
       setSuccess(true);
-      setError(null);
       setNewPassword('');
       setConfirmPassword('');
     },
-    onError: (err: any) => setError(apiError(err)),
+    onError: (err) =>
+      feedback.failed(extractApiError(err, 'Could not reset your password.')),
   });
 
   const checks = {
@@ -117,13 +112,6 @@ export default function ResetPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                <Icon name="error" size={16} className="mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
             <div>
               <label
                 htmlFor="new-password"

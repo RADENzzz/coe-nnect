@@ -11,9 +11,19 @@ import {
 } from '../../api/subjects.api';
 import { fetchDepartments } from '../../api/departments.api';
 import { fetchProspectus } from '../../api/prospectus.api';
+import {
+  fetchSubjectEditRequests,
+  fetchSubjectEditRequestForSubject,
+  createSubjectEditRequest,
+  cancelSubjectEditRequest,
+  respondToSubjectEditRequest,
+  type SubjectEditAction,
+} from '../../api/subject-edit-requests.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import { useSemesterTypes } from '../../hooks/use-semester-types';
 import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
@@ -26,10 +36,7 @@ import SubjectFiltersPanel, {
 } from './components/SubjectFiltersPanel';
 import SubjectFormModal from './components/SubjectFormModal';
 import SubjectDetailPanel from './components/SubjectDetailPanel';
-import {
-  getSubjectsDefaultDepartment,
-  restoreSubjectsDepartmentFilter,
-} from './subjects-department-default';
+import { restoreSubjectsDepartmentFilter } from './subjects-department-default';
 
 const ROOM_TYPES: Array<{ value: '' | SubjectRoomType; label: string; icon: string }> = [
   { value: '', label: '— none —', icon: 'block' },
@@ -59,8 +66,6 @@ type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
 type SortDir = 'asc' | 'desc';
 
-type Alert = { kind: 'success' | 'error'; message: string } | null;
-
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -70,19 +75,13 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-function extractErrorMessage(err: any, fallback: string): string {
-  const raw = err?.response?.data?.message;
-  if (Array.isArray(raw)) return raw[0] ?? fallback;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  return err?.message ?? fallback;
-}
-
 export default function SubjectsPage() {
   const qc = useQueryClient();
   const { shortLabelFor } = useSemesterTypes();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
 
   const isCollegeWide =
     profile?.role === 'administrator' ||
@@ -105,15 +104,10 @@ export default function SubjectsPage() {
   const [bulkActionPending, setBulkActionPending] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
-  // ── Consolidated alert state (error + success share one slot) ──
-  const [alert, setAlert] = useState<Alert>(null);
-  const setSuccess = (m: string | null) =>
-    setAlert(m ? { kind: 'success', message: m } : null);
-  const setError = (m: string | null) =>
-    setAlert(m ? { kind: 'error', message: m } : null);
-
   // ── Detail side panel state ──
   const [detailEntry, setDetailEntry] = useState<SubjectRecord | null>(null);
+  // Only a foreign ?edit= deep link asks the panel to jump to Edit access.
+  const [focusEditAccess, setFocusEditAccess] = useState(false);
 
   // ── Dedicated delete-error state (blocked delete from backend) ──
   const [deleteError, setDeleteError] = useState<{
@@ -154,26 +148,6 @@ export default function SubjectsPage() {
     },
     [searchParams, setSearchParams],
   );
-
-  useEffect(() => {
-    if (!isDH || !myDeptId || deptFilter) return;
-    const defaultDepartment = getSubjectsDefaultDepartment(
-      profile?.role,
-      myDeptId,
-      deptFilter,
-    );
-    if (!defaultDepartment) return;
-    const next = new URLSearchParams(searchParams);
-    next.set('dept', defaultDepartment);
-    setSearchParams(next, { replace: true });
-  }, [
-    isDH,
-    myDeptId,
-    deptFilter,
-    profile?.role,
-    searchParams,
-    setSearchParams,
-  ]);
 
   useEffect(() => {
     if (debouncedSearch !== (searchParams.get('q') ?? '')) {
@@ -263,12 +237,39 @@ export default function SubjectsPage() {
     enabled: !!user,
   });
 
-  // ── Auto-dismiss success only ──
-  useEffect(() => {
-    if (!alert || alert.kind !== 'success') return;
-    const t = setTimeout(() => setAlert(null), 4000);
-    return () => clearTimeout(t);
-  }, [alert]);
+  // Approved grants make another department's subject editable by this
+  // department. Only a DH with a department needs the grant set.
+  const { data: approvedGrants = [] } = useQuery({
+    queryKey: ['subject-edit-requests', { status: 'approved' }],
+    queryFn: () => fetchSubjectEditRequests({ status: 'approved' }),
+    enabled: !!user && isDH && !!myDeptId,
+    // Grants can be approved or revoked in another session; never let the
+    // global 5-minute cache keep a requester read-only or editable by mistake.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const approvedSubjectIds = useMemo(
+    () =>
+      new Set(
+        approvedGrants
+          .filter((r) => String(r.requestingDeptId) === myDeptId)
+          .map((r) => String(r.subjectId)),
+      ),
+    [approvedGrants, myDeptId],
+  );
+
+  // Request state for the open detail panel (pending request or active grant).
+  const detailSubjectId = detailEntry?.subjectId ?? null;
+  const { data: editRequest = null } = useQuery({
+    queryKey: ['subject-edit-request', detailEntry?.subjectId],
+    queryFn: () => fetchSubjectEditRequestForSubject(String(detailSubjectId)),
+    enabled: !!user && !!detailSubjectId,
+    // Approval/revocation by the owner in another session must be reflected
+    // immediately in the open drawer, not after the global stale window.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
 
   // ── Keyboard: / focuses search ──
   useEffect(() => {
@@ -309,9 +310,11 @@ export default function SubjectsPage() {
   const isForeign = useCallback(
     (s: SubjectRecord): boolean => {
       if (!isDH) return false;
+      if (s.isMinor) return false;
+      if (approvedSubjectIds.has(String(s.subjectId))) return false;
       return String(s.deptId ?? '') !== myDeptId;
     },
-    [isDH, myDeptId],
+    [isDH, myDeptId, approvedSubjectIds],
   );
 
   // ── Detail panel: live view (re-derived from query cache) ──
@@ -322,14 +325,31 @@ export default function SubjectsPage() {
     );
   }, [subjects, detailEntry]);
 
-  // ── Stats (scoped) ──
-  const scopedSubjects = useMemo(() => {
-    if (isDH && myDeptId) {
-      return subjects.filter((s) => String(s.deptId ?? '') === myDeptId);
-    }
-    return subjects;
-  }, [subjects, isDH, myDeptId]);
+  // The recorded owner decides a normal request. When the live subject is
+  // stale (inactive, no owner, or ownership changed), the current owner may
+  // also close it — matching the backend's canRespond rule. The requesting
+  // department may withdraw its own; college-wide roles may do either.
+  const canRespond =
+    isCollegeWide ||
+    (isDH &&
+      !!myDeptId &&
+      (String(editRequest?.owningDeptId ?? '') === myDeptId ||
+        // A stale request is inactive or owned by another department now;
+        // only its current owner may close it — never a fresh grant.
+        (!!detailLive &&
+          !!editRequest &&
+          (!detailLive.isActive ||
+            !detailLive.deptId ||
+            String(editRequest.owningDeptId ?? '') !==
+              String(detailLive.deptId ?? '')) &&
+          String(detailLive.deptId ?? '') === myDeptId)));
+  const canCancel =
+    isCollegeWide ||
+    (isDH &&
+      !!myDeptId &&
+      String(editRequest?.requestingDeptId ?? '') === myDeptId);
 
+  // ── Stats (whole catalog) ──
   const stats = useMemo(() => {
     let lectureOnly = 0;
     let labOnly = 0;
@@ -338,7 +358,7 @@ export default function SubjectsPage() {
     let elective = 0;
     let totalOnly = 0;
     let inactive = 0;
-    for (const s of scopedSubjects) {
+    for (const s of subjects) {
       const lec = Number(s.lectureUnits ?? 0);
       const lab = Number(s.labUnits ?? 0);
       if (lec > 0 && lab > 0) mixed++;
@@ -350,7 +370,7 @@ export default function SubjectsPage() {
       if (!s.isActive) inactive++;
     }
     return {
-      total: scopedSubjects.length,
+      total: subjects.length,
       lectureOnly,
       labOnly,
       mixed,
@@ -359,7 +379,7 @@ export default function SubjectsPage() {
       totalOnly,
       inactive,
     };
-  }, [scopedSubjects]);
+  }, [subjects]);
 
   // Counts for the classification tabs (whole catalog, matching the table).
   const kindCounts = useMemo(() => {
@@ -552,14 +572,16 @@ export default function SubjectsPage() {
   const toggleMutation = useMutation({
     mutationFn: toggleSubjectActive,
     onSuccess: () => invalidateAfterSubjectChange(),
-    onError: (err: any) => setError(extractErrorMessage(err, 'Toggle failed')),
+    onError: (err: any) =>
+      feedback.error(extractApiError(err, 'Toggle failed')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteSubject,
     onSuccess: () => {
-      setSuccess('Subject deleted.');
+      feedback.success('Subject deleted.');
       setDeleteTarget(null);
+      setFocusEditAccess(false);
       setDetailEntry(null);
       invalidateAfterSubjectChange();
       // Qualifications for the subject are deleted with it.
@@ -571,10 +593,88 @@ export default function SubjectsPage() {
       setDeleteTarget(null);
       setDeleteError({
         subjectCode: target?.subjectCode ?? 'this subject',
-        message: extractErrorMessage(err, 'Delete failed'),
+        message: extractApiError(err, 'Delete failed'),
       });
     },
   });
+
+  // Edit-request actions change the catalog's read-only scope and the drawer's
+  // current request, so all three caches are refreshed after every success.
+  const invalidateAfterEditRequest = (subjectId: string) => {
+    qc.invalidateQueries({ queryKey: ['subjects'] });
+    qc.invalidateQueries({ queryKey: ['subject-edit-requests'] });
+    qc.invalidateQueries({ queryKey: ['subject-edit-request', subjectId] });
+  };
+
+  const requestEditMutation = useMutation({
+    mutationFn: ({
+      subjectId,
+      reason,
+    }: {
+      subjectId: string;
+      reason: string;
+    }) => createSubjectEditRequest(subjectId, reason),
+    onSuccess: (_result, { subjectId }) => {
+      feedback.success('Edit access requested.');
+      invalidateAfterEditRequest(subjectId);
+    },
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Could not request edit access.')),
+  });
+
+  const cancelEditRequestMutation = useMutation({
+    mutationFn: ({
+      requestId,
+    }: {
+      requestId: string;
+      subjectId: string;
+    }) => cancelSubjectEditRequest(requestId),
+    onSuccess: (_result, { subjectId }) => {
+      feedback.success('Edit request cancelled.');
+      invalidateAfterEditRequest(subjectId);
+    },
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Could not cancel the edit request.')),
+  });
+
+  const respondEditRequestMutation = useMutation({
+    mutationFn: ({
+      requestId,
+      action,
+      remarks,
+    }: {
+      requestId: string;
+      subjectId: string;
+      action: SubjectEditAction;
+      remarks: string;
+    }) => respondToSubjectEditRequest(requestId, action, remarks),
+    onSuccess: (_result, { subjectId, action }) => {
+      if (action === 'approve') feedback.success('Edit request approved.');
+      else if (action === 'reject') feedback.success('Edit request rejected.');
+      else feedback.success('Edit access revoked.');
+      invalidateAfterEditRequest(subjectId);
+    },
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Could not update the edit request.')),
+  });
+
+  // Pending flags are keyed to the current subject/request so a mutation for a
+  // previously open drawer cannot disable controls on a different one.
+  const requestActionPending =
+    requestEditMutation.isPending &&
+    !!detailSubjectId &&
+    String(requestEditMutation.variables?.subjectId ?? '') ===
+      String(detailSubjectId);
+  const cancelActionPending =
+    cancelEditRequestMutation.isPending &&
+    !!editRequest &&
+    String(cancelEditRequestMutation.variables?.requestId ?? '') ===
+      String(editRequest.requestId);
+  const respondActionPending =
+    respondEditRequestMutation.isPending &&
+    !!editRequest &&
+    String(respondEditRequestMutation.variables?.requestId ?? '') ===
+      String(editRequest.requestId);
 
   // ── Multi-select helpers ──
   const clearSelection = () => setSelectedIds(new Set());
@@ -583,27 +683,26 @@ export default function SubjectsPage() {
     const targets = selectedSubjects.filter((s) => s.isActive !== activate);
 
     if (targets.length === 0) {
-      setSuccess(
+      feedback.success(
         `All selected subjects are already ${activate ? 'active' : 'inactive'}.`,
       );
       return;
     }
 
     setBulkActionPending(true);
-    setError(null);
     try {
       const results = await Promise.allSettled(
         targets.map((s) => toggleSubjectActive(s.subjectId)),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        setError(
+        feedback.error(
           `${failed} of ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           } failed to ${activate ? 'activate' : 'deactivate'}.`,
         );
       } else {
-        setSuccess(
+        feedback.success(
           `${activate ? 'Activated' : 'Deactivated'} ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           }.`,
@@ -611,7 +710,7 @@ export default function SubjectsPage() {
       }
       invalidateAfterSubjectChange();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Bulk action failed'));
+      feedback.error(extractApiError(err, 'Bulk action failed'));
     } finally {
       setBulkActionPending(false);
     }
@@ -622,20 +721,19 @@ export default function SubjectsPage() {
     if (targets.length === 0) return;
 
     setBulkActionPending(true);
-    setError(null);
     try {
       const results = await Promise.allSettled(
         targets.map((s) => deleteSubject(s.subjectId)),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        setError(
+        feedback.error(
           `${failed} of ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           } could not be deleted. They may still have published schedules or restrictions — deactivate them instead.`,
         );
       } else {
-        setSuccess(
+        feedback.success(
           `Deleted ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           }.`,
@@ -647,11 +745,12 @@ export default function SubjectsPage() {
         detailLive &&
         targets.some((s) => s.subjectId === detailLive.subjectId)
       ) {
+        setFocusEditAccess(false);
         setDetailEntry(null);
       }
       invalidateAfterSubjectChange();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Bulk delete failed'));
+      feedback.error(extractApiError(err, 'Bulk delete failed'));
     } finally {
       setBulkActionPending(false);
     }
@@ -661,36 +760,34 @@ export default function SubjectsPage() {
   const openCreate = () => {
     setEditing(null);
     setMode('create');
-    setError(null);
-    setSuccess(null);
   };
 
   const openEdit = (s: SubjectRecord) => {
     if (isForeign(s)) return;
+    setFocusEditAccess(false);
     setDetailEntry(null);
     setEditing(s);
     setMode('edit');
-    setError(null);
-    setSuccess(null);
   };
 
   // ── Detail panel handlers ──
   const handleOpenDetail = (s: SubjectRecord) => {
+    setFocusEditAccess(false);
     setDetailEntry(s);
-    setError(null);
-    setSuccess(null);
   };
 
-  const handleCloseDetail = () => setDetailEntry(null);
+  const handleCloseDetail = () => {
+    setFocusEditAccess(false);
+    setDetailEntry(null);
+  };
 
   const handleEditFromDetail = () => {
     if (!detailLive) return;
     if (isForeign(detailLive)) return;
     setEditing(detailLive);
+    setFocusEditAccess(false);
     setDetailEntry(null);
     setMode('edit');
-    setError(null);
-    setSuccess(null);
   };
 
   // Activation is quick; deactivation cascades to mappings and gets a
@@ -713,12 +810,60 @@ export default function SubjectsPage() {
     if (!detailLive) return;
     if (isForeign(detailLive)) return;
     setDeleteTarget(detailLive);
+    setFocusEditAccess(false);
     setDetailEntry(null);
   };
 
   const handleOpenSubjectFromRestrictions = (subjectId: string) => {
     const next = subjects.find((s) => String(s.subjectId) === String(subjectId));
-    if (next) setDetailEntry(next);
+    if (next) {
+      setFocusEditAccess(false);
+      setDetailEntry(next);
+    }
+  };
+
+  const handleRequestEdit = async (reason: string): Promise<boolean> => {
+    if (!detailLive) return false;
+    try {
+      await requestEditMutation.mutateAsync({
+        subjectId: String(detailLive.subjectId),
+        reason,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleCancelEditRequest = async (): Promise<boolean> => {
+    if (!detailLive || !editRequest) return false;
+    try {
+      await cancelEditRequestMutation.mutateAsync({
+        subjectId: String(detailLive.subjectId),
+        requestId: editRequest.requestId,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleRespondEditRequest = async (
+    action: SubjectEditAction,
+    remarks: string,
+  ): Promise<boolean> => {
+    if (!detailLive || !editRequest) return false;
+    try {
+      await respondEditRequestMutation.mutateAsync({
+        subjectId: String(detailLive.subjectId),
+        requestId: editRequest.requestId,
+        action,
+        remarks,
+      });
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   // ── Deep-link: auto-open edit modal from ?edit=<subjectId> ──
@@ -750,10 +895,13 @@ export default function SubjectsPage() {
     hasConsumedEditParam.current = editParam;
 
     if (isForeign(target)) {
-      setError(
-        `"${target.subjectCode}" belongs to another department and is read-only.`,
-      );
+      // Read-only subjects open in the drawer on the Edit access section.
+      setMode(null);
+      setEditing(null);
+      setDetailEntry(target);
+      setFocusEditAccess(true);
     } else {
+      setFocusEditAccess(false);
       setEditing(target);
       setMode('edit');
     }
@@ -1396,38 +1544,12 @@ export default function SubjectsPage() {
         />
       </div>
 
-      {/* ── Single alert region (error + success share one slot) ── */}
-      <div aria-live="polite" aria-atomic="true">
-        {alert && (
-          <div
-            className={`p-3 rounded-lg border text-sm flex items-start gap-2 ${
-              alert.kind === 'error'
-                ? 'bg-red-100 border-red-300 text-red-700'
-                : 'bg-emerald-100 border-emerald-300 text-emerald-800'
-            }`}
-          >
-            <Icon
-              name={alert.kind === 'error' ? 'error' : 'check_circle'}
-              size={16}
-              className="shrink-0 mt-0.5"
-            />
-            <span className="flex-1">{alert.message}</span>
-            <button
-              onClick={() => setAlert(null)}
-              className="opacity-70 hover:opacity-100"
-              aria-label="Dismiss alert"
-            >
-              <Icon name="close" size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
       {isDH && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
           <Icon name="info" size={16} className="mt-0.5 shrink-0" />
           <span>
-            Each row shows its <strong>owning department</strong> in a colored
+            The catalog shows <strong>all subjects by default</strong>. Each
+            row shows its <strong>owning department</strong> in a colored
             badge. Rows with a{' '}
             <Icon name="lock" size={11} className="inline -mb-0.5" /> lock icon
             belong to another department and are read-only. Use the{' '}
@@ -1604,7 +1726,7 @@ export default function SubjectsPage() {
         onConfirm={handleBulkDelete}
       />
 
-      {/* ── Detail side panel ── */}
+      {/* ── Detail side panel (request callbacks land with the drawer UI) ── */}
       {detailLive && (
         <SubjectDetailPanel
           open={!!detailLive}
@@ -1617,10 +1739,20 @@ export default function SubjectsPage() {
             toggleMutation.isPending &&
             toggleMutation.variables === detailLive.subjectId
           }
+          requestActionPending={requestActionPending}
+          cancelActionPending={cancelActionPending}
+          respondActionPending={respondActionPending}
           onEdit={handleEditFromDetail}
           onToggleActive={handleToggleFromDetail}
           onDelete={handleDeleteFromDetail}
           onOpenSubject={handleOpenSubjectFromRestrictions}
+          editRequest={editRequest}
+          canRespond={canRespond}
+          canCancel={canCancel}
+          focusEditAccess={focusEditAccess}
+          onRequestEdit={handleRequestEdit}
+          onCancelRequest={handleCancelEditRequest}
+          onRespond={handleRespondEditRequest}
         />
       )}
 
@@ -1635,7 +1767,6 @@ export default function SubjectsPage() {
         myDeptId={myDeptId}
         defaultElective={kindFilter === 'elective'}
         onClose={handleFormClose}
-        onSuccess={(message) => setSuccess(message)}
       />
 
       {/* ── Deactivate confirmation ── */}
@@ -1663,7 +1794,7 @@ export default function SubjectsPage() {
           setDeactivateTarget(null);
           toggleMutation.mutate(target.subjectId, {
             onSuccess: () =>
-              setSuccess(
+              feedback.success(
                 `Subject "${target.subjectCode}" deactivated (not deleted)${
                   count > 0 ? ` along with ${count} active mapping${count === 1 ? '' : 's'}` : ''
                 }.`,

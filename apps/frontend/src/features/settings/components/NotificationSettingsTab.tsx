@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   fetchNotificationSettings,
   updateNotificationSetting,
@@ -86,6 +88,7 @@ function SkeletonRows() {
 
 export default function NotificationSettingsTab() {
   const queryClient = useQueryClient();
+  const feedback = useFeedback();
   const [sound, setSound] = useState<SoundPreferences>(() =>
     getSoundPreferences(),
   );
@@ -97,7 +100,8 @@ export default function NotificationSettingsTab() {
   };
 
   const volumePercent = Math.round(sound.volume * 100);
-  const soundsOff = !sound.notifications && !sound.chat;
+  const soundsOff =
+    !sound.notifications && !sound.chat && !sound.feedback;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['notification-settings'],
@@ -127,10 +131,16 @@ export default function NotificationSettingsTab() {
       );
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onSuccess: (_data, { enabled }) => {
+      feedback.success(
+        enabled ? 'Notification enabled.' : 'Notification disabled.',
+      );
+    },
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) {
         queryClient.setQueryData(['notification-settings'], ctx.prev);
       }
+      feedback.failed(extractApiError(err, 'Could not update notification.'));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-settings'] });
@@ -164,10 +174,16 @@ export default function NotificationSettingsTab() {
       );
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onSuccess: (_data, { enabled }) => {
+      feedback.success(
+        enabled ? 'Notifications enabled.' : 'Notifications disabled.',
+      );
+    },
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) {
         queryClient.setQueryData(['notification-settings'], ctx.prev);
       }
+      feedback.failed(extractApiError(err, 'Could not update notifications.'));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-settings'] });
@@ -241,10 +257,11 @@ export default function NotificationSettingsTab() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-slate-900">
-              Notification & chat sounds
+              Notification, chat, and feedback sounds
             </p>
             <p className="text-xs text-slate-500">
-              Play a short tone when notifications or chat messages arrive.
+              Play a short tone for notifications, chat messages, and saved
+              results.
             </p>
           </div>
         </header>
@@ -296,6 +313,28 @@ export default function NotificationSettingsTab() {
             </label>
           </div>
 
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-900">
+                Success/error feedback sounds
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Play a chime when an action succeeds or fails.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={sound.feedback}
+                aria-label="Success and error feedback sounds"
+                onChange={(e) => updateSound({ feedback: e.target.checked })}
+              />
+              <div className="w-9 h-5 bg-slate-300 peer-checked:bg-primary rounded-full transition-colors" />
+              <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+            </label>
+          </div>
+
           <div>
             <div className="flex items-center justify-between gap-3">
               <label
@@ -339,6 +378,22 @@ export default function NotificationSettingsTab() {
             >
               <Icon name="chat_bubble" size={14} />
               Test chat
+            </button>
+            <button
+              type="button"
+              onClick={() => previewSound('success')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-variant px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition"
+            >
+              <Icon name="check_circle" size={14} />
+              Test success
+            </button>
+            <button
+              type="button"
+              onClick={() => previewSound('error')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-surface-variant px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container-low transition"
+            >
+              <Icon name="error" size={14} />
+              Test error
             </button>
             <span className="text-[11px] text-slate-400">
               Browsers may need one click on the page before audio can play.

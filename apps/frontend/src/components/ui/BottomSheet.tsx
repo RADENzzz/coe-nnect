@@ -57,7 +57,7 @@ export default function BottomSheet({
   return (
     <div className="fixed inset-0 z-[110] flex items-end md:items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-backdrop-in"
+        className="absolute inset-0 bg-black/40 overlay-backdrop-blur-xs animate-backdrop-in"
         onClick={onClose}
         aria-hidden="true"
       />

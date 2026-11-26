@@ -427,23 +427,26 @@ export default function ResponsiveTable<T>({
               )}
               data-selected={isSelected || undefined}
             >
-              {rowSelectable && (
-                <td className={clsx(cellPad, 'w-0')}>
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      toggleOne(key);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={
-                      rowTitle ? `Select ${rowTitle(row)}` : 'Select row'
-                    }
-                    className="cursor-pointer accent-primary"
-                  />
-                </td>
-              )}
+              {selectable &&
+                (rowSelectable ? (
+                  <td className={clsx(cellPad, 'w-0')}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleOne(key);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={
+                        rowTitle ? `Select ${rowTitle(row)}` : 'Select row'
+                      }
+                      className="cursor-pointer accent-primary"
+                    />
+                  </td>
+                ) : (
+                  <td className={clsx(cellPad, 'w-0')} />
+                ))}
               {columns.map((c) => {
                 const isActionsCol = c.cardVariant === 'actions';
                 const actions = isActionsCol

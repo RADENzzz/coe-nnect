@@ -15,6 +15,8 @@ import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import FormErrorSummary from '../../components/ui/FormErrorSummary';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import {
   clearFieldError,
   mergeFieldError,
@@ -49,6 +51,7 @@ export default function SectionsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
 
   const isAdmin = profile?.role === 'administrator';
   const isDH = profile?.role === 'department_head';
@@ -61,8 +64,6 @@ export default function SectionsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Section | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Section | null>(null);
   const [confirmCloseForm, setConfirmCloseForm] = useState(false);
   const discardCancelRef = useRef<HTMLButtonElement>(null);
@@ -142,13 +143,6 @@ export default function SectionsPage() {
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
-
-  // ── Auto-dismiss success ──
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 4000);
-    return () => clearTimeout(t);
-  }, [success]);
 
   // ── Keyboard: / focuses search ──
   useEffect(() => {
@@ -324,42 +318,42 @@ export default function SectionsPage() {
   const createMutation = useMutation({
     mutationFn: createSection,
     onSuccess: (section) => {
-      setSuccess(`Section "${section.sectionCode}" created.`);
+      feedback.success(`Section "${section.sectionCode}" created.`);
       closeForm(true);
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
+      feedback.error(extractApiError(err, 'Failed to create')),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: any }) =>
       updateSection(id, input),
     onSuccess: (section) => {
-      setSuccess(`Section "${section.sectionCode}" updated.`);
+      feedback.success(`Section "${section.sectionCode}" updated.`);
       closeForm(true);
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
+      feedback.error(extractApiError(err, 'Failed to update')),
   });
 
   const toggleMutation = useMutation({
     mutationFn: toggleSectionActive,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sections'] }),
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Toggle failed'),
+      feedback.error(extractApiError(err, 'Toggle failed')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteSection,
     onSuccess: () => {
-      setSuccess('Section deleted.');
+      feedback.success('Section deleted.');
       setDeleteTarget(null);
       qc.invalidateQueries({ queryKey: ['sections'] });
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Delete failed'),
+      feedback.error(extractApiError(err, 'Delete failed')),
   });
 
   // ── Form ──
@@ -379,7 +373,6 @@ export default function SectionsPage() {
     setShowForm(false);
     setEditing(null);
     setForm(EMPTY_FORM);
-    setError(null);
     setFieldErrors({});
     setErrors([]);
   };
@@ -418,8 +411,6 @@ export default function SectionsPage() {
     setShowForm(true);
     setEditing(null);
     setForm(EMPTY_FORM);
-    setError(null);
-    setSuccess(null);
     setFieldErrors({});
     setErrors([]);
     setTimeout(() => firstFieldRef.current?.focus(), 50);
@@ -435,8 +426,6 @@ export default function SectionsPage() {
       yearLevel: s.yearLevel != null ? String(s.yearLevel) : '',
       studentCount: s.studentCount != null ? String(s.studentCount) : '',
     });
-    setError(null);
-    setSuccess(null);
     setFieldErrors({});
     setErrors([]);
     setTimeout(() => firstFieldRef.current?.focus(), 50);
@@ -546,8 +535,6 @@ export default function SectionsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
@@ -906,34 +893,6 @@ export default function SectionsPage() {
               </button>
             );
           })}
-        </div>
-      )}
-
-      {/* ── Banners ── */}
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
         </div>
       )}
 

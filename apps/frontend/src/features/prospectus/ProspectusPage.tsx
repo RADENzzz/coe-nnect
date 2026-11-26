@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchProspectus,
+  updateProspectus,
   toggleProspectusActive,
   deleteProspectus,
   createProspectus,
@@ -18,6 +19,8 @@ import { fetchSubjects } from '../../api/subjects.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
@@ -25,6 +28,11 @@ import ProspectusFormModal from './components/ProspectusFormModal';
 import FillSlotModal from './components/FillSlotModal';
 import ProspectusDetailPanel from './components/ProspectusDetailPanel';
 import { useSemesterTypes } from '../../hooks/use-semester-types';
+import {
+  buildSessionsPerWeekPatch,
+  formatSessionsPerWeek,
+  type SessionsPerWeekPatch,
+} from './utils/sessions-per-week';
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
 
@@ -44,12 +52,11 @@ export default function ProspectusPage() {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const { activeTypes, labelFor, options } = useSemesterTypes();
+  const feedback = useFeedback();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ProspectusRecord | null>(null);
   const [fillTarget, setFillTarget] = useState<ProspectusRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProspectusRecord | null>(
     null,
   );
@@ -123,13 +130,6 @@ export default function ProspectusPage() {
     queryFn: () => fetchSubjects(true),
     enabled: !!user,
   });
-
-  // ── Auto-dismiss success ──
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 4000);
-    return () => clearTimeout(t);
-  }, [success]);
 
   // ── Scope-aware programs ──
   const visiblePrograms = useMemo(() => {
@@ -361,13 +361,13 @@ export default function ProspectusPage() {
     mutationFn: toggleProspectusActive,
     onSuccess: () => invalidateAfterProspectusChange(),
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Toggle failed'),
+      feedback.error(extractApiError(err, 'Toggle failed')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteProspectus,
     onSuccess: () => {
-      setSuccess('Prospectus entry removed.');
+      feedback.success('Prospectus entry removed.');
       setDeleteTarget(null);
       // If the panel was showing this entry, it will disappear on its own:
       // `detailLive` is derived from `allEntries` + `?detail=`, and the
@@ -376,29 +376,42 @@ export default function ProspectusPage() {
       invalidateAfterProspectusChange();
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Delete failed'),
+      feedback.error(extractApiError(err, 'Delete failed')),
   });
 
   const fillSlotMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: FillSlotInput }) =>
       fillProspectusSlot(id, input),
     onSuccess: () => {
-      setSuccess('Elective field filled successfully.');
+      feedback.success('Elective field filled successfully.');
       setFillTarget(null);
       invalidateAfterProspectusChange();
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Failed to fill slot'),
+      feedback.error(extractApiError(err, 'Failed to fill slot')),
   });
 
   const duplicateSlotMutation = useMutation({
     mutationFn: duplicateProspectusSlot,
     onSuccess: () => {
-      setSuccess('Empty elective field duplicated.');
+      feedback.success('Empty elective field duplicated.');
       invalidateAfterProspectusChange();
     },
     onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Failed to duplicate field'),
+      feedback.error(extractApiError(err, 'Failed to duplicate field')),
+  });
+
+  const updateSessionsMutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: SessionsPerWeekPatch }) =>
+      updateProspectus(id, patch),
+    onSuccess: () => {
+      feedback.success('Sessions per week updated.');
+      invalidateAfterProspectusChange();
+    },
+    onError: (err: unknown) =>
+      feedback.error(
+        extractApiError(err, 'Failed to update sessions per week'),
+      ),
   });
 
   // ── Bulk action: activate/deactivate ALL visible (quick path) ──
@@ -412,7 +425,7 @@ export default function ProspectusPage() {
 
     if (targets.length === 0) {
       if (skipped > 0) {
-        setError(
+        feedback.error(
           'Those entries belong to inactive subjects. Reactivate the subject on the Subjects page first.',
         );
       }
@@ -420,21 +433,20 @@ export default function ProspectusPage() {
     }
 
     setBulkBusy(true);
-    setError(null);
     try {
       await Promise.all(
         targets.map((e) =>
           toggleProspectusActive(e.prospectusId).then(() => undefined),
         ),
       );
-      setSuccess(
+      feedback.success(
         `${activate ? 'Activated' : 'Deactivated'} ${targets.length} entr${
           targets.length === 1 ? 'y' : 'ies'
         }.${skipped > 0 ? ` ${skipped} skipped (subject inactive).` : ''}`,
       );
       invalidateAfterProspectusChange();
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Bulk operation failed');
+      feedback.error(extractApiError(err, 'Bulk operation failed'));
     } finally {
       setBulkBusy(false);
     }
@@ -470,11 +482,11 @@ export default function ProspectusPage() {
 
     if (targets.length === 0) {
       if (skipped > 0) {
-        setError(
+        feedback.error(
           'Those entries belong to inactive subjects. Reactivate the subject on the Subjects page first.',
         );
       } else {
-        setSuccess(
+        feedback.success(
           `All selected entries are already ${activate ? 'active' : 'inactive'}.`,
         );
       }
@@ -482,20 +494,19 @@ export default function ProspectusPage() {
     }
 
     setBulkActionPending(true);
-    setError(null);
     try {
       const results = await Promise.allSettled(
         targets.map((e) => toggleProspectusActive(e.prospectusId)),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        setError(
+        feedback.error(
           `${failed} of ${targets.length} entr${
             targets.length === 1 ? 'y' : 'ies'
           } failed to ${activate ? 'activate' : 'deactivate'}.`,
         );
       } else {
-        setSuccess(
+        feedback.success(
           `${activate ? 'Activated' : 'Deactivated'} ${targets.length} entr${
             targets.length === 1 ? 'y' : 'ies'
           }.${skipped > 0 ? ` ${skipped} skipped (subject inactive).` : ''}`,
@@ -503,7 +514,7 @@ export default function ProspectusPage() {
       }
       invalidateAfterProspectusChange();
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Bulk action failed');
+      feedback.error(extractApiError(err, 'Bulk action failed'));
     } finally {
       setBulkActionPending(false);
     }
@@ -515,20 +526,19 @@ export default function ProspectusPage() {
     if (ids.length === 0) return;
 
     setBulkActionPending(true);
-    setError(null);
     try {
       const results = await Promise.allSettled(
         ids.map((id) => deleteProspectus(id)),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        setError(
+        feedback.error(
           `${failed} of ${ids.length} entr${
             ids.length === 1 ? 'y' : 'ies'
           } failed to remove.`,
         );
       } else {
-        setSuccess(
+        feedback.success(
           `Removed ${ids.length} entr${ids.length === 1 ? 'y' : 'ies'}.`,
         );
       }
@@ -538,7 +548,7 @@ export default function ProspectusPage() {
       // items, it should stay open. If it was, the derivation + cleanup handles it.
       invalidateAfterProspectusChange();
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Bulk remove failed');
+      feedback.error(extractApiError(err, 'Bulk remove failed'));
     } finally {
       setBulkActionPending(false);
     }
@@ -548,24 +558,18 @@ export default function ProspectusPage() {
   const handleAdd = () => {
     setEditing(null);
     setModalOpen(true);
-    setError(null);
-    setSuccess(null);
   };
 
   const handleEdit = (entry: ProspectusRecord) => {
     if (!canWrite) return;
     setEditing(entry);
     setModalOpen(true);
-    setError(null);
-    setSuccess(null);
   };
 
   const handleOpenDetail = (entry: ProspectusRecord) => {
     const next = new URLSearchParams(searchParams);
     next.set('detail', entry.prospectusId);
     setSearchParams(next, { replace: true });
-    setError(null);
-    setSuccess(null);
   };
 
   const handleCloseDetail = () => {
@@ -579,8 +583,6 @@ export default function ProspectusPage() {
     setEditing(detailLive);
     handleCloseDetail();
     setModalOpen(true);
-    setError(null);
-    setSuccess(null);
   };
 
   const handleEditSubjectFromDetail = () => {
@@ -809,6 +811,13 @@ export default function ProspectusPage() {
       render: renderUnits,
     },
     {
+      key: 'sessionsPerWeek',
+      header: 'Sessions/wk',
+      cardVariant: 'mono',
+      cellClassName: 'whitespace-nowrap text-xs text-on-surface-variant',
+      render: (e) => formatSessionsPerWeek(e),
+    },
+    {
       key: 'type',
       header: 'Type',
       cardVariant: 'badge',
@@ -990,34 +999,6 @@ export default function ProspectusPage() {
             department. Contact the owning department head or an administrator
             to make changes.
           </span>
-        </div>
-      )}
-
-      {/* ── Banners ── */}
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
         </div>
       )}
 
@@ -1421,6 +1402,9 @@ export default function ProspectusPage() {
           onDuplicateSlot={() => handleDuplicateSlot(detailLive)}
           onToggleActive={handleToggleFromDetail}
           onDelete={handleDeleteFromDetail}
+          onSaveSessions={(id, patch) =>
+            updateSessionsMutation.mutateAsync({ id, patch }).then(() => undefined)
+          }
         />
       )}
 
@@ -1483,7 +1467,7 @@ export default function ProspectusPage() {
           currentSemester={selectedSemester}
           allEntries={allEntries}
           onCopied={(count) => {
-            setSuccess(
+            feedback.success(
               `Copied ${count} subject${count === 1 ? '' : 's'} into the current slot.`,
             );
             invalidateAfterProspectusChange();

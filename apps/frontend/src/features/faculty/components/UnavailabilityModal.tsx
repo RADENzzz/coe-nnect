@@ -10,7 +10,9 @@ import {
 import { fetchFacultyPreferences } from '../../../api/faculty-preferences.api';
 import type { FacultyRecord } from '../../../api/faculty.api';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import Modal from '../../../components/ui/Modal';
+import { extractApiError } from '../../../lib/api-error';
 import WeeklyAvailabilityGrid, {
   type GridBlock,
 } from './WeeklyAvailabilityGrid';
@@ -80,11 +82,6 @@ function gridHas(list: GridBlock[], b: GridBlock): boolean {
   return list.some((x) => sameBlock(x, b));
 }
 
-function extractMessage(err: unknown): string {
-  const e = err as any;
-  return e?.response?.data?.message ?? e?.message ?? 'unknown error';
-}
-
 export default function UnavailabilityModal({
   open,
   onClose,
@@ -92,13 +89,11 @@ export default function UnavailabilityModal({
   termId,
 }: Props) {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const feedback = useFeedback();
   const [reason, setReason] = useState('');
   const [draftBlocks, setDraftBlocks] = useState<GridBlock[]>([]);
   const [confirmClose, setConfirmClose] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // After a rollback we deliberately skip the next hydration pass so the
@@ -166,7 +161,7 @@ export default function UnavailabilityModal({
   );
 
   // Rebuild draft when the modal opens / term changes / server snapshot changes.
-  // Draft-only state (reason, error, success, showAdvanced) is managed in a
+  // Draft-only state (reason, showAdvanced) is managed in a
   // separate effect so an in-flight save doesn't blow it away.
   useEffect(() => {
     if (!open) return;
@@ -182,10 +177,7 @@ export default function UnavailabilityModal({
   useEffect(() => {
     if (!open) return;
     setReason('');
-    setError(null);
-    setSuccess(null);
     setIsSaving(false);
-    setJustSaved(false);
     setShowAdvanced(false);
     skipHydrateRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,12 +234,7 @@ export default function UnavailabilityModal({
   // ── Save (optimistic) ──
   const handleSave = async () => {
     if (!hasChanges || isSaving) return;
-    setError(null);
-    setSuccess(null);
     setIsSaving(true);
-    setJustSaved(true);
-    // Auto-hide the "Saved" chip after a beat.
-    window.setTimeout(() => setJustSaved(false), 2000);
 
     const previous = qc.getQueryData<FacultyUnavailability[]>(existingKey);
 
@@ -291,7 +278,7 @@ export default function UnavailabilityModal({
             errors.push(
               `Failed to remove ${diff.toRemove[i].dayOfWeek} ${
                 diff.toRemove[i].startTime
-              }: ${extractMessage(r.reason)}`,
+              }: ${extractApiError(r.reason, 'unknown error')}`,
             );
           }
         });
@@ -313,7 +300,7 @@ export default function UnavailabilityModal({
             errors.push(
               `Failed to add ${diff.toAdd[i].day} ${toHHMM(
                 diff.toAdd[i].startMin,
-              )}: ${extractMessage(r.reason)}`,
+              )}: ${extractApiError(r.reason, 'unknown error')}`,
             );
           }
         });
@@ -324,8 +311,7 @@ export default function UnavailabilityModal({
           skipHydrateRef.current = true;
           qc.setQueryData(existingKey, previous);
         }
-        setJustSaved(false);
-        setError(
+        feedback.failed(
           `${errors.length} operation${errors.length === 1 ? '' : 's'} failed:\n` +
             errors.slice(0, 3).join('\n') +
             (errors.length > 3 ? `\n…and ${errors.length - 3} more` : ''),
@@ -335,7 +321,7 @@ export default function UnavailabilityModal({
         qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
         qc.invalidateQueries({ queryKey: ['faculty'] });
       } else {
-        setSuccess('Unavailability saved.');
+        feedback.success('Unavailability saved.');
         setReason('');
         qc.invalidateQueries({ queryKey: ['faculty-unavailability'] });
         qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
@@ -346,19 +332,11 @@ export default function UnavailabilityModal({
         skipHydrateRef.current = true;
         qc.setQueryData(existingKey, previous);
       }
-      setJustSaved(false);
-      setError(extractMessage(err));
+      feedback.failed(extractApiError(err, 'Could not save unavailability.'));
     } finally {
       setIsSaving(false);
     }
   };
-
-  // Auto-dismiss success
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 3500);
-    return () => clearTimeout(t);
-  }, [success]);
 
   const handleRequestClose = useCallback(() => {
     if (hasChanges && !isSaving) {
@@ -377,12 +355,7 @@ export default function UnavailabilityModal({
     });
   }, [existing]);
 
-  const saveLabel =
-    justSaved && !hasChanges
-      ? 'Saved'
-      : hasChanges
-      ? 'Save changes'
-      : 'No changes';
+  const saveLabel = hasChanges ? 'Save changes' : 'No changes';
 
   return (
     <>
@@ -396,13 +369,7 @@ export default function UnavailabilityModal({
         size="lg"
         footer={
           <>
-            {justSaved && !hasChanges && (
-              <span className="mr-auto text-xs text-emerald-700 font-semibold self-center inline-flex items-center gap-1">
-                <Icon name="check_circle" size={14} />
-                Saved
-              </span>
-            )}
-            {!justSaved && hasChanges && (
+            {hasChanges && (
               <span className="mr-auto text-xs text-slate-500 self-center">
                 <span className="text-emerald-700 font-semibold">
                   +{diff.added}
@@ -428,26 +395,12 @@ export default function UnavailabilityModal({
               disabled={isSaving || isLoading || !hasChanges}
               className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition disabled:opacity-50 rounded-lg flex items-center gap-2 active:scale-[0.98]"
             >
-              {justSaved && !hasChanges && <Icon name="check" size={14} />}
               {saveLabel}
             </button>
           </>
         }
       >
         <div className="space-y-4">
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-xs rounded-lg flex items-start gap-2 whitespace-pre-line">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-          {success && (
-            <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs rounded-lg flex items-start gap-2">
-              <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-              <span>{success}</span>
-            </div>
-          )}
-
           {/* H-14 hint */}
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900 flex items-start gap-2">
             <Icon name="block" size={16} className="shrink-0 mt-0.5" />

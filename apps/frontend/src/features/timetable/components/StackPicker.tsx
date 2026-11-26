@@ -49,7 +49,7 @@ export default function StackPicker({ entries, onClose, onPick }: Props) {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm animate-backdrop-in"
+        className="absolute inset-0 bg-black/30 overlay-backdrop-blur-sm animate-backdrop-in"
         onClick={onClose}
       />
 

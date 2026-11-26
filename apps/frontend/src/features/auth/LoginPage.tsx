@@ -15,6 +15,8 @@ import { CAP_API_ENDPOINT, login as loginWithCap } from '../../api/auth.api';
 import { requestPasswordReset } from '../../api/recovery.api';
 import { isMaintenancePreviewEnabled } from '../../lib/maintenance-preview';
 import { useAppearanceStore } from '../../store/appearance.store';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 /* ────────────────────────────────────────────
    DEV TEST ACCOUNTS (loaded from env)
@@ -43,36 +45,6 @@ const LS_REMEMBERED_EMAIL = 'coe-nnect:last-email';
 const SS_DEV_PANEL_OPEN = 'coe-nnect:dev-panel-open';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Maps backend auth failures to the messages the login form shows. */
-function normalizeLoginError(error: unknown): Error {
-  const data = (
-    error as {
-      response?: { data?: { message?: unknown; code?: string } };
-    }
-  )?.response?.data;
-
-  const raw = data?.message;
-  const message = Array.isArray(raw)
-    ? String(raw[0] ?? '')
-    : typeof raw === 'string'
-      ? raw
-      : '';
-
-  if (data?.code === 'CAPTCHA_FAILED') {
-    return new Error(
-      'Verification expired or was already used. Please complete the challenge again.',
-    );
-  }
-  if (/too many|rate limit/i.test(message)) {
-    return new Error(
-      'Too many attempts. Please wait a minute before trying again.',
-    );
-  }
-  if (message) return new Error(message);
-  if (error instanceof Error) return error;
-  return new Error('An error occurred during login');
-}
 
 /* ────────────────────────────────────────────
    DEV LOGIN POPUP
@@ -236,25 +208,23 @@ function ForgotPasswordModal({
   initialEmail: string;
   onClose: () => void;
 }) {
+  const feedback = useFeedback();
   const [email, setEmail] = useState(initialEmail);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setEmail(initialEmail);
       setSent(false);
-      setError(null);
     }
   }, [open, initialEmail]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
 
     if (!EMAIL_REGEX.test(email.trim())) {
-      setError('Enter a valid email address');
+      feedback.error('Enter a valid email address');
       return;
     }
 
@@ -262,12 +232,8 @@ function ForgotPasswordModal({
     try {
       await requestPasswordReset(email.trim());
       setSent(true);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ??
-          err?.message ??
-          'Failed to send reset email',
-      );
+    } catch (err) {
+      feedback.failed(extractApiError(err, 'Failed to send reset email'));
     } finally {
       setSending(false);
     }
@@ -278,7 +244,7 @@ function ForgotPasswordModal({
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-backdrop-in"
+        className="absolute inset-0 bg-black/40 overlay-backdrop-blur-xs animate-backdrop-in"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -324,11 +290,6 @@ function ForgotPasswordModal({
             </div>
           ) : (
             <>
-              {error && (
-                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
-                  {error}
-                </div>
-              )}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">
                   Email
@@ -382,6 +343,7 @@ function ForgotPasswordModal({
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const feedback = useFeedback();
   const brandLogo = useAppearanceStore((s) => s.logo);
   const from =
     (location.state as { from?: Location })?.from?.pathname ?? null;
@@ -402,13 +364,11 @@ export default function LoginPage() {
     }
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [shakeKey, setShakeKey] = useState(0);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [slowNetwork, setSlowNetwork] = useState(false);
-  const [attemptCount, setAttemptCount] = useState(0);
   const [capToken, setCapToken] = useState<string | null>(null);
   const [capError, setCapError] = useState<string | null>(null);
 
@@ -526,7 +486,6 @@ export default function LoginPage() {
     if (!canSubmit || !capToken) return;
 
     setLoading(true);
-    setError(null);
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -590,18 +549,34 @@ export default function LoginPage() {
       setCapToken(null);
       capRef.current?.reset();
 
-      const data = (err as { response?: { data?: { code?: string } } })
-        ?.response?.data;
+      const data = (err as {
+        response?: { data?: { code?: string; message?: unknown } };
+      })?.response?.data;
 
       if (data?.code === 'MAINTENANCE_MODE') {
         navigate('/maintenance', { replace: true });
         return;
       }
 
-      const normalized = normalizeLoginError(err);
-      setError(normalized.message);
+      if (data?.code === 'CAPTCHA_FAILED') {
+        feedback.failed(
+          'Verification expired or was already used. Please complete the challenge again.',
+        );
+      } else {
+        const rawMessage = Array.isArray(data?.message)
+          ? String(data.message[0] ?? '')
+          : typeof data?.message === 'string'
+            ? data.message
+            : '';
+        if (/too many|rate limit/i.test(rawMessage)) {
+          feedback.failed(
+            'Too many attempts. Please wait a minute before trying again.',
+          );
+        } else {
+          feedback.failed(extractApiError(err, 'An error occurred during login'));
+        }
+      }
       setShakeKey((k) => k + 1);
-      setAttemptCount((c) => c + 1);
 
       // Focus the most likely field to fix
       requestAnimationFrame(() => {
@@ -616,11 +591,6 @@ export default function LoginPage() {
   const handleFillDev = useCallback((devEmail: string, devPassword: string) => {
     setEmail(devEmail);
     setPassword(devPassword);
-    setError(null);
-  }, []);
-
-  const dismissError = useCallback(() => {
-    setError(null);
   }, []);
 
   return (
@@ -741,7 +711,9 @@ export default function LoginPage() {
         <div
           key={shakeKey}
           className="w-full max-w-sm animate-slide-in"
-          style={error ? { animation: 'shake 400ms ease-in-out' } : undefined}
+          style={
+            shakeKey > 0 ? { animation: 'shake 400ms ease-in-out' } : undefined
+          }
         >
           <Link
             to="/"
@@ -785,41 +757,6 @@ export default function LoginPage() {
               Enter your credentials to continue.
             </p>
           </div>
-
-          {/* Error banner */}
-          {error && (
-            <div
-              role="alert"
-              className="mb-5 flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 animate-fade-in rounded-lg"
-            >
-              <Icon
-                name="error"
-                filled
-                className="text-red-600 shrink-0 mt-0.5"
-                size={18}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-red-800">{error}</p>
-                {attemptCount >= 3 && (
-                  <button
-                    type="button"
-                    onClick={() => setForgotOpen(true)}
-                    className="text-xs font-semibold text-red-700 hover:text-red-900 underline mt-1"
-                  >
-                    Forgot your password?
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={dismissError}
-                className="text-red-400 hover:text-red-700 transition-colors shrink-0"
-                aria-label="Dismiss error"
-              >
-                <Icon name="close" size={16} />
-              </button>
-            </div>
-          )}
 
           <form className="space-y-4" onSubmit={handleLogin} noValidate>
             <FloatingInput
