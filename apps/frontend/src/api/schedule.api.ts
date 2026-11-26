@@ -250,9 +250,12 @@ export async function updateRemarks(
   return data.data;
 }
 
+/** Statuses that may be set directly. Publishing requires Dean approval. */
+export type EditableScheduleStatus = 'draft' | 'review' | 'finalized';
+
 export async function updateScheduleStatus(
   id: string,
-  status: 'draft' | 'review' | 'finalized' | 'published',
+  status: EditableScheduleStatus,
 ): Promise<RawSchedule> {
   const { data } = await api.patch(`/v1/schedules/${id}/status`, { status });
   return data.data;
