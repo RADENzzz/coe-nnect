@@ -80,6 +80,30 @@ export const TRIGGERS: TriggerMeta[] = [
     category: 'schedule',
     defaultEnabled: true,
   },
+  {
+    key: 'schedule.publish_requested',
+    label: 'Publish request for a finalized entry',
+    description:
+      'When a department head asks the Dean to publish a finalized schedule entry.',
+    category: 'schedule',
+    defaultEnabled: true,
+  },
+  {
+    key: 'schedule.publish_approved',
+    label: 'Publish request approved',
+    description:
+      'When the Dean approves publication of a finalized schedule entry.',
+    category: 'schedule',
+    defaultEnabled: true,
+  },
+  {
+    key: 'schedule.publish_rejected',
+    label: 'Publish request rejected',
+    description:
+      'When the Dean rejects a request to publish a schedule entry.',
+    category: 'schedule',
+    defaultEnabled: true,
+  },
 
   // ── Approvals ──
   {

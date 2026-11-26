@@ -21,6 +21,7 @@ import { ScheduleFlagService } from './services/schedule-flag.service';
 import { SchedulingCoverageService } from './services/scheduling-coverage.service';
 import { ScheduleVersionService } from './services/schedule-version.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
+import { SchedulePublishService } from './services/schedule-publish.service';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
@@ -58,6 +59,7 @@ export class SchedulingService {
     private readonly recipients: RecipientsService,
     private readonly departments: DepartmentsService,
     private readonly scheduleUnfinalize: ScheduleUnfinalizeService,
+    private readonly schedulePublish: SchedulePublishService,
   ) {}
 
   async getActiveTerm(): Promise<Term | null> {
@@ -829,12 +831,23 @@ export class SchedulingService {
     }
 
     const previousStatus = found.status;
+    // Captured before the direct-publish guard narrows `status`, so the
+    // existing published -> draft checks keep their original union type.
+    const requestedStatus: Schedule['status'] = status;
+
+    // Publication is a Dean decision. The status endpoint must never be a
+    // back door around the publish-request approval flow.
+    if (status === 'published') {
+      throw new BadRequestException(
+        'Publishing requires Dean approval. Finalize the entry and submit a publish request instead.',
+      );
+    }
 
     // Published entries are on the public planner and the IDP feed. A DH
     // cannot pull one back directly; the request goes to the Dean.
     if (
       previousStatus === 'published' &&
-      status !== 'published' &&
+      requestedStatus !== 'published' &&
       user?.role === 'department_head'
     ) {
       throw new BadRequestException(
@@ -849,9 +862,26 @@ export class SchedulingService {
     found.status = status;
     const saved = await this.scheduleRepo.save(found);
 
+    // Leaving Finalized outside the publish flow closes any open request so
+    // the Dean cannot approve it against a row that has since changed.
+    if (previousStatus === 'finalized' && status !== 'finalized') {
+      try {
+        await this.schedulePublish.cancelPendingForSchedule(
+          id,
+          user?.userId ?? null,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Cancelling pending publish requests failed for schedule=${id}: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
+
     // Any other exit from Published closes an open Dean request so it cannot
     // be approved against a row that is already back in Draft.
-    if (previousStatus === 'published' && status !== 'published') {
+    if (previousStatus === 'published' && requestedStatus !== 'published') {
       try {
         await this.scheduleUnfinalize.cancelPendingForSchedule(
           id,

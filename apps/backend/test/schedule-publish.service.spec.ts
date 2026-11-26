@@ -27,6 +27,7 @@ describe('SchedulePublishService', () => {
   let service: SchedulePublishService;
 
   beforeEach(() => {
+    schedule.status = 'finalized';
     requestRepo = createFakeRepository([], {
       idKey: 'requestId',
       autoId: true,
@@ -46,6 +47,7 @@ describe('SchedulePublishService', () => {
     const recipients = {
       collegeDean: jest.fn(async () => ['u-dean']),
       administrators: jest.fn(async () => ['u-admin']),
+      departmentHeadsOfSchedule: jest.fn(async () => ['u-dh-1']),
       uniq: jest.fn((ids: string[]) => Array.from(new Set(ids))),
     };
     const supabase = {
@@ -75,6 +77,17 @@ describe('SchedulePublishService', () => {
       supabase as any,
     );
   });
+
+  function seedPendingRequest() {
+    requestRepo.rows.push({
+      requestId: 'r1',
+      scheduleId: 's1',
+      status: 'pending',
+      note: 'Please publish',
+      requestedBy: departmentHeadProfile.userId,
+      schedule,
+    });
+  }
 
   test('only a department head files a publish request', async () => {
     await assert.rejects(
@@ -154,5 +167,87 @@ describe('SchedulePublishService', () => {
     assert.equal(call[0], 'schedule.publish_requested');
     assert.equal(call[1].entityType, 'schedule_publish_request');
     assert.equal(call[1].payload.note, 'ready');
+  });
+
+  test('respond rejects an already resolved request', async () => {
+    seedPendingRequest();
+    requestRepo.rows[0].status = 'approved';
+    await assert.rejects(
+      () => service.respond('r1', { action: 'approve' }, deanProfile),
+      /This publish request has already been resolved/,
+    );
+  });
+
+  test('approve publishes the entry and records approved', async () => {
+    seedPendingRequest();
+    const saved = await service.respond('r1', { action: 'approve' }, deanProfile);
+    assert.equal(saved.status, 'approved');
+    assert.equal(scheduleRepo.update.mock.calls[0][1].status, 'published');
+  });
+
+  test('reject requires remarks and drafts the entry', async () => {
+    seedPendingRequest();
+    await assert.rejects(
+      () => service.respond('r1', { action: 'reject', remarks: '   ' }, deanProfile),
+      /Rejection remarks are required/,
+    );
+    const saved = await service.respond('r1', { action: 'reject', remarks: 'Room conflict.' }, deanProfile);
+    assert.equal(saved.status, 'rejected');
+    assert.equal(saved.responseRemarks, 'Room conflict.');
+    assert.equal(scheduleRepo.update.mock.calls[0][1].status, 'draft');
+  });
+
+  test('a stale approve request is cancelled without publishing', async () => {
+    seedPendingRequest();
+    schedule.status = 'draft';
+    await assert.rejects(
+      () => service.respond('r1', { action: 'approve' }, deanProfile),
+      /This entry is no longer finalized; the request was closed/,
+    );
+    assert.equal(requestRepo.rows[0].status, 'cancelled');
+    assert.equal(scheduleRepo.update.mock.calls.length, 0);
+  });
+
+  test('a stale reject request is cancelled without drafting', async () => {
+    seedPendingRequest();
+    schedule.status = 'review';
+    await assert.rejects(
+      () => service.respond('r1', { action: 'reject', remarks: 'Too late.' }, deanProfile),
+      /This entry is no longer finalized; the request was closed/,
+    );
+    assert.equal(requestRepo.rows[0].status, 'cancelled');
+    assert.equal(scheduleRepo.update.mock.calls.length, 0);
+  });
+
+  test('a decision notification failure does not fail respond', async () => {
+    seedPendingRequest();
+    dispatcher.dispatch.mockRejectedValueOnce(new Error('down'));
+    const saved = await service.respond('r1', { action: 'approve' }, deanProfile);
+    assert.equal(saved.status, 'approved');
+  });
+
+  test('respond dispatches only the dedicated publish outcome trigger', async () => {
+    seedPendingRequest();
+    await service.respond('r1', { action: 'reject', remarks: 'Retry next term.' }, deanProfile);
+    const keys = Array.from(dispatcher.dispatch.mock.calls, (c) => c[0]);
+    assert.deepEqual(keys, ['schedule.publish_rejected']);
+  });
+
+  test('cancelPendingForSchedule closes pending requests for that schedule only', async () => {
+    requestRepo.rows.push(
+      { requestId: 'r1', scheduleId: 's1', status: 'pending' },
+      { requestId: 'r2', scheduleId: 's1', status: 'pending' },
+      { requestId: 'r3', scheduleId: 's2', status: 'pending' },
+    );
+    await service.cancelPendingForSchedule('s1', deanProfile.userId);
+    assert.deepEqual(
+      requestRepo.rows.map((row) => row.status),
+      ['cancelled', 'cancelled', 'pending'],
+    );
+    assert.equal(
+      requestRepo.rows[0].responseRemarks,
+      'Schedule status changed outside this publish request.',
+    );
+    assert.equal(requestRepo.rows[0].respondedBy, deanProfile.userId);
   });
 });

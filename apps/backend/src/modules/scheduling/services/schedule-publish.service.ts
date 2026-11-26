@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -153,6 +154,100 @@ export class SchedulePublishService {
     return qb.getMany();
   }
 
+  async respond(
+    requestId: string,
+    dto: RespondSchedulePublishRequestDto,
+    user: any,
+  ): Promise<SchedulePublishRequest> {
+    const request = await this.requestRepo.findOne({
+      where: { requestId },
+      relations: [
+        'schedule',
+        'schedule.subject',
+        'schedule.faculty',
+        'schedule.room',
+        'schedule.timeSlot',
+        'schedule.term',
+        'schedule.sectionRef',
+        'requestedByUser',
+      ],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Publish request not found.');
+    }
+    if (request.status !== 'pending') {
+      throw new BadRequestException(
+        'This publish request has already been resolved.',
+      );
+    }
+
+    const schedule = request.schedule;
+    if (!schedule) {
+      throw new NotFoundException('Schedule entry not found.');
+    }
+
+    if (schedule.status !== 'finalized') {
+      request.status = 'cancelled';
+      request.respondedBy = user?.userId ?? null;
+      request.respondedAt = new Date();
+      request.responseRemarks =
+        'Schedule was no longer finalized when the request was reviewed.';
+      await this.requestRepo.save(request);
+      throw new BadRequestException(
+        'This entry is no longer finalized; the request was closed.',
+      );
+    }
+
+    if (dto.action === 'reject' && !dto.remarks?.trim()) {
+      throw new BadRequestException('Rejection remarks are required.');
+    }
+
+    await this.scheduleRepo.update(schedule.scheduleId, {
+      status: dto.action === 'approve' ? 'published' : 'draft',
+    });
+    schedule.status = dto.action === 'approve' ? 'published' : 'draft';
+
+    request.status = dto.action === 'approve' ? 'approved' : 'rejected';
+    request.respondedBy = user?.userId ?? null;
+    request.respondedAt = new Date();
+    request.responseRemarks = dto.remarks?.trim() || null;
+    const saved = await this.requestRepo.save(request);
+
+    try {
+      await this.notifyResponded(saved, schedule, dto.action, user);
+    } catch (err) {
+      this.logger.warn(
+        `Publish response notification failed: ${(err as Error).message}`,
+      );
+    }
+
+    return saved;
+  }
+
+  /**
+   * Close an open request when the schedule leaves Finalized through another
+   * path, so it cannot be approved against a row that has since changed.
+   */
+  async cancelPendingForSchedule(
+    scheduleId: string,
+    userId: string | null = null,
+  ): Promise<void> {
+    const pending = await this.requestRepo.find({
+      where: { scheduleId, status: 'pending' },
+    });
+    if (pending.length === 0) return;
+
+    for (const request of pending) {
+      request.status = 'cancelled';
+      request.respondedBy = userId;
+      request.respondedAt = new Date();
+      request.responseRemarks =
+        'Schedule status changed outside this publish request.';
+      await this.requestRepo.save(request);
+    }
+  }
+
   private parseStatus(
     value?: string,
   ): SchedulePublishRequestStatus | undefined {
@@ -213,5 +308,59 @@ export class SchedulePublishService {
         requestedByName: requesterName,
       },
     });
+  }
+
+  private async notifyResponded(
+    request: SchedulePublishRequest,
+    schedule: Schedule,
+    action: 'approve' | 'reject',
+    user: any,
+  ): Promise<void> {
+    const recipients = this.recipients.uniq([
+      ...(await this.recipients.departmentHeadsOfSchedule(
+        schedule.scheduleId,
+      )),
+      request.requestedBy,
+    ]);
+
+    const subjectCode = schedule.subject?.subjectCode ?? null;
+    const sectionCode =
+      schedule.sectionRef?.sectionCode ?? schedule.section ?? null;
+    const entryLabel =
+      [subjectCode, sectionCode].filter(Boolean).join(' · ') ||
+      'The schedule entry';
+    const approved = action === 'approve';
+    const decidedByName = user?.username ?? user?.email ?? 'The Dean';
+
+    await this.dispatcher.dispatch(
+      approved ? 'schedule.publish_approved' : 'schedule.publish_rejected',
+      {
+        recipientUserIds: recipients,
+        title: `${approved ? 'Publish approved' : 'Publish rejected'}: ${entryLabel}`,
+        body: approved
+          ? `${decidedByName} approved the request. ${entryLabel} is now Published.`
+          : `${decidedByName} rejected the request. ${entryLabel} stays in Draft.` +
+            (request.responseRemarks
+              ? ` Note: ${request.responseRemarks}`
+              : ''),
+        entityType: 'schedule',
+        entityId: schedule.scheduleId,
+        payload: {
+          requestId: request.requestId,
+          scheduleId: schedule.scheduleId,
+          subjectId: schedule.subjectId,
+          subjectCode,
+          subjectTitle: schedule.subject?.title ?? null,
+          sectionCode,
+          termName: schedule.term?.termName ?? null,
+          deptId: schedule.deptId,
+          note: request.note,
+          responseRemarks: request.responseRemarks,
+          decidedByName,
+          previousStatus: 'finalized',
+          newStatus: approved ? 'published' : 'draft',
+        },
+      },
+    );
   }
 }

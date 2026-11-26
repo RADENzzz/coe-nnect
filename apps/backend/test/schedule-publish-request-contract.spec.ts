@@ -43,4 +43,16 @@ describe('schedule publish request persistence contract', () => {
     const moduleSource = read(modulePath);
     assert.match(moduleSource, /SchedulePublishRequest,/);
   });
+
+  it('declares the publish decision triggers and direct-publish guard', () => {
+    const triggers = read('apps/backend/src/modules/notifications/triggers.ts');
+    const statusService = read(
+      'apps/backend/src/modules/scheduling/scheduling.service.ts',
+    );
+    assert.match(triggers, /schedule\.publish_requested/);
+    assert.match(triggers, /schedule\.publish_approved/);
+    assert.match(triggers, /schedule\.publish_rejected/);
+    assert.match(statusService, /if \(status === 'published'\)/);
+    assert.match(statusService, /schedulePublish\.cancelPendingForSchedule/);
+  });
 });
