@@ -3,6 +3,7 @@ import { useDraggable } from '@dnd-kit/react';
 import clsx from 'clsx';
 import type { ScheduleEntry } from '../types';
 import { timeToMinutes, formatTime } from '../utils/time.util';
+import type { CompareDiffTone } from '../utils/version-entry.mapper';
 import { useGridMetrics } from './GridMetricsContext';
 import Icon from '../../../components/ui/Icon';
 
@@ -18,6 +19,8 @@ interface Props {
   isDragging?: boolean;
   disabled?: boolean;
   isForeign?: boolean;
+  /** Visual compare tone; overrides conflict/warning/foreign rings when set. */
+  diffTone?: CompareDiffTone;
 }
 
 function ClassBlockBase({
@@ -32,6 +35,7 @@ function ClassBlockBase({
   isDragging,
   disabled = false,
   isForeign = false,
+  diffTone,
 }: Props) {
   const metrics = useGridMetrics();
 
@@ -68,7 +72,19 @@ function ClassBlockBase({
   const isNarrow = laneCount >= 3 || width < 100;
   const showSecondary = metrics.showSecondaryLines && !isCompact && !isNarrow;
 
-  const ringClass = entry.hasConflict
+  const compareRing =
+    diffTone === 'added'
+      ? 'ring-2 ring-emerald-500'
+      : diffTone === 'removed'
+      ? 'ring-2 ring-rose-500'
+      : diffTone === 'changed'
+      ? 'ring-2 ring-amber-500'
+      : '';
+  const diffAria = diffTone ? `, ${diffTone} in comparison` : '';
+
+  const ringClass = compareRing
+    ? compareRing
+    : entry.hasConflict
     ? 'ring-2 ring-red-500 animate-pulse'
     : entry.hasWarning
     ? 'ring-2 ring-amber-400'
@@ -150,7 +166,8 @@ function ClassBlockBase({
         onKeyDown={handleKeyDown}
         role="button"
         tabIndex={0}
-        aria-label={`${entry.subjectCode}, ${formatTime(entry.startTime)}–${formatTime(entry.endTime)}`}
+        data-diff-tone={diffTone ?? 'unchanged'}
+        aria-label={`${entry.subjectCode}, ${formatTime(entry.startTime)}–${formatTime(entry.endTime)}${diffAria}`}
         className={clsx(
           'group rounded-md px-1 py-0.5 text-white leading-tight select-none',
           'overflow-hidden flex items-center gap-1 cursor-pointer',
@@ -200,6 +217,7 @@ function ClassBlockBase({
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
+      data-diff-tone={diffTone ?? 'unchanged'}
       aria-label={`${entry.subjectCode}${
         entry.sectionCode ? ' ' + entry.sectionCode : ''
       }, ${formatTime(entry.startTime)} to ${formatTime(entry.endTime)}${
@@ -208,7 +226,7 @@ function ClassBlockBase({
         isPending ? ', pending cross-department approval' : ''
       }${entry.flagged ? ', flagged for review' : ''}${
         entry.hasConflict ? ', has conflict' : ''
-      }`}
+      }${diffAria}`}
       className={clsx(
         'group rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',

@@ -1996,6 +1996,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
           termId={activeTerm?.termId}
           semester={activeTerm?.semester}
           canReuse={isDepartmentHead && !!myDeptId}
+          scopeDeptId={scopeDeptId}
           activeVersionId={activeVersion?.versionId ?? null}
           onViewVersion={handleViewVersion}
           onExitVersionView={handleExitVersionView}
@@ -2011,6 +2012,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
           }}
           sourceA={compareA}
           sourceB={compareB}
+          scopeDeptId={scopeDeptId}
+          departments={departments}
         />
 
         <ReuseSummaryModal

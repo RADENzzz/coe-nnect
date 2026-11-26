@@ -13,6 +13,7 @@ import type {
   ExternalPlotDragPayload,
 } from '../types';
 import { computeLanes } from '../utils/lane-layout.util';
+import type { CompareDiffTone } from '../utils/version-entry.mapper';
 import {
   DAYS,
   generateTimeSlots,
@@ -44,6 +45,8 @@ interface Props {
   requestChangeEntryIds?: Set<string>;
   /** IDs of entries the current user cannot drag (foreign dept, etc.). */
   readOnlyEntryIds?: Set<string>;
+  /** Per-entry visual tones for side-by-side version compare grids. */
+  diffToneByEntryId?: Map<string, CompareDiffTone>;
   /** Accept an unscheduled subject dragged from an external palette. */
   onExternalDrop?: (
     day: string,
@@ -137,6 +140,7 @@ export default function TimetableGrid({
   onRequestChange,
   requestChangeEntryIds,
   readOnlyEntryIds,
+  diffToneByEntryId,
   onExternalDrop,
   busy = false,
 }: Props) {
@@ -156,6 +160,7 @@ export default function TimetableGrid({
         onRequestChange={onRequestChange}
         requestChangeEntryIds={requestChangeEntryIds}
         readOnlyEntryIds={readOnlyEntryIds}
+        diffToneByEntryId={diffToneByEntryId}
         onExternalDrop={onExternalDrop}
         busy={busy}
       />
@@ -171,6 +176,7 @@ interface GridBodyProps {
   onRequestChange?: Props['onRequestChange'];
   requestChangeEntryIds?: Set<string>;
   readOnlyEntryIds?: Set<string>;
+  diffToneByEntryId?: Map<string, CompareDiffTone>;
   onExternalDrop?: Props['onExternalDrop'];
   busy: boolean;
 }
@@ -183,6 +189,7 @@ function GridBody({
   onRequestChange,
   requestChangeEntryIds,
   readOnlyEntryIds,
+  diffToneByEntryId,
   onExternalDrop,
   busy,
 }: GridBodyProps) {
@@ -562,6 +569,7 @@ function GridBody({
                       isDragging={draggingId === entry.id}
                       disabled={locked || !isDesktopLike || isForeign || busy}
                       isForeign={isForeign}
+                      diffTone={diffToneByEntryId?.get(entry.id)}
                     />
                   );
                 })}
