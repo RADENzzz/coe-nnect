@@ -1,8 +1,23 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
+import { Auditable } from '../../../common/decorators/auditable.decorator';
+import {
+  ApplyReuseDto,
+  PreflightReuseDto,
+} from '../dto/reuse-published-version.dto';
+import { ScheduleReuseService } from '../services/schedule-reuse.service';
 import { TermPublishedVersionService } from '../services/term-published-version.service';
 import { VersionCompareService } from '../services/version-compare.service';
 
@@ -20,6 +35,7 @@ export class PublishedVersionController {
   constructor(
     private readonly publishedVersions: TermPublishedVersionService,
     private readonly compare: VersionCompareService,
+    private readonly reuse: ScheduleReuseService,
   ) {}
 
   /** Archive browser: summaries, optionally narrowed by semester. */
@@ -45,5 +61,28 @@ export class PublishedVersionController {
     @Req() req: any,
   ) {
     return { data: await this.compare.compareSources(a, b, req.profile) };
+  }
+
+  /** Draft-only preview of reusing published rows into a target term. */
+  @Post('published-versions/:versionId/preflight')
+  @Roles('department_head', 'administrator')
+  async preflightReuse(
+    @Param('versionId') versionId: string,
+    @Body() dto: PreflightReuseDto,
+    @Req() req: any,
+  ) {
+    return { data: await this.reuse.preflight(versionId, dto, req.profile) };
+  }
+
+  /** Apply the ready candidates as drafts; conflicts stay unresolved. */
+  @Post('published-versions/:versionId/reuse')
+  @Roles('department_head', 'administrator')
+  @Auditable({ action: 'schedule.reuse', source: 'Scheduling' })
+  async applyReuse(
+    @Param('versionId') versionId: string,
+    @Body() dto: ApplyReuseDto,
+    @Req() req: any,
+  ) {
+    return { data: await this.reuse.apply(versionId, dto, req.profile) };
   }
 }
