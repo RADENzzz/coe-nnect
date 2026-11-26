@@ -21,6 +21,7 @@ import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ScheduleVersion } from './entities/schedule-version.entity';
 import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-request.entity';
+import { SchedulePublishRequest } from './entities/schedule-publish-request.entity';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
 import { ScheduleUnfinalizeController } from './schedule-unfinalize.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -32,6 +33,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       Schedule,
       ScheduleVersion,
       ScheduleUnfinalizeRequest,
+      SchedulePublishRequest,
       TimeSlot,
       Term,
       Subject,
