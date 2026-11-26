@@ -38,6 +38,10 @@ interface Props {
     newStartTime: string,
   ) => void | Promise<unknown>;
   onEntryClick?: (entry: ScheduleEntry) => void;
+  /** Open the Dean change-request form for an eligible locked entry. */
+  onRequestChange?: (entry: ScheduleEntry) => void;
+  /** IDs of entries eligible for the change-request quick action. */
+  requestChangeEntryIds?: Set<string>;
   /** IDs of entries the current user cannot drag (foreign dept, etc.). */
   readOnlyEntryIds?: Set<string>;
   /** Accept an unscheduled subject dragged from an external palette. */
@@ -130,6 +134,8 @@ export default function TimetableGrid({
   fitToContainer = true,
   onEntryMove,
   onEntryClick,
+  onRequestChange,
+  requestChangeEntryIds,
   readOnlyEntryIds,
   onExternalDrop,
   busy = false,
@@ -147,6 +153,8 @@ export default function TimetableGrid({
         entries={entries}
         onEntryMove={onEntryMove}
         onEntryClick={onEntryClick}
+        onRequestChange={onRequestChange}
+        requestChangeEntryIds={requestChangeEntryIds}
         readOnlyEntryIds={readOnlyEntryIds}
         onExternalDrop={onExternalDrop}
         busy={busy}
@@ -160,6 +168,8 @@ interface GridBodyProps {
   entries: ScheduleEntry[];
   onEntryMove?: Props['onEntryMove'];
   onEntryClick?: Props['onEntryClick'];
+  onRequestChange?: Props['onRequestChange'];
+  requestChangeEntryIds?: Set<string>;
   readOnlyEntryIds?: Set<string>;
   onExternalDrop?: Props['onExternalDrop'];
   busy: boolean;
@@ -170,6 +180,8 @@ function GridBody({
   entries,
   onEntryMove,
   onEntryClick,
+  onRequestChange,
+  requestChangeEntryIds,
   readOnlyEntryIds,
   onExternalDrop,
   busy,
@@ -545,6 +557,8 @@ function GridBody({
                       laneCount={laneCount}
                       overlapCount={overlapCount}
                       onClick={onEntryClick}
+                      onRequestChange={onRequestChange}
+                      requestChangeEntryIds={requestChangeEntryIds}
                       isDragging={draggingId === entry.id}
                       disabled={locked || !isDesktopLike || isForeign || busy}
                       isForeign={isForeign}

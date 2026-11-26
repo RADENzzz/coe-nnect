@@ -22,6 +22,14 @@ import { useAuthStore } from '../../store/auth.store';
 import { SectionHeader, FieldError, HelperText } from './components/PlotFormBits';
 import PlotScheduleFields from './components/PlotScheduleFields';
 import { DAYS, DAY_ABBR, EMPTY_FORM, type MultiDayRow } from './types';
+import {
+  describePlotScheduleDestination,
+  matchesPlotSubjectFilter,
+  resolvePlotScheduleDeptId,
+  type SubjectOption,
+} from './plot-subject-options';
+
+export type { SubjectOption } from './plot-subject-options';
 
 const TIME_OPTIONS = generateSlotBoundaries();
 
@@ -34,18 +42,6 @@ const DAY_ABBR_TO_FULL: Record<string, string> = {
   SAT: 'Saturday',
   SUN: 'Sunday',
 };
-
-export interface SubjectOption {
-  subjectId: string;
-  subjectCode: string;
-  title: string;
-  lectureUnits: number;
-  labUnits: number;
-  deptId?: string;
-  prospectusYears?: Array<{ yearLevel: number; semester: string }>;
-  lectureSessionsPerWeek?: number;
-  labSessionsPerWeek?: number;
-}
 
 export interface FacultyOption {
   facultyId: string;
@@ -171,12 +167,41 @@ export default function PlotSubjectModal({
 
   const selectedFaculty = faculty.find((f) => f.facultyId === form.facultyId);
 
+  const scheduleDeptId = useMemo(
+    () =>
+      resolvePlotScheduleDeptId(selectedSubject?.deptId, {
+        role: profile?.role,
+        deptId: profile?.dept_id,
+      }),
+    [selectedSubject?.deptId, profile?.role, profile?.dept_id],
+  );
+
+  const provenance = useMemo(
+    () =>
+      selectedSubject
+        ? describePlotScheduleDestination(
+            selectedSubject.deptId ?? '',
+            { role: profile?.role, deptId: profile?.dept_id },
+            departments,
+            isEditMode ? editing?.deptId : null,
+          )
+        : null,
+    [
+      selectedSubject,
+      profile?.role,
+      profile?.dept_id,
+      departments,
+      isEditMode,
+      editing?.deptId,
+    ],
+  );
+
   const isCrossDeptSelection = useMemo(() => {
     if (facultyMode !== 'system') return false;
     if (!selectedFaculty?.deptId) return false;
-    if (!selectedSubject?.deptId) return false;
-    return String(selectedFaculty.deptId) !== String(selectedSubject.deptId);
-  }, [facultyMode, selectedFaculty, selectedSubject]);
+    if (!scheduleDeptId) return false;
+    return String(selectedFaculty.deptId) !== scheduleDeptId;
+  }, [facultyMode, selectedFaculty, scheduleDeptId]);
 
   const crossDeptName = useMemo(() => {
     if (!isCrossDeptSelection || !selectedFaculty?.deptId) return null;
@@ -242,22 +267,17 @@ export default function PlotSubjectModal({
     return TIME_OPTIONS.slice(startIdx + 1);
   }, [form.startTime]);
 
-  const filteredSubjects = useMemo(() => {
-    return subjects.filter((s) => {
-      if (filterDept && String(s.deptId ?? '') !== filterDept) return false;
-      if (filterYear || filterSem) {
-        const years = s.prospectusYears ?? [];
-        if (years.length === 0) return false;
-        const match = years.some((y) => {
-          if (filterYear && String(y.yearLevel) !== filterYear) return false;
-          if (filterSem && y.semester !== filterSem) return false;
-          return true;
-        });
-        if (!match) return false;
-      }
-      return true;
-    });
-  }, [subjects, filterDept, filterYear, filterSem]);
+  const filteredSubjects = useMemo(
+    () =>
+      subjects.filter((subject) =>
+        matchesPlotSubjectFilter(subject, {
+          filterDept,
+          filterYear,
+          filterSem,
+        }),
+      ),
+    [subjects, filterDept, filterYear, filterSem],
+  );
 
   useEffect(() => {
     if (!form.subjectId) return;
@@ -285,8 +305,7 @@ export default function PlotSubjectModal({
   }, [faculty, departments]);
 
   useEffect(() => {
-    const defaultDept =
-      profile?.role === 'department_head' && myDeptId ? myDeptId : '';
+    const defaultDept = '';
 
     if (!open) {
       setForm(EMPTY_FORM);
@@ -379,7 +398,6 @@ export default function PlotSubjectModal({
     open,
     editing,
     myDeptId,
-    profile?.role,
     presetSubjectId,
     presetSection,
     presetFacultyId,
@@ -1083,6 +1101,13 @@ export default function PlotSubjectModal({
                 ))}
               </select>
               <FieldError message={fieldErrors.subjectId} />
+              {provenance?.isForeign && (
+                <HelperText tone="info">
+                  <Icon name="info" size={11} /> Cataloged under{' '}
+                  <strong>{provenance.catalogDeptLabel}</strong> — will be plotted
+                  in the <strong>{provenance.scheduleDeptLabel}</strong> schedule.
+                </HelperText>
+              )}
               {!isEditMode && filteredSubjects.length === 0 && hasActiveFilter && (
                 <HelperText tone="warn">
                   Nothing matches. Try widening the filters above.
@@ -1541,6 +1566,17 @@ export default function PlotSubjectModal({
                   <span className="text-on-surface">{summaryLine}</span>
                 </div>
               </div>
+            )}
+            {provenance && (
+              <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5">
+                <Icon name="info" size={12} />
+                <span>
+                  <span className="font-semibold uppercase tracking-wider text-[10px]">
+                    Destination:
+                  </span>{' '}
+                  <strong>{provenance.scheduleDeptLabel}</strong> schedule
+                </span>
+              </p>
             )}
 
             <div className="flex flex-col sm:flex-row sm:justify-end sm:items-center gap-3">

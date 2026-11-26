@@ -15,6 +15,7 @@ import {
   fetchRoomSufficiency,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { fetchFaculty, fetchFacultyStatusSummary } from '../../api/faculty.api';
 import { fetchFacultyRequests } from '../../api/faculty-requests.api';
 import { fetchDesignations } from '../../api/system-config.api';
@@ -174,17 +175,13 @@ export default function DashboardPage() {
   // ── Department rows ──
   const mySchedules = useMemo(
     () =>
-      schedules.filter(
-        (s) => s.subject?.deptId && String(s.subject.deptId) === myDeptId,
-      ),
+      schedules.filter((s) => getScheduleDeptId(s) === myDeptId),
     [schedules, myDeptId],
   );
 
   const myFlagged = useMemo(
     () =>
-      flagged.filter(
-        (s) => s.subject?.deptId && String(s.subject.deptId) === myDeptId,
-      ),
+      flagged.filter((s) => getScheduleDeptId(s) === myDeptId),
     [flagged, myDeptId],
   );
 

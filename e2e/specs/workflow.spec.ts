@@ -125,7 +125,41 @@ test('college dean approves the schedule', async ({ page }) => {
   ).toBeVisible();
 });
 
-test('college dean publishes the finalized schedule', async ({ page }) => {
+test('department head requests publish approval', async ({ page }) => {
+  await loginAs(page, 'head');
+  await openTimetable(page);
+  await openScheduleDetails(page);
+
+  const drawer = page.getByRole('dialog', { name: 'Class details' });
+  await drawer
+    .getByRole('button', { name: 'Request publish approval' })
+    .click();
+
+  const requestDialog = page.getByRole('dialog', {
+    name: 'Request publish approval',
+  });
+  await expect(requestDialog).toBeVisible();
+
+  const publishResponse = page.waitForResponse(
+    (response) =>
+      /\/v1\/schedules\/[^/]+\/publish-request$/.test(response.url()) &&
+      response.request().method() === 'POST',
+    { timeout: 30_000 },
+  );
+  await requestDialog.getByRole('button', { name: 'Send request' }).click();
+  const response = await publishResponse;
+  expect(response.ok(), await response.text()).toBeTruthy();
+
+  await expect(
+    page
+      .locator('[aria-label="Status messages"]')
+      .getByRole('status')
+      .getByText('Publish request sent to the Dean.'),
+  ).toBeVisible();
+  await expect(requestDialog).toBeHidden();
+});
+
+test('college dean approves the publish request', async ({ page }) => {
   await loginAs(page, 'dean');
   await gotoApp(page, '/dean/approvals');
   await expect(
@@ -133,19 +167,38 @@ test('college dean publishes the finalized schedule', async ({ page }) => {
   ).toBeVisible();
 
   await page.getByPlaceholder(/Subject code or title/).fill(state.subjectCode);
-  await page.getByRole('button', { name: /^Finalized \(/ }).click();
+  await page.getByRole('button', { name: /^Publish requests \(/ }).click();
   await expect(
-    page.getByText(state.subjectCode, { exact: true }).first(),
+    page
+      .getByText(`${state.subjectCode} · ${state.sectionCode}`, { exact: true })
+      .first(),
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Row actions' }).first().click();
-  await page.getByRole('menuitem', { name: 'Publish', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Review' }).click();
 
-  const confirm = page.getByRole('dialog', { name: 'Publish 1 schedule?' });
-  await expect(confirm).toBeVisible();
-  await confirm.getByRole('button', { name: 'Publish', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'Approval details' });
+  await expect(drawer).toBeVisible();
+  await expect(
+    drawer.getByText(`${state.subjectCode} · ${state.sectionCode}`, {
+      exact: true,
+    }),
+  ).toBeVisible();
 
-  await expect(page.getByText('Published 1 schedule.')).toBeVisible();
+  const decisionResponse = page.waitForResponse(
+    (response) =>
+      /\/v1\/schedules\/publish-requests\/[^/]+$/.test(response.url()) &&
+      response.request().method() === 'PATCH',
+    { timeout: 30_000 },
+  );
+  await drawer.getByRole('button', { name: 'Approve', exact: true }).click();
+  const response = await decisionResponse;
+  expect(response.ok(), await response.text()).toBeTruthy();
+
+  await expect(page.locator('[aria-label="Status messages"]')).toContainText(
+    `Approved — ${state.subjectCode} · ${state.sectionCode}. The entry is published.`,
+  );
+  await expect(drawer).toBeHidden();
 });
 
 test('published schedule is visible on the timetable', async ({ page }) => {
@@ -154,7 +207,8 @@ test('published schedule is visible on the timetable', async ({ page }) => {
   await openScheduleDetails(page);
 
   const drawer = page.getByRole('dialog', { name: 'Class details' });
-  await expect(drawer.getByRole('combobox')).toHaveValue('published');
+  await expect(drawer.getByText('Published', { exact: true })).toBeVisible();
+  await expect(drawer.getByRole('combobox')).toHaveCount(0);
   await expect(
     drawer.getByText(state.subjectCode, { exact: true }),
   ).toBeVisible();

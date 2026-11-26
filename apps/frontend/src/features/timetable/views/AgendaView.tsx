@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
 import type { ScheduleEntry, Day } from '../types';
 import AgendaClassCard from './AgendaClassCard';
+import Icon from '../../../components/ui/Icon';
 import { timeToMinutes } from '../utils/time.util';
 
 interface Props {
   entries: ScheduleEntry[];
   onEntryClick: (entry: ScheduleEntry) => void;
+  onRequestChange?: (entry: ScheduleEntry) => void;
+  requestChangeEntryIds?: Set<string>;
 }
 
 const DAY_ORDER: Day[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -20,7 +23,12 @@ const DAY_LABEL: Record<Day, string> = {
   SUN: 'Sunday',
 };
 
-export default function AgendaView({ entries, onEntryClick }: Props) {
+export default function AgendaView({
+  entries,
+  onEntryClick,
+  onRequestChange,
+  requestChangeEntryIds,
+}: Props) {
   const grouped = useMemo(() => {
     const byDay = new Map<Day, ScheduleEntry[]>();
     for (const day of DAY_ORDER) byDay.set(day, []);
@@ -62,11 +70,23 @@ export default function AgendaView({ entries, onEntryClick }: Props) {
 
             <div className="space-y-2">
               {list.map((e) => (
-                <AgendaClassCard
-                  key={e.id}
-                  entry={e}
-                  onClick={onEntryClick}
-                />
+                <div key={e.id} className="group relative">
+                  <AgendaClassCard entry={e} onClick={onEntryClick} />
+                  {!!onRequestChange && requestChangeEntryIds?.has(e.id) && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRequestChange(e);
+                      }}
+                      title="Request change"
+                      aria-label={`Request change for ${e.subjectCode}`}
+                      className="absolute bottom-2 right-10 z-10 inline-flex items-center justify-center rounded border border-amber-200 bg-amber-50 p-1 text-amber-700 opacity-0 transition-opacity hover:bg-amber-100 focus:outline-none focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-amber-500 group-hover:opacity-100 group-focus-within:opacity-100"
+                    >
+                      <Icon name="feedback" size={12} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </section>

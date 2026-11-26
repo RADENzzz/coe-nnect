@@ -8,6 +8,8 @@ import { Subject } from '../subjects/entities/subject.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { User } from '../users/entities/user.entity';
+import { SchedulePublishService } from './services/schedule-publish.service';
+import { SchedulePublishController } from './schedule-publish.controller';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { AutoGenerateService } from './services/auto-generate.service';
@@ -21,8 +23,12 @@ import { Section } from '../sections/entities/section.entity';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ScheduleVersion } from './entities/schedule-version.entity';
 import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-request.entity';
+import { SchedulePublishRequest } from './entities/schedule-publish-request.entity';
+import { ScheduleChangeRequest } from './entities/schedule-change-request.entity';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
+import { ScheduleChangeRequestService } from './services/schedule-change-request.service';
 import { ScheduleUnfinalizeController } from './schedule-unfinalize.controller';
+import { ScheduleChangeRequestController } from './schedule-change-request.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DepartmentsModule } from '../departments/departments.module';
 
@@ -32,6 +38,8 @@ import { DepartmentsModule } from '../departments/departments.module';
       Schedule,
       ScheduleVersion,
       ScheduleUnfinalizeRequest,
+      SchedulePublishRequest,
+      ScheduleChangeRequest,
       TimeSlot,
       Term,
       Subject,
@@ -43,12 +51,19 @@ import { DepartmentsModule } from '../departments/departments.module';
     NotificationsModule,
     DepartmentsModule,
   ],
-  // The unfinalize controller goes first: its literal routes must resolve
+  // The request controllers go first: their literal routes must resolve
   // before the scheduling controller's `:id` routes.
-  controllers: [ScheduleUnfinalizeController, SchedulingController],
+  controllers: [
+    ScheduleUnfinalizeController,
+    SchedulePublishController,
+    ScheduleChangeRequestController,
+    SchedulingController,
+  ],
   providers: [
     SchedulingService,
     ScheduleUnfinalizeService,
+    SchedulePublishService,
+    ScheduleChangeRequestService,
     AutoGenerateService,
     RuleContextBuilder,
     ScheduleFacultyService,
@@ -58,6 +73,11 @@ import { DepartmentsModule } from '../departments/departments.module';
     SolverClient,
     RolesGuard,
   ],
-  exports: [SchedulingService, ScheduleUnfinalizeService],
+  exports: [
+    SchedulingService,
+    ScheduleUnfinalizeService,
+    SchedulePublishService,
+    ScheduleChangeRequestService,
+  ],
 })
 export class SchedulingModule {}

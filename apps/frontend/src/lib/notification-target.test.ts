@@ -152,3 +152,192 @@ test('keeps subject edit request links request-focused', () => {
     '/subjects?request=r1',
   );
 });
+
+test('publish request notifications use the publishRequest param', () => {
+  for (const shell of ['', '/dean'] as ShellBase[]) {
+    assert.equal(
+      notificationHref(
+        scheduleNotification({
+          triggerKey: 'schedule.publish_requested',
+          entityType: 'schedule_publish_request',
+          entityId: 'p1',
+        }),
+        shell,
+      ),
+      `${shell}/approvals?publishRequest=p1`,
+    );
+  }
+});
+
+test('publish request entity fallback uses the publishRequest param', () => {
+  for (const shell of ['', '/dean'] as ShellBase[]) {
+    assert.equal(
+      notificationHref(
+        notification({
+          triggerKey: 'subject.updated',
+          entityType: 'schedule_publish_request',
+          entityId: 'p1',
+        }),
+        shell,
+      ),
+      `${shell}/approvals?publishRequest=p1`,
+    );
+  }
+});
+
+test('publish outcomes link to the timetable even with a subjectId', () => {
+  for (const triggerKey of [
+    'schedule.publish_approved',
+    'schedule.publish_rejected',
+  ]) {
+    assert.equal(
+      notificationHref(scheduleNotification({ triggerKey, entityId: 's1' }), ''),
+      '/timetable?focus=s1',
+    );
+  }
+});
+
+test('publishRequest and request deep links stay independent', () => {
+  assert.equal(
+    notificationHref(
+      notification({
+        triggerKey: 'schedule.publish_requested',
+        entityType: 'schedule_publish_request',
+        entityId: '5',
+      }),
+      '',
+    ),
+    '/approvals?publishRequest=5',
+  );
+  assert.equal(
+    notificationHref(
+      notification({
+        triggerKey: 'schedule.unfinalize_requested',
+        entityType: 'schedule_unfinalize_request',
+        entityId: '5',
+      }),
+      '',
+    ),
+    '/approvals?request=5&status=published',
+  );
+});
+
+test('uses distinct non-empty icons for publish notifications', () => {
+  const icons = [
+    notificationIcon(
+      notification({ triggerKey: 'schedule.publish_requested' }),
+    ),
+    notificationIcon(
+      notification({ triggerKey: 'schedule.publish_approved' }),
+    ),
+    notificationIcon(
+      notification({ triggerKey: 'schedule.publish_rejected' }),
+    ),
+  ];
+
+  assert.deepEqual(icons, ['pending_actions', 'task_alt', 'cancel']);
+  assert.ok(icons.every((icon) => icon.length > 0));
+  assert.equal(new Set(icons).size, icons.length);
+});
+
+test('change request notifications use the changeRequest param', () => {
+  for (const shell of ['', '/dean'] as ShellBase[]) {
+    assert.equal(
+      notificationHref(
+        notification({
+          triggerKey: 'schedule.change_requested',
+          entityType: 'schedule_change_request',
+          entityId: 'c1',
+          payload: {},
+        }),
+        shell,
+      ),
+      `${shell}/approvals?changeRequest=c1`,
+    );
+  }
+});
+
+test('change request outcomes link to the timetable even with a subjectId', () => {
+  for (const triggerKey of [
+    'schedule.change_approved',
+    'schedule.change_rejected',
+  ]) {
+    for (const shell of ['', '/dean'] as ShellBase[]) {
+      assert.equal(
+        notificationHref(
+          scheduleNotification({ triggerKey, entityId: 's1' }),
+          shell,
+        ),
+        `${shell}/timetable?focus=s1`,
+      );
+    }
+  }
+});
+
+test('change request entity fallback uses the changeRequest param', () => {
+  for (const shell of ['', '/dean'] as ShellBase[]) {
+    assert.equal(
+      notificationHref(
+        notification({
+          triggerKey: 'subject.updated',
+          entityType: 'schedule_change_request',
+          entityId: 'c1',
+          payload: {},
+        }),
+        shell,
+      ),
+      `${shell}/approvals?changeRequest=c1`,
+    );
+  }
+});
+
+test('changeRequest, request, and publishRequest deep links stay independent', () => {
+  assert.equal(
+    notificationHref(
+      notification({
+        triggerKey: 'schedule.change_requested',
+        entityType: 'schedule_change_request',
+        entityId: 'c1',
+      }),
+    ),
+    '/approvals?changeRequest=c1',
+  );
+  assert.equal(
+    notificationHref(
+      notification({
+        triggerKey: 'schedule.unfinalize_requested',
+        entityType: 'schedule_unfinalize_request',
+        entityId: 'u1',
+      }),
+    ),
+    '/approvals?request=u1&status=published',
+  );
+  assert.equal(
+    notificationHref(
+      notification({
+        triggerKey: 'schedule.publish_requested',
+        entityType: 'schedule_publish_request',
+        entityId: 'p1',
+      }),
+    ),
+    '/approvals?publishRequest=p1',
+  );
+});
+
+test('uses distinct non-empty icons for change request notifications', () => {
+  const icons = [
+    notificationIcon(
+      notification({ triggerKey: 'schedule.change_requested' }),
+    ),
+    notificationIcon(
+      notification({ triggerKey: 'schedule.change_approved' }),
+    ),
+    notificationIcon(
+      notification({ triggerKey: 'schedule.change_rejected' }),
+    ),
+  ];
+
+  assert.deepEqual(icons, ['pending_actions', 'task_alt', 'cancel']);
+  assert.ok(icons.every((icon) => icon.length > 0));
+  assert.equal(new Set(icons).size, icons.length);
+});

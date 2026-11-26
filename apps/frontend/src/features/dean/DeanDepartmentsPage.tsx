@@ -5,6 +5,7 @@ import { fetchDepartments } from '../../api/departments.api';
 import { fetchUsers } from '../../api/users.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchSchedules, fetchActiveTerm } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
 import Icon from '../../components/ui/Icon';
@@ -66,7 +67,7 @@ export default function DeanDepartmentsPage() {
   const scheduleCountByDept = (() => {
     const m = new Map<string, number>();
     for (const s of schedules) {
-      const id = String(s.subject?.deptId ?? '');
+      const id = getScheduleDeptId(s);
       if (!id) continue;
       m.set(id, (m.get(id) ?? 0) + 1);
     }
@@ -155,9 +156,7 @@ export default function DeanDepartmentsPage() {
       render: (d) => {
         const deptId = String(d.deptId);
         const pending = schedules.filter(
-          (s) =>
-            s.status === 'review' &&
-            String(s.subject?.deptId ?? '') === deptId,
+          (s) => s.status === 'review' && getScheduleDeptId(s) === deptId,
         ).length;
         if (pending === 0) {
           return <span className="text-slate-300">—</span>;

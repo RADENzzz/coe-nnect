@@ -21,6 +21,8 @@ export interface RawSchedule {
   externalRoomName: string | null;
   timeslotId: string | null;
   section: string | null;
+  /** Owning department of the schedule row, not the subject catalog owner. */
+  deptId: string | null;
   pendingFacultyRequestId: string | null;
   pendingFacultyDeptId: string | null;
   loadType: 'lecture' | 'laboratory' | 'other' | null;

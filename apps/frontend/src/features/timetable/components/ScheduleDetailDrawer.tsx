@@ -12,6 +12,11 @@ import {
   createUnfinalizeRequest,
   fetchPendingUnfinalizeRequest,
 } from '../../../api/schedule-unfinalize.api';
+import {
+  createPublishRequest,
+  fetchSchedulePublishRequest,
+} from '../../../api/schedule-publish-request.api';
+import { fetchScheduleChangeRequest } from '../../../api/schedule-change-request.api';
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
@@ -19,6 +24,7 @@ import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import clsx from 'clsx';
 import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
+import RequestChangeModal from './RequestChangeModal';
 import { useAuthStore } from '../../../store/auth.store';
 import { lockBodyScroll } from '../../../lib/body-scroll-lock';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
@@ -38,7 +44,7 @@ interface Props {
   readOnly?: boolean;
 }
 
-const STATUS_OPTIONS = ['draft', 'review', 'finalized', 'published'] as const;
+const STATUS_OPTIONS = ['draft', 'review', 'finalized'] as const;
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
@@ -75,6 +81,9 @@ export default function ScheduleDetailDrawer({
   const [unfinalizeOpen, setUnfinalizeOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestReason, setRequestReason] = useState('');
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishNote, setPublishNote] = useState('');
+  const [changeOpen, setChangeOpen] = useState(false);
 
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagReason, setFlagReason] = useState('');
@@ -86,6 +95,9 @@ export default function ScheduleDetailDrawer({
     setUnfinalizeOpen(false);
     setRequestOpen(false);
     setRequestReason('');
+    setPublishOpen(false);
+    setPublishNote('');
+    setChangeOpen(false);
     setFlagOpen(false);
     setFlagReason('');
   }, [entry?.id, entry?.remarks]);
@@ -110,6 +122,8 @@ export default function ScheduleDetailDrawer({
         !deleteOpen &&
         !unfinalizeOpen &&
         !requestOpen &&
+        !publishOpen &&
+        !changeOpen &&
         !flagOpen
       )
         onClose();
@@ -118,7 +132,17 @@ export default function ScheduleDetailDrawer({
     return () => {
       document.removeEventListener('keydown', onKey);
     };
-  }, [entry, onClose, moveOpen, deleteOpen, unfinalizeOpen, requestOpen, flagOpen]);
+  }, [
+    entry,
+    onClose,
+    moveOpen,
+    deleteOpen,
+    unfinalizeOpen,
+    requestOpen,
+    publishOpen,
+    changeOpen,
+    flagOpen,
+  ]);
 
   // ─────────────────────────────────────────────────────────────
   // F4.1 — Cross-page invalidation.
@@ -131,10 +155,45 @@ export default function ScheduleDetailDrawer({
     queryClient.invalidateQueries({ queryKey: ['schedule-versions'] });
     queryClient.invalidateQueries({ queryKey: ['coverage'] });
     queryClient.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['schedule-change-requests'] });
+    queryClient.invalidateQueries({
+      queryKey: ['schedule-change-request', entry?.id],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['schedule-publish-request', entry?.id],
+    });
   };
 
   const isDH = profile?.role === 'department_head';
   const isDean = profile?.role === 'college_dean';
+  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
+  const ownsEntry = !entry?.deptId || String(entry.deptId) === myDeptId;
+
+  const { data: publishRequest } = useQuery({
+    queryKey: ['schedule-publish-request', entry?.id],
+    queryFn: () => fetchSchedulePublishRequest(entry!.id),
+    enabled:
+      !!entry &&
+      isDH &&
+      ownsEntry &&
+      (entry.status === 'finalized' || entry.status === 'draft'),
+    staleTime: 15_000,
+  });
+  const publishPending = publishRequest?.status === 'pending';
+
+  const { data: changeRequest } = useQuery({
+    queryKey: ['schedule-change-request', entry?.id],
+    queryFn: () => fetchScheduleChangeRequest(entry!.id),
+    enabled:
+      !!entry &&
+      isDH &&
+      ownsEntry &&
+      !readOnly &&
+      (entry.status === 'review' || entry.status === 'finalized'),
+    staleTime: 15_000,
+  });
+  const changePending = changeRequest?.status === 'pending';
 
   const { data: pendingRequest } = useQuery({
     queryKey: ['schedule-unfinalize-request', entry?.id],
@@ -221,6 +280,19 @@ export default function ScheduleDetailDrawer({
     },
   });
 
+  const publishMutation = useMutation({
+    mutationFn: (note?: string) => createPublishRequest(entry!.id, note),
+    onSuccess: () => {
+      invalidateAfterMutation();
+      setPublishOpen(false);
+      setPublishNote('');
+      feedback.success('Publish request sent to the Dean.');
+    },
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Publish request failed'));
+    },
+  });
+
   const handleDeleteClick = () => {
     if (!entry) return;
     setDeleteOpen(true);
@@ -246,6 +318,11 @@ export default function ScheduleDetailDrawer({
         }
         return;
       }
+      if (entry.status === 'finalized' && isDH && !publishPending) {
+        // A finalized entry goes public only through a Dean-approved request.
+        setPublishOpen(true);
+        return;
+      }
       setUnfinalizeOpen(true);
     } else {
       statusMutation.mutate('finalized');
@@ -254,13 +331,15 @@ export default function ScheduleDetailDrawer({
 
   if (!entry) return null;
 
-  const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
-  const isForeignEntry =
-    isDH && !!entry.deptId && String(entry.deptId) !== myDeptId;
+  const isForeignEntry = isDH && !ownsEntry;
 
   const locked = isLocked(entry.status);
   const writable = !readOnly && !isForeignEntry;
   const canFlag = !readOnly;
+  const canRequestChange =
+    isDH &&
+    writable &&
+    (entry.status === 'review' || entry.status === 'finalized');
   const requestPending =
     entry.status === 'published' && isDH && Boolean(pendingRequest);
   const toggleLabel = locked
@@ -268,6 +347,10 @@ export default function ScheduleDetailDrawer({
       ? requestPending
         ? 'Request pending'
         : 'Request unfinalize'
+      : entry.status === 'finalized' && isDH
+      ? publishPending
+        ? 'Publish approval pending'
+        : 'Request publish approval'
       : 'Unfinalize'
     : 'Finalize';
 
@@ -337,8 +420,18 @@ export default function ScheduleDetailDrawer({
             <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center gap-2 text-xs text-blue-900">
               <Icon name="lock" size={16} className="shrink-0" />
               <span>
-                This entry is locked. Click <strong>Unfinalize</strong> to make
-                edits.
+                {entry.status === 'finalized' && isDH ? (
+                  <>
+                    This entry is finalized. Click{' '}
+                    <strong>Request publish approval</strong> to send it to the
+                    Dean.
+                  </>
+                ) : (
+                  <>
+                    This entry is locked. Click <strong>Unfinalize</strong> to
+                    make edits.
+                  </>
+                )}
               </span>
             </div>
           )}
@@ -383,6 +476,130 @@ export default function ScheduleDetailDrawer({
                 </span>
               </div>
             )
+          )}
+
+          {publishRequest?.status === 'pending' && isDH && writable && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
+              <Icon
+                name="hourglass_top"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">Publish approval pending</p>
+                {publishRequest.note && (
+                  <p className="mt-0.5 break-words">
+                    Note: {publishRequest.note}
+                  </p>
+                )}
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Submitted {new Date(publishRequest.createdAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {publishRequest?.status === 'rejected' &&
+            entry.status === 'draft' &&
+            isDH &&
+            writable && (
+              <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
+                <Icon
+                  name="feedback"
+                  filled
+                  size={16}
+                  className="shrink-0 mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold">Dean note</p>
+                  {publishRequest.responseRemarks && (
+                    <p className="mt-0.5 break-words">
+                      {publishRequest.responseRemarks}
+                    </p>
+                  )}
+                  {publishRequest.respondedAt && (
+                    <p className="mt-1 text-[10px] text-rose-700">
+                      {new Date(publishRequest.respondedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+          {changeRequest?.status === 'pending' && canRequestChange && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
+              <Icon
+                name="hourglass_top"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">Request change pending</p>
+                <p className="mt-0.5 break-words">
+                  Reason: {changeRequest.reason}
+                </p>
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Submitted {new Date(changeRequest.createdAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {changeRequest?.status === 'approved' &&
+            isDH &&
+            writable &&
+            entry.status !== 'published' && (
+            <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-start gap-2 text-xs text-blue-900">
+              <Icon
+                name="check_circle"
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">
+                  Dean approved the change request
+                </p>
+                {changeRequest.responseRemarks && (
+                  <p className="mt-0.5 break-words">
+                    {changeRequest.responseRemarks}
+                  </p>
+                )}
+                {changeRequest.respondedAt && (
+                  <p className="mt-1 text-[10px] text-blue-700">
+                    {new Date(changeRequest.respondedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {changeRequest?.status === 'rejected' &&
+            isDH &&
+            writable &&
+            entry.status !== 'published' && (
+            <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
+              <Icon
+                name="feedback"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">Dean note</p>
+                {changeRequest.responseRemarks && (
+                  <p className="mt-0.5 break-words">
+                    {changeRequest.responseRemarks}
+                  </p>
+                )}
+                {changeRequest.respondedAt && (
+                  <p className="mt-1 text-[10px] text-rose-700">
+                    {new Date(changeRequest.respondedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
           {entry.pendingFacultyRequestId && (
@@ -582,28 +799,34 @@ export default function ScheduleDetailDrawer({
 
             {writable && (
               <div className="pt-3 border-t border-surface-variant">
-                <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
-                  Status
-                </label>
+                {entry.status !== 'published' && (
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-2 uppercase tracking-wider">
+                    Status
+                  </label>
+                )}
                 <div className="flex items-center gap-2">
-                  <select
-                    value={entry.status ?? 'draft'}
-                    onChange={(e) => handleStatusChange(e.target.value)}
-                    disabled={statusMutation.isPending || locked}
-                    className="flex-1 bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
+                  {entry.status !== 'published' && (
+                    <select
+                      value={entry.status ?? 'draft'}
+                      onChange={(e) => handleStatusChange(e.target.value)}
+                      disabled={statusMutation.isPending || locked}
+                      className="flex-1 bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {STATUS_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     onClick={handleToggleLock}
                     disabled={
                       statusMutation.isPending ||
                       requestMutation.isPending ||
-                      requestPending
+                      publishMutation.isPending ||
+                      requestPending ||
+                      publishPending
                     }
                     className={clsx(
                       'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition whitespace-nowrap',
@@ -614,7 +837,9 @@ export default function ScheduleDetailDrawer({
                     )}
                   >
                     <Icon name={locked ? 'lock_open' : 'lock'} size={16} />
-                    {statusMutation.isPending || requestMutation.isPending
+                    {statusMutation.isPending ||
+                    requestMutation.isPending ||
+                    publishMutation.isPending
                       ? '…'
                       : toggleLabel}
                   </button>
@@ -722,6 +947,22 @@ export default function ScheduleDetailDrawer({
               </>
             )}
 
+            {canRequestChange && (
+              <button
+                onClick={() => setChangeOpen(true)}
+                disabled={changePending}
+                title={
+                  changePending
+                    ? 'A change request is waiting for the Dean'
+                    : 'Ask the Dean to return this entry to Draft'
+                }
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-50"
+              >
+                <Icon name="feedback" size={16} />
+                {changePending ? 'Change request pending' : 'Request change'}
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className={clsx(
@@ -792,6 +1033,12 @@ export default function ScheduleDetailDrawer({
         onConfirm={() => statusMutation.mutate('draft')}
       />
 
+      <RequestChangeModal
+        open={changeOpen}
+        entry={entry}
+        onClose={() => setChangeOpen(false)}
+      />
+
       <Modal
         open={requestOpen}
         onClose={() => {
@@ -841,6 +1088,58 @@ export default function ScheduleDetailDrawer({
         />
         <p className="text-xs text-slate-400 mt-1 text-right">
           {requestReason.length}/500
+        </p>
+      </Modal>
+
+      <Modal
+        open={publishOpen}
+        onClose={() => {
+          setPublishOpen(false);
+          setPublishNote('');
+        }}
+        title="Request publish approval"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setPublishOpen(false);
+                setPublishNote('');
+              }}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                publishMutation.mutate(publishNote.trim() || undefined)
+              }
+              disabled={publishMutation.isPending}
+              className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              {publishMutation.isPending ? 'Sending…' : 'Send request'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 mb-3">
+          <strong>"{entry.subjectCode}"</strong> is finalized. Send it to the
+          Dean for publication approval; the entry stays finalized until the
+          Dean decides.
+        </p>
+        <textarea
+          value={publishNote}
+          onChange={(e) => setPublishNote(e.target.value)}
+          placeholder="Optional note for the Dean"
+          rows={4}
+          maxLength={1000}
+          autoFocus
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none"
+        />
+        <p className="text-xs text-slate-400 mt-1 text-right">
+          {publishNote.length}/1000
         </p>
       </Modal>
 

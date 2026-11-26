@@ -137,12 +137,12 @@ export class ScheduleFacultyService {
    */
   async ensureCrossDeptFacultyRequest(params: {
     facultyId: string | null | undefined;
-    subjectDeptId: string | null;
+    scheduleDeptId: string | null;
     termId: string;
     subjectId: string;
     user: any;
   }): Promise<{ requestId: string; facultyDeptId: string } | null> {
-    const { facultyId, subjectDeptId, termId, subjectId, user } = params;
+    const { facultyId, scheduleDeptId, termId, subjectId, user } = params;
 
     if (!facultyId) return null;
 
@@ -153,7 +153,7 @@ export class ScheduleFacultyService {
       return null;
     }
 
-    if (!subjectDeptId) return null;
+    if (!scheduleDeptId) return null;
 
     const db = this.supabase.getAdminClient();
 
@@ -166,7 +166,7 @@ export class ScheduleFacultyService {
     if (!fac?.dept_id) return null;
     const facultyDeptId = String(fac.dept_id);
 
-    if (facultyDeptId === String(subjectDeptId)) return null;
+    if (facultyDeptId === String(scheduleDeptId)) return null;
 
     // F1b (2B): one-shot approval semantics. Reuse a pending request while
     // the DH is mid-workflow, but never an already-consumed approved one.
@@ -188,7 +188,7 @@ export class ScheduleFacultyService {
 
     const requestingDeptId = user?.deptId
       ? String(user.deptId)
-      : subjectDeptId;
+      : scheduleDeptId;
 
     const { data: created, error } = await db
       .from('faculty_request')

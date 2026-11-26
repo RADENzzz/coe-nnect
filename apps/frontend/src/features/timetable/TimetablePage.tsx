@@ -31,6 +31,7 @@ import {
   type BlockedMinorSummary,
   type CoverageReport,
 } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchRooms } from '../../api/rooms.api';
@@ -49,6 +50,7 @@ import RollingValue, {
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import PlotFocusMode from './components/PlotFocusMode';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
+import RequestChangeModal from './components/RequestChangeModal';
 import { colorForSubject } from './utils/color.util';
 import StackPicker from './components/StackPicker';
 import ExportToolbar from './export/ExportToolbar';
@@ -57,6 +59,8 @@ import { useMoveSchedule } from './hooks/useMoveSchedule';
 import MoveScheduleConfirmModal from './components/MoveScheduleConfirmModal';
 import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
 import { fetchAllProspectus } from '../../api/prospectus.api';
+import { fetchPrograms } from '../../api/programs.api';
+import { buildPlotSubjectOptions } from '../plot-subject/plot-subject-options';
 import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
@@ -122,7 +126,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     flaggedAt: raw.flaggedAt,
     flagReason: raw.flagReason,
     loadType: (raw.loadType ?? 'lecture') as LoadType,
-    deptId: raw.subject?.deptId ?? '',
+    deptId: getScheduleDeptId(raw),
     deptColor: '#800000',
     color: colorForSubject(raw.subjectId),
   };
@@ -162,7 +166,7 @@ function versionEntryToEntry(
     startTime: start.slice(0, 5),
     endTime: end.slice(0, 5),
     loadType: isLab ? 'laboratory' : 'lecture',
-    deptId: raw.dept_id ?? '',
+    deptId: getScheduleDeptId(raw),
     deptColor: '#800000',
     color: colorForSubject(raw.subject_id),
     status: (raw.status as any) ?? 'finalized',
@@ -219,6 +223,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
     null,
   );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [requestChangeEntry, setRequestChangeEntry] =
+    useState<ScheduleEntry | null>(null);
   const [editEntryId, setEditEntryId] = useState<string | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
   const [coveragePanelOpen, setCoveragePanelOpen] = useState(false);
@@ -289,6 +295,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const { data: prospectus = [] } = useQuery({
     queryKey: ['prospectus-all'],
     queryFn: fetchAllProspectus,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: fetchPrograms,
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
@@ -460,27 +473,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, [subjects, unresolvedElectives]);
 
   const plotSubjectOptions = useMemo(
-    () =>
-      plottableSubjects.map((s) => {
-        const entries = prospectus.filter((p) => p.subjectId === s.subjectId);
-        const years = entries.map((p) => ({
-          yearLevel: p.yearLevel,
-          semester: p.semester,
-        }));
-        const first = entries[0];
-        return {
-          subjectId: s.subjectId,
-          subjectCode: s.subjectCode,
-          title: s.title,
-          lectureUnits: s.lectureUnits,
-          labUnits: s.labUnits,
-          deptId: s.deptId,
-          prospectusYears: years,
-          lectureSessionsPerWeek: first?.lectureSessionsPerWeek ?? 1,
-          labSessionsPerWeek: first?.labSessionsPerWeek ?? 1,
-        };
-      }),
-    [plottableSubjects, prospectus],
+    () => buildPlotSubjectOptions(plottableSubjects, prospectus, programs),
+    [plottableSubjects, prospectus, programs],
   );
 
   const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =
@@ -654,6 +648,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
       editEntryId ? entries.find((e) => e.id === editEntryId) ?? null : null,
     [entries, editEntryId],
   );
+
+  // Only the head's own review/finalized entries can ask the Dean for a change.
+  const requestChangeEntryIds = useMemo(() => {
+    if (readOnly || activeVersion || profile?.role !== 'department_head') {
+      return new Set<string>();
+    }
+    return new Set(
+      entries
+        .filter(
+          (entry) =>
+            (!entry.deptId ||
+              String(entry.deptId) === String(profile?.dept_id)) &&
+            (entry.status === 'review' || entry.status === 'finalized'),
+        )
+        .map((entry) => entry.id),
+    );
+  }, [entries, readOnly, activeVersion, profile?.role, profile?.dept_id]);
 
   const [focusApplied, setFocusApplied] = useState(false);
   useEffect(() => {
@@ -1782,7 +1793,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
             <div className="flex-1 min-h-0" data-tour="tt-grid">
               {layoutMode === 'agenda' ? (
-                <AgendaView entries={entries} onEntryClick={handleClick} />
+                <AgendaView
+                  entries={entries}
+                  onEntryClick={handleClick}
+                  onRequestChange={(entry) => setRequestChangeEntry(entry)}
+                  requestChangeEntryIds={requestChangeEntryIds}
+                />
               ) : (
                 <>
                   <TimetableLegend entries={entries} />
@@ -1792,6 +1808,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
                     fitToContainer
                     onEntryMove={writable ? handleMove : undefined}
                     onEntryClick={handleClick}
+                    onRequestChange={(entry) => setRequestChangeEntry(entry)}
+                    requestChangeEntryIds={requestChangeEntryIds}
                     readOnlyEntryIds={
                       activeVersion
                         ? new Set(entries.map((e) => e.id))
@@ -1858,6 +1876,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
             readOnly={readOnly || !!activeVersion}
           />
         )}
+
+        <RequestChangeModal
+          open={!!requestChangeEntry}
+          entry={requestChangeEntry}
+          onClose={() => setRequestChangeEntry(null)}
+          onSubmitted={() => setRequestChangeEntry(null)}
+        />
 
         <StackPicker
           entries={stackOpen}

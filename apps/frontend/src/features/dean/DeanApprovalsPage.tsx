@@ -5,14 +5,26 @@ import {
   updateScheduleStatus,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { publishIdpSchedule } from '../../api/idp.api';
 import {
   fetchUnfinalizeRequests,
-  respondToUnfinalizeRequest,
   unfinalizeRequestLabel,
   unfinalizeRequesterName,
   type ScheduleUnfinalizeRequest,
 } from '../../api/schedule-unfinalize.api';
+import {
+  fetchPublishRequests,
+  publishRequestLabel,
+  publishRequesterName,
+  type SchedulePublishRequest,
+} from '../../api/schedule-publish-request.api';
+import {
+  fetchChangeRequests,
+  changeRequestLabel,
+  changeRequesterName,
+  type ScheduleChangeRequest,
+} from '../../api/schedule-change-request.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchDepartments } from '../../api/departments.api';
@@ -22,10 +34,17 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge from '../../components/ui/StatusBadge';
-import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useFeedback } from '../../components/ui/FeedbackToast';
 import { extractApiError } from '../../lib/api-error';
+import ApprovalDetailDrawer, {
+  type ApprovalDrawerTarget,
+} from './components/ApprovalDetailDrawer';
+import {
+  clearRequestDeepLinkParams,
+  reviewRowAction,
+} from './dean-approval-actions';
+import type { Day, LoadType, ScheduleEntry } from '../timetable/types';
 
 const STATUS_LABELS: Record<
   string,
@@ -37,9 +56,47 @@ const STATUS_LABELS: Record<
   published: { label: 'Published', tone: 'info' },
 };
 
-type TabFilter = 'review' | 'finalized' | 'all';
+const REQUEST_STATUS_TONES: Record<
+  string,
+  'neutral' | 'warning' | 'success' | 'danger'
+> = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  cancelled: 'neutral',
+};
+
+const REQUEST_KIND_LABELS: Record<RequestRow['kind'], string> = {
+  publish: 'Publish',
+  unfinalize: 'Unfinalize',
+  change: 'Change',
+};
+
+const DAY_MAP: Record<string, Day> = {
+  Monday: 'MON',
+  Tuesday: 'TUE',
+  Wednesday: 'WED',
+  Thursday: 'THU',
+  Friday: 'FRI',
+  Saturday: 'SAT',
+  Sunday: 'SUN',
+};
+
+type ApprovalTab = 'publish' | 'unfinalize' | 'change' | 'review' | 'finalized' | 'all';
 type StatusFilter = 'all' | 'draft' | 'review' | 'finalized' | 'published';
-type BatchAction = 'finalize' | 'publish' | 'unfinalize-published';
+type RequestStatusFilter =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'all';
+type BatchAction = 'finalize' | 'unfinalize-published';
+type DeepLinkParam = 'publishRequest' | 'request' | 'changeRequest';
+
+type RequestRow =
+  | { kind: 'publish'; request: SchedulePublishRequest }
+  | { kind: 'unfinalize'; request: ScheduleUnfinalizeRequest }
+  | { kind: 'change'; request: ScheduleChangeRequest };
 
 const STATUS_VALUES: StatusFilter[] = [
   'all',
@@ -49,6 +106,14 @@ const STATUS_VALUES: StatusFilter[] = [
   'published',
 ];
 
+const REQUEST_STATUS_VALUES: RequestStatusFilter[] = [
+  'pending',
+  'approved',
+  'rejected',
+  'cancelled',
+  'all',
+];
+
 interface PendingConfirmation {
   action: BatchAction | 'return-to-draft';
   ids: string[];
@@ -56,14 +121,81 @@ interface PendingConfirmation {
   itemCount: number;
 }
 
-interface RequestDecision {
-  request: ScheduleUnfinalizeRequest;
-  action: 'approve' | 'reject';
+function requestLabel(row: RequestRow): string {
+  if (row.kind === 'publish') return publishRequestLabel(row.request);
+  if (row.kind === 'unfinalize') return unfinalizeRequestLabel(row.request);
+  return changeRequestLabel(row.request);
+}
+
+function requestRequester(row: RequestRow): string {
+  if (row.kind === 'publish') return publishRequesterName(row.request);
+  if (row.kind === 'unfinalize') return unfinalizeRequesterName(row.request);
+  return changeRequesterName(row.request);
+}
+
+function requestDetail(row: RequestRow): string {
+  if (row.kind === 'publish') return row.request.note ?? 'No note provided.';
+  return row.request.reason || 'No reason provided.';
+}
+
+function filterRequestRows<T extends RequestRow>(
+  rows: T[],
+  status: RequestStatusFilter,
+  query: string,
+): T[] {
+  const q = query.trim().toLowerCase();
+  return rows.filter((row) => {
+    if (status !== 'all' && row.request.status !== status) return false;
+    if (q) {
+      const code = (row.request.schedule?.subject?.subjectCode ?? '').toLowerCase();
+      const title = (row.request.schedule?.subject?.title ?? '').toLowerCase();
+      if (!code.includes(q) && !title.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+/** Adapt a RawSchedule row to the shape consumed by ApprovalDetailDrawer. */
+function toApprovalScheduleEntry(raw: RawSchedule): ScheduleEntry {
+  const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
+  const start = raw.startTime ?? raw.timeSlot?.startTime ?? '07:00:00';
+  const end = raw.endTime ?? raw.timeSlot?.endTime ?? '08:00:00';
+  return {
+    id: raw.scheduleId,
+    subjectId: raw.subjectId,
+    subjectCode: raw.subject?.subjectCode ?? '—',
+    subjectTitle: raw.subject?.title ?? '',
+    sectionId: raw.section ?? '',
+    sectionCode: raw.section ?? '',
+    facultyId: raw.facultyId ?? '',
+    facultyName: raw.faculty
+      ? `${raw.faculty.firstName} ${raw.faculty.lastName}`
+      : raw.externalFacultyName ?? 'Unassigned',
+    externalFacultyName: raw.externalFacultyName,
+    roomId: raw.roomId ?? '',
+    roomNumber: raw.room?.roomNumber ?? '—',
+    externalRoomName: raw.externalRoomName,
+    pendingFacultyRequestId: raw.pendingFacultyRequestId,
+    pendingFacultyDeptId: raw.pendingFacultyDeptId,
+    building: raw.room?.building ?? '',
+    day: DAY_MAP[day] ?? 'MON',
+    startTime: start.slice(0, 5),
+    endTime: end.slice(0, 5),
+    loadType: (raw.loadType ?? 'lecture') as LoadType,
+    deptId: getScheduleDeptId(raw),
+    deptColor: '#800000',
+    color: '#800000',
+    status: raw.status,
+    remarks: raw.remarks,
+    flagged: raw.flagged,
+    flaggedBy: raw.flaggedBy,
+    flaggedAt: raw.flaggedAt,
+    flagReason: raw.flagReason,
+  };
 }
 
 export default function DeanApprovalsPage() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const feedback = useFeedback();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -73,16 +205,77 @@ export default function DeanApprovalsPage() {
   )
     ? (initialStatusParam as StatusFilter)
     : 'all';
-  const initialTab: TabFilter =
-    initialStatusFilter === 'finalized' || initialStatusFilter === 'published'
-      ? 'finalized'
-      : 'review';
+  const initialTab: ApprovalTab = searchParams.get('changeRequest')
+    ? 'change'
+    : searchParams.get('publishRequest')
+    ? 'publish'
+    : searchParams.get('request')
+    ? 'unfinalize'
+    : initialStatusFilter === 'finalized' || initialStatusFilter === 'published'
+    ? 'finalized'
+    : 'review';
 
-  const [tab, setTab] = useState<TabFilter>(initialTab);
+  const [activeTab, setActiveTab] = useState<ApprovalTab>(initialTab);
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>(initialStatusFilter);
+  const [requestStatusFilter, setRequestStatusFilter] =
+    useState<RequestStatusFilter>('pending');
   const initialDeptFilter = searchParams.get('deptFilter') ?? '';
   const [deptFilter, setDeptFilter] = useState(initialDeptFilter);
+  const [sectionFilter, setSectionFilter] = useState('');
+  const [facultyFilter, setFacultyFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [idpPublishPending, setIdpPublishPending] = useState(false);
+  const [drawerTarget, setDrawerTarget] =
+    useState<ApprovalDrawerTarget | null>(null);
+
+  // Each deep link has its own id and its own ref, so a bell link never clears
+  // or reopens a different request's drawer.
+  const unfinalizeDeepLinkHandledRef = useRef<string | null>(null);
+  const publishDeepLinkHandledRef = useRef<string | null>(null);
+  const changeDeepLinkHandledRef = useRef<string | null>(null);
+  const deepLinkRequestId = searchParams.get('request');
+  const deepLinkPublishRequestId = searchParams.get('publishRequest');
+  const deepLinkChangeRequestId = searchParams.get('changeRequest');
+
+  // ── Batch selection ──
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingConfirm, setPendingConfirm] =
+    useState<PendingConfirmation | null>(null);
+
+  const clearDeepLinkParam = useCallback(
+    (param: DeepLinkParam) => {
+      // The unfinalize notification injects ?status=published with ?request=.
+      // Both must go together, or the status-follow effect resets the tab after
+      // the request param is cleared.
+      const next =
+        param === 'request'
+          ? clearRequestDeepLinkParams(searchParams)
+          : new URLSearchParams(searchParams);
+      if (param === 'publishRequest') next.delete('publishRequest');
+      if (param === 'changeRequest') next.delete('changeRequest');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const closeDrawer = useCallback(() => {
+    setDrawerTarget(null);
+    if (!drawerTarget || drawerTarget.kind === 'schedule') return;
+    if (drawerTarget.kind === 'publish') clearDeepLinkParam('publishRequest');
+    else if (drawerTarget.kind === 'unfinalize') clearDeepLinkParam('request');
+    else clearDeepLinkParam('changeRequest');
+  }, [drawerTarget, clearDeepLinkParam]);
+
+  const handleTabChange = useCallback(
+    (next: ApprovalTab) => {
+      if (next === activeTab) return;
+      closeDrawer();
+      setActiveTab(next);
+      setSelectedIds(new Set());
+    },
+    [activeTab, closeDrawer],
+  );
 
   // Sync URL when dept filter changes (for shareable links + back button)
   useEffect(() => {
@@ -95,27 +288,6 @@ export default function DeanApprovalsPage() {
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deptFilter]);
-  const [sectionFilter, setSectionFilter] = useState('');
-  const [facultyFilter, setFacultyFilter] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [idpPublishPending, setIdpPublishPending] = useState(false);
-
-  // ── Published-unfinalize requests ──
-  const [requestDecision, setRequestDecision] =
-    useState<RequestDecision | null>(null);
-  const [decisionRemarks, setDecisionRemarks] = useState('');
-  const deepLinkHandledRef = useRef<string | null>(null);
-  const deepLinkRequestId = searchParams.get('request');
-
-  const closeRequestDecision = useCallback(() => {
-    setRequestDecision(null);
-    setDecisionRemarks('');
-    if (searchParams.get('request')) {
-      const next = new URLSearchParams(searchParams);
-      next.delete('request');
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
 
   // Keep `?status=` in the URL so shared links and bell deep links land on the
   // same filtered view.
@@ -132,27 +304,36 @@ export default function DeanApprovalsPage() {
 
   // Follow status changes that arrive from the URL (notification deep links).
   const statusParam = searchParams.get('status');
+  const hasRequestDeepLink = !!(
+    deepLinkRequestId ||
+    deepLinkPublishRequestId ||
+    deepLinkChangeRequestId
+  );
   useEffect(() => {
     if (!statusParam) return;
     if (!STATUS_VALUES.includes(statusParam as StatusFilter)) return;
+    // A request deep link wins over ?status= so the drawer lands on its tab.
+    if (hasRequestDeepLink) return;
     const nextStatus = statusParam as StatusFilter;
     setStatusFilter(nextStatus);
     if (nextStatus === 'finalized' || nextStatus === 'published') {
-      setTab('finalized');
+      setActiveTab('finalized');
+    } else if (nextStatus === 'review') {
+      setActiveTab('review');
     }
-  }, [statusParam]);
+  }, [statusParam, hasRequestDeepLink]);
 
-  // ── Batch selection ──
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [pendingConfirm, setPendingConfirm] =
-    useState<PendingConfirmation | null>(null);
+  // Clear selection when switching tabs — request rows are never selectable.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeTab]);
 
   const { data: activeTerm } = useQuery({
     queryKey: ['active-term'],
     queryFn: fetchActiveTerm,
   });
 
-  const { data: schedules = [], isLoading } = useQuery({
+  const { data: schedules = [], isLoading: schedulesLoading } = useQuery({
     queryKey: ['schedules', activeTerm?.termId],
     queryFn: () => fetchSchedules(activeTerm?.termId),
     enabled: !!activeTerm?.termId,
@@ -180,37 +361,91 @@ export default function DeanApprovalsPage() {
   // requests for any term, and bell deep links do not carry a term id.
   const {
     data: unfinalizeRequests = [],
-    isLoading: requestsLoading,
+    isLoading: unfinalizeRequestsLoading,
   } = useQuery({
     queryKey: ['schedule-unfinalize-requests'],
     queryFn: () => fetchUnfinalizeRequests(),
     staleTime: 15_000,
   });
 
-  const pendingRequests = useMemo(
-    () => unfinalizeRequests.filter((r) => r.status === 'pending'),
-    [unfinalizeRequests],
-  );
+  const {
+    data: publishRequests = [],
+    isLoading: publishRequestsLoading,
+  } = useQuery({
+    queryKey: ['schedule-publish-requests'],
+    queryFn: () => fetchPublishRequests(),
+    staleTime: 15_000,
+  });
 
-  // `?request=<id>` from the bell opens the decision dialog for that request.
+  const { data: changeRequests = [], isLoading: changeRequestsLoading } =
+    useQuery({
+      queryKey: ['schedule-change-requests'],
+      queryFn: () => fetchChangeRequests(),
+      staleTime: 15_000,
+    });
+
+  // `?request=<id>` selects the unfinalize-request tab and opens the drawer.
   useEffect(() => {
     if (!deepLinkRequestId) {
-      deepLinkHandledRef.current = null;
+      unfinalizeDeepLinkHandledRef.current = null;
       return;
     }
-    if (deepLinkHandledRef.current === deepLinkRequestId) return;
+    if (unfinalizeDeepLinkHandledRef.current === deepLinkRequestId) return;
     const match = unfinalizeRequests.find(
       (r) => String(r.requestId) === deepLinkRequestId,
     );
     if (!match) return;
-    deepLinkHandledRef.current = deepLinkRequestId;
+    unfinalizeDeepLinkHandledRef.current = deepLinkRequestId;
     if (match.status === 'pending') {
-      setRequestDecision({ request: match, action: 'approve' });
-      setDecisionRemarks('');
+      setActiveTab('unfinalize');
+      setDrawerTarget({ kind: 'unfinalize', request: match });
     } else {
       feedback.error(`That unfinalize request is already ${match.status}.`);
+      clearDeepLinkParam('request');
     }
-  }, [deepLinkRequestId, unfinalizeRequests, feedback]);
+  }, [deepLinkRequestId, unfinalizeRequests, feedback, clearDeepLinkParam]);
+
+  // `?publishRequest=<id>` has its own param and never touches `?request=`.
+  useEffect(() => {
+    if (!deepLinkPublishRequestId) {
+      publishDeepLinkHandledRef.current = null;
+      return;
+    }
+    if (publishDeepLinkHandledRef.current === deepLinkPublishRequestId) return;
+    const match = publishRequests.find(
+      (r) => String(r.requestId) === deepLinkPublishRequestId,
+    );
+    if (!match) return;
+    publishDeepLinkHandledRef.current = deepLinkPublishRequestId;
+    if (match.status === 'pending') {
+      setActiveTab('publish');
+      setDrawerTarget({ kind: 'publish', request: match });
+    } else {
+      feedback.error(`That publish request is already ${match.status}.`);
+      clearDeepLinkParam('publishRequest');
+    }
+  }, [deepLinkPublishRequestId, publishRequests, feedback, clearDeepLinkParam]);
+
+  // `?changeRequest=<id>` selects the change-request tab and opens the drawer.
+  useEffect(() => {
+    if (!deepLinkChangeRequestId) {
+      changeDeepLinkHandledRef.current = null;
+      return;
+    }
+    if (changeDeepLinkHandledRef.current === deepLinkChangeRequestId) return;
+    const match = changeRequests.find(
+      (r) => String(r.requestId) === deepLinkChangeRequestId,
+    );
+    if (!match) return;
+    changeDeepLinkHandledRef.current = deepLinkChangeRequestId;
+    if (match.status === 'pending') {
+      setActiveTab('change');
+      setDrawerTarget({ kind: 'change', request: match });
+    } else {
+      feedback.error(`That change request is already ${match.status}.`);
+      clearDeepLinkParam('changeRequest');
+    }
+  }, [deepLinkChangeRequestId, changeRequests, feedback, clearDeepLinkParam]);
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -223,40 +458,11 @@ export default function DeanApprovalsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
+      qc.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
+      qc.invalidateQueries({ queryKey: ['schedule-change-requests'] });
     },
     onError: (err: unknown) => {
       feedback.failed(extractApiError(err, 'Action failed. Please try again.'));
-    },
-  });
-
-  const requestDecisionMutation = useMutation({
-    mutationFn: ({
-      request,
-      action,
-      remarks,
-    }: {
-      request: ScheduleUnfinalizeRequest;
-      action: 'approve' | 'reject';
-      remarks: string;
-    }) => respondToUnfinalizeRequest(request.requestId, action, remarks),
-    onSuccess: (saved, variables) => {
-      const label = unfinalizeRequestLabel(saved);
-      qc.invalidateQueries({ queryKey: ['schedules'] });
-      qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
-      qc.invalidateQueries({
-        queryKey: ['schedule-unfinalize-request', saved.scheduleId],
-      });
-      qc.invalidateQueries({ queryKey: ['flagged'] });
-      qc.invalidateQueries({ queryKey: ['coverage'] });
-      feedback.success(
-        variables.action === 'approve'
-          ? `Approved — ${label} is back in Draft and removed from the public schedule.`
-          : `Rejected — ${label} stays Published.`,
-      );
-      closeRequestDecision();
-    },
-    onError: (err: unknown) => {
-      feedback.error(extractApiError(err, 'The decision could not be saved.'));
     },
   });
 
@@ -269,25 +475,63 @@ export default function DeanApprovalsPage() {
     return m;
   }, [departments]);
 
-  const getDeptOfSchedule = (s: RawSchedule) =>
-    s.subject?.deptId ? deptById.get(String(s.subject.deptId)) : null;
+  const getDeptOfSchedule = (s: RawSchedule) => {
+    const deptId = getScheduleDeptId(s);
+    return deptId ? deptById.get(deptId) : null;
+  };
+
+  const getRequestDeptCode = (row: RequestRow) => {
+    const deptId = row.request.deptId ?? row.request.schedule?.deptId;
+    return deptId ? deptById.get(String(deptId))?.code ?? null : null;
+  };
 
   // ── Tab filtering ──
+  const isRequestTab =
+    activeTab === 'publish' || activeTab === 'unfinalize' || activeTab === 'change';
+
   const tabFiltered = useMemo(() => {
-    if (tab === 'review') return schedules.filter((s) => s.status === 'review');
-    if (tab === 'finalized')
+    if (activeTab === 'review') return schedules.filter((s) => s.status === 'review');
+    if (activeTab === 'finalized')
       return schedules.filter(
         (s) => s.status === 'finalized' || s.status === 'published',
       );
     return schedules;
-  }, [schedules, tab]);
+  }, [schedules, activeTab]);
 
-  // ── Secondary filters ──
+  const requestRowsByTab = useMemo<RequestRow[]>(() => {
+    if (activeTab === 'publish') {
+      return publishRequests.map((request) => ({ kind: 'publish' as const, request }));
+    }
+    if (activeTab === 'unfinalize') {
+      return unfinalizeRequests.map((request) => ({
+        kind: 'unfinalize' as const,
+        request,
+      }));
+    }
+    if (activeTab === 'change') {
+      return changeRequests.map((request) => ({ kind: 'change' as const, request }));
+    }
+    return [];
+  }, [activeTab, publishRequests, unfinalizeRequests, changeRequests]);
+
+  const filteredRequests = useMemo(
+    () => filterRequestRows(requestRowsByTab, requestStatusFilter, searchQuery),
+    [requestRowsByTab, requestStatusFilter, searchQuery],
+  );
+
+  const requestsLoadingForTab =
+    activeTab === 'publish'
+      ? publishRequestsLoading
+      : activeTab === 'unfinalize'
+      ? unfinalizeRequestsLoading
+      : changeRequestsLoading;
+
+  // ── Secondary filters (schedule tabs) ──
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return tabFiltered.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (deptFilter && String(s.subject?.deptId ?? '') !== deptFilter) {
+      if (deptFilter && getScheduleDeptId(s) !== deptFilter) {
         return false;
       }
       if (sectionFilter && (s.section ?? '') !== sectionFilter) return false;
@@ -310,12 +554,6 @@ export default function DeanApprovalsPage() {
     searchQuery,
   ]);
 
-  // ── Selection ──
-  // Clear selection when tab changes.
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [tab]);
-
   // Only keep selected ids that are still visible in `filtered`.
   const effectiveSelectedIds = useMemo(() => {
     const visibleIds = new Set(filtered.map((s) => s.scheduleId));
@@ -335,13 +573,19 @@ export default function DeanApprovalsPage() {
   const selectedPendingCount = selectedRows.filter(
     (s) => s.status === 'review',
   ).length;
-  const selectedFinalizedCount = selectedRows.filter(
-    (s) => s.status === 'finalized',
-  ).length;
   const selectedPublishedCount = selectedRows.filter(
     (s) => s.status === 'published',
   ).length;
 
+  const publishPendingCount = publishRequests.filter(
+    (r) => r.status === 'pending',
+  ).length;
+  const unfinalizePendingCount = unfinalizeRequests.filter(
+    (r) => r.status === 'pending',
+  ).length;
+  const changePendingCount = changeRequests.filter(
+    (r) => r.status === 'pending',
+  ).length;
   const reviewCount = schedules.filter((s) => s.status === 'review').length;
   const finalizedCount = schedules.filter(
     (s) => s.status === 'finalized' || s.status === 'published',
@@ -349,14 +593,17 @@ export default function DeanApprovalsPage() {
 
   const hasAnyFilter =
     !!searchQuery ||
-    statusFilter !== 'all' ||
-    !!deptFilter ||
-    !!sectionFilter ||
-    !!facultyFilter;
+    (isRequestTab
+      ? requestStatusFilter !== 'pending'
+      : statusFilter !== 'all' ||
+        !!deptFilter ||
+        !!sectionFilter ||
+        !!facultyFilter);
 
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
+    setRequestStatusFilter('pending');
     setDeptFilter('');
     setSectionFilter('');
     setFacultyFilter('');
@@ -400,12 +647,8 @@ export default function DeanApprovalsPage() {
   const performAction = useCallback(
     async (action: BatchAction | 'return-to-draft', ids: string[]) => {
       if (ids.length === 0) return;
-      const nextStatus: 'draft' | 'finalized' | 'published' =
-        action === 'finalize'
-          ? 'finalized'
-          : action === 'publish'
-          ? 'published'
-          : 'draft';
+      const nextStatus: 'draft' | 'finalized' =
+        action === 'finalize' ? 'finalized' : 'draft';
 
       // Run all updates, collecting successes and failures.
       const results = await Promise.allSettled(
@@ -426,30 +669,10 @@ export default function DeanApprovalsPage() {
 
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
+      qc.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
+      qc.invalidateQueries({ queryKey: ['schedule-change-requests'] });
       qc.invalidateQueries({ queryKey: ['flagged'] });
       qc.invalidateQueries({ queryKey: ['coverage'] });
-
-      let idpPublishResult:
-        | Awaited<ReturnType<typeof publishIdpSchedule>>
-        | undefined;
-      let idpPublishError: string | undefined;
-      if (action === 'publish' && succeeded.length > 0) {
-        if (!activeTerm?.semester) {
-          idpPublishError =
-            'The active term has no semester configured, so the IDP schedule could not be queued.';
-        } else {
-          try {
-            idpPublishResult = await publishIdpSchedule(
-              `${activeTerm.schoolYear}-${activeTerm.semester}`,
-            );
-          } catch (err: unknown) {
-            idpPublishError = extractApiError(
-              err,
-              'The IDP schedule could not be queued.',
-            );
-          }
-        }
-      }
 
       // Clear the successful ones from the selection.
       setSelectedIds((prev) => {
@@ -462,37 +685,24 @@ export default function DeanApprovalsPage() {
         const verb =
           action === 'finalize'
             ? 'Finalized'
-            : action === 'publish'
-            ? 'Published'
             : action === 'unfinalize-published'
             ? 'Unfinalized'
             : 'Returned to draft';
         feedback.success(
           `${verb} ${succeeded.length} schedule${
             succeeded.length === 1 ? '' : 's'
-          }.${
-            idpPublishResult?.queued
-              ? ` Term schedule queued for IDP (${idpPublishResult.entryCount} entries).`
-              : ''
-          }`,
+          }.`,
         );
-        if (idpPublishError) {
-          feedback.failed(
-            `Schedules were published in CoE-NNECT, but IDP queueing failed: ${idpPublishError}`,
-          );
-        }
       } else {
         feedback.failed(
           `${succeeded.length} succeeded, ${failures.length} failed. ${extractApiError(
             failures[0].reason,
             '',
-          )}${
-            idpPublishError ? ` IDP queueing failed: ${idpPublishError}` : ''
-          }`.trim(),
+          )}`.trim(),
         );
       }
     },
-    [qc, activeTerm, feedback],
+    [qc, feedback],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -506,7 +716,7 @@ export default function DeanApprovalsPage() {
     openConfirm(action, Array.from(effectiveSelectedIds));
   };
 
-  // ── Columns ──
+  // ── Columns (schedule tabs) ──
   const columns: Column<RawSchedule>[] = [
     {
       key: 'subject',
@@ -593,6 +803,87 @@ export default function DeanApprovalsPage() {
     },
   ];
 
+  const requestColumns: Column<RequestRow>[] = [
+    {
+      key: 'subject',
+      header: 'Subject',
+      cardVariant: 'title',
+      cellClassName: 'font-semibold text-slate-900',
+      render: (row) => requestLabel(row),
+    },
+    {
+      key: 'kind',
+      header: 'Type',
+      cardVariant: 'badge',
+      render: (row) => (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+          {REQUEST_KIND_LABELS[row.kind]}
+        </span>
+      ),
+    },
+    {
+      key: 'dept',
+      header: 'Dept',
+      cardVariant: 'meta',
+      render: (row) => {
+        const code = getRequestDeptCode(row);
+        return code ? (
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-700">
+            {code}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400 italic">—</span>
+        );
+      },
+    },
+    {
+      key: 'requester',
+      header: 'Requested by',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs text-slate-600',
+      render: (row) => requestRequester(row),
+    },
+    {
+      key: 'filed',
+      header: 'Filed',
+      cardVariant: 'mono',
+      hideOnMobile: true,
+      cellClassName: 'text-xs text-slate-500',
+      render: (row) => new Date(row.request.createdAt).toLocaleString(),
+    },
+    {
+      key: 'detail',
+      header: rowDetailHeader(activeTab),
+      cardVariant: 'subtitle',
+      hideOnMobile: true,
+      cellClassName: 'text-xs text-slate-500 truncate max-w-[220px]',
+      render: (row) => requestDetail(row),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (row) => {
+        const status = row.request.status;
+        return (
+          <StatusBadge tone={REQUEST_STATUS_TONES[status] ?? 'neutral'}>
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+          </StatusBadge>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      cardVariant: 'actions',
+      // ResponsiveTable builds action cells from getActions, not render.
+      render: () => null,
+    },
+  ];
+
+  const getRequestActions = (row: RequestRow): RowAction[] =>
+    reviewRowAction(row, setDrawerTarget);
+
   const getActions = (s: RawSchedule): RowAction[] => {
     const isPending = statusMutation.isPending;
     if (s.status === 'review') {
@@ -609,17 +900,6 @@ export default function DeanApprovalsPage() {
           icon: 'undo',
           // Wrap in confirmation — this is destructive and irreversible.
           onClick: () => openConfirm('return-to-draft', [s.scheduleId]),
-          disabled: isPending,
-        },
-      ];
-    }
-    if (s.status === 'finalized') {
-      return [
-        {
-          label: 'Publish',
-          icon: 'publish',
-          // Wrap in confirmation — cannot be un-published.
-          onClick: () => openConfirm('publish', [s.scheduleId]),
           disabled: isPending,
         },
       ];
@@ -650,13 +930,6 @@ export default function DeanApprovalsPage() {
           confirmLabel: count === 1 ? 'Finalize' : `Finalize ${count}`,
           tone: 'primary' as const,
         };
-      case 'publish':
-        return {
-          title: `Publish ${count} ${noun}?`,
-          body: `This will publish ${count} ${noun} for all departments and queue the term's finalized schedule for IDP. Publishing cannot be undone.`,
-          confirmLabel: count === 1 ? 'Publish' : `Publish ${count}`,
-          tone: 'primary' as const,
-        };
       case 'return-to-draft':
         return {
           title: `Return ${count} ${noun} to draft?`,
@@ -680,6 +953,15 @@ export default function DeanApprovalsPage() {
     ? getConfirmCopy(pendingConfirm.action, pendingConfirm.itemCount)
     : null;
 
+  const tabs: { id: ApprovalTab; label: string }[] = [
+    { id: 'publish', label: `Publish requests (${publishPendingCount})` },
+    { id: 'unfinalize', label: `Unfinalize requests (${unfinalizePendingCount})` },
+    { id: 'change', label: `Change requests (${changePendingCount})` },
+    { id: 'review', label: `Pending review (${reviewCount})` },
+    { id: 'finalized', label: `Finalized & published (${finalizedCount})` },
+    { id: 'all', label: `All schedules (${schedules.length})` },
+  ];
+
   return (
     <div className="space-y-6 pb-24">
       {/* Header */}
@@ -689,7 +971,7 @@ export default function DeanApprovalsPage() {
             Schedule Approvals
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Review and finalize department schedules.
+            Review requests and finalize department schedules.
             {activeTerm && ` · ${activeTerm.termName} ${activeTerm.schoolYear}`}
           </p>
         </div>
@@ -713,132 +995,15 @@ export default function DeanApprovalsPage() {
         </div>
       </div>
 
-      {/* ── Published unfinalize requests ── */}
-      {(requestsLoading || pendingRequests.length > 0) && (
-        <section
-          className="border border-amber-200 bg-amber-50/50"
-          aria-label="Published unfinalize requests"
-        >
-          <div className="border-b border-amber-200 px-4 py-3">
-            <div className="flex items-start gap-2">
-              <Icon
-                name="pending_actions"
-                size={18}
-                className="mt-0.5 shrink-0 text-amber-700"
-              />
-              <div className="min-w-0">
-                <h2 className="flex flex-wrap items-center gap-2 text-sm font-bold text-amber-900">
-                  Published unfinalize requests
-                  {pendingRequests.length > 0 && (
-                    <span className="inline-flex min-w-[20px] items-center justify-center bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white">
-                      {pendingRequests.length}
-                    </span>
-                  )}
-                </h2>
-                <p className="mt-0.5 text-xs text-amber-800">
-                  Approving returns the entry to Draft and removes it from the
-                  public planner and the IDP feed.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {requestsLoading ? (
-            <p className="px-4 py-4 text-xs text-amber-800">
-              Loading requests…
-            </p>
-          ) : (
-            <ul className="divide-y divide-amber-200">
-              {pendingRequests.map((request) => {
-                const dept = request.schedule?.deptId
-                  ? deptById.get(String(request.schedule.deptId))
-                  : null;
-                return (
-                  <li
-                    key={request.requestId}
-                    className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-start md:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-900">
-                          {unfinalizeRequestLabel(request)}
-                        </span>
-                        {dept && (
-                          <span className="inline-flex items-center border border-amber-300 bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-900">
-                            {dept.code}
-                          </span>
-                        )}
-                        {request.schedule?.term?.termName && (
-                          <span className="text-[11px] font-medium text-amber-900">
-                            {request.schedule.term.termName}
-                          </span>
-                        )}
-                        <span className="text-[11px] text-amber-800">
-                          {new Date(request.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Requested by{' '}
-                        <strong className="text-slate-800">
-                          {unfinalizeRequesterName(request)}
-                        </strong>
-                      </p>
-                      <p className="mt-1 break-words text-xs italic text-slate-700">
-                        “{request.reason}”
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRequestDecision({
-                            request,
-                            action: 'approve',
-                          });
-                          setDecisionRemarks('');
-                        }}
-                        className="inline-flex items-center gap-1.5 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                      >
-                        <Icon name="check_circle" size={14} />
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRequestDecision({
-                            request,
-                            action: 'reject',
-                          });
-                          setDecisionRemarks('');
-                        }}
-                        className="inline-flex items-center gap-1.5 border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
-                      >
-                        <Icon name="cancel" size={14} />
-                        Reject
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-0 border-b border-slate-200" data-tour="dean-approvals-tabs">
-        {(
-          [
-            { id: 'review', label: `Pending Review (${reviewCount})` },
-            { id: 'finalized', label: `Finalized (${finalizedCount})` },
-            { id: 'all', label: `All (${schedules.length})` },
-          ] as const
-        ).map((t) => (
+      {/* ── Six-tab workspace ── */}
+      <div className="flex gap-0 border-b border-slate-200 overflow-x-auto" data-tour="dean-approvals-tabs">
+        {tabs.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-xs font-semibold transition-all border-b-2 -mb-px ${
-              tab === t.id
+            type="button"
+            onClick={() => handleTabChange(t.id)}
+            className={`whitespace-nowrap px-4 py-2.5 text-xs font-semibold transition-all border-b-2 -mb-px ${
+              activeTab === t.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
@@ -872,84 +1037,111 @@ export default function DeanApprovalsPage() {
               </div>
             </div>
 
-            <div className="min-w-[180px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Department
-              </label>
-              <select
-                value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">All departments</option>
-                {departments
-                  .filter((d) => d.isActive)
-                  .map((d) => (
-                    <option key={d.deptId} value={d.deptId}>
-                      [{d.deptCode}] {d.deptName}
+            {isRequestTab ? (
+              <div className="min-w-[160px]">
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                  Request status
+                </label>
+                <select
+                  value={requestStatusFilter}
+                  onChange={(e) =>
+                    setRequestStatusFilter(e.target.value as RequestStatusFilter)
+                  }
+                  className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                >
+                  {REQUEST_STATUS_VALUES.map((value) => (
+                    <option key={value} value={value}>
+                      {value.charAt(0).toUpperCase() + value.slice(1)}
                     </option>
                   ))}
-              </select>
-            </div>
+                </select>
+              </div>
+            ) : (
+              <>
+                <div className="min-w-[180px]">
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Department
+                  </label>
+                  <select
+                    value={deptFilter}
+                    onChange={(e) => setDeptFilter(e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All departments</option>
+                    {departments
+                      .filter((d) => d.isActive)
+                      .map((d) => (
+                        <option key={d.deptId} value={d.deptId}>
+                          [{d.deptCode}] {d.deptName}
+                        </option>
+                      ))}
+                  </select>
+                </div>
 
-            <div className="min-w-[140px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as StatusFilter)
-                }
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="all">All</option>
-                <option value="draft">Draft</option>
-                <option value="review">In Review</option>
-                <option value="finalized">Finalized</option>
-                <option value="published">Published</option>
-              </select>
-            </div>
+                <div className="min-w-[140px]">
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Status
+                  </label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) =>
+                      setStatusFilter(e.target.value as StatusFilter)
+                    }
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    {STATUS_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {value === 'all'
+                          ? 'All'
+                          : value === 'review'
+                          ? 'In Review'
+                          : value.charAt(0).toUpperCase() + value.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div className="min-w-[150px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Section
-              </label>
-              <select
-                value={sectionFilter}
-                onChange={(e) => setSectionFilter(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">All sections</option>
-                {sections
-                  .filter((s) => s.isActive)
-                  .map((s) => (
-                    <option key={s.sectionId} value={s.sectionCode}>
-                      {s.sectionCode}
-                    </option>
-                  ))}
-              </select>
-            </div>
+                <div className="min-w-[150px]">
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Section
+                  </label>
+                  <select
+                    value={sectionFilter}
+                    onChange={(e) => setSectionFilter(e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All sections</option>
+                    {sections
+                      .filter((s) => s.isActive)
+                      .map((s) => (
+                        <option key={s.sectionId} value={s.sectionCode}>
+                          {s.sectionCode}
+                        </option>
+                      ))}
+                  </select>
+                </div>
 
-            <div className="min-w-[180px]">
-              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                Faculty
-              </label>
-              <select
-                value={facultyFilter}
-                onChange={(e) => setFacultyFilter(e.target.value)}
-                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-              >
-                <option value="">All faculty</option>
-                {faculty
-                  .filter((f) => f.isActive)
-                  .map((f) => (
-                    <option key={f.facultyId} value={f.facultyId}>
-                      {f.lastName}, {f.firstName}
-                    </option>
-                  ))}
-              </select>
-            </div>
+                <div className="min-w-[180px]">
+                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                    Faculty
+                  </label>
+                  <select
+                    value={facultyFilter}
+                    onChange={(e) => setFacultyFilter(e.target.value)}
+                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">All faculty</option>
+                    {faculty
+                      .filter((f) => f.isActive)
+                      .map((f) => (
+                        <option key={f.facultyId} value={f.facultyId}>
+                          {f.lastName}, {f.firstName}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </>
+            )}
 
             {hasAnyFilter && (
               <button
@@ -964,14 +1156,36 @@ export default function DeanApprovalsPage() {
 
             <div className="ml-auto text-xs text-on-surface-variant whitespace-nowrap">
               Showing{' '}
-              <strong className="text-on-surface">{filtered.length}</strong> of{' '}
-              {tabFiltered.length}
+              <strong className="text-on-surface">
+                {isRequestTab ? filteredRequests.length : filtered.length}
+              </strong>{' '}
+              of{' '}
+              {isRequestTab ? requestRowsByTab.length : tabFiltered.length}
             </div>
           </div>
         </div>
       )}
 
-      {!activeTerm ? (
+      {isRequestTab ? (
+        <div data-tour="dean-approvals-table">
+          <ResponsiveTable<RequestRow>
+            columns={requestColumns}
+            rows={filteredRequests}
+            rowKey={(row) => row.request.requestId}
+            rowTitle={(row) => requestLabel(row)}
+            rowSubtitle={(row) =>
+              row.request.schedule?.subject?.title ?? 'Schedule entry'
+            }
+            isLoading={requestsLoadingForTab}
+            hasSourceRows={requestRowsByTab.length > 0}
+            emptyMessage={`No ${activeTab} requests yet.`}
+            noMatchMessage="No requests match your filters."
+            getActions={getRequestActions}
+            selectable={false}
+            onRowClick={(row) => setDrawerTarget(row)}
+          />
+        </div>
+      ) : !activeTerm ? (
         <div className="bg-white border border-slate-200 p-10 text-center">
           <Icon name="event_busy" className="text-slate-300 text-4xl mb-3" />
           <p className="text-sm font-semibold text-slate-600">No active term</p>
@@ -993,10 +1207,10 @@ export default function DeanApprovalsPage() {
                 : 'Unassigned';
               return dept ? `[${dept.code}] ${fac}` : fac;
             }}
-            isLoading={isLoading}
+            isLoading={schedulesLoading}
             hasSourceRows={schedules.length > 0}
             emptyMessage={
-              tab === 'review'
+              activeTab === 'review'
                 ? 'No pending approvals — all schedules are up to date.'
                 : 'No schedules yet.'
             }
@@ -1006,14 +1220,14 @@ export default function DeanApprovalsPage() {
             selectedKeys={effectiveSelectedIds}
             onSelectionChange={setSelectedIds}
             onRowClick={(s) =>
-              navigate(`/dean/timetable?focus=${s.scheduleId}`)
+              setDrawerTarget({ kind: 'schedule', schedule: toApprovalScheduleEntry(s) })
             }
           />
         </div>
       )}
 
-      {/* ── Floating BulkActionBar ── */}
-      {effectiveSelectedIds.size > 0 && (
+      {/* ── Floating BulkActionBar — schedule tabs only, never requests ── */}
+      {!(activeTab !== 'review' && activeTab !== 'finalized' && activeTab !== 'all') && effectiveSelectedIds.size > 0 && (
         <div className="fixed above-bottom-nav left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
           <div className="bg-slate-900 text-white rounded-xl shadow-2xl px-4 py-3 flex items-center gap-3">
             <div className="flex items-center gap-2 min-w-0">
@@ -1034,16 +1248,6 @@ export default function DeanApprovalsPage() {
                 >
                   <Icon name="check_circle" size={14} />
                   Finalize {selectedPendingCount}
-                </button>
-              )}
-              {selectedFinalizedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleBatch('publish')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition"
-                >
-                  <Icon name="publish" size={14} />
-                  Publish {selectedFinalizedCount}
                 </button>
               )}
               {selectedPublishedCount > 0 && (
@@ -1080,7 +1284,7 @@ export default function DeanApprovalsPage() {
         </div>
       )}
 
-      {/* ── Confirmation Modal ── */}
+      {/* ── Confirmation Modal (schedule batch actions only) ── */}
       <Modal
         open={!!pendingConfirm}
         onClose={closeConfirm}
@@ -1112,114 +1316,18 @@ export default function DeanApprovalsPage() {
         <p className="text-sm text-slate-600">{confirmCopy?.body}</p>
       </Modal>
 
-      {/* ── Unfinalize request decision modal ── */}
-      <Modal
-        open={!!requestDecision}
-        onClose={closeRequestDecision}
-        title={
-          requestDecision?.action === 'approve'
-            ? 'Approve unfinalize request?'
-            : 'Reject unfinalize request?'
-        }
-        size="sm"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={closeRequestDecision}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                requestDecision &&
-                requestDecisionMutation.mutate({
-                  request: requestDecision.request,
-                  action: requestDecision.action,
-                  remarks: decisionRemarks.trim(),
-                })
-              }
-              disabled={requestDecisionMutation.isPending}
-              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition disabled:opacity-50 ${
-                requestDecision?.action === 'approve'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-red-600 hover:bg-red-700'
-              }`}
-            >
-              {requestDecisionMutation.isPending
-                ? 'Saving…'
-                : requestDecision?.action === 'approve'
-                ? 'Approve & unfinalize'
-                : 'Reject request'}
-            </button>
-          </>
-        }
-      >
-        {requestDecision && (
-          <div className="space-y-3">
-            <div className="border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-sm font-semibold text-slate-900">
-                {unfinalizeRequestLabel(requestDecision.request)}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Requested by{' '}
-                {unfinalizeRequesterName(requestDecision.request)} ·{' '}
-                {new Date(
-                  requestDecision.request.createdAt,
-                ).toLocaleString()}
-                {requestDecision.request.schedule?.term?.termName
-                  ? ` · ${requestDecision.request.schedule.term.termName}`
-                  : ''}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Reason
-              </p>
-              <p className="mt-1 break-words text-sm text-slate-700">
-                {requestDecision.request.reason}
-              </p>
-            </div>
-
-            <p className="text-sm text-slate-600">
-              {requestDecision.action === 'approve'
-                ? 'Approving sets the entry back to Draft and removes it from the public planner and the IDP feed.'
-                : 'Rejecting keeps the entry Published. The requester is notified with your remarks.'}
-            </p>
-
-            <div>
-              <label
-                htmlFor="unfinalize-decision-remarks"
-                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-              >
-                Remarks{' '}
-                {requestDecision.action === 'approve'
-                  ? '(optional)'
-                  : '(recommended)'}
-              </label>
-              <textarea
-                id="unfinalize-decision-remarks"
-                value={decisionRemarks}
-                onChange={(e) => setDecisionRemarks(e.target.value)}
-                rows={3}
-                maxLength={500}
-                placeholder={
-                  requestDecision.action === 'approve'
-                    ? 'e.g. Room reassignment confirmed with the registrar'
-                    : 'e.g. Keep published until the affected classes are moved'
-                }
-                className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-              />
-              <p className="mt-1 text-right text-xs text-slate-400">
-                {decisionRemarks.length}/500
-              </p>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* One drawer for every tab; the drawer owns all decisions and feedback. */}
+      <ApprovalDetailDrawer
+        target={drawerTarget}
+        onClose={closeDrawer}
+        onDecided={closeDrawer}
+      />
     </div>
   );
+}
+
+function rowDetailHeader(tab: ApprovalTab): string {
+  if (tab === 'publish') return 'Note';
+  if (tab === 'change') return 'Reason';
+  return 'Reason';
 }

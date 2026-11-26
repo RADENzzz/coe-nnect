@@ -58,7 +58,7 @@ export class NotificationsService {
     const qb = this.notificationRepo
       .createQueryBuilder('n')
       .where('n.recipient_id = :userId', { userId })
-      .orderBy('n.created_at', 'DESC')
+      .orderBy('n.createdAt', 'DESC')
       .take(dto.limit + 1); // fetch one extra to know if there's a next page
 
     if (dto.before) {

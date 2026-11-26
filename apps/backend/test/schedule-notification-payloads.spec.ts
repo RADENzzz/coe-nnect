@@ -1,8 +1,10 @@
 import 'reflect-metadata';
 
+import { strict as assert } from 'node:assert';
 import { SchedulingService } from '../src/modules/scheduling/scheduling.service';
 import { ScheduleFlagService } from '../src/modules/scheduling/services/schedule-flag.service';
 import { ScheduleUnfinalizeService } from '../src/modules/scheduling/services/schedule-unfinalize.service';
+import { deanProfile } from './helpers/profiles';
 
 const scheduleRow = (overrides: Record<string, any> = {}) => ({
   scheduleId: 's1',
@@ -31,7 +33,7 @@ const scheduleRow = (overrides: Record<string, any> = {}) => ({
 const unused = {} as any;
 
 function dispatcherMock() {
-  return { dispatch: jest.fn(async () => {}) };
+  return { dispatch: jest.fn(async () => {}) as jest.Mock };
 }
 
 function recipientsMock() {
@@ -43,13 +45,19 @@ function recipientsMock() {
   };
 }
 
-async function dispatchForStatusChange() {
-  const row = scheduleRow();
+function statusServiceHarness(overrides: Record<string, any> = {}) {
+  const row = scheduleRow(overrides);
   const scheduleRepo = { save: jest.fn(async (entity: any) => entity) };
   const faculty = { assertOwnership: jest.fn(async () => row) };
   const departments = { assertDepartmentActive: jest.fn(async () => {}) };
   const dispatcher = dispatcherMock();
   const recipients = recipientsMock();
+  const schedulePublish = {
+    cancelPendingForSchedule: jest.fn(async () => {}),
+  };
+  const scheduleChangeRequests = {
+    cancelPendingForSchedule: jest.fn(async () => {}),
+  };
   const service = new SchedulingService(
     scheduleRepo as any,
     unused,
@@ -66,7 +74,15 @@ async function dispatchForStatusChange() {
     recipients as any,
     departments as any,
     unused,
+    schedulePublish as any,
+    scheduleChangeRequests as any,
   );
+
+  return { service, row, scheduleRepo, dispatcher, schedulePublish };
+}
+
+async function dispatchForStatusChange() {
+  const { service, dispatcher } = statusServiceHarness();
 
   await service.updateStatus(
     's1',
@@ -196,4 +212,46 @@ test('adds subjectId to rejected unfinalize notifications', async () => {
       }),
     }),
   );
+});
+
+test('blocks direct publish through updateStatus for the Dean', async () => {
+  const { service, scheduleRepo, dispatcher } = statusServiceHarness();
+
+  await assert.rejects(
+    () => service.updateStatus('s1', 'published', deanProfile),
+    /Publishing requires Dean approval/,
+  );
+  assert.equal(scheduleRepo.save.mock.calls.length, 0);
+  assert.equal(dispatcher.dispatch.mock.calls.length, 0);
+});
+
+test('cancels pending publish requests when an entry leaves finalized', async () => {
+  const { service, schedulePublish, dispatcher } = statusServiceHarness({
+    status: 'finalized',
+  });
+
+  const saved = await service.updateStatus('s1', 'draft', deanProfile);
+
+  assert.equal(saved.status, 'draft');
+  assert.deepEqual(
+    Array.from(schedulePublish.cancelPendingForSchedule.mock.calls[0]),
+    ['s1', deanProfile.userId],
+  );
+  assert.deepEqual(
+    Array.from(dispatcher.dispatch.mock.calls, (call) => call[0]),
+    ['schedule.status_changed'],
+  );
+});
+
+test('a publish request cancellation failure does not fail status changes', async () => {
+  const { service, schedulePublish } = statusServiceHarness({
+    status: 'finalized',
+  });
+  schedulePublish.cancelPendingForSchedule.mockRejectedValueOnce(
+    new Error('down'),
+  );
+
+  const saved = await service.updateStatus('s1', 'draft', deanProfile);
+
+  assert.equal(saved.status, 'draft');
 });

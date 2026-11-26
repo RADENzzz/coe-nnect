@@ -1,10 +1,5 @@
 // apps/backend/src/modules/scheduling/scheduling.service.ts
-import {
-  Injectable,
-  BadRequestException,
-  Logger,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Schedule } from './entities/schedule.entity';
@@ -21,6 +16,8 @@ import { ScheduleFlagService } from './services/schedule-flag.service';
 import { SchedulingCoverageService } from './services/scheduling-coverage.service';
 import { ScheduleVersionService } from './services/schedule-version.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
+import { SchedulePublishService } from './services/schedule-publish.service';
+import { ScheduleChangeRequestService } from './services/schedule-change-request.service';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
@@ -58,6 +55,8 @@ export class SchedulingService {
     private readonly recipients: RecipientsService,
     private readonly departments: DepartmentsService,
     private readonly scheduleUnfinalize: ScheduleUnfinalizeService,
+    private readonly schedulePublish: SchedulePublishService,
+    private readonly scheduleChangeRequests: ScheduleChangeRequestService,
   ) {}
 
   async getActiveTerm(): Promise<Term | null> {
@@ -285,22 +284,20 @@ export class SchedulingService {
     }
 
     const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
+    // A head plots into their own department even when the catalog subject is
+    // owned elsewhere (e.g. a minor offered by another department). College
+    // roles without a department keep the subject owner as the fallback.
+    const scheduleDeptId =
+      user?.role === 'department_head' && user.deptId != null
+        ? String(user.deptId)
+        : subjectDeptId;
 
-    if (user && user.role === 'department_head') {
-      const myDept = user.deptId != null ? String(user.deptId) : null;
-      if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
-        throw new ForbiddenException(
-          'You can only plot subjects that belong to your own department.',
-        );
-      }
-    }
-
-    // ── NEW: refuse if subject's dept is deactivated ──
-    await this.departments.assertDepartmentActive(subjectDeptId);
+    // Refuse if the department receiving the schedule is deactivated.
+    await this.departments.assertDepartmentActive(scheduleDeptId);
 
     const gate = await this.faculty.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
-      subjectDeptId,
+      scheduleDeptId,
       termId: dto.termId,
       subjectId: dto.subjectId,
       user,
@@ -368,7 +365,7 @@ export class SchedulingService {
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
-      deptId: subjectDeptId,
+      deptId: scheduleDeptId,
       pendingFacultyRequestId: gate?.requestId ?? null,
       pendingFacultyDeptId: gate?.facultyDeptId ?? null,
       loadType: dto.loadType ?? null,
@@ -385,9 +382,7 @@ export class SchedulingService {
         const targetDHs = await this.recipients.departmentHeadsOf(
           gate.facultyDeptId,
         );
-        const requestingDeptId = user?.deptId
-          ? String(user.deptId)
-          : subjectDeptId;
+        const requestingDeptId = scheduleDeptId ?? subjectDeptId;
         const ctx = await loadRequestContext(
           this.supabase.getAdminClient(),
           {
@@ -462,22 +457,16 @@ export class SchedulingService {
     }
 
     const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
+    const scheduleDeptId =
+      user?.role === 'department_head' && user.deptId != null
+        ? String(user.deptId)
+        : subjectDeptId;
 
-    if (user && user.role === 'department_head') {
-      const myDept = user.deptId != null ? String(user.deptId) : null;
-      if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
-        throw new ForbiddenException(
-          'You can only plot subjects that belong to your own department.',
-        );
-      }
-    }
-
-    // ── NEW: refuse if subject's dept is deactivated ──
-    await this.departments.assertDepartmentActive(subjectDeptId);
+    await this.departments.assertDepartmentActive(scheduleDeptId);
 
     const gate = await this.faculty.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
-      subjectDeptId,
+      scheduleDeptId,
       termId: dto.termId,
       subjectId: dto.subjectId,
       user,
@@ -579,7 +568,7 @@ export class SchedulingService {
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
-      deptId: subjectDeptId,
+      deptId: scheduleDeptId,
       pendingFacultyRequestId: gate?.requestId ?? null,
       pendingFacultyDeptId: gate?.facultyDeptId ?? null,
       loadType: dto.loadType ?? null,
@@ -738,11 +727,16 @@ export class SchedulingService {
 
     if (!saved.pendingFacultyRequestId && saved.facultyId) {
       const subjDeptId = await this.lookupSubjectDept(saved.subjectId);
+      const scheduleDeptId = saved.deptId
+        ? String(saved.deptId)
+        : user?.role === 'department_head' && user.deptId != null
+          ? String(user.deptId)
+          : subjDeptId;
 
-      if (subjDeptId) {
+      if (scheduleDeptId) {
         const gate = await this.faculty.ensureCrossDeptFacultyRequest({
           facultyId: saved.facultyId,
-          subjectDeptId: subjDeptId,
+          scheduleDeptId,
           termId: saved.termId,
           subjectId: saved.subjectId,
           user,
@@ -757,9 +751,7 @@ export class SchedulingService {
             const targetDHs = await this.recipients.departmentHeadsOf(
               gate.facultyDeptId,
             );
-            const requestingDeptId = user?.deptId
-              ? String(user.deptId)
-              : subjDeptId;
+            const requestingDeptId = scheduleDeptId;
             const ctx = await loadRequestContext(
               this.supabase.getAdminClient(),
               {
@@ -829,12 +821,23 @@ export class SchedulingService {
     }
 
     const previousStatus = found.status;
+    // Captured before the direct-publish guard narrows `status`, so the
+    // existing published -> draft checks keep their original union type.
+    const requestedStatus: Schedule['status'] = status;
+
+    // Publication is a Dean decision. The status endpoint must never be a
+    // back door around the publish-request approval flow.
+    if (status === 'published') {
+      throw new BadRequestException(
+        'Publishing requires Dean approval. Finalize the entry and submit a publish request instead.',
+      );
+    }
 
     // Published entries are on the public planner and the IDP feed. A DH
     // cannot pull one back directly; the request goes to the Dean.
     if (
       previousStatus === 'published' &&
-      status !== 'published' &&
+      requestedStatus !== 'published' &&
       user?.role === 'department_head'
     ) {
       throw new BadRequestException(
@@ -849,9 +852,26 @@ export class SchedulingService {
     found.status = status;
     const saved = await this.scheduleRepo.save(found);
 
+    // Leaving Finalized outside the publish flow closes any open request so
+    // the Dean cannot approve it against a row that has since changed.
+    if (previousStatus === 'finalized' && status !== 'finalized') {
+      try {
+        await this.schedulePublish.cancelPendingForSchedule(
+          id,
+          user?.userId ?? null,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Cancelling pending publish requests failed for schedule=${id}: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
+
     // Any other exit from Published closes an open Dean request so it cannot
     // be approved against a row that is already back in Draft.
-    if (previousStatus === 'published' && status !== 'published') {
+    if (previousStatus === 'published' && requestedStatus !== 'published') {
       try {
         await this.scheduleUnfinalize.cancelPendingForSchedule(
           id,
@@ -860,6 +880,28 @@ export class SchedulingService {
       } catch (err) {
         this.logger.warn(
           `Cancelling pending unfinalize requests failed for schedule=${id}: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
+
+    // A change request may only be approved while its entry is still in
+    // review or finalized; leaving both states closes any open request.
+    const leftChangeEligibleStatus =
+      (previousStatus === 'review' || previousStatus === 'finalized') &&
+      status !== 'review' &&
+      status !== 'finalized';
+
+    if (leftChangeEligibleStatus) {
+      try {
+        await this.scheduleChangeRequests.cancelPendingForSchedule(
+          id,
+          user?.userId ?? null,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Cancelling pending change requests failed for schedule=${id}: ${
             (err as Error).message
           }`,
         );

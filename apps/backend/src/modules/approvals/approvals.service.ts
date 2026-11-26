@@ -48,7 +48,7 @@ export class ApprovalsService {
           'r.requesting_dept_id = :dept OR r.target_dept_id = :dept',
           { dept: user.deptId },
         )
-        .orderBy('r.created_at', 'DESC')
+        .orderBy('r.createdAt', 'DESC')
         .getMany();
     }
     return [];
