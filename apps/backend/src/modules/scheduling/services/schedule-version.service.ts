@@ -12,6 +12,122 @@ import { SupabaseService } from '../../../database/supabase.service';
 import { Schedule } from '../entities/schedule.entity';
 import { ScheduleVersion } from '../entities/schedule-version.entity';
 
+export type ComparedVersionSummary = {
+  versionId: string;
+  versionNumber: number | null;
+  finalizedByName: string | null;
+  lastModifiedAt: string | null;
+  entryCount: number;
+};
+
+export type VersionCompareResult = {
+  versionA: ComparedVersionSummary;
+  versionB: ComparedVersionSummary;
+  added: Array<Record<string, unknown>>;
+  removed: Array<Record<string, unknown>>;
+  moved: Array<{
+    before: Record<string, unknown>;
+    after: Record<string, unknown>;
+    changes: string[];
+  }>;
+  unchanged: number;
+};
+
+type ComparableEntry = Record<string, unknown>;
+
+/**
+ * Shared diff engine for finalize history and cross-source comparisons.
+ * Entries are paired by subject/section/load type and then by session_index,
+ * so repeated sessions of the same offering stay in their original order.
+ */
+export function compareEntries(
+  entriesA: ComparableEntry[],
+  entriesB: ComparableEntry[],
+  versionA: ComparedVersionSummary,
+  versionB: ComparedVersionSummary,
+): VersionCompareResult {
+  const sessionOf = (entry: ComparableEntry): number => {
+    const value = Number(entry.session_index);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const keyOf = (entry: ComparableEntry): string => {
+    const section = entry.section_id ?? entry.section_code ?? '';
+    const subject = entry.subject_id ?? '';
+    const load = entry.load_type ?? '';
+    return `${section}::${subject}::${load}`;
+  };
+  const inSessionOrder = (list: ComparableEntry[]): ComparableEntry[] =>
+    [...list].sort((left, right) => sessionOf(left) - sessionOf(right));
+
+  const groupA = groupBy(entriesA, keyOf);
+  const groupB = groupBy(entriesB, keyOf);
+
+  const added: ComparableEntry[] = [];
+  const removed: ComparableEntry[] = [];
+  const moved: VersionCompareResult['moved'] = [];
+  let unchanged = 0;
+
+  for (const key of new Set([...groupA.keys(), ...groupB.keys()])) {
+    const listA = inSessionOrder(groupA.get(key) ?? []);
+    const listB = inSessionOrder(groupB.get(key) ?? []);
+
+    for (let i = 0; i < Math.max(listA.length, listB.length); i++) {
+      const eA = listA[i];
+      const eB = listB[i];
+
+      if (eA && !eB) {
+        removed.push(eA);
+        continue;
+      }
+      if (!eA && eB) {
+        added.push(eB);
+        continue;
+      }
+      if (!eA || !eB) continue;
+
+      const changes = diffEntry(eA, eB);
+      if (changes.length === 0) {
+        unchanged++;
+      } else {
+        moved.push({ before: eA, after: eB, changes });
+      }
+    }
+  }
+
+  return { versionA, versionB, added, removed, moved, unchanged };
+}
+
+function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyFn(item);
+    const list = map.get(key) ?? [];
+    list.push(item);
+    map.set(key, list);
+  }
+  return map;
+}
+
+function diffEntry(
+  a: ComparableEntry,
+  b: ComparableEntry,
+): string[] {
+  const fields: Array<[string, string]> = [
+    ['day_of_week', 'day'],
+    ['start_time', 'start time'],
+    ['end_time', 'end time'],
+    ['room_id', 'room'],
+    ['faculty_id', 'faculty'],
+  ];
+  const changes: string[] = [];
+  for (const [field, label] of fields) {
+    if (a[field] !== b[field]) {
+      changes.push(label);
+    }
+  }
+  return changes;
+}
+
 /**
  * Schedule snapshots and version comparisons (FR 5.1.8(a)).
  *
@@ -48,6 +164,7 @@ export class ScheduleVersionService {
 
     const capturedAt = new Date();
     const capturedBy = user?.userId ?? user?.id ?? null;
+    const sessionCounts = new Map<string, number>();
 
     const snapshot = {
       snapshot_version: 1,
@@ -55,29 +172,39 @@ export class ScheduleVersionService {
       captured_at: capturedAt.toISOString(),
       captured_by: capturedBy,
       entry_count: entries.length,
-      entries: entries.map((e) => ({
-        schedule_id: e.scheduleId,
-        section_id: e.sectionId ?? null,
-        section_code: e.section ?? null,
-        subject_id: e.subjectId,
-        subject_code: e.subject?.subjectCode ?? null,
-        subject_title: e.subject?.title ?? null,
-        faculty_id: e.facultyId ?? null,
-        external_faculty_name: e.externalFacultyName ?? null,
-        faculty_name: e.faculty
-          ? `${e.faculty.firstName} ${e.faculty.lastName}`
-          : (e.externalFacultyName ?? null),
-        room_id: e.roomId ?? null,
-        room_number: e.room?.roomNumber ?? null,
-        building: e.room?.building ?? null,
-        day_of_week: e.dayOfWeek ?? null,
-        start_time: e.startTime ?? null,
-        end_time: e.endTime ?? null,
-        load_type: e.loadType ?? null,
-        status: e.status,
-        remarks: e.remarks ?? null,
-        dept_id: e.deptId ?? null,
-      })),
+      entries: entries.map((e) => {
+        const key = [e.subjectId, e.sectionId, e.loadType]
+          .map((part) => String(part ?? ''))
+          .join('::');
+        const sessionIndex = sessionCounts.get(key) ?? 0;
+        sessionCounts.set(key, sessionIndex + 1);
+
+        return {
+          schedule_id: e.scheduleId,
+          section_id: e.sectionId ?? null,
+          section_code: e.section ?? null,
+          subject_id: e.subjectId,
+          subject_code: e.subject?.subjectCode ?? null,
+          subject_title: e.subject?.title ?? null,
+          faculty_id: e.facultyId ?? null,
+          external_faculty_name: e.externalFacultyName ?? null,
+          faculty_name: e.faculty
+            ? `${e.faculty.firstName} ${e.faculty.lastName}`
+            : (e.externalFacultyName ?? null),
+          room_id: e.roomId ?? null,
+          room_number: e.room?.roomNumber ?? null,
+          building: e.room?.building ?? null,
+          external_room_name: e.externalRoomName ?? null,
+          day_of_week: e.dayOfWeek ?? null,
+          start_time: e.startTime ?? null,
+          end_time: e.endTime ?? null,
+          load_type: e.loadType ?? null,
+          status: e.status,
+          remarks: e.remarks ?? null,
+          dept_id: e.deptId ?? null,
+          session_index: sessionIndex,
+        };
+      }),
     };
 
     const nextNumber = await this.nextVersionNumber(termId);
@@ -190,34 +317,11 @@ export class ScheduleVersionService {
     return Object.assign(found, { finalizedByName });
   }
 
-  /** Compare two snapshots of the same term. */
+  /** Compare two snapshots of the same term (finalize history only). */
   async compareVersions(
     versionAId: string,
     versionBId: string,
-  ): Promise<{
-    versionA: {
-      versionId: string;
-      versionNumber: number;
-      finalizedByName: string | null;
-      lastModifiedAt: string;
-      entryCount: number;
-    };
-    versionB: {
-      versionId: string;
-      versionNumber: number;
-      finalizedByName: string | null;
-      lastModifiedAt: string;
-      entryCount: number;
-    };
-    added: Array<Record<string, unknown>>;
-    removed: Array<Record<string, unknown>>;
-    moved: Array<{
-      before: Record<string, unknown>;
-      after: Record<string, unknown>;
-      changes: string[];
-    }>;
-    unchanged: number;
-  }> {
+  ): Promise<VersionCompareResult> {
     const a = await this.findVersion(versionAId);
     const b = await this.findVersion(versionBId);
 
@@ -230,75 +334,24 @@ export class ScheduleVersionService {
     const entriesA = this.extractEntries(a.snapshot);
     const entriesB = this.extractEntries(b.snapshot);
 
-    const keyOf = (e: Record<string, unknown>): string => {
-      const section = e.section_id ?? e.section_code ?? '';
-      const subject = e.subject_id ?? '';
-      const load = e.load_type ?? '';
-      return `${section}::${subject}::${load}`;
-    };
-
-    const groupA = this.groupBy(entriesA, keyOf);
-    const groupB = this.groupBy(entriesB, keyOf);
-
-    const added: Array<Record<string, unknown>> = [];
-    const removed: Array<Record<string, unknown>> = [];
-    const moved: Array<{
-      before: Record<string, unknown>;
-      after: Record<string, unknown>;
-      changes: string[];
-    }> = [];
-    let unchanged = 0;
-
-    const allKeys = new Set([...groupA.keys(), ...groupB.keys()]);
-
-    for (const key of allKeys) {
-      const listA = groupA.get(key) ?? [];
-      const listB = groupB.get(key) ?? [];
-
-      const maxLen = Math.max(listA.length, listB.length);
-      for (let i = 0; i < maxLen; i++) {
-        const eA = listA[i];
-        const eB = listB[i];
-
-        if (eA && !eB) {
-          removed.push(eA);
-          continue;
-        }
-        if (!eA && eB) {
-          added.push(eB);
-          continue;
-        }
-        if (!eA || !eB) continue;
-
-        const changes = this.diffEntry(eA, eB);
-        if (changes.length === 0) {
-          unchanged++;
-        } else {
-          moved.push({ before: eA, after: eB, changes });
-        }
-      }
-    }
-
-    return {
-      versionA: {
+    return compareEntries(
+      entriesA,
+      entriesB,
+      {
         versionId: a.versionId,
         versionNumber: a.versionNumber,
         finalizedByName: a.finalizedByName,
         lastModifiedAt: a.lastModifiedAt.toISOString(),
         entryCount: entriesA.length,
       },
-      versionB: {
+      {
         versionId: b.versionId,
         versionNumber: b.versionNumber,
         finalizedByName: b.finalizedByName,
         lastModifiedAt: b.lastModifiedAt.toISOString(),
         entryCount: entriesB.length,
       },
-      added,
-      removed,
-      moved,
-      unchanged,
-    };
+    );
   }
 
   private async nextVersionNumber(termId: string): Promise<number> {
@@ -323,37 +376,4 @@ export class ScheduleVersionService {
       : [];
   }
 
-  private groupBy<T>(
-    items: T[],
-    keyFn: (item: T) => string,
-  ): Map<string, T[]> {
-    const map = new Map<string, T[]>();
-    for (const item of items) {
-      const key = keyFn(item);
-      const list = map.get(key) ?? [];
-      list.push(item);
-      map.set(key, list);
-    }
-    return map;
-  }
-
-  private diffEntry(
-    a: Record<string, unknown>,
-    b: Record<string, unknown>,
-  ): string[] {
-    const fields: Array<[string, string]> = [
-      ['day_of_week', 'day'],
-      ['start_time', 'start time'],
-      ['end_time', 'end time'],
-      ['room_id', 'room'],
-      ['faculty_id', 'faculty'],
-    ];
-    const changes: string[] = [];
-    for (const [field, label] of fields) {
-      if (a[field] !== b[field]) {
-        changes.push(label);
-      }
-    }
-    return changes;
-  }
 }

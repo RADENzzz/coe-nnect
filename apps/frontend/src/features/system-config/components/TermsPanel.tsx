@@ -7,8 +7,10 @@ import {
   activateTerm,
   deactivateTerm,
   deleteTerm,
+  fetchTermLifecycleSummary,
   type Term,
   type CreateTermInput,
+  type TermLifecycleSummary,
 } from '../../../api/terms.api';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
@@ -30,6 +32,13 @@ import {
 
 interface Props {
   isAdmin: boolean;
+}
+
+type LifecycleAction = 'deactivate' | 'activate';
+
+interface LifecycleSummaryRequest {
+  term: Term;
+  action: LifecycleAction;
 }
 
 function fmtDate(iso: string | null | undefined): string | null {
@@ -95,6 +104,11 @@ export default function TermsPanel({ isAdmin }: Props) {
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Term | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<Term | null>(null);
+  const [deactivateSummary, setDeactivateSummary] =
+    useState<TermLifecycleSummary | null>(null);
+  const [activateTarget, setActivateTarget] = useState<Term | null>(null);
+  const [activateSummary, setActivateSummary] =
+    useState<TermLifecycleSummary | null>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const scrollToErrorSummary = () => {
@@ -222,9 +236,45 @@ export default function TermsPanel({ isAdmin }: Props) {
       }),
   });
 
+  // Read-only preflight: neither switch reaches its mutation until the Dean
+  // has seen what will be saved, closed, cleared, or restored.
+  const summaryMutation = useMutation({
+    mutationFn: (input: LifecycleSummaryRequest) =>
+      fetchTermLifecycleSummary(input.term.termId, input.action),
+    onSuccess: (summary, input) => {
+      if (input.action === 'deactivate') {
+        setDeactivateTarget(input.term);
+        setDeactivateSummary(summary);
+      } else {
+        setActivateTarget(input.term);
+        setActivateSummary(summary);
+      }
+    },
+    onError: (err: unknown, input: LifecycleSummaryRequest) => {
+      feedback.failed(
+        extractApiError(err, 'Failed to load the term lifecycle summary'),
+        { title: 'Could not check term changes' },
+      );
+      if (input.action === 'deactivate') {
+        setDeactivateTarget(null);
+        setDeactivateSummary(null);
+      } else {
+        setActivateTarget(null);
+        setActivateSummary(null);
+      }
+    },
+  });
+
+  const summaryBusy = (termId: string, action: LifecycleAction) =>
+    summaryMutation.isPending &&
+    summaryMutation.variables?.action === action &&
+    summaryMutation.variables.term.termId === termId;
+
   const activateMutation = useMutation({
     mutationFn: activateTerm,
     onSuccess: (t) => {
+      setActivateTarget(null);
+      setActivateSummary(null);
       feedback.success(`Term "${t.termName}" is now active.`, {
         title: 'Term activated',
       });
@@ -240,6 +290,7 @@ export default function TermsPanel({ isAdmin }: Props) {
     mutationFn: deactivateTerm,
     onSuccess: (t) => {
       setDeactivateTarget(null);
+      setDeactivateSummary(null);
       feedback.success(
         `Term "${t.termName}" was deactivated. No term is currently active.`,
         { title: 'Term deactivated' },
@@ -426,20 +477,34 @@ export default function TermsPanel({ isAdmin }: Props) {
                   <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                     {t.isActive ? (
                       <button
-                        onClick={() => setDeactivateTarget(t)}
-                        disabled={deactivateMutation.isPending}
+                        onClick={() =>
+                          summaryMutation.mutate({ term: t, action: 'deactivate' })
+                        }
+                        disabled={
+                          summaryMutation.isPending || deactivateMutation.isPending
+                        }
                         className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-50"
                       >
-                        {deactivateMutation.isPending ? '…' : 'Deactivate'}
+                        {summaryBusy(t.termId, 'deactivate') ||
+                        deactivateMutation.isPending
+                          ? '…'
+                          : 'Deactivate'}
                       </button>
                     ) : (
                       <>
                         <button
-                          onClick={() => activateMutation.mutate(t.termId)}
-                          disabled={activateMutation.isPending}
+                          onClick={() =>
+                            summaryMutation.mutate({ term: t, action: 'activate' })
+                          }
+                          disabled={
+                            summaryMutation.isPending || activateMutation.isPending
+                          }
                           className="text-xs px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 transition disabled:opacity-50"
                         >
-                          {activateMutation.isPending ? '…' : 'Activate'}
+                          {summaryBusy(t.termId, 'activate') ||
+                          activateMutation.isPending
+                            ? '…'
+                            : 'Activate'}
                         </button>
                         <button
                           onClick={() => setDeleteTarget(t)}
@@ -631,15 +696,106 @@ export default function TermsPanel({ isAdmin }: Props) {
         </div>
       </Modal>
 
+      {/* Activate confirmation */}
+      <ConfirmDialog
+        open={!!activateTarget}
+        onClose={() => {
+          setActivateTarget(null);
+          setActivateSummary(null);
+        }}
+        title="Activate term?"
+        description={
+          activateSummary ? (
+            <>
+              <p>
+                Restore saved rows for term "{activateSummary.termName} — AY{' '}
+                {activateTarget?.schoolYear}" and make it active?
+              </p>
+              <p className="mt-2">
+                Restored rows for "{activateSummary.termName}" (draft{' '}
+                {activateSummary.statusCounts.draft}, review{' '}
+                {activateSummary.statusCounts.review}, finalized{' '}
+                {activateSummary.statusCounts.finalized}, published{' '}
+                {activateSummary.statusCounts.published}).
+              </p>
+              {activateSummary.otherTerm ? (
+                <>
+                  <p className="mt-2">
+                    Saved and cleared from the currently active term "
+                    {activateSummary.otherTerm.termName}" (draft{' '}
+                    {activateSummary.otherTerm.statusCounts.draft}, review{' '}
+                    {activateSummary.otherTerm.statusCounts.review}, finalized{' '}
+                    {activateSummary.otherTerm.statusCounts.finalized}, published{' '}
+                    {activateSummary.otherTerm.statusCounts.published}); its live
+                    grid will be cleared.
+                  </p>
+                  <p className="mt-2 font-semibold text-amber-700">
+                    Activating "{activateSummary.termName}" switches the timetable
+                    to its restored rows.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 font-semibold text-amber-700">
+                  No other term is active, so there is no live grid to save and
+                  clear before restoring "{activateSummary.termName}".
+                </p>
+              )}
+            </>
+          ) : (
+            <p>Checking saved rows and the active term…</p>
+          )
+        }
+        confirmLabel="Activate term"
+        busy={summaryMutation.isPending || activateMutation.isPending}
+        onConfirm={() => {
+          if (activateTarget) {
+            activateMutation.mutate(activateTarget.termId);
+          }
+        }}
+      />
+
       {/* Deactivate confirmation */}
       <ConfirmDialog
         open={!!deactivateTarget}
-        onClose={() => setDeactivateTarget(null)}
+        onClose={() => {
+          setDeactivateTarget(null);
+          setDeactivateSummary(null);
+        }}
         title="Deactivate term?"
-        description={`Deactivate term "${deactivateTarget?.termName} — AY ${deactivateTarget?.schoolYear}", which leaves no active term and hides the timetable until one is activated?`}
+        description={
+          deactivateSummary ? (
+            <>
+              <p>
+                Deactivate term "{deactivateTarget?.termName} — AY{' '}
+                {deactivateTarget?.schoolYear}", which leaves no active term and
+                hides the timetable until one is activated?
+              </p>
+              <p className="mt-2">
+                Rows in this term: draft {deactivateSummary.statusCounts.draft},
+                review {deactivateSummary.statusCounts.review}, finalized{' '}
+                {deactivateSummary.statusCounts.finalized}, published{' '}
+                {deactivateSummary.statusCounts.published}.
+              </p>
+              <p className="mt-2">
+                Pending requests: publish{' '}
+                {deactivateSummary.pendingRequests.publish}, change{' '}
+                {deactivateSummary.pendingRequests.change}, unfinalize{' '}
+                {deactivateSummary.pendingRequests.unfinalize}, faculty{' '}
+                {deactivateSummary.pendingRequests.faculty}.
+              </p>
+              <p className="mt-2 font-semibold text-red-700">
+                Warning: draft rows and all other rows will be saved to the term
+                archive, pending requests will be closed, and the live timetable
+                grid will be cleared.
+              </p>
+            </>
+          ) : (
+            <p>Checking rows and pending requests…</p>
+          )
+        }
         confirmLabel="Deactivate term"
         tone="danger"
-        busy={deactivateMutation.isPending}
+        busy={summaryMutation.isPending || deactivateMutation.isPending}
         requireText="DEACTIVATE"
         onConfirm={() => {
           if (deactivateTarget) {

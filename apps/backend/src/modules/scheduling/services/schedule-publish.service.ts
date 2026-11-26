@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Schedule } from '../entities/schedule.entity';
 import {
   SchedulePublishRequest,
@@ -20,6 +20,7 @@ import { NotificationDispatcherService } from '../../notifications/notification-
 import { RecipientsService } from '../../notifications/recipients.service';
 import { SupabaseService } from '../../../database/supabase.service';
 import { loadDeptLabel } from '../../notifications/notification-context';
+import { TermPublishedVersionService } from './term-published-version.service';
 
 const REQUEST_STATUSES: SchedulePublishRequestStatus[] = [
   'pending',
@@ -49,6 +50,8 @@ export class SchedulePublishService {
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
     private readonly supabase: SupabaseService,
+    private readonly publishedVersions: TermPublishedVersionService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(
@@ -199,20 +202,56 @@ export class SchedulePublishService {
       );
     }
 
+    if (schedule.term?.isActive === false) {
+      request.status = 'cancelled';
+      request.respondedBy = user?.userId ?? null;
+      request.respondedAt = new Date();
+      request.responseRemarks =
+        'The term is no longer active; this request was closed.';
+      await this.requestRepo.save(request);
+      throw new BadRequestException(
+        'The term is no longer active; this request was closed.',
+      );
+    }
+
     if (dto.action === 'reject' && !dto.remarks?.trim()) {
       throw new BadRequestException('Rejection remarks are required.');
     }
 
-    await this.scheduleRepo.update(schedule.scheduleId, {
-      status: dto.action === 'approve' ? 'published' : 'draft',
-    });
-    schedule.status = dto.action === 'approve' ? 'published' : 'draft';
+    const resolve = (repo: Repository<SchedulePublishRequest>) => {
+      const resolved = {
+        ...request,
+        status: dto.action === 'approve' ? 'approved' : 'rejected',
+        respondedBy: user?.userId ?? null,
+        respondedAt: new Date(),
+        responseRemarks: dto.remarks?.trim() || null,
+      };
+      return repo.save(resolved as SchedulePublishRequest);
+    };
 
-    request.status = dto.action === 'approve' ? 'approved' : 'rejected';
-    request.respondedBy = user?.userId ?? null;
-    request.respondedAt = new Date();
-    request.responseRemarks = dto.remarks?.trim() || null;
-    const saved = await this.requestRepo.save(request);
+    let saved: SchedulePublishRequest;
+    if (dto.action === 'approve') {
+      saved = await this.dataSource.transaction(async (manager) => {
+        // Publish first so the manager-scoped read inside writeTerm captures
+        // this entry as published, then save the decision in the same
+        // transaction. A failed archive write discards both writes.
+        await manager
+          .getRepository(Schedule)
+          .update(schedule.scheduleId, { status: 'published' });
+        schedule.status = 'published';
+        await this.publishedVersions.writeTerm(
+          schedule.termId,
+          user,
+          'published',
+          manager,
+        );
+        return resolve(manager.getRepository(SchedulePublishRequest));
+      });
+    } else {
+      await this.scheduleRepo.update(schedule.scheduleId, { status: 'draft' });
+      schedule.status = 'draft';
+      saved = await resolve(this.requestRepo);
+    }
 
     try {
       await this.notifyResponded(saved, schedule, dto.action, user);

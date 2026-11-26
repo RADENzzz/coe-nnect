@@ -1,0 +1,310 @@
+import 'reflect-metadata';
+
+import { strict as assert } from 'node:assert';
+import {
+  ScheduleVersionService,
+} from '../src/modules/scheduling/services/schedule-version.service';
+import {
+  TermPublishedVersionService,
+  type PublishedVersionEntry,
+} from '../src/modules/scheduling/services/term-published-version.service';
+import {
+  parseSource,
+  VersionCompareService,
+} from '../src/modules/scheduling/services/version-compare.service';
+import { createFakeRepository } from './fakes/repository.fake';
+import { deanProfile, departmentHeadProfile } from './helpers/profiles';
+
+type Repo = ReturnType<typeof createFakeRepository>;
+
+function entry(overrides: Record<string, unknown> = {}): PublishedVersionEntry {
+  return {
+    schedule_id: null,
+    subject_id: 'S1',
+    subject_code: 'CODE-S1',
+    subject_title: 'Subject S1',
+    section_id: 'SEC1',
+    section_code: 'SEC1',
+    faculty_id: null,
+    external_faculty_name: null,
+    faculty_name: null,
+    room_id: null,
+    room_number: null,
+    building: null,
+    external_room_name: null,
+    day_of_week: 'Monday',
+    start_time: '08:00',
+    end_time: '10:00',
+    load_type: 'lecture',
+    status: 'published',
+    remarks: null,
+    dept_id: '1',
+    session_index: 0,
+    ...overrides,
+  } as PublishedVersionEntry;
+}
+
+function liveRow(
+  scheduleId: string,
+  subjectId: string,
+  sectionId: string,
+  loadType: 'lecture' | 'laboratory' | 'other',
+  deptId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    scheduleId,
+    termId: '1',
+    subjectId,
+    subject: { subjectCode: `CODE-${subjectId}`, title: `Subject ${subjectId}` },
+    sectionId,
+    section: sectionId,
+    sectionRef: { sectionCode: sectionId },
+    facultyId: null,
+    externalFacultyName: null,
+    roomId: null,
+    room: null,
+    externalRoomName: null,
+    dayOfWeek: 'Monday',
+    startTime: '08:00',
+    endTime: '10:00',
+    loadType,
+    status: 'published',
+    remarks: null,
+    deptId,
+    ...overrides,
+  };
+}
+
+describe('VersionCompareService', () => {
+  let publishedRepo: Repo;
+  let scheduleRepo: Repo;
+  let historyRepo: Repo;
+  let termRepo: Repo;
+  let published: TermPublishedVersionService;
+  let versionService: ScheduleVersionService;
+  let service: VersionCompareService;
+
+  beforeEach(() => {
+    publishedRepo = createFakeRepository([], { idKey: 'termPublishedVersionId' });
+    scheduleRepo = createFakeRepository([], { idKey: 'scheduleId' });
+    historyRepo = createFakeRepository([], { idKey: 'versionId' });
+    termRepo = createFakeRepository([], { idKey: 'termId' });
+
+    // writeVersion asks the history repository for MAX(version_number).
+    (historyRepo as any).createQueryBuilder = jest.fn(() => {
+      const builder: any = {
+        select: jest.fn(() => builder),
+        where: jest.fn(() => builder),
+        andWhere: jest.fn(() => builder),
+        getRawOne: jest.fn(async () => ({ max: '0' })),
+      };
+      return builder;
+    });
+
+    const supabase = {
+      getAdminClient: jest.fn(() => ({
+        from: jest.fn(() => ({
+          select: jest.fn(() => ({
+            eq: jest.fn(() => ({ maybeSingle: jest.fn(async () => ({ data: null })) })),
+            in: jest.fn(async () => ({ data: [] })),
+            maybeSingle: jest.fn(async () => ({ data: null })),
+          })),
+        })),
+      })),
+    };
+
+    published = new TermPublishedVersionService(
+      publishedRepo as any,
+      scheduleRepo as any,
+      termRepo as any,
+    );
+    versionService = new ScheduleVersionService(
+      scheduleRepo as any,
+      historyRepo as any,
+      supabase as any,
+    );
+    service = new VersionCompareService(
+      published as any,
+      versionService as any,
+      scheduleRepo as any,
+    );
+  });
+
+  function seedHistory(id: string, termId: string, entries: PublishedVersionEntry[]) {
+    historyRepo.rows.push({
+      versionId: id,
+      termId,
+      facultyId: null,
+      versionNumber: Number(id),
+      finalizedBy: null,
+      snapshot: {
+        snapshot_version: 1,
+        term_id: termId,
+        entry_count: entries.length,
+        entries,
+      },
+      lastModifiedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+  }
+
+  function seedPublished(id: string, entries: PublishedVersionEntry[]) {
+    publishedRepo.rows.push({
+      termPublishedVersionId: id,
+      termId: '1',
+      versionNumber: 1,
+      snapshot: { snapshot_version: 1, entry_count: entries.length, entries },
+      publishedAt: new Date('2026-01-01T00:00:00Z'),
+      deactivatedAt: null,
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      lastModifiedBy: deanProfile.userId,
+    });
+  }
+
+  it('compares two history versions from different terms without the old same-term guard', async () => {
+    seedHistory('11', 'termA', [entry({ subject_id: 'S1', section_id: 'SEC1' })]);
+    seedHistory('12', 'termB', [
+      entry({ subject_id: 'S2', section_id: 'SEC2', load_type: 'laboratory' }),
+    ]);
+
+    const result = await service.compareSources('history:11', 'history:12', deanProfile);
+
+    assert.equal(result.added.length, 1);
+    assert.equal(result.removed.length, 1);
+    assert.equal(result.unchanged, 0);
+    assert.deepEqual([result.versionA.entryCount, result.versionB.entryCount], [1, 1]);
+  });
+
+  it('pairs repeated sessions by session_index before diffing', async () => {
+    seedHistory('11', 'termA', [
+      entry({ schedule_id: 'a1', day_of_week: 'Monday', session_index: 0 }),
+      entry({ schedule_id: 'a2', day_of_week: 'Tuesday', session_index: 1 }),
+    ]);
+    // Snapshot order is deliberately reversed; session 1 is the changed one.
+    seedHistory('12', 'termA', [
+      entry({ schedule_id: 'b2', day_of_week: 'Wednesday', session_index: 1 }),
+      entry({ schedule_id: 'b1', day_of_week: 'Monday', session_index: 0 }),
+    ]);
+
+    const result = await versionService.compareVersions('11', '12');
+
+    assert.equal(result.moved.length, 1);
+    assert.deepEqual(result.moved[0].changes, ['day']);
+    assert.equal(result.moved[0].before.schedule_id, 'a2');
+    assert.equal(result.moved[0].after.schedule_id, 'b2');
+    assert.equal(result.unchanged, 1);
+  });
+
+  it('normalizes a live source to actor-visible rows only', async () => {
+    const rows = [
+      liveRow('live-1', 'S1', 'SEC1', 'lecture', '1'),
+      liveRow('live-2', 'S2', 'SEC2', 'lecture', '2'),
+      liveRow('live-3', 'S3', 'SEC3', 'lecture', '3'),
+    ];
+    scheduleRepo.rows.push(...rows);
+    seedPublished(
+      '9',
+      rows.map((row) =>
+        entry({
+          subject_id: row.subjectId,
+          section_id: row.sectionId,
+          section_code: row.sectionId,
+          dept_id: row.deptId,
+        }),
+      ),
+    );
+
+    const dhResult = await service.compareSources('live:1', 'published:9', departmentHeadProfile);
+    assert.equal(dhResult.versionA.entryCount, 1);
+    assert.equal(dhResult.added.length, 2);
+    assert.equal(dhResult.unchanged, 1);
+
+    const deanResult = await service.compareSources('live:1', 'published:9', deanProfile);
+    assert.equal(deanResult.versionA.entryCount, 3);
+    assert.equal(deanResult.unchanged, 3);
+  });
+
+  it('rejects an unknown source prefix', async () => {
+    assert.deepEqual(parseSource('published:9'), { kind: 'published', id: '9' });
+    assert.deepEqual(parseSource('history:11'), { kind: 'history', id: '11' });
+    assert.deepEqual(parseSource('live:1'), { kind: 'live', id: '1' });
+    assert.throws(() => parseSource('draft:1'), /unknown source/i);
+    await assert.rejects(
+      () => service.compareSources('draft:1', 'published:9', deanProfile),
+      /unknown source/i,
+    );
+  });
+
+  it('rejects a source without a colon or id', async () => {
+    for (const bare of ['published', 'history', 'live']) {
+      assert.throws(() => parseSource(bare), /unknown source/i);
+    }
+    assert.throws(() => parseSource('published:'), /missing an id/i);
+    await assert.rejects(
+      () => service.compareSources('published', 'published:9', deanProfile),
+      /unknown source/i,
+    );
+  });
+
+  it('refuses a live source for a department head without a department id', async () => {
+    scheduleRepo.rows.push(
+      liveRow('live-1', 'S1', 'SEC1', 'lecture', '1'),
+      liveRow('live-2', 'S2', 'SEC2', 'lecture', '2'),
+    );
+    seedPublished('9', []);
+
+    for (const missing of [null, undefined]) {
+      await assert.rejects(
+        () =>
+          service.compareSources('live:1', 'published:9', {
+            ...departmentHeadProfile,
+            deptId: missing,
+          }),
+        /department id/i,
+      );
+    }
+
+    // No live rows were loaded, so no other department's data was exposed.
+    assert.equal((scheduleRepo.find as jest.Mock).mock.calls.length, 0);
+  });
+
+  it('keeps the old history-only same-term restriction on ScheduleVersionService.compareVersions', async () => {
+    seedHistory('11', 'termA', [entry()]);
+    seedHistory('12', 'termB', [entry({ subject_id: 'S2', section_id: 'SEC2' })]);
+
+    await assert.rejects(
+      () => versionService.compareVersions('11', '12'),
+      /different terms/i,
+    );
+  });
+
+  it('snapshot entries include external_room_name and session_index', async () => {
+    scheduleRepo.rows.push(
+      liveRow('snap-1', 'S1', 'SEC1', 'lecture', '1', {
+        status: 'finalized',
+        externalRoomName: 'Annex A',
+      }),
+      liveRow('snap-2', 'S1', 'SEC1', 'lecture', '1', {
+        status: 'published',
+        externalRoomName: 'Annex B',
+      }),
+      liveRow('snap-3', 'S2', 'SEC2', 'laboratory', '1', {
+        status: 'finalized',
+      }),
+    );
+
+    const saved = await versionService.writeVersion('1', deanProfile);
+    const snapshot = saved.snapshot as any;
+
+    assert.equal(saved.versionNumber, 1);
+    assert.equal(snapshot.entry_count, 3);
+    assert.deepEqual(
+      snapshot.entries.map((e: Record<string, unknown>) => e.external_room_name),
+      ['Annex A', 'Annex B', null],
+    );
+    assert.deepEqual(
+      snapshot.entries.map((e: Record<string, unknown>) => e.session_index),
+      [0, 1, 0],
+    );
+  });
+});

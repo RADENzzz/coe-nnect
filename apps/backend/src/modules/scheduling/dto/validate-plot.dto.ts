@@ -30,6 +30,10 @@ export class ValidatePlotDto {
   section?: string;
 
   @IsOptional()
+  @IsString()
+  externalRoomName?: string;
+
+  @IsOptional()
   @IsIn(['lecture', 'laboratory', 'other'])
   loadType?: 'lecture' | 'laboratory' | 'other';
 

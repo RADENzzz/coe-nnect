@@ -10,6 +10,7 @@ import { Room } from '../rooms/entities/room.entity';
 import { User } from '../users/entities/user.entity';
 import { SchedulePublishService } from './services/schedule-publish.service';
 import { SchedulePublishController } from './schedule-publish.controller';
+import { PublishedVersionController } from './controllers/published-version.controller';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { AutoGenerateService } from './services/auto-generate.service';
@@ -25,6 +26,11 @@ import { ScheduleVersion } from './entities/schedule-version.entity';
 import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-request.entity';
 import { SchedulePublishRequest } from './entities/schedule-publish-request.entity';
 import { ScheduleChangeRequest } from './entities/schedule-change-request.entity';
+import { TermPublishedVersion } from './entities/term-published-version.entity';
+import { TermPublishedVersionService } from './services/term-published-version.service';
+import { ScheduleReuseService } from './services/schedule-reuse.service';
+import { VersionCompareService } from './services/version-compare.service';
+import { TermLifecycleService } from './services/term-lifecycle.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
 import { ScheduleChangeRequestService } from './services/schedule-change-request.service';
 import { ScheduleUnfinalizeController } from './schedule-unfinalize.controller';
@@ -40,6 +46,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       ScheduleUnfinalizeRequest,
       SchedulePublishRequest,
       ScheduleChangeRequest,
+      TermPublishedVersion,
       TimeSlot,
       Term,
       Subject,
@@ -57,6 +64,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleUnfinalizeController,
     SchedulePublishController,
     ScheduleChangeRequestController,
+    PublishedVersionController,
     SchedulingController,
   ],
   providers: [
@@ -70,6 +78,10 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleFlagService,
     ScheduleVersionService,
     SchedulingCoverageService,
+    TermPublishedVersionService,
+    ScheduleReuseService,
+    VersionCompareService,
+    TermLifecycleService,
     SolverClient,
     RolesGuard,
   ],
@@ -78,6 +90,10 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleUnfinalizeService,
     SchedulePublishService,
     ScheduleChangeRequestService,
+    TermPublishedVersionService,
+    ScheduleReuseService,
+    VersionCompareService,
+    TermLifecycleService,
   ],
 })
 export class SchedulingModule {}

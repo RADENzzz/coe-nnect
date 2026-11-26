@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -44,6 +45,18 @@ export class TermsController {
     return { data: await this.terms.findActive() };
   }
 
+  @Roles('college_dean', 'college_secretary')
+  @Get(':id/deactivation-summary')
+  async deactivationSummary(@Param('id') id: string) {
+    return { data: await this.terms.deactivationSummary(id) };
+  }
+
+  @Roles('college_dean', 'college_secretary')
+  @Get(':id/activation-summary')
+  async activationSummary(@Param('id') id: string) {
+    return { data: await this.terms.activationSummary(id) };
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return { data: await this.terms.findOne(id) };
@@ -59,15 +72,15 @@ export class TermsController {
   @Auditable({ action: 'term.deactivate', source: 'Terms' })
   @Roles('college_dean', 'college_secretary')
   @Patch(':id/deactivate')
-  async deactivate(@Param('id') id: string) {
-    return { data: await this.terms.deactivate(id) };
+  async deactivate(@Param('id') id: string, @Req() req: any) {
+    return { data: await this.terms.deactivate(id, req?.profile ?? req?.user) };
   }
 
   @Auditable({ action: 'term.activate', source: 'Terms' })
   @Roles('college_dean', 'college_secretary')
   @Patch(':id/activate')
-  async activate(@Param('id') id: string) {
-    return { data: await this.terms.activate(id) };
+  async activate(@Param('id') id: string, @Req() req: any) {
+    return { data: await this.terms.activate(id, req?.profile ?? req?.user) };
   }
 
   @Auditable({ action: 'term.delete', source: 'Terms' })

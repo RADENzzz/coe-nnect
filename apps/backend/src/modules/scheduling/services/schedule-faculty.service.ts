@@ -141,7 +141,11 @@ export class ScheduleFacultyService {
     termId: string;
     subjectId: string;
     user: any;
-  }): Promise<{ requestId: string; facultyDeptId: string } | null> {
+  }): Promise<{
+    requestId: string;
+    facultyDeptId: string;
+    created: boolean;
+  } | null> {
     const { facultyId, scheduleDeptId, termId, subjectId, user } = params;
 
     if (!facultyId) return null;
@@ -183,6 +187,7 @@ export class ScheduleFacultyService {
       return {
         requestId: String(existing.request_id),
         facultyDeptId,
+        created: false,
       };
     }
 
@@ -224,6 +229,7 @@ export class ScheduleFacultyService {
     return {
       requestId: String(created.request_id),
       facultyDeptId,
+      created: true,
     };
   }
 

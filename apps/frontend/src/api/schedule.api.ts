@@ -634,3 +634,128 @@ export async function compareVersions(
   });
   return data.data;
 }
+
+// ────────────────────────────────────────────
+// Published version archive, compare, and reuse
+// ────────────────────────────────────────────
+
+export type PublishedVersionSummary = {
+  versionId: string;
+  termId: string | null;
+  termName: string;
+  semester: string | null;
+  schoolYear: string;
+  entryCount: number;
+  stale: boolean;
+  locked: boolean;
+  publishedAt: string | null;
+  deactivatedAt: string | null;
+  updatedAt: string;
+};
+
+/** Snapshot row as captured by the backend; field names are intentionally snake_case. */
+export type PublishedVersionEntry = {
+  schedule_id: string | null;
+  subject_id: string;
+  subject_code: string | null;
+  subject_title: string | null;
+  section_id: string | null;
+  section_code: string | null;
+  faculty_id: string | null;
+  external_faculty_name: string | null;
+  faculty_name: string | null;
+  room_id: string | null;
+  room_number: string | null;
+  building: string | null;
+  external_room_name: string | null;
+  day_of_week: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  load_type: string | null;
+  status: RawSchedule['status'];
+  remarks: string | null;
+  dept_id: string | null;
+  session_index: number;
+};
+
+export type VersionSource = { kind: 'published' | 'history' | 'live'; id: string };
+
+export type ReuseConflict = {
+  entry: PublishedVersionEntry;
+  action: 'conflict';
+  reason: string;
+};
+
+export type ReusePreflightResult = {
+  matched: number;
+  ready: number;
+  skipped: number;
+  keptAsIs: number;
+  warnings: number;
+  conflicts: ReuseConflict[];
+  failed: boolean;
+  summary: string;
+};
+
+export type ReuseApplyResult = {
+  created: RawSchedule[];
+  updated: RawSchedule[];
+  conflicts: ReuseConflict[];
+  failed: boolean;
+};
+
+export async function fetchPublishedVersions(
+  semester?: string,
+): Promise<PublishedVersionSummary[]> {
+  const { data } = await api.get('/v1/schedules/published-versions', {
+    params: semester ? { semester } : {},
+  });
+  return data.data;
+}
+
+export type PublishedVersionDetail = PublishedVersionSummary & {
+  entries: PublishedVersionEntry[];
+};
+
+export async function fetchPublishedVersion(
+  versionId: string,
+): Promise<PublishedVersionDetail> {
+  const { data } = await api.get(`/v1/schedules/published-versions/${versionId}`);
+  return data.data;
+}
+
+export async function compareVersionSources(
+  a: VersionSource,
+  b: VersionSource,
+): Promise<VersionCompareResult> {
+  const { data } = await api.get('/v1/schedules/version-compare', {
+    params: { a: `${a.kind}:${a.id}`, b: `${b.kind}:${b.id}` },
+  });
+  return data.data;
+}
+
+export async function preflightReuse(
+  versionId: string,
+  termId: string,
+  deptId: string,
+): Promise<ReusePreflightResult> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: `/v1/schedules/published-versions/${versionId}/preflight`,
+    data: { termId, deptId },
+  });
+  return data.data;
+}
+
+export async function applyReuse(
+  versionId: string,
+  termId: string,
+  deptId: string,
+): Promise<ReuseApplyResult> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: `/v1/schedules/published-versions/${versionId}/reuse`,
+    data: { termId, deptId, confirmed: true },
+  });
+  return data.data;
+}

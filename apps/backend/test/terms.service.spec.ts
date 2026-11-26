@@ -2,30 +2,35 @@ import { BadRequestException } from '@nestjs/common';
 import { TermsService } from '../src/modules/terms/terms.service';
 import { createFakeRepository } from './fakes/repository.fake';
 import { createFakeSemesters } from './fakes/semesters.fake';
+import { deanProfile } from './helpers/profiles';
 
 function buildService(known = ['1st', '2nd', 'summer']) {
   const semesters = createFakeSemesters(known);
   const repo = createFakeRepository([], { idKey: 'termId', autoId: true });
-  const dataSource = {
-    transaction: jest.fn(),
-  };
   const dispatcher = {
     dispatch: jest.fn(),
   };
   const recipients = {
-    allDepartmentHeads: jest.fn(),
-    collegeDean: jest.fn(),
+    allDepartmentHeads: jest.fn(async () => ['dh-1']),
+    collegeDean: jest.fn(async () => ['dean-1']),
     uniq: jest.fn((values: string[]) => values),
+  };
+  const lifecycle = {
+    activate: jest.fn(async () => undefined),
+    deactivate: jest.fn(async () => undefined),
+    summary: jest.fn(async () => ({})),
   };
 
   return {
     repo,
+    lifecycle,
+    dispatcher,
     service: new TermsService(
       repo as any,
-      dataSource as any,
       dispatcher as any,
       recipients as any,
       semesters as any,
+      lifecycle as any,
     ),
   };
 }
@@ -116,5 +121,68 @@ describe('TermsService semester validation', () => {
     } as any);
 
     expect(created.semester).toBe('3rd');
+  });
+});
+
+describe('TermsService term lifecycle delegation', () => {
+  it('delegates activation to the lifecycle service and still notifies', async () => {
+    const { repo, service, lifecycle, dispatcher } = buildService();
+    repo.rows.push({
+      termId: '1',
+      termName: 'First Term',
+      schoolYear: '2026-2027',
+      semester: '1st',
+      isActive: false,
+      startDate: null,
+      endDate: null,
+    });
+    lifecycle.activate.mockImplementation(async () => {
+      repo.rows[0].isActive = true;
+    });
+
+    const activated = await service.activate('1', deanProfile);
+
+    expect(lifecycle.activate).toHaveBeenCalledWith('1', deanProfile);
+    expect(dispatcher.dispatch).toHaveBeenCalledWith(
+      'term.activated',
+      expect.objectContaining({ title: 'New term activated: First Term' }),
+    );
+    expect(activated.isActive).toBe(true);
+  });
+
+  it('delegates deactivation to the lifecycle service', async () => {
+    const { repo, service, lifecycle } = buildService();
+    repo.rows.push({
+      termId: '1',
+      termName: 'First Term',
+      schoolYear: '2026-2027',
+      semester: '1st',
+      isActive: true,
+      startDate: null,
+      endDate: null,
+    });
+
+    const deactivated = await service.deactivate('1', deanProfile);
+
+    expect(lifecycle.deactivate).toHaveBeenCalledWith('1', deanProfile);
+    expect(deactivated.termId).toBe('1');
+  });
+
+  it('keeps rejecting deactivation of an already inactive term', async () => {
+    const { repo, service, lifecycle } = buildService();
+    repo.rows.push({
+      termId: '1',
+      termName: 'First Term',
+      schoolYear: '2026-2027',
+      semester: '1st',
+      isActive: false,
+      startDate: null,
+      endDate: null,
+    });
+
+    await expect(service.deactivate('1', deanProfile)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(lifecycle.deactivate).not.toHaveBeenCalled();
   });
 });

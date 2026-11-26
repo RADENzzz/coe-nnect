@@ -23,6 +23,8 @@ import {
   fetchVersion,
   fetchUnplottedMinors,
   fetchCoverage,
+  preflightReuse,
+  applyReuse,
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
@@ -30,6 +32,11 @@ import {
   type UnplottedMinor,
   type BlockedMinorSummary,
   type CoverageReport,
+  type PublishedVersionSummary,
+  type ReuseConflict,
+  type ReusePreflightResult,
+  type ReuseApplyResult,
+  type VersionSource,
 } from '../../api/schedule.api';
 import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { fetchSubjects } from '../../api/subjects.api';
@@ -38,6 +45,7 @@ import { fetchRooms } from '../../api/rooms.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchDepartments } from '../../api/departments.api';
 import { useAuthStore } from '../../store/auth.store';
+import { useFeedback } from '../../components/ui/FeedbackToast';
 import LoadingState from '../../components/feedback/LoadingState';
 import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
@@ -64,6 +72,8 @@ import { buildPlotSubjectOptions } from '../plot-subject/plot-subject-options';
 import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
+import ReuseSummaryModal from './components/ReuseSummaryModal';
+import PublishedReuseConflictWorkspace from './components/PublishedReuseConflictWorkspace';
 import CoveragePanel from './components/CoveragePanel';
 import TimetableFilterBar from './components/TimetableFilterBar';
 import TimetableLegend from './components/TimetableLegend';
@@ -89,6 +99,26 @@ const DAY_MAP: Record<string, Day> = {
   Saturday: 'SAT',
   Sunday: 'SUN',
 };
+
+/** Normalize the drawer's published/history/live chip selection for the API. */
+function buildVersionSource(selection: VersionSource): VersionSource {
+  switch (selection.kind) {
+    case 'published':
+      return { kind: 'published', id: selection.id };
+    case 'history':
+      return { kind: 'history', id: selection.id };
+    case 'live':
+      return { kind: 'live', id: selection.id };
+  }
+}
+
+function reuseErrorMessage(err: unknown, fallback: string): string {
+  const response = (err as { response?: { data?: { message?: unknown } } })
+    ?.response?.data?.message;
+  if (Array.isArray(response) && response.length > 0) return String(response[0]);
+  if (typeof response === 'string' && response) return response;
+  return (err as Error)?.message || fallback;
+}
 
 function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
@@ -215,6 +245,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
+  const feedback = useFeedback();
 
   const [plotOpen, setPlotOpen] = useState(false);
   const [focusModeOpen, setFocusModeOpen] = useState(false);
@@ -263,8 +294,15 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [activeVersion, setActiveVersion] =
     useState<ScheduleVersionSummary | null>(null);
-  const [compareA, setCompareA] = useState<ScheduleVersionSummary | null>(null);
-  const [compareB, setCompareB] = useState<ScheduleVersionSummary | null>(null);
+  const [compareA, setCompareA] = useState<VersionSource | null>(null);
+  const [compareB, setCompareB] = useState<VersionSource | null>(null);
+
+  const [reuseVersion, setReuseVersion] =
+    useState<PublishedVersionSummary | null>(null);
+  const [reusePreflight, setReusePreflight] =
+    useState<ReusePreflightResult | null>(null);
+  const [reuseConflicts, setReuseConflicts] = useState<ReuseConflict[]>([]);
+  const [reuseApplying, setReuseApplying] = useState(false);
 
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
@@ -604,6 +642,22 @@ export default function TimetablePage({ readOnly = false }: Props) {
         .map((e) => e.id),
     );
   }, [allEntries, isDepartmentHead, myDeptId, activeVersion]);
+
+  // Reuse resolves conflicts only into writable draft rows. Published, review,
+  // finalized, pending-request, and foreign-department rows stay protected.
+  const reuseReadOnlyEntryIds = useMemo(() => {
+    const protectedIds = new Set<string>();
+    for (const entry of allEntries) {
+      if (
+        entry.status !== 'draft' ||
+        !!entry.pendingFacultyRequestId ||
+        (!!entry.deptId && String(entry.deptId) !== myDeptId)
+      ) {
+        protectedIds.add(entry.id);
+      }
+    }
+    return protectedIds;
+  }, [allEntries, myDeptId]);
 
   const entries = useMemo(() => {
     let filtered = allEntries;
@@ -1133,13 +1187,108 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, []);
 
   const handleCompare = useCallback(
-    (a: ScheduleVersionSummary, b: ScheduleVersionSummary) => {
-      setCompareA(a);
-      setCompareB(b);
+    (a: VersionSource, b: VersionSource) => {
+      setCompareA(buildVersionSource(a));
+      setCompareB(buildVersionSource(b));
       setVersionsOpen(false);
     },
     [],
   );
+
+  const handleReuse = useCallback(
+    async (version: PublishedVersionSummary) => {
+      if (!isDepartmentHead || !myDeptId) {
+        feedback.error('Only a department head can reuse published versions.');
+        return;
+      }
+      if (readOnly) {
+        feedback.error('Reuse is not available in view-only mode.');
+        return;
+      }
+      if (!activeTerm?.termId) {
+        feedback.error('No active term is available for reuse.');
+        return;
+      }
+
+      setVersionsOpen(false);
+      setActiveVersion(null);
+      setReuseVersion(version);
+      setReusePreflight(null);
+      setReuseConflicts([]);
+      try {
+        const result = await preflightReuse(
+          version.versionId,
+          activeTerm.termId,
+          myDeptId,
+        );
+        setReusePreflight(result);
+        if (result.failed) {
+          feedback.error(
+            result.summary || 'No published subjects matched this prospectus.',
+          );
+        }
+      } catch (err) {
+        setReuseVersion(null);
+        feedback.error(reuseErrorMessage(err, 'Could not check reuse matches.'));
+      }
+    },
+    [activeTerm?.termId, feedback, isDepartmentHead, myDeptId, readOnly],
+  );
+
+  const handleApplyReuse = useCallback(async () => {
+    if (
+      !reuseVersion ||
+      !reusePreflight ||
+      reusePreflight.failed ||
+      !activeTerm?.termId ||
+      !myDeptId
+    ) {
+      return;
+    }
+    setReuseApplying(true);
+    try {
+      const result: ReuseApplyResult = await applyReuse(
+        reuseVersion.versionId,
+        activeTerm.termId,
+        myDeptId,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['schedules', activeTerm.termId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['published-versions', activeTerm.semester],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['unscheduled', activeTerm.termId, myDeptId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['faculty-requests'] }),
+      ]);
+
+      setReuseVersion(null);
+      setReusePreflight(null);
+      if (result.failed) {
+        setReuseConflicts([]);
+        feedback.error('Reuse was rejected; no rows were changed.');
+        return;
+      }
+      if (result.conflicts.length > 0) {
+        setReuseConflicts(result.conflicts);
+        feedback.error(
+          `${result.conflicts.length} conflict(s) remain unresolved. Resolve them in the workspace.`,
+        );
+        return;
+      }
+      setReuseConflicts([]);
+      feedback.success(
+        `Reuse complete: ${result.created.length} created, ${result.updated.length} updated as drafts.`,
+      );
+    } catch (err) {
+      feedback.error(reuseErrorMessage(err, 'Could not apply the reuse.'));
+    } finally {
+      setReuseApplying(false);
+    }
+  }, [activeTerm, feedback, myDeptId, queryClient, reusePreflight, reuseVersion]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -1896,10 +2045,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
           open={versionsOpen}
           onClose={() => setVersionsOpen(false)}
           termId={activeTerm?.termId}
+          semester={activeTerm?.semester}
+          canReuse={isDepartmentHead && !!myDeptId}
           activeVersionId={activeVersion?.versionId ?? null}
           onViewVersion={handleViewVersion}
           onExitVersionView={handleExitVersionView}
           onCompare={handleCompare}
+          onReuse={handleReuse}
         />
 
         <VersionCompareModal
@@ -1908,9 +2060,38 @@ export default function TimetablePage({ readOnly = false }: Props) {
             setCompareA(null);
             setCompareB(null);
           }}
-          versionA={compareA}
-          versionB={compareB}
+          sourceA={compareA}
+          sourceB={compareB}
         />
+
+        <ReuseSummaryModal
+          open={!!reuseVersion && !!reusePreflight}
+          onClose={() => {
+            setReuseVersion(null);
+            setReusePreflight(null);
+          }}
+          termLabel={reuseVersion?.termName ?? activeTerm?.termName ?? ''}
+          result={reusePreflight}
+          busy={reuseApplying}
+          onConfirm={handleApplyReuse}
+        />
+
+        {activeTerm && (
+          <PublishedReuseConflictWorkspace
+            open={reuseConflicts.length > 0}
+            onClose={() => setReuseConflicts([])}
+            termId={activeTerm.termId}
+            termLabel={`${activeTerm.termName} — AY ${activeTerm.schoolYear}`}
+            deptId={myDeptId}
+            deptName={
+              departments.find((d) => String(d.deptId) === myDeptId)?.deptName ??
+              ''
+            }
+            entries={allEntries}
+            readOnlyEntryIds={reuseReadOnlyEntryIds}
+            conflicts={reuseConflicts}
+          />
+        )}
 
         <CoveragePanel
           open={coveragePanelOpen}

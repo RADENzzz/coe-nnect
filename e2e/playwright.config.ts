@@ -65,6 +65,10 @@ const webServerEnv: Record<string, string> = {
   // Required for the login CAPTCHA. Test-only value: challenges and redeems
   // only need to agree within one run, and E2E never touches production.
   CAP_SECRET: 'e2e-cap-secret-not-for-production-0123456789',
+  // The serial suite makes more than ten real logins per minute; the API's
+  // production login bucket is ten per minute by design. Give E2E its own
+  // headroom instead of weakening the production default or the assertions.
+  LOGIN_THROTTLE_LIMIT: '50',
   VITE_API_BASE_URL: apiURL,
   VITE_SUPABASE_URL: supabaseURL,
   VITE_SUPABASE_ANON_KEY: anonKey,
