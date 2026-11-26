@@ -40,9 +40,16 @@ test('request rows open the subject drawer on Edit access', () => {
 test('request notification deep link opens the matching subject drawer', () => {
   assert.match(page, /searchParams\.get\('request'\)/);
   assert.match(page, /hasConsumedRequestParam/);
+  assert.match(page, /if \(requestsLoading \|\| isLoading\) return;/);
   assert.match(page, /visibleRequests\.find/);
   assert.match(page, /next\.set\('view', 'requests'\)/);
+  assert.match(page, /next\.set\('reqStatus', request\.status\)/);
   assert.match(page, /next\.delete\('request'\)/);
+});
+
+test('requests view hides catalog-only workflow UI', () => {
+  assert.match(page, /\{view !== 'requests' && \([\s\S]{0,120}<>/);
+  assert.match(page, /data-tour="subjects-filters"[\s\S]{0,2000}<\/>\s*\)\}/);
 });
 
 test('subject deep link resolves from the loaded catalog', () => {

@@ -1004,7 +1004,7 @@ export default function SubjectsPage() {
   useEffect(() => {
     if (!requestParam) return;
     if (hasConsumedRequestParam.current === requestParam) return;
-    if (requestsLoading || subjects.length === 0) return;
+    if (requestsLoading || isLoading) return;
 
     const request = visibleRequests.find(
       (r) => r.requestId === requestParam,
@@ -1028,10 +1028,11 @@ export default function SubjectsPage() {
     setMode(null);
     setEditing(null);
     next.set('view', 'requests');
+    next.set('reqStatus', request.status);
     next.delete('request');
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestParam, requestsLoading, visibleRequests, subjects]);
+  }, [requestParam, requestsLoading, isLoading, visibleRequests, subjects]);
 
   // ── Deep-link: open the subject drawer for ?subject=<subjectId> ──
   const subjectParam = searchParams.get('subject');
@@ -1657,144 +1658,149 @@ export default function SubjectsPage() {
         </nav>
       </div>
 
-      {/* ── Workflow hint ── */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
-        <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <p className="text-blue-900 font-medium">
-            Step 2 of 3 Academic Structure
-          </p>
-          <p className="text-blue-800 text-xs mt-0.5">
-            Add your department's subjects here first, then map them to programs
-            in the Prospectus. Mark subjects taught by another department as{' '}
-            <strong>minor</strong>.
-          </p>
-        </div>
-        <Link
-          to="/prospectus"
-          className="text-xs font-semibold text-blue-700 hover:text-blue-900 whitespace-nowrap flex items-center gap-1"
-        >
-          Go to Prospectus
-          <Icon name="arrow_forward" size={14} />
-        </Link>
-      </div>
+      {/* ── Catalog-only workflow UI ── */}
+      {view !== 'requests' && (
+        <>
+          {/* ── Workflow hint ── */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
+            <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-blue-900 font-medium">
+                Step 2 of 3 Academic Structure
+              </p>
+              <p className="text-blue-800 text-xs mt-0.5">
+                Add your department's subjects here first, then map them to programs
+                in the Prospectus. Mark subjects taught by another department as{' '}
+                <strong>minor</strong>.
+              </p>
+            </div>
+            <Link
+              to="/prospectus"
+              className="text-xs font-semibold text-blue-700 hover:text-blue-900 whitespace-nowrap flex items-center gap-1"
+            >
+              Go to Prospectus
+              <Icon name="arrow_forward" size={14} />
+            </Link>
+          </div>
 
-      {/* ── Stats strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-        <StatCard
-          label="Total"
-          value={stats.total}
-          icon="menu_book"
-          tone="neutral"
-          loading={isLoading}
-          onClick={hasAnyFilter ? clearAll : undefined}
-        />
-        <StatCard
-          label="Lecture only"
-          value={stats.lectureOnly}
-          icon="meeting_room"
-          tone="blue"
-          loading={isLoading}
-          active={compFilter === 'lecture_only'}
-          onClick={() => applyPreset(PRESETS[3])}
-        />
-        <StatCard
-          label="Lab only"
-          value={stats.labOnly}
-          icon="science"
-          tone="amber"
-          loading={isLoading}
-          active={compFilter === 'lab_only'}
-          onClick={() => applyPreset(PRESETS[4])}
-        />
-        <StatCard
-          label="Mixed"
-          value={stats.mixed}
-          icon="merge_type"
-          tone="purple"
-          loading={isLoading}
-          active={compFilter === 'mixed'}
-          onClick={() => applyPreset(PRESETS[0])}
-        />
-        <StatCard
-          label="Minor"
-          value={stats.minor}
-          icon="school"
-          tone="purple"
-          loading={isLoading}
-          active={minorFilter === 'minor'}
-          onClick={() => applyPreset(PRESETS[1])}
-        />
-        <StatCard
-          label="Electives"
-          value={stats.elective}
-          icon="stars"
-          tone="teal"
-          loading={isLoading}
-          active={kindFilter === 'elective'}
-          onClick={() =>
-            setFilter('kind', kindFilter === 'elective' ? 'all' : 'elective')
-          }
-        />
-        <StatCard
-          label="Inactive"
-          value={stats.inactive}
-          icon="toggle_off"
-          tone={stats.inactive > 0 ? 'rose' : 'neutral'}
-          loading={isLoading}
-          active={statusFilter === 'inactive'}
-          onClick={() =>
-            setFilter('status', statusFilter === 'inactive' ? 'all' : 'inactive')
-          }
-        />
-      </div>
+          {/* ── Stats strip ── */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+            <StatCard
+              label="Total"
+              value={stats.total}
+              icon="menu_book"
+              tone="neutral"
+              loading={isLoading}
+              onClick={hasAnyFilter ? clearAll : undefined}
+            />
+            <StatCard
+              label="Lecture only"
+              value={stats.lectureOnly}
+              icon="meeting_room"
+              tone="blue"
+              loading={isLoading}
+              active={compFilter === 'lecture_only'}
+              onClick={() => applyPreset(PRESETS[3])}
+            />
+            <StatCard
+              label="Lab only"
+              value={stats.labOnly}
+              icon="science"
+              tone="amber"
+              loading={isLoading}
+              active={compFilter === 'lab_only'}
+              onClick={() => applyPreset(PRESETS[4])}
+            />
+            <StatCard
+              label="Mixed"
+              value={stats.mixed}
+              icon="merge_type"
+              tone="purple"
+              loading={isLoading}
+              active={compFilter === 'mixed'}
+              onClick={() => applyPreset(PRESETS[0])}
+            />
+            <StatCard
+              label="Minor"
+              value={stats.minor}
+              icon="school"
+              tone="purple"
+              loading={isLoading}
+              active={minorFilter === 'minor'}
+              onClick={() => applyPreset(PRESETS[1])}
+            />
+            <StatCard
+              label="Electives"
+              value={stats.elective}
+              icon="stars"
+              tone="teal"
+              loading={isLoading}
+              active={kindFilter === 'elective'}
+              onClick={() =>
+                setFilter('kind', kindFilter === 'elective' ? 'all' : 'elective')
+              }
+            />
+            <StatCard
+              label="Inactive"
+              value={stats.inactive}
+              icon="toggle_off"
+              tone={stats.inactive > 0 ? 'rose' : 'neutral'}
+              loading={isLoading}
+              active={statusFilter === 'inactive'}
+              onClick={() =>
+                setFilter('status', statusFilter === 'inactive' ? 'all' : 'inactive')
+              }
+            />
+          </div>
 
-      {isDH && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
-          <span>
-            The catalog shows <strong>all subjects by default</strong>. Each
-            row shows its <strong>owning department</strong> in a colored
-            badge. Rows with a{' '}
-            <Icon name="lock" size={11} className="inline -mb-0.5" /> lock icon
-            belong to another department and are read-only. Use the{' '}
-            <strong>Department filter</strong> to narrow the list.
-          </span>
-        </div>
+          {isDH && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+              <span>
+                The catalog shows <strong>all subjects by default</strong>. Each
+                row shows its <strong>owning department</strong> in a colored
+                badge. Rows with a{' '}
+                <Icon name="lock" size={11} className="inline -mb-0.5" /> lock icon
+                belong to another department and are read-only. Use the{' '}
+                <strong>Department filter</strong> to narrow the list.
+              </span>
+            </div>
+          )}
+
+          {/* ── Filter panel ── */}
+          <div data-tour="subjects-filters">
+            <SubjectFiltersPanel
+              activeFilterCount={activeFilterCount}
+              filtersExpanded={filtersExpanded}
+              setFiltersExpanded={setFiltersExpanded}
+              filteredCount={filtered.length}
+              totalCount={subjects.length}
+              hasAnyFilter={hasAnyFilter}
+              clearAll={clearAll}
+              PRESETS={PRESETS}
+              isPresetActive={isPresetActive}
+              applyPreset={applyPreset}
+              filterPills={filterPills}
+              searchInput={searchInput}
+              setSearchInput={setSearchInput}
+              searchRef={searchRef}
+              deptFilter={deptFilter}
+              roomFilter={roomFilter}
+              minorFilter={minorFilter}
+              compFilter={compFilter}
+              statusFilter={statusFilter}
+              electiveCategoryFilter={electiveCategoryFilter}
+              electiveYearFilter={electiveYearFilter}
+              electiveSemesterFilter={electiveSemesterFilter}
+              electiveCategories={electiveCategories}
+              setFilter={setFilter}
+              departments={departments}
+              deptCounts={deptCounts}
+              ROOM_TYPES={ROOM_TYPES}
+            />
+          </div>
+        </>
       )}
-
-      {/* ── Filter panel ── */}
-      <div data-tour="subjects-filters">
-        <SubjectFiltersPanel
-          activeFilterCount={activeFilterCount}
-          filtersExpanded={filtersExpanded}
-          setFiltersExpanded={setFiltersExpanded}
-          filteredCount={filtered.length}
-          totalCount={subjects.length}
-          hasAnyFilter={hasAnyFilter}
-          clearAll={clearAll}
-          PRESETS={PRESETS}
-          isPresetActive={isPresetActive}
-          applyPreset={applyPreset}
-          filterPills={filterPills}
-          searchInput={searchInput}
-          setSearchInput={setSearchInput}
-          searchRef={searchRef}
-          deptFilter={deptFilter}
-          roomFilter={roomFilter}
-          minorFilter={minorFilter}
-          compFilter={compFilter}
-          statusFilter={statusFilter}
-          electiveCategoryFilter={electiveCategoryFilter}
-          electiveYearFilter={electiveYearFilter}
-          electiveSemesterFilter={electiveSemesterFilter}
-          electiveCategories={electiveCategories}
-          setFilter={setFilter}
-          departments={departments}
-          deptCounts={deptCounts}
-          ROOM_TYPES={ROOM_TYPES}
-        />
-      </div>
 
       {/* ── Table ── */}
       {view === 'requests' && (
