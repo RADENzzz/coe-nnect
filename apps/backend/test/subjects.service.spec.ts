@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SubjectsService } from '../src/modules/subjects/subjects.service';
 import { createFakeRepository } from './fakes/repository.fake';
 import { createFakeSemesters } from './fakes/semesters.fake';
@@ -18,6 +18,11 @@ const subjectRow = (overrides: Record<string, any> = {}) => ({
   isActive: true,
   deptId: '7',
   ...overrides,
+});
+
+const createEditRequestsStub = () => ({
+  hasActiveGrant: jest.fn().mockResolvedValue(false),
+  revokeGrantsForOwner: jest.fn().mockResolvedValue(undefined),
 });
 
 const prospectusRow = (overrides: Record<string, any> = {}) => ({
@@ -76,6 +81,7 @@ describe('SubjectsService.toggleActive prospectus cascade', () => {
       emptyRepo as any,
       departments as any,
       createFakeSemesters() as any,
+      createEditRequestsStub() as any,
     );
   });
 
@@ -132,6 +138,7 @@ describe('SubjectsService elective units', () => {
       emptyRepo as any,
       departments as any,
       createFakeSemesters() as any,
+      createEditRequestsStub() as any,
     );
     return { service, subjectRepo };
   }
@@ -269,6 +276,7 @@ describe('SubjectsService.remove', () => {
       qualificationRepo as any,
       departments as any,
       createFakeSemesters() as any,
+      createEditRequestsStub() as any,
     );
     return {
       service,
@@ -382,6 +390,7 @@ describe('SubjectsService elective metadata', () => {
       emptyRepo as any,
       departments as any,
       createFakeSemesters() as any,
+      createEditRequestsStub() as any,
     );
     return { service, subjectRepo };
   }
@@ -506,6 +515,7 @@ describe('SubjectsService semester validation', () => {
       emptyRepo as any,
       departments as any,
       semesters as any,
+      createEditRequestsStub() as any,
     );
     return { service, subjectRepo };
   }
@@ -540,5 +550,201 @@ describe('SubjectsService semester validation', () => {
     await service.update('1', { title: 'Renamed' } as any, admin);
 
     expect(semesters.assertUsable).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubjectsService shared edit access', () => {
+  const ownerHead = {
+    userId: 'u-owner',
+    role: 'department_head',
+    deptId: '7',
+  } as any;
+  const requesterHead = {
+    userId: 'u-requester',
+    role: 'department_head',
+    deptId: '9',
+  } as any;
+  const dean = { userId: 'u-dean', role: 'college_dean', deptId: null } as any;
+  const secretary = {
+    userId: 'u-secretary',
+    role: 'college_secretary',
+    deptId: null,
+  } as any;
+  const secretaryWithDept = {
+    userId: 'u-secretary',
+    role: 'college_secretary',
+    deptId: '8',
+  } as any;
+
+  const needRequest =
+    'Request edit access from the owning department before modifying this subject.';
+
+  function createHarness(
+    options: { subject?: Record<string, any>; grant?: boolean } = {},
+  ) {
+    const subjectRepo = createFakeRepository(
+      [subjectRow(options.subject ?? {})],
+      { idKey: 'subjectId' },
+    );
+    const emptyRepo = createFakeRepository([]);
+    const restrictions = createFakeRepository([]);
+    restrictions.createQueryBuilder = jest.fn(() => {
+      const builder: any = {
+        where: jest.fn(() => builder),
+        getCount: jest.fn(async () => 0),
+      };
+      return builder;
+    });
+    const departments = {
+      assertDepartmentActive: jest.fn().mockResolvedValue(undefined),
+    };
+    const editRequests = {
+      hasActiveGrant: jest.fn().mockResolvedValue(options.grant ?? false),
+      revokeGrantsForOwner: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new SubjectsService(
+      subjectRepo as any,
+      restrictions as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      emptyRepo as any,
+      departments as any,
+      createFakeSemesters() as any,
+      editRequests as any,
+    );
+    return { service, subjectRepo, departments, editRequests };
+  }
+
+  it('allows the owning head and college-wide roles to update', async () => {
+    for (const profile of [ownerHead, admin, dean, secretary]) {
+      const { service, subjectRepo, editRequests } = createHarness();
+
+      await expect(
+        service.update('1', { title: 'Allowed edit' } as any, profile),
+      ).resolves.toMatchObject({ title: 'Allowed edit' });
+
+      expect(subjectRepo.rows[0].title).toBe('Allowed edit');
+      expect(editRequests.hasActiveGrant).not.toHaveBeenCalled();
+    }
+  });
+
+  it('allows another head to update a MINOR subject without changing its deptId', async () => {
+    const { service, subjectRepo, editRequests } = createHarness({
+      subject: { isMinor: true },
+    });
+
+    await expect(
+      service.update('1', { title: 'Shared edit' } as any, requesterHead),
+    ).resolves.toMatchObject({ title: 'Shared edit' });
+
+    expect(subjectRepo.rows[0]).toMatchObject({
+      title: 'Shared edit',
+      isMinor: true,
+      deptId: '7',
+    });
+    expect(editRequests.hasActiveGrant).not.toHaveBeenCalled();
+  });
+
+  it('allows another head to update only when hasActiveGrant resolves true', async () => {
+    const { service, editRequests } = createHarness({ grant: true });
+
+    await expect(
+      service.update('1', { title: 'Granted edit' } as any, requesterHead),
+    ).resolves.toMatchObject({ title: 'Granted edit' });
+
+    expect(editRequests.hasActiveGrant).toHaveBeenCalledWith('1', '9');
+  });
+
+  it('rejects another head on a non-MINOR subject with no grant before repo.save', async () => {
+    const { service, subjectRepo, editRequests } = createHarness();
+
+    await expect(
+      service.update('1', { title: 'Denied edit' } as any, requesterHead),
+    ).rejects.toThrow(new ForbiddenException(needRequest));
+
+    expect(editRequests.hasActiveGrant).toHaveBeenCalledWith('1', '9');
+    expect(subjectRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('transfers ownership to the acting dept on unlabel and revokes the old owner grants', async () => {
+    const { service, subjectRepo, departments, editRequests } = createHarness({
+      subject: { isMinor: true },
+    });
+
+    const saved = await service.update(
+      '1',
+      { isMinor: false, deptId: '9' } as any,
+      requesterHead,
+    );
+
+    expect(saved).toMatchObject({ isMinor: false, deptId: '9' });
+    expect(subjectRepo.rows[0]).toMatchObject({ isMinor: false, deptId: '9' });
+    expect(departments.assertDepartmentActive).toHaveBeenCalledWith('9');
+    expect(editRequests.revokeGrantsForOwner).toHaveBeenCalledWith('1', '7');
+    expect(subjectRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the current owner when the actor has no dept on unlabel', async () => {
+    const { service, subjectRepo, editRequests } = createHarness({
+      subject: { isMinor: true },
+    });
+
+    await service.update('1', { isMinor: false } as any, secretary);
+
+    expect(subjectRepo.rows[0]).toMatchObject({ isMinor: false, deptId: '7' });
+    expect(editRequests.revokeGrantsForOwner).not.toHaveBeenCalled();
+  });
+
+  it('transfers ownership to a college-wide actor department on unlabel', async () => {
+    const { service, subjectRepo, editRequests } = createHarness({
+      subject: { isMinor: true },
+    });
+
+    await service.update('1', { isMinor: false } as any, secretaryWithDept);
+
+    expect(subjectRepo.rows[0]).toMatchObject({ isMinor: false, deptId: '8' });
+    expect(editRequests.revokeGrantsForOwner).toHaveBeenCalledWith('1', '7');
+  });
+
+  it('revokes grants whenever a college-wide role changes deptId', async () => {
+    const { service, subjectRepo, editRequests } = createHarness();
+
+    await service.update('1', { deptId: '8' } as any, admin);
+
+    expect(subjectRepo.rows[0].deptId).toBe('8');
+    expect(editRequests.revokeGrantsForOwner).toHaveBeenCalledWith('1', '7');
+  });
+
+  it('still blocks a department head from moving a non-MINOR subject', async () => {
+    const { service, subjectRepo, editRequests } = createHarness();
+
+    await expect(
+      service.update('1', { deptId: '9' } as any, ownerHead),
+    ).rejects.toThrow('You cannot move subjects to a different department.');
+
+    expect(subjectRepo.save).not.toHaveBeenCalled();
+    expect(editRequests.revokeGrantsForOwner).not.toHaveBeenCalled();
+  });
+
+  it('applies the same access check to toggleActive and remove', async () => {
+    const denied = createHarness();
+
+    await expect(denied.service.toggleActive('1', requesterHead)).rejects.toThrow(
+      new ForbiddenException(needRequest),
+    );
+    await expect(denied.service.remove('1', requesterHead)).rejects.toThrow(
+      new ForbiddenException(needRequest),
+    );
+    expect(denied.subjectRepo.save).not.toHaveBeenCalled();
+    expect(denied.subjectRepo.remove).not.toHaveBeenCalled();
+
+    const granted = createHarness({ grant: true });
+    await expect(
+      granted.service.toggleActive('1', requesterHead),
+    ).resolves.toMatchObject({ isActive: false });
+    await expect(granted.service.remove('1', requesterHead)).resolves.toEqual({
+      success: true,
+    });
+    expect(granted.editRequests.hasActiveGrant).toHaveBeenCalledWith('1', '9');
   });
 });

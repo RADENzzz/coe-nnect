@@ -18,8 +18,7 @@ export function getSubjectsDefaultDepartment(
   deptId: string | null | undefined,
   explicitDepartment: string | null | undefined,
 ): string {
-  if (explicitDepartment) return explicitDepartment;
-  return role === 'department_head' ? deptId ?? '' : '';
+  return explicitDepartment ?? '';
 }
 
 export function restoreSubjectsDepartmentFilter(
@@ -29,8 +28,5 @@ export function restoreSubjectsDepartmentFilter(
 ): URLSearchParams {
   const next = new URLSearchParams(searchParams);
   for (const key of SUBJECT_FILTER_PARAMS) next.delete(key);
-
-  const defaultDepartment = getSubjectsDefaultDepartment(role, deptId, '');
-  if (defaultDepartment) next.set('dept', defaultDepartment);
   return next;
 }

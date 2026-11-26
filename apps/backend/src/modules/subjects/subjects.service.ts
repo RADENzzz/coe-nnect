@@ -23,6 +23,7 @@ import { Prospectus } from '../prospectus/entities/prospectus.entity';
 import { FacultyQualification } from '../faculty/entities/faculty-qualification.entity';
 import { DepartmentsService } from '../departments/departments.service';
 import { SemestersService } from '../semesters/semesters.service';
+import { SubjectEditRequestsService } from './subject-edit-requests.service';
 
 const PG_FK_VIOLATION = '23503';
 
@@ -41,18 +42,22 @@ export class SubjectsService {
     private readonly qualificationRepo: Repository<FacultyQualification>,
     private readonly departments: DepartmentsService,
     private readonly semesters: SemestersService,
+    private readonly editRequests: SubjectEditRequestsService,
   ) {}
 
-  private async assertOwnership(
-    subjectId: string,
+  /** Shared edit gate for update, toggle-active, and remove. */
+  private async assertCanEdit(
+    subject: Subject,
     profile: User | undefined,
-  ): Promise<Subject> {
+  ): Promise<void> {
     if (!profile) throw new ForbiddenException('Not authenticated');
 
-    const subject = await this.findOne(subjectId);
-
-    if (profile.role === 'administrator' || profile.role === 'college_dean') {
-      return subject;
+    if (
+      profile.role === 'administrator' ||
+      profile.role === 'college_dean' ||
+      profile.role === 'college_secretary'
+    ) {
+      return;
     }
 
     if (profile.role !== 'department_head') {
@@ -61,13 +66,21 @@ export class SubjectsService {
       );
     }
 
-    if (String(subject.deptId) !== String(profile.deptId)) {
+    const isOwner =
+      subject.deptId != null &&
+      profile.deptId != null &&
+      String(subject.deptId) === String(profile.deptId);
+    if (subject.isMinor === true || isOwner) return;
+
+    const hasGrant = await this.editRequests.hasActiveGrant(
+      String(subject.subjectId),
+      String(profile.deptId),
+    );
+    if (!hasGrant) {
       throw new ForbiddenException(
-        'You can only modify subjects in your own department.',
+        'Request edit access from the owning department before modifying this subject.',
       );
     }
-
-    return subject;
   }
 
   findAll(): Promise<Subject[]> {
@@ -148,25 +161,35 @@ export class SubjectsService {
     dto: UpdateSubjectDto,
     profile: User,
   ): Promise<Subject> {
-    const found = await this.assertOwnership(id, profile);
+    const found = await this.findOne(id);
+    await this.assertCanEdit(found, profile);
 
+    const oldDeptId = String(found.deptId ?? '');
+    const isUnlabel = found.isMinor === true && dto.isMinor === false;
+    const actorDeptId = profile.deptId ? String(profile.deptId) : null;
+    // Unlabeling a MINOR transfers ownership to the acting department; all
+    // other dept changes keep the submitted target (or the current owner).
+    const nextDeptId = isUnlabel
+      ? actorDeptId ?? oldDeptId
+      : dto.deptId !== undefined
+        ? String(dto.deptId)
+        : oldDeptId;
+
+    // A department head may change ownership only via the unlabel transition.
     if (
       profile.role === 'department_head' &&
       dto.deptId !== undefined &&
-      String(dto.deptId) !== String(profile.deptId)
+      String(dto.deptId) !== oldDeptId &&
+      !isUnlabel
     ) {
       throw new ForbiddenException(
         'You cannot move subjects to a different department.',
       );
     }
 
-    // ── NEW: refuse if either the current dept (still inactive) or the
-    //          target dept (if being moved) is deactivated ──
-    if (dto.deptId !== undefined && dto.deptId !== found.deptId) {
-      await this.departments.assertDepartmentActive(dto.deptId);
-    } else {
-      await this.departments.assertDepartmentActive(found.deptId);
-    }
+    // Refuse an inactive current/target department. On unlabel the target is
+    // the acting department, not whichever deptId the form submitted.
+    await this.departments.assertDepartmentActive(nextDeptId);
 
     // ── NEW: refuse if another subject already uses the target code ──
     // (mirrors the create-path check; an update that keeps its own code is fine)
@@ -234,7 +257,15 @@ export class SubjectsService {
     if (dto.labUnits !== undefined) found.labUnits = dto.labUnits;
     if (dto.requiredRoomType !== undefined)
       found.requiredRoomType = (dto.requiredRoomType as any) ?? null;
-    if (dto.isMinor !== undefined) found.isMinor = dto.isMinor;
+    // A new owner invalidates every grant issued by the previous owner.
+    if (nextDeptId !== oldDeptId) {
+      await this.editRequests.revokeGrantsForOwner(
+        String(found.subjectId),
+        oldDeptId,
+      );
+    }
+    found.deptId = nextDeptId;
+    found.isMinor = dto.isMinor ?? found.isMinor;
     if (dto.isElective !== undefined) found.isElective = dto.isElective;
     if (dto.unitsMode !== undefined) found.unitsMode = dto.unitsMode;
     // Elective metadata is only valid while the subject is an elective.
@@ -246,7 +277,6 @@ export class SubjectsService {
       ? nextElectiveYearLevel
       : null;
     found.electiveSemester = nextIsElective ? nextElectiveSemester : null;
-    if (dto.deptId !== undefined) found.deptId = dto.deptId;
 
     return this.repo.save(found);
   }
@@ -304,7 +334,8 @@ export class SubjectsService {
   }
 
   async toggleActive(id: string, profile: User): Promise<Subject> {
-    const found = await this.assertOwnership(id, profile);
+    const found = await this.findOne(id);
+    await this.assertCanEdit(found, profile);
     await this.departments.assertDepartmentActive(found.deptId);
 
     const nextActive = !found.isActive;
@@ -341,7 +372,8 @@ export class SubjectsService {
   }
 
   async remove(id: string, profile: User): Promise<{ success: boolean }> {
-    const found = await this.assertOwnership(id, profile);
+    const found = await this.findOne(id);
+    await this.assertCanEdit(found, profile);
     await this.departments.assertDepartmentActive(found.deptId);
 
     // Prospectus mappings are intentionally not a blocker: the FK is

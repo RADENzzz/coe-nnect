@@ -114,6 +114,46 @@ export const TRIGGERS: TriggerMeta[] = [
     category: 'approvals',
     defaultEnabled: true,
   },
+  {
+    key: 'subject_edit_request.submitted',
+    label: 'Subject edit request submitted',
+    description:
+      'When a department head requests edit access to a subject from another department.',
+    category: 'approvals',
+    defaultEnabled: true,
+  },
+  {
+    key: 'subject_edit_request.approved',
+    label: 'Subject edit request approved',
+    description:
+      'When a subject edit request is approved.',
+    category: 'approvals',
+    defaultEnabled: true,
+  },
+  {
+    key: 'subject_edit_request.rejected',
+    label: 'Subject edit request rejected',
+    description:
+      'When a subject edit request is rejected.',
+    category: 'approvals',
+    defaultEnabled: true,
+  },
+  {
+    key: 'subject_edit_request.cancelled',
+    label: 'Subject edit request cancelled',
+    description:
+      'When a subject edit request is cancelled.',
+    category: 'approvals',
+    defaultEnabled: true,
+  },
+  {
+    key: 'subject_edit_request.revoked',
+    label: 'Subject edit request revoked',
+    description:
+      'When an approved subject edit request is revoked.',
+    category: 'approvals',
+    defaultEnabled: true,
+  },
 
   // ── Scheduling (auto-generate) ──
   {

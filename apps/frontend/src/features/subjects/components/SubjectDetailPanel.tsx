@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import { ActiveBadge } from '../../../components/ui/StatusBadge';
-import { isAnyModalOpen } from '../../../components/ui/Modal';
+import Modal, { isAnyModalOpen } from '../../../components/ui/Modal';
 import {
   fetchSubjectRestrictions,
   type SubjectRecord,
   type SubjectRoomType,
   type SubjectRestriction,
 } from '../../../api/subjects.api';
+import type {
+  SubjectEditAction,
+  SubjectEditRequest,
+} from '../../../api/subject-edit-requests.api';
 import { lockBodyScroll } from '@/lib/body-scroll-lock';
 
 type Tab = 'details' | 'restrictions';
@@ -26,6 +30,34 @@ const ROOM_TYPE_META: Record<
   other: { icon: 'category', label: 'Other' },
 };
 
+const EDIT_ACCESS_STATUS: Record<
+  SubjectEditRequest['status'],
+  { label: string; className: string }
+> = {
+  pending: {
+    label: 'Pending',
+    className: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+  },
+  approved: {
+    label: 'Approved',
+    className: 'bg-teal-500/15 text-teal-700 border-teal-500/30',
+  },
+  rejected: {
+    label: 'Rejected',
+    className: 'bg-rose-500/15 text-rose-600 border-rose-500/30',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    className:
+      'bg-surface-container-high text-on-surface-variant border-surface-variant',
+  },
+  revoked: {
+    label: 'Revoked',
+    className:
+      'bg-surface-container-high text-on-surface-variant border-surface-variant',
+  },
+};
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -40,6 +72,19 @@ interface Props {
   /** Click handler for a restriction target — allows jumping to the paired subject. */
   onOpenSubject?: (subjectId: string) => void;
   togglePending?: boolean;
+  /** Per-action mutation state, keyed to the current subject/request. */
+  requestActionPending?: boolean;
+  cancelActionPending?: boolean;
+  respondActionPending?: boolean;
+  /** Deep-link only: open the drawer on the Edit access section. */
+  focusEditAccess?: boolean;
+  /** Cross-department edit request state (request data and permissions). */
+  editRequest: SubjectEditRequest | null;
+  canRespond: boolean;
+  canCancel: boolean;
+  onRequestEdit: (reason: string) => Promise<boolean>;
+  onCancelRequest: () => Promise<boolean>;
+  onRespond: (action: SubjectEditAction, remarks: string) => Promise<boolean>;
 }
 
 export default function SubjectDetailPanel({
@@ -54,14 +99,51 @@ export default function SubjectDetailPanel({
   onDelete,
   onOpenSubject,
   togglePending = false,
+  requestActionPending = false,
+  cancelActionPending = false,
+  respondActionPending = false,
+  focusEditAccess = false,
+  editRequest,
+  canRespond,
+  canCancel,
+  onRequestEdit,
+  onCancelRequest,
+  onRespond,
 }: Props) {
   const [tab, setTab] = useState<Tab>('details');
   const [copied, setCopied] = useState(false);
+  const [requestReason, setRequestReason] = useState('');
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [remarks, setRemarks] = useState('');
+  const [remarksAction, setRemarksAction] = useState<SubjectEditAction>('approve');
+  const [remarksOpen, setRemarksOpen] = useState(false);
+  const [reasonSubmitting, setReasonSubmitting] = useState(false);
+  const [remarksSubmitting, setRemarksSubmitting] = useState(false);
+  const [directAction, setDirectAction] = useState<
+    'cancel' | 'revoke' | null
+  >(null);
+  const reasonSubmittingRef = useRef(false);
+  const remarksSubmittingRef = useRef(false);
+  const directActionRef = useRef<'cancel' | 'revoke' | null>(null);
+  const editAccessRef = useRef<HTMLDivElement>(null);
 
   // Reset tab on subject switch.
   useEffect(() => {
     if (open) setTab('details');
   }, [subject?.subjectId, open]);
+
+  // Focus Edit access when requested by a deep link.
+  useEffect(() => {
+    if (!open || !focusEditAccess || !subject?.subjectId) return;
+    setTab('details');
+    const frame = requestAnimationFrame(() => {
+      editAccessRef.current?.scrollIntoView({
+        block: 'center',
+        behavior: 'smooth',
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusEditAccess, open, subject?.subjectId]);
 
   // Escape closes — unless a modal is above us.
   useEffect(() => {
@@ -101,6 +183,88 @@ export default function SubjectDetailPanel({
   const activeRestrictionCount = restrictionsForSubject.filter(
     (r) => r.isActive,
   ).length;
+
+  // A different subject or a different request must not inherit typed text or
+  // leave a stale input modal open.
+  useEffect(() => {
+    reasonSubmittingRef.current = false;
+    remarksSubmittingRef.current = false;
+    directActionRef.current = null;
+    setReasonSubmitting(false);
+    setRemarksSubmitting(false);
+    setDirectAction(null);
+    setRequestReason('');
+    setReasonOpen(false);
+    setRemarks('');
+    setRemarksAction('approve');
+    setRemarksOpen(false);
+  }, [subject?.subjectId, editRequest?.requestId, editRequest?.status]);
+
+  const requestPending = editRequest?.status === 'pending';
+
+  const submitRequestReason = async () => {
+    const reason = requestReason.trim();
+    if (!reason || reasonSubmitting || requestActionPending) return;
+    if (reasonSubmittingRef.current) return;
+    reasonSubmittingRef.current = true;
+    setReasonSubmitting(true);
+    try {
+      const ok = await onRequestEdit(reason);
+      if (ok) setReasonOpen(false);
+    } finally {
+      reasonSubmittingRef.current = false;
+      setReasonSubmitting(false);
+    }
+  };
+
+  const openRemarks = (action: SubjectEditAction) => {
+    if (respondActionPending) return;
+    setRemarksAction(action);
+    setRemarks('');
+    setRemarksOpen(true);
+  };
+
+  const submitRemarks = async () => {
+    const value = remarks.trim();
+    if (remarksAction === 'reject' && !value) return;
+    if (remarksSubmitting || respondActionPending) return;
+    if (remarksSubmittingRef.current) return;
+    remarksSubmittingRef.current = true;
+    setRemarksSubmitting(true);
+    try {
+      const ok = await onRespond(remarksAction, value);
+      if (ok) setRemarksOpen(false);
+    } finally {
+      remarksSubmittingRef.current = false;
+      setRemarksSubmitting(false);
+    }
+  };
+
+  const cancelRequest = async () => {
+    if (directAction !== null || cancelActionPending) return;
+    if (directActionRef.current !== null) return;
+    directActionRef.current = 'cancel';
+    setDirectAction('cancel');
+    try {
+      await onCancelRequest();
+    } finally {
+      directActionRef.current = null;
+      setDirectAction(null);
+    }
+  };
+
+  const revokeRequest = async () => {
+    if (directAction !== null || respondActionPending) return;
+    if (directActionRef.current !== null) return;
+    directActionRef.current = 'revoke';
+    setDirectAction('revoke');
+    try {
+      await onRespond('revoke', '');
+    } finally {
+      directActionRef.current = null;
+      setDirectAction(null);
+    }
+  };
 
   const copyCode = async () => {
     if (!subject) return;
@@ -365,6 +529,129 @@ export default function SubjectDetailPanel({
                   }
                 />
               </InfoSection>
+
+              <InfoSection title="Edit access" icon="key" sectionRef={editAccessRef}>
+                {subject.isMinor ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2.5">
+                    <Icon
+                      name="school"
+                      size={14}
+                      className="text-purple-600 shrink-0 mt-0.5"
+                    />
+                    <p className="text-xs text-purple-700 leading-relaxed">
+                      Shared subject — all departments may edit
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Icon
+                        name="key"
+                        size={14}
+                        className="text-on-surface-variant shrink-0"
+                      />
+                      <span className="text-xs text-on-surface-variant w-24 shrink-0">
+                        Status
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                          editRequest
+                            ? EDIT_ACCESS_STATUS[editRequest.status].className
+                            : 'bg-surface-container-high text-on-surface-variant border-surface-variant'
+                        }`}
+                      >
+                        {editRequest
+                          ? EDIT_ACCESS_STATUS[editRequest.status].label
+                          : 'No request'}
+                      </span>
+                    </div>
+                    {editRequest && (
+                      <>
+                        <InfoRow
+                          label="Reason"
+                          icon="notes"
+                          value={editRequest.reason}
+                        />
+                        {editRequest.status === 'approved' && (
+                          <InfoRow
+                            label="Granted to"
+                            icon="apartment"
+                            value={departmentLabel(editRequest.requestingDeptId)}
+                          />
+                        )}
+                        {editRequest.responseRemarks && (
+                          <InfoRow
+                            label="Remarks"
+                            icon="chat"
+                            value={editRequest.responseRemarks}
+                          />
+                        )}
+                      </>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {editRequest?.status === 'pending' && canRespond && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openRemarks('approve')}
+                            disabled={respondActionPending || directAction !== null}
+                            className="px-3 py-2 text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <Icon name="check" size={14} />
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openRemarks('reject')}
+                            disabled={respondActionPending || directAction !== null}
+                            className="px-3 py-2 text-xs font-semibold border border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 transition rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <Icon name="close" size={14} />
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      {editRequest?.status === 'pending' && canCancel && (
+                        <button
+                          type="button"
+                          onClick={cancelRequest}
+                          disabled={cancelActionPending || directAction !== null}
+                          className="px-3 py-2 text-xs font-semibold border border-surface-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <Icon name="close" size={14} />
+                          Cancel request
+                        </button>
+                      )}
+                      {editRequest?.status === 'approved' && canRespond && (
+                        <button
+                          type="button"
+                          onClick={revokeRequest}
+                          disabled={respondActionPending || directAction !== null}
+                          className="px-3 py-2 text-xs font-semibold border border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <Icon name="lock" size={14} />
+                          Revoke
+                        </button>
+                      )}
+                      {((!editRequest && isForeign) ||
+                        (isForeign &&
+                          !requestPending &&
+                          editRequest?.status !== 'approved')) && (
+                        <button
+                          type="button"
+                          onClick={() => setReasonOpen(true)}
+                          disabled={requestActionPending || reasonSubmitting}
+                          className="px-3 py-2 text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <Icon name="edit" size={14} />
+                          Request edit
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </InfoSection>
             </>
           )}
 
@@ -406,7 +693,13 @@ export default function SubjectDetailPanel({
               <button
                 type="button"
                 onClick={onEdit}
-                className="px-4 py-2 text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-1.5"
+                disabled={requestPending}
+                title={
+                  requestPending
+                    ? 'An edit request is pending for this subject'
+                    : undefined
+                }
+                className="px-4 py-2 text-xs font-semibold bg-primary text-on-primary hover:opacity-90 transition rounded-lg flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Icon name="edit" size={14} />
                 Edit Subject
@@ -420,6 +713,117 @@ export default function SubjectDetailPanel({
           )}
         </div>
       </aside>
+
+      <Modal
+        open={reasonOpen}
+        onClose={() => setReasonOpen(false)}
+        title="Request edit access"
+        description={`Ask ${departmentLabel(subject.deptId)} for permission to edit "${code}".`}
+        size="sm"
+        busy={reasonSubmitting || requestActionPending}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setReasonOpen(false)}
+              disabled={reasonSubmitting || requestActionPending}
+              className="px-3 py-2 rounded-lg text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitRequestReason}
+              disabled={!requestReason.trim() || reasonSubmitting || requestActionPending}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50"
+            >
+              Send request
+            </button>
+          </>
+        }
+      >
+        <label
+          htmlFor="subject-edit-request-reason"
+          className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant"
+        >
+          Reason
+        </label>
+        <textarea
+          id="subject-edit-request-reason"
+          rows={4}
+          maxLength={1000}
+          value={requestReason}
+          onChange={(e) => setRequestReason(e.target.value)}
+          disabled={reasonSubmitting || requestActionPending}
+          placeholder="Why does your department need to edit this subject?"
+          className="w-full resize-none rounded-lg border border-surface-variant px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none disabled:opacity-60"
+        />
+        <p className="mt-1 text-right text-xs text-on-surface-variant">
+          {requestReason.length}/1000
+        </p>
+      </Modal>
+
+      <Modal
+        open={remarksOpen}
+        onClose={() => setRemarksOpen(false)}
+        title={
+          remarksAction === 'approve'
+            ? 'Approve edit request'
+            : 'Reject edit request'
+        }
+        description={`${code} · requested by ${departmentLabel(editRequest?.requestingDeptId ?? null)}`}
+        size="sm"
+        busy={remarksSubmitting || respondActionPending}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRemarksOpen(false)}
+              disabled={remarksSubmitting || respondActionPending}
+              className="px-3 py-2 rounded-lg text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitRemarks}
+              disabled={(remarksAction === 'reject' && !remarks.trim()) || remarksSubmitting || respondActionPending}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-on-primary hover:opacity-90 transition disabled:opacity-50"
+            >
+              {remarksAction === 'approve' ? 'Approve' : 'Reject'}
+            </button>
+          </>
+        }
+      >
+        <label
+          htmlFor="subject-edit-request-remarks"
+          className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-on-surface-variant"
+        >
+          Remarks {remarksAction === 'approve' ? '(optional)' : '(required)'}
+        </label>
+        <textarea
+          id="subject-edit-request-remarks"
+          rows={4}
+          maxLength={1000}
+          value={remarks}
+          onChange={(e) => setRemarks(e.target.value)}
+          disabled={remarksSubmitting || respondActionPending}
+          placeholder={
+            remarksAction === 'approve'
+              ? 'Optional note for the requesting department'
+              : 'Explain why the request was rejected'
+          }
+          className="w-full resize-none rounded-lg border border-surface-variant px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none disabled:opacity-60"
+        />
+        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-on-surface-variant">
+          {remarksAction === 'reject' && !remarks.trim() ? (
+            <span className="text-rose-600">Remarks are required to reject.</span>
+          ) : (
+            <span />
+          )}
+          <span>{remarks.length}/1000</span>
+        </div>
+      </Modal>
     </>,
     document.body,
   );
@@ -636,13 +1040,15 @@ function InfoSection({
   title,
   icon,
   children,
+  sectionRef,
 }: {
   title: string;
   icon: string;
   children: React.ReactNode;
+  sectionRef?: React.Ref<HTMLDivElement>;
 }) {
   return (
-    <div>
+    <div ref={sectionRef}>
       <div className="flex items-center gap-2 mb-2">
         <Icon name={icon} size={14} className="text-primary" />
         <h3 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">
