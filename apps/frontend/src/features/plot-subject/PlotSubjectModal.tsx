@@ -23,6 +23,7 @@ import { SectionHeader, FieldError, HelperText } from './components/PlotFormBits
 import PlotScheduleFields from './components/PlotScheduleFields';
 import { DAYS, DAY_ABBR, EMPTY_FORM, type MultiDayRow } from './types';
 import {
+  describePlotScheduleDestination,
   matchesPlotSubjectFilter,
   resolvePlotScheduleDeptId,
   type SubjectOption,
@@ -173,6 +174,26 @@ export default function PlotSubjectModal({
         deptId: profile?.dept_id,
       }),
     [selectedSubject?.deptId, profile?.role, profile?.dept_id],
+  );
+
+  const provenance = useMemo(
+    () =>
+      selectedSubject
+        ? describePlotScheduleDestination(
+            selectedSubject.deptId ?? '',
+            { role: profile?.role, deptId: profile?.dept_id },
+            departments,
+            isEditMode ? editing?.deptId : null,
+          )
+        : null,
+    [
+      selectedSubject,
+      profile?.role,
+      profile?.dept_id,
+      departments,
+      isEditMode,
+      editing?.deptId,
+    ],
   );
 
   const isCrossDeptSelection = useMemo(() => {
@@ -1080,6 +1101,13 @@ export default function PlotSubjectModal({
                 ))}
               </select>
               <FieldError message={fieldErrors.subjectId} />
+              {provenance?.isForeign && (
+                <HelperText tone="info">
+                  <Icon name="info" size={11} /> Cataloged under{' '}
+                  <strong>{provenance.catalogDeptLabel}</strong> — will be plotted
+                  in the <strong>{provenance.scheduleDeptLabel}</strong> schedule.
+                </HelperText>
+              )}
               {!isEditMode && filteredSubjects.length === 0 && hasActiveFilter && (
                 <HelperText tone="warn">
                   Nothing matches. Try widening the filters above.
@@ -1538,6 +1566,17 @@ export default function PlotSubjectModal({
                   <span className="text-on-surface">{summaryLine}</span>
                 </div>
               </div>
+            )}
+            {provenance && (
+              <p className="text-[11px] text-on-surface-variant flex items-center gap-1.5">
+                <Icon name="info" size={12} />
+                <span>
+                  <span className="font-semibold uppercase tracking-wider text-[10px]">
+                    Destination:
+                  </span>{' '}
+                  <strong>{provenance.scheduleDeptLabel}</strong> schedule
+                </span>
+              </p>
             )}
 
             <div className="flex flex-col sm:flex-row sm:justify-end sm:items-center gap-3">

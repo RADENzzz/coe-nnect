@@ -52,6 +52,19 @@ export interface PlotActor {
   deptId?: string | number | null;
 }
 
+export interface PlotDepartmentRecord {
+  deptId: string;
+  deptCode: string;
+  deptName: string;
+}
+
+export interface PlotScheduleDestination {
+  scheduleDeptId: string;
+  scheduleDeptLabel: string;
+  catalogDeptLabel: string | null;
+  isForeign: boolean;
+}
+
 /**
  * Mirrors the backend plot ownership rule: a department head plots into their
  * own department; college-wide roles fall back to the catalog subject owner.
@@ -64,6 +77,45 @@ export function resolvePlotScheduleDeptId(
     return String(actor.deptId);
   }
   return subjectDeptId != null ? String(subjectDeptId) : '';
+}
+
+/**
+ * Human-readable provenance for the plot modal. A catalog subject can be
+ * required by another department's prospectus, so the destination is the
+ * schedule-owning department, not necessarily the catalog owner.
+ */
+export function describePlotScheduleDestination(
+  subjectDeptId: string | number | null | undefined,
+  actor: PlotActor,
+  departments: PlotDepartmentRecord[],
+  existingScheduleDeptId?: string | number | null,
+): PlotScheduleDestination | null {
+  if (subjectDeptId == null) return null;
+
+  const existingDeptId =
+    existingScheduleDeptId != null &&
+    String(existingScheduleDeptId).trim() !== ''
+      ? String(existingScheduleDeptId)
+      : null;
+  const scheduleDeptId =
+    existingDeptId ?? resolvePlotScheduleDeptId(subjectDeptId, actor);
+  if (!scheduleDeptId) return null;
+
+  const deptLabel = (id: string) => {
+    const dept = departments.find((d) => String(d.deptId) === id);
+    return dept ? `[${dept.deptCode}] ${dept.deptName}` : `#${id}`;
+  };
+
+  const catalogDeptId =
+    String(subjectDeptId).trim() === '' ? null : String(subjectDeptId);
+  const isForeign = catalogDeptId != null && catalogDeptId !== scheduleDeptId;
+
+  return {
+    scheduleDeptId,
+    scheduleDeptLabel: deptLabel(scheduleDeptId),
+    catalogDeptLabel: isForeign && catalogDeptId ? deptLabel(catalogDeptId) : null,
+    isForeign,
+  };
 }
 
 /**
