@@ -208,14 +208,14 @@ export class SchedulingController {
   // ═══════════════════════════════════════════════════════════
 
   @Get('versions')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'department_head', 'college_secretary')
   async findVersions(@Query('termId') termId: string) {
     const data = await this.service.findVersions(termId);
     return { data };
   }
 
   @Get('versions/compare')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'department_head', 'college_secretary')
   async compareVersions(
     @Query('a') versionAId: string,
     @Query('b') versionBId: string,
@@ -225,7 +225,7 @@ export class SchedulingController {
   }
 
   @Get('versions/:versionId')
-  @Roles('college_dean', 'department_head')
+  @Roles('college_dean', 'department_head', 'college_secretary')
   async findVersion(@Param('versionId') versionId: string) {
     const data = await this.service.findVersion(versionId);
     return { data };
