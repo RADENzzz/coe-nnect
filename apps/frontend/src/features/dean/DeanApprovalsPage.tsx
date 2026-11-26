@@ -349,7 +349,7 @@ export default function DeanApprovalsPage() {
       feedback.success(
         variables.action === 'approve'
           ? `Approved — ${label} is published on the public planner. Send to IDP remains a separate manual step.`
-          : `Rejected — ${label} stays Finalized.`,
+          : `Rejected — ${label} was returned to Draft.`,
       );
       closePublishDecision();
     },
