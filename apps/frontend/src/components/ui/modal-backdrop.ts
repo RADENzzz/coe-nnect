@@ -1,6 +1,3 @@
-export function getModalBackdropClassName(blurBackdrop: boolean): string {
-  const classes = ['absolute inset-0 bg-black/60'];
-  if (blurBackdrop) classes.push('backdrop-blur-sm');
-  classes.push('animate-backdrop-in');
-  return classes.join(' ');
+export function getModalBackdropClassName(): string {
+  return 'absolute inset-0 bg-black/60 animate-backdrop-in overlay-backdrop-blur-sm';
 }

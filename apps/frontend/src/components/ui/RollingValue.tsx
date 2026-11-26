@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { useMotionEnabled } from '../../hooks/use-motion-enabled';
+import {
+  useMotionEnabled,
+  useTextMotionEnabled,
+} from '../../hooks/use-motion-enabled';
 
 const DIGIT_STRIP = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&*';
@@ -150,12 +153,13 @@ export function ScrambleText({
   loading?: boolean;
   loadingLength?: number;
 }) {
-  const animate = useMotionEnabled();
+  const animate = useTextMotionEnabled();
   const target = String(value);
   const length = Math.min(24, Math.max(4, loadingLength ?? target.length));
-  const [display, setDisplay] = useState(() =>
-    loading ? randomText(length, target) : target,
-  );
+  const [display, setDisplay] = useState(() => {
+    if (!animate) return loading ? '—' : target;
+    return loading ? randomText(length, target) : target;
+  });
   const prevLoading = useRef(loading);
   const prevValue = useRef(target);
 

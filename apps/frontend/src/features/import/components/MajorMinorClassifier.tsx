@@ -95,7 +95,6 @@ export default function MajorMinorClassifier({
         title="Separate major and minor subjects"
         description="Minor subjects are offered by another department. Everything is Major unless you mark it Minor here."
         size="lg"
-        blurBackdrop={false}
         footer={
           <>
             <button

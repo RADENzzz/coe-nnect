@@ -282,7 +282,7 @@ export default function ScheduleDetailDrawer({
     <>
       <div className="fixed inset-0 z-50">
         <div
-          className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-backdrop-in"
+          className="absolute inset-0 bg-black/30 overlay-backdrop-blur-xs animate-backdrop-in"
           onClick={onClose}
         />
 

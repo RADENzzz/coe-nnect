@@ -319,7 +319,7 @@ export default function SolverLiveBoard({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-3 overlay-backdrop-blur-sm sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label="Generating schedule"

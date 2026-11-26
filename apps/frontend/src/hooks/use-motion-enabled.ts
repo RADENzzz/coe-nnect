@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMotionStore } from '../store/motion.store';
+import { motionAllowed, useMotionStore } from '../store/motion.store';
 
 /** Tracks the OS-level reduced-motion preference. */
 export function useReducedMotion(): boolean {
@@ -26,5 +26,23 @@ export function useReducedMotion(): boolean {
 export function useMotionEnabled(): boolean {
   const loadingAnimations = useMotionStore((s) => s.loadingAnimations);
   const reduced = useReducedMotion();
-  return loadingAnimations && !reduced;
+  return motionAllowed(loadingAnimations, reduced);
+}
+
+/** True only when the text loading-animation preference allows decoding. */
+export function useTextMotionEnabled(): boolean {
+  const textLoadingAnimations = useMotionStore(
+    (s) => s.textLoadingAnimations,
+  );
+  const reduced = useReducedMotion();
+  return motionAllowed(textLoadingAnimations, reduced);
+}
+
+/** True only when the landing-page intro preference allows the splash. */
+export function useLandingIntroEnabled(): boolean {
+  const landingIntroAnimations = useMotionStore(
+    (s) => s.landingIntroAnimations,
+  );
+  const reduced = useReducedMotion();
+  return motionAllowed(landingIntroAnimations, reduced);
 }
