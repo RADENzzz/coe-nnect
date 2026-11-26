@@ -96,7 +96,8 @@ Do not add a `term_id` column to the request. Term, subject, section, and depart
 - The active-department guard still applies.
 - `approve` is allowed only from `pending` and only when the schedule is still `finalized`. It sets the schedule to `published` and the request to `approved`.
 - `reject` is allowed only from `pending` and only when the schedule is still `finalized`. It sets the schedule to `draft`, stores `response_remarks`, and sets the request to `rejected`.
-- If the schedule leaves `finalized` while a request is pending — for example, it is returned to draft directly — the service cancels the pending request so it cannot be approved later.
+- If the schedule leaves `finalized` while a request is pending — for example, it is returned to draft directly — `SchedulingService.updateStatus()` cancels the pending publish request so it cannot be approved later, mirroring the existing unfinalize cancellation hook.
+- If a request is reviewed after the schedule has left `finalized`, both approve and reject cancel it, set `response_remarks` to explain why, and throw `BadRequestException`. No schedule status change occurs in that case.
 - Dean and administrator may decide requests. All other roles are denied.
 - Existing finalization behavior is unchanged: `updateStatus(..., 'finalized')` still writes a term snapshot.
 
@@ -120,8 +121,8 @@ Audit decorators should be used for filing and responding, matching the unfinali
 
 - `ScheduleDetailDrawer`: remove `published` from the head's status options. When the entry is `finalized`, show `Request publish approval` instead.
 - `SchedulingService.updateStatus()`: reject direct attempts to set `published` through the normal status endpoint, including from the Dean. Publication happens only inside the publish-request service.
-- `DeanApprovalsPage`: remove the direct batch `publish` action and its IDP publish side effect from the status toolbar. The page gains a publish-request section instead.
-- The approval service owns the status transition and calls the existing status-change notification path with `previousStatus: 'finalized'` and `newStatus: 'published'` or `'draft'`. It must not route through the public `updateStatus()` endpoint.
+- `DeanApprovalsPage`: remove the direct batch `publish` action and its automatic IDP queue side effect from the status toolbar. The page gains a publish-request section instead. The existing manual **Send to IDP** button remains unchanged and is the only IDP queue action.
+- The approval service owns the status transition and dispatches only the new dedicated publish-request triggers. It must not dispatch `schedule.status_changed` or route through the public `updateStatus()` endpoint.
 
 ### Dean approval page
 
@@ -130,7 +131,7 @@ Add a `Publish requests` section beside the existing published-unfinalize reques
 - Pending list with subject, section, term, department, requester, filed time, and optional head note.
 - Approve/reject buttons open a decision modal using global feedback.
 - Reject requires remarks; approve may include remarks.
-- Support `?request=<requestId>` deep links from notifications, opening the decision modal for that request. Clear only `request` with `replace: true`, matching the existing unfinalize deep-link pattern.
+- Support `?publishRequest=<requestId>` deep links from notifications, opening the decision modal for that request. Clear only `publishRequest` with `replace: true`. The existing `?request=<id>` param remains reserved for unfinalize/faculty requests so bigint IDs cannot collide across queues.
 - Invalidate `['schedule-publish-requests']`, `['schedule-publish-request', scheduleId]`, `['schedules']`, `['coverage']`, `['flagged']`, and `['schedule-unfinalize-requests']` after a decision.
 
 ### Detail drawer
@@ -145,11 +146,13 @@ Add a `Publish requests` section beside the existing published-unfinalize reques
 
 Add three trigger keys:
 
-- `schedule.publish_requested` → Dean and administrators, destination `/approvals?request=<requestId>`.
+- `schedule.publish_requested` → Dean and administrators, destination `/approvals?publishRequest=<requestId>`.
 - `schedule.publish_approved` → department heads of the schedule and requester, destination `/timetable?focus=<scheduleId>`.
 - `schedule.publish_rejected` → department heads of the schedule and requester, destination `/timetable?focus=<scheduleId>`.
 
-Payloads should include `requestId`, `scheduleId`, `subjectId`, `subjectCode`, `subjectTitle`, `sectionCode`, `termName`, `deptId`, `note`, `responseRemarks`, `decidedByName`, `previousStatus`, and `newStatus`. `notification-target.ts` must resolve the new request entity type and triggers shell-aware for both `/timetable` and `/dean/timetable`.
+Register the three triggers in `apps/backend/src/modules/notifications/triggers.ts`. In `notification-target.ts`, the approved/rejected cases return the timetable focus link directly even when `subjectId` is present; they must not fall through to `subjectHref()`, which would land the head on the Subjects page. The requested case maps to the `publishRequest` param above, and the `schedule_publish_request` entity-type fallback resolves to the same destination. All links are shell-aware for both `/timetable` and `/dean/timetable`.
+
+Payloads should include `requestId`, `scheduleId`, `subjectId`, `subjectCode`, `subjectTitle`, `sectionCode`, `termName`, `deptId`, `note`, `responseRemarks`, `decidedByName`, `previousStatus`, and `newStatus`.
 
 ### Tests
 
@@ -178,4 +181,4 @@ After this lands, the protected statuses are unambiguous: only `draft` rows may 
 4. Approval makes the entry `published` and notifies the head.
 5. Rejection makes the entry `draft`, stores the Dean's remarks, notifies the head, and shows the note in the detail drawer.
 6. A published entry still requires the existing unfinalize request to return to draft.
-7. Public planner and IDP behavior is unchanged except that publication can only occur through the approval path.
+7. Public planner behavior is unchanged except that publication can only occur through the approval path. IDP remains a separate manual Dean action; approval itself does not queue IDP.
