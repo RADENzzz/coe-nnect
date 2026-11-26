@@ -55,6 +55,9 @@ function statusServiceHarness(overrides: Record<string, any> = {}) {
   const schedulePublish = {
     cancelPendingForSchedule: jest.fn(async () => {}),
   };
+  const scheduleChangeRequests = {
+    cancelPendingForSchedule: jest.fn(async () => {}),
+  };
   const service = new SchedulingService(
     scheduleRepo as any,
     unused,
@@ -72,6 +75,7 @@ function statusServiceHarness(overrides: Record<string, any> = {}) {
     departments as any,
     unused,
     schedulePublish as any,
+    scheduleChangeRequests as any,
   );
 
   return { service, row, scheduleRepo, dispatcher, schedulePublish };

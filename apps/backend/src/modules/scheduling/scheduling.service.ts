@@ -22,6 +22,7 @@ import { SchedulingCoverageService } from './services/scheduling-coverage.servic
 import { ScheduleVersionService } from './services/schedule-version.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
 import { SchedulePublishService } from './services/schedule-publish.service';
+import { ScheduleChangeRequestService } from './services/schedule-change-request.service';
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
@@ -60,6 +61,7 @@ export class SchedulingService {
     private readonly departments: DepartmentsService,
     private readonly scheduleUnfinalize: ScheduleUnfinalizeService,
     private readonly schedulePublish: SchedulePublishService,
+    private readonly scheduleChangeRequests: ScheduleChangeRequestService,
   ) {}
 
   async getActiveTerm(): Promise<Term | null> {
@@ -890,6 +892,28 @@ export class SchedulingService {
       } catch (err) {
         this.logger.warn(
           `Cancelling pending unfinalize requests failed for schedule=${id}: ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
+
+    // A change request may only be approved while its entry is still in
+    // review or finalized; leaving both states closes any open request.
+    const leftChangeEligibleStatus =
+      (previousStatus === 'review' || previousStatus === 'finalized') &&
+      status !== 'review' &&
+      status !== 'finalized';
+
+    if (leftChangeEligibleStatus) {
+      try {
+        await this.scheduleChangeRequests.cancelPendingForSchedule(
+          id,
+          user?.userId ?? null,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Cancelling pending change requests failed for schedule=${id}: ${
             (err as Error).message
           }`,
         );
