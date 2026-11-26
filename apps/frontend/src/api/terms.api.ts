@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { PublishedVersionSummary } from './schedule.api';
 
 export type SemesterType = string;
 
@@ -48,5 +49,46 @@ export async function deactivateTerm(id: string): Promise<Term> {
 
 export async function deleteTerm(id: string): Promise<{ success: boolean }> {
   const { data } = await api.delete(`/v1/terms/${id}`);
+  return data.data;
+}
+
+/** Read-only preflight counts shown before a term's lifecycle is changed. */
+export type TermLifecycleSummary = {
+  termId: string;
+  termName: string;
+  statusCounts: {
+    draft: number;
+    review: number;
+    finalized: number;
+    published: number;
+  };
+  pendingRequests: {
+    publish: number;
+    change: number;
+    unfinalize: number;
+    faculty: number;
+  };
+  savedVersion: PublishedVersionSummary | null;
+  otherTerm: {
+    termId: string;
+    termName: string;
+    statusCounts: {
+      draft: number;
+      review: number;
+      finalized: number;
+      published: number;
+    };
+  } | null;
+};
+
+export async function fetchTermLifecycleSummary(
+  id: string,
+  action: 'deactivate' | 'activate',
+): Promise<TermLifecycleSummary> {
+  const { data } = await api.get(
+    action === 'deactivate'
+      ? `/v1/terms/${id}/deactivation-summary`
+      : `/v1/terms/${id}/activation-summary`,
+  );
   return data.data;
 }
