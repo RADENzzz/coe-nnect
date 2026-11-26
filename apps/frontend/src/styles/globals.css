@@ -2974,6 +2974,17 @@ html.glass :is(.input) {
   background-color: rgb(var(--surface) / 0.74);
 }
 
+/* Overlay scrims are plain dims outside glass; only glass keeps frosting. */
+html.glass .overlay-backdrop-blur-xs {
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+html.glass .overlay-backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
 /* Static stand-in for the liquid layer inside the Settings preview. */
 .glass-preview {
   background-color: rgb(var(--background));

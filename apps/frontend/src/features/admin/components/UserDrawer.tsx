@@ -87,7 +87,7 @@ export default function UserDrawer({
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm transition-opacity duration-200 ${
+        className={`fixed inset-0 z-[100] bg-black/50 overlay-backdrop-blur-sm transition-opacity duration-200 ${
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}

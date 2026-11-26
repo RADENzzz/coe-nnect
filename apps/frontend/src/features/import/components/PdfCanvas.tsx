@@ -90,7 +90,7 @@ export default function PdfCanvas({
       <canvas ref={canvasRef} className="block" />
 
       {rendering && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-white/60 overlay-backdrop-blur-sm">
           <div className="flex items-center gap-2 text-sm text-on-surface-variant">
             <Icon
               name="progress_activity"

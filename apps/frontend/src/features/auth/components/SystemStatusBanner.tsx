@@ -225,7 +225,7 @@ export default function SystemStatusBanner() {
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
       {/* Backdrop — click to dismiss, only after the countdown. */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-backdrop-in"
+        className="absolute inset-0 bg-black/40 overlay-backdrop-blur-xs animate-backdrop-in"
         aria-hidden="true"
         onClick={() => {
           if (!locked) dismiss();

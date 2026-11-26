@@ -896,7 +896,7 @@ export default function PlotSubjectModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/30 overlay-backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -1622,7 +1622,7 @@ export default function PlotSubjectModal({
       {pendingConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 overlay-backdrop-blur-sm"
             onClick={() => !submitting && setPendingConfirm(null)}
           />
           <div className="relative w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl border border-surface-variant p-6 space-y-4">

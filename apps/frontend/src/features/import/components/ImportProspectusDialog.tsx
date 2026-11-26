@@ -791,7 +791,6 @@ export default function ImportProspectusDialog({
       open={open}
       onClose={handleClose}
       title="Import from PDF"
-      blurBackdrop={false}
       size="lg"
       footer={
         step === 'select' ? (
