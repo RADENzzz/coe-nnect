@@ -19,8 +19,8 @@ export class ScheduleVersion {
   @PrimaryGeneratedColumn({ name: 'version_id', type: 'bigint' })
   versionId!: string;
 
-  @Column({ name: 'term_id', type: 'bigint' })
-  termId!: string;
+  @Column({ name: 'term_id', type: 'bigint', nullable: true })
+  termId!: string | null;
 
   @Column({ name: 'faculty_id', type: 'bigint', nullable: true })
   facultyId!: string | null;
