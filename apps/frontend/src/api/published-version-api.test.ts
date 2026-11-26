@@ -17,6 +17,11 @@ test('published version API client is wired to archive, compare, reuse, and summ
   assert.match(api, /compareVersionSources[\s\S]*?\/v1\/schedules\/version-compare/);
   assert.match(api, /preflightReuse[\s\S]*?\/preflight/);
   assert.match(api, /applyReuse[\s\S]*?method: 'POST'/);
+  assert.match(api, /entriesA:\s*ScheduleVersionEntry\[\]/);
+  assert.match(api, /entriesB:\s*ScheduleVersionEntry\[\]/);
+  assert.match(api, /compareVersionSources[\s\S]*?deptId[\s\S]*?params:/);
+  assert.match(api, /fetchVersion\(\s*versionId: string,[\s\S]*?deptId\?: string/);
+  assert.match(api, /fetchPublishedVersion\(\s*versionId: string,[\s\S]*?deptId\?: string/);
   assert.match(termsApi, /fetchTermLifecycleSummary[\s\S]*?-summary/);
   assert.match(
     termsApi,

@@ -538,7 +538,7 @@ export interface ScheduleVersionSummary {
 }
 
 export interface ScheduleVersionEntry {
-  schedule_id: string;
+  schedule_id: string | null;
   section_id: string | null;
   section_code: string | null;
   subject_id: string;
@@ -562,6 +562,8 @@ export interface ScheduleVersionEntry {
   status: string;
   remarks: string | null;
   dept_id: string | null;
+  /** Session order within an offering; older snapshots may omit this. */
+  session_index?: number | null;
 }
 
 export interface ScheduleVersionSnapshot {
@@ -599,6 +601,8 @@ export interface VersionCompareResult {
     lastModifiedAt: string;
     entryCount: number;
   };
+  entriesA: ScheduleVersionEntry[];
+  entriesB: ScheduleVersionEntry[];
   added: ScheduleVersionEntry[];
   removed: ScheduleVersionEntry[];
   moved: Array<{
@@ -620,8 +624,12 @@ export async function fetchVersions(
 
 export async function fetchVersion(
   versionId: string,
+  deptId?: string | null,
 ): Promise<ScheduleVersionDetail> {
-  const { data } = await api.get(`/v1/schedules/versions/${versionId}`);
+  const params = deptId?.trim() ? { deptId } : {};
+  const { data } = await api.get(`/v1/schedules/versions/${versionId}`, {
+    params,
+  });
   return data.data;
 }
 
@@ -719,17 +727,27 @@ export type PublishedVersionDetail = PublishedVersionSummary & {
 
 export async function fetchPublishedVersion(
   versionId: string,
+  deptId?: string | null,
 ): Promise<PublishedVersionDetail> {
-  const { data } = await api.get(`/v1/schedules/published-versions/${versionId}`);
+  const params = deptId?.trim() ? { deptId } : {};
+  const { data } = await api.get(`/v1/schedules/published-versions/${versionId}`, {
+    params,
+  });
   return data.data;
 }
 
 export async function compareVersionSources(
   a: VersionSource,
   b: VersionSource,
+  deptId?: string | null,
 ): Promise<VersionCompareResult> {
+  const params: Record<string, string> = {
+    a: `${a.kind}:${a.id}`,
+    b: `${b.kind}:${b.id}`,
+  };
+  if (deptId?.trim()) params.deptId = deptId;
   const { data } = await api.get('/v1/schedules/version-compare', {
-    params: { a: `${a.kind}:${a.id}`, b: `${b.kind}:${b.id}` },
+    params,
   });
   return data.data;
 }

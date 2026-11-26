@@ -5,7 +5,6 @@ import TimetableGrid from './components/TimetableGrid';
 import AgendaView from './views/AgendaView';
 import type {
   ScheduleEntry,
-  Day,
   LoadType,
   LayoutMode,
   SubMode,
@@ -28,7 +27,6 @@ import {
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
-  type ScheduleVersionEntry,
   type UnplottedMinor,
   type BlockedMinorSummary,
   type CoverageReport,
@@ -89,16 +87,8 @@ import {
   resetTimetableScope,
   visibleUnresolvedElectives,
 } from './timetable-scope';
-
-const DAY_MAP: Record<string, Day> = {
-  Monday: 'MON',
-  Tuesday: 'TUE',
-  Wednesday: 'WED',
-  Thursday: 'THU',
-  Friday: 'FRI',
-  Saturday: 'SAT',
-  Sunday: 'SUN',
-};
+import { DAY_MAP } from './utils/time.util';
+import { versionEntryToEntry } from './utils/version-entry.mapper';
 
 /** Normalize the drawer's published/history/live chip selection for the API. */
 function buildVersionSource(selection: VersionSource): VersionSource {
@@ -162,49 +152,6 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
   };
 }
 
-function versionEntryToEntry(
-  raw: ScheduleVersionEntry,
-  versionContext: { versionId: string; versionNumber: number },
-): ScheduleEntry {
-  const day = raw.day_of_week ?? 'Monday';
-  const start = raw.start_time ?? '07:00:00';
-  const end = raw.end_time ?? '08:00:00';
-  const isLab = raw.load_type === 'laboratory';
-  const externalName = raw.external_faculty_name ?? null;
-  const externalRoom = raw.external_room_name ?? null;
-  const hasSystemFaculty = !!raw.faculty_id;
-
-  return {
-    id: raw.schedule_id,
-    subjectId: raw.subject_id,
-    subjectCode: raw.subject_code ?? '—',
-    subjectTitle: raw.subject_title ?? '',
-    sectionId: raw.section_id ?? '',
-    pendingFacultyRequestId: null,
-    pendingFacultyDeptId: null,
-    sectionCode: raw.section_code ?? '',
-    facultyId: raw.faculty_id ?? '',
-    facultyName: hasSystemFaculty
-      ? raw.faculty_name ?? 'VL'
-      : externalName ?? raw.faculty_name ?? 'VL',
-    externalFacultyName: externalName,
-    roomId: raw.room_id ?? '',
-    roomNumber: raw.room_number ?? '—',
-    externalRoomName: externalRoom,
-    building: raw.building ?? '',
-    day: DAY_MAP[day] ?? 'MON',
-    startTime: start.slice(0, 5),
-    endTime: end.slice(0, 5),
-    loadType: isLab ? 'laboratory' : 'lecture',
-    deptId: getScheduleDeptId(raw),
-    deptColor: '#800000',
-    color: colorForSubject(raw.subject_id),
-    status: (raw.status as any) ?? 'finalized',
-    remarks: raw.remarks ?? null,
-    versionContext,
-  };
-}
-
 const QUERY_VIEW_MAP: Record<string, ViewMode> = {
   master: 'master',
   department: 'byDepartment',
@@ -265,6 +212,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const [viewMode, setViewMode] = useState<ViewMode>('master');
   const [viewDeptId, setViewDeptId] = useState('');
+  const scopeDeptId = isDepartmentHead ? myDeptId : viewDeptId || '';
   const [subMode, setSubMode] = useState<SubMode>('all');
   const [subTargetId, setSubTargetId] = useState('');
   const [roomTargetId, setRoomTargetId] = useState('');
@@ -427,8 +375,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
   });
 
   const { data: versionDetail, isLoading: versionLoading } = useQuery({
-    queryKey: ['schedule-version-detail', activeVersion?.versionId],
-    queryFn: () => fetchVersion(activeVersion!.versionId),
+    queryKey: ['schedule-version-detail', activeVersion?.versionId, scopeDeptId],
+    queryFn: () =>
+      fetchVersion(activeVersion!.versionId, scopeDeptId || undefined),
     enabled: !!activeVersion,
     staleTime: 60 * 1000,
   });
