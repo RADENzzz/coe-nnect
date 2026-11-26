@@ -169,7 +169,9 @@ test('college dean approves the publish request', async ({ page }) => {
   await page.getByPlaceholder(/Subject code or title/).fill(state.subjectCode);
   await page.getByRole('button', { name: /^Publish requests \(/ }).click();
   await expect(
-    page.getByText(state.subjectCode, { exact: true }).first(),
+    page
+      .getByText(`${state.subjectCode} · ${state.sectionCode}`, { exact: true })
+      .first(),
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Row actions' }).first().click();
