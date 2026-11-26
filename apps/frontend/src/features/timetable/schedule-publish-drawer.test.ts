@@ -22,4 +22,13 @@ test('schedule drawer files publish requests and shows the Dean response', () =>
   assert.match(source, /feedback\.success\(/);
   assert.doesNotMatch(source, /alert\(|confirm\(|prompt\(/);
   assert.doesNotMatch(source, /const \[publishError, setPublishError\]/);
+
+  assert.match(source, /fetchScheduleChangeRequest/);
+  assert.match(source, /\['schedule-change-request', entry\?\.id\]/);
+  assert.match(source, /Request change pending/);
+  assert.match(source, /Dean approved the change request/);
+  assert.match(source, /Dean note/);
+  assert.match(source, /RequestChangeModal/);
+  assert.match(source, /\['schedule-change-requests'\]/);
+  assert.doesNotMatch(source, /window\.alert|window\.confirm|window\.prompt/);
 });

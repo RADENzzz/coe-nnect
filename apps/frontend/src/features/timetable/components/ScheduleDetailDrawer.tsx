@@ -16,6 +16,7 @@ import {
   createPublishRequest,
   fetchSchedulePublishRequest,
 } from '../../../api/schedule-publish-request.api';
+import { fetchScheduleChangeRequest } from '../../../api/schedule-change-request.api';
 import type { ScheduleEntry } from '../types';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
@@ -23,6 +24,7 @@ import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import clsx from 'clsx';
 import { formatTime } from '../utils/time.util';
 import MoveScheduleSheet from './MoveScheduleSheet';
+import RequestChangeModal from './RequestChangeModal';
 import { useAuthStore } from '../../../store/auth.store';
 import { lockBodyScroll } from '../../../lib/body-scroll-lock';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
@@ -81,6 +83,7 @@ export default function ScheduleDetailDrawer({
   const [requestReason, setRequestReason] = useState('');
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishNote, setPublishNote] = useState('');
+  const [changeOpen, setChangeOpen] = useState(false);
 
   const [flagOpen, setFlagOpen] = useState(false);
   const [flagReason, setFlagReason] = useState('');
@@ -94,6 +97,7 @@ export default function ScheduleDetailDrawer({
     setRequestReason('');
     setPublishOpen(false);
     setPublishNote('');
+    setChangeOpen(false);
     setFlagOpen(false);
     setFlagReason('');
   }, [entry?.id, entry?.remarks]);
@@ -119,6 +123,7 @@ export default function ScheduleDetailDrawer({
         !unfinalizeOpen &&
         !requestOpen &&
         !publishOpen &&
+        !changeOpen &&
         !flagOpen
       )
         onClose();
@@ -135,6 +140,7 @@ export default function ScheduleDetailDrawer({
     unfinalizeOpen,
     requestOpen,
     publishOpen,
+    changeOpen,
     flagOpen,
   ]);
 
@@ -150,6 +156,10 @@ export default function ScheduleDetailDrawer({
     queryClient.invalidateQueries({ queryKey: ['coverage'] });
     queryClient.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
     queryClient.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['schedule-change-requests'] });
+    queryClient.invalidateQueries({
+      queryKey: ['schedule-change-request', entry?.id],
+    });
     queryClient.invalidateQueries({
       queryKey: ['schedule-publish-request', entry?.id],
     });
@@ -171,6 +181,19 @@ export default function ScheduleDetailDrawer({
     staleTime: 15_000,
   });
   const publishPending = publishRequest?.status === 'pending';
+
+  const { data: changeRequest } = useQuery({
+    queryKey: ['schedule-change-request', entry?.id],
+    queryFn: () => fetchScheduleChangeRequest(entry!.id),
+    enabled:
+      !!entry &&
+      isDH &&
+      ownsEntry &&
+      !readOnly &&
+      (entry.status === 'review' || entry.status === 'finalized'),
+    staleTime: 15_000,
+  });
+  const changePending = changeRequest?.status === 'pending';
 
   const { data: pendingRequest } = useQuery({
     queryKey: ['schedule-unfinalize-request', entry?.id],
@@ -313,6 +336,10 @@ export default function ScheduleDetailDrawer({
   const locked = isLocked(entry.status);
   const writable = !readOnly && !isForeignEntry;
   const canFlag = !readOnly;
+  const canRequestChange =
+    isDH &&
+    writable &&
+    (entry.status === 'review' || entry.status === 'finalized');
   const requestPending =
     entry.status === 'published' && isDH && Boolean(pendingRequest);
   const toggleLabel = locked
@@ -499,6 +526,81 @@ export default function ScheduleDetailDrawer({
                 </div>
               </div>
             )}
+
+          {changeRequest?.status === 'pending' && canRequestChange && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
+              <Icon
+                name="hourglass_top"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">Request change pending</p>
+                <p className="mt-0.5 break-words">
+                  Reason: {changeRequest.reason}
+                </p>
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Submitted {new Date(changeRequest.createdAt).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {changeRequest?.status === 'approved' &&
+            isDH &&
+            writable &&
+            entry.status !== 'published' && (
+            <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-start gap-2 text-xs text-blue-900">
+              <Icon
+                name="check_circle"
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">
+                  Dean approved the change request
+                </p>
+                {changeRequest.responseRemarks && (
+                  <p className="mt-0.5 break-words">
+                    {changeRequest.responseRemarks}
+                  </p>
+                )}
+                {changeRequest.respondedAt && (
+                  <p className="mt-1 text-[10px] text-blue-700">
+                    {new Date(changeRequest.respondedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {changeRequest?.status === 'rejected' &&
+            isDH &&
+            writable &&
+            entry.status !== 'published' && (
+            <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
+              <Icon
+                name="feedback"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">Dean note</p>
+                {changeRequest.responseRemarks && (
+                  <p className="mt-0.5 break-words">
+                    {changeRequest.responseRemarks}
+                  </p>
+                )}
+                {changeRequest.respondedAt && (
+                  <p className="mt-1 text-[10px] text-rose-700">
+                    {new Date(changeRequest.respondedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {entry.pendingFacultyRequestId && (
             <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
@@ -845,6 +947,22 @@ export default function ScheduleDetailDrawer({
               </>
             )}
 
+            {canRequestChange && (
+              <button
+                onClick={() => setChangeOpen(true)}
+                disabled={changePending}
+                title={
+                  changePending
+                    ? 'A change request is waiting for the Dean'
+                    : 'Ask the Dean to return this entry to Draft'
+                }
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-50"
+              >
+                <Icon name="feedback" size={16} />
+                {changePending ? 'Change request pending' : 'Request change'}
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className={clsx(
@@ -913,6 +1031,12 @@ export default function ScheduleDetailDrawer({
         tone="danger"
         busy={statusMutation.isPending}
         onConfirm={() => statusMutation.mutate('draft')}
+      />
+
+      <RequestChangeModal
+        open={changeOpen}
+        entry={entry}
+        onClose={() => setChangeOpen(false)}
       />
 
       <Modal
