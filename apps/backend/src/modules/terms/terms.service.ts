@@ -4,22 +4,24 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Term } from './entities/term.entity';
 import { CreateTermDto } from './dto/create-term.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
 import { SemestersService } from '../semesters/semesters.service';
+import { TermLifecycleService } from '../scheduling/services/term-lifecycle.service';
+import type { TermLifecycleSummary } from '../scheduling/services/term-lifecycle.service';
 
 @Injectable()
 export class TermsService {
   constructor(
     @InjectRepository(Term)
     private readonly repo: Repository<Term>,
-    private readonly dataSource: DataSource,
     private readonly dispatcher: NotificationDispatcherService,
     private readonly recipients: RecipientsService,
     private readonly semesters: SemestersService,
+    private readonly lifecycle: TermLifecycleService,
   ) {}
 
   findAll(): Promise<Term[]> {
@@ -77,24 +79,10 @@ export class TermsService {
     return saved;
   }
 
-  async activate(id: string): Promise<Term> {
+  async activate(id: string, actor: any = null): Promise<Term> {
     await this.findOne(id);
 
-    await this.dataSource.transaction(async (manager) => {
-      await manager
-        .createQueryBuilder()
-        .update(Term)
-        .set({ isActive: false })
-        .where('is_active = :active', { active: true })
-        .execute();
-
-      await manager
-        .createQueryBuilder()
-        .update(Term)
-        .set({ isActive: true })
-        .where('term_id = :id', { id })
-        .execute();
-    });
+    await this.lifecycle.activate(id, actor);
 
     const activated = await this.findOne(id);
 
@@ -116,13 +104,22 @@ export class TermsService {
     return activated;
   }
 
-  async deactivate(id: string): Promise<Term> {
+  async deactivate(id: string, actor: any = null): Promise<Term> {
     const found = await this.findOne(id);
     if (!found.isActive) {
       throw new BadRequestException('This term is already inactive.');
     }
-    found.isActive = false;
-    return this.repo.save(found);
+
+    await this.lifecycle.deactivate(id, actor);
+    return this.findOne(id);
+  }
+
+  deactivationSummary(id: string): Promise<TermLifecycleSummary> {
+    return this.lifecycle.summary(id, 'deactivate');
+  }
+
+  activationSummary(id: string): Promise<TermLifecycleSummary> {
+    return this.lifecycle.summary(id, 'activate');
   }
 
   async remove(id: string): Promise<{ success: boolean }> {
