@@ -26,7 +26,9 @@ import {
  * minute lecture, a subject absent from the prospectus cannot be plotted, and
  * an older-year captured label would require waiting for a new school year.
  * No live published row is fabricated; all live rows come from plot, publish
- * approval, or the product's own restore path.
+ * approval, or the product's own restore path. The seeded prospectus allows
+ * one lecture per week, so this spec temporarily raises that limit to four for
+ * its multi-status grid and resets it in afterAll.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -197,6 +199,20 @@ async function clearTermWork(database: Db, termId: string): Promise<void> {
   await deleteByTerm(database, 'faculty_request', termId);
 }
 
+/** The seed prospectus allows one lecture; some scenarios plot several. */
+async function setLectureSessionLimit(limit: number): Promise<void> {
+  const { error } = await db
+    .from('prospectus')
+    .update({ lecture_sessions_per_week: limit })
+    .eq('program_id', state.programId)
+    .eq('subject_id', state.subjectId)
+    .eq('year_level', 1)
+    .eq('semester', '1st');
+  if (error) {
+    throw new Error(`Could not set lecture session limit: ${error.message}`);
+  }
+}
+
 async function restoreCleanState(): Promise<void> {
   await clearTermWork(db, state.termId);
   await clearTermWork(db, swapTermId);
@@ -246,6 +262,7 @@ async function restoreCleanState(): Promise<void> {
   if (departmentError) {
     throw new Error(`Could not restore E2E department: ${departmentError.message}`);
   }
+  await setLectureSessionLimit(1);
 }
 
 async function plottedSnapshot(): Promise<JsonRecord> {
@@ -521,6 +538,9 @@ test.beforeAll(async () => {
     swapTermId = String(data.term_id);
   }
   await restoreCleanState();
+  // Scenario 2 needs four live lecture rows for the E2E section. The seeded
+  // prospectus allows one, so raise it for this spec and reset in afterAll.
+  await setLectureSessionLimit(4);
 });
 
 test.afterAll(async () => {
