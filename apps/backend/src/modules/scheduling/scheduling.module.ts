@@ -10,6 +10,7 @@ import { Room } from '../rooms/entities/room.entity';
 import { User } from '../users/entities/user.entity';
 import { SchedulePublishService } from './services/schedule-publish.service';
 import { SchedulePublishController } from './schedule-publish.controller';
+import { PublishedVersionController } from './controllers/published-version.controller';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { AutoGenerateService } from './services/auto-generate.service';
@@ -62,6 +63,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleUnfinalizeController,
     SchedulePublishController,
     ScheduleChangeRequestController,
+    PublishedVersionController,
     SchedulingController,
   ],
   providers: [
