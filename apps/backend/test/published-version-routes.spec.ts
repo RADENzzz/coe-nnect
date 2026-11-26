@@ -87,4 +87,22 @@ describe('published version route contract', () => {
       'preflight and reuse must remain head/admin only',
     );
   });
+
+  it('resolves actor scope on both read-only snapshot detail routes', () => {
+    const controller = read(
+      'apps/backend/src/modules/scheduling/controllers/published-version.controller.ts',
+    );
+    const scheduling = read(
+      'apps/backend/src/modules/scheduling/scheduling.controller.ts',
+    );
+
+    assert.match(
+      controller,
+      /async findOne[\s\S]*?@Query\('deptId'\) deptId\?: string[\s\S]*?resolveVersionDeptId\(req\.profile, deptId\)/,
+    );
+    assert.match(
+      scheduling,
+      /async findVersion\([\s\S]*?@Query\('deptId'\) deptId\?: string[\s\S]*?resolveVersionDeptId\(req\.profile, deptId\)/,
+    );
+  });
 });

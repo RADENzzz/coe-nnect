@@ -6,6 +6,7 @@ import { EntityManager, In, Repository } from 'typeorm';
 import { Term } from '../../terms/entities/term.entity';
 import { Schedule, ScheduleStatus } from '../entities/schedule.entity';
 import { TermPublishedVersion } from '../entities/term-published-version.entity';
+import { filterVersionEntries } from '../version-scope';
 
 export type SaveReason = 'published' | 'deactivated';
 
@@ -292,7 +293,10 @@ export class TermPublishedVersionService {
     );
   }
 
-  async findById(id: string): Promise<PublishedVersionDetail> {
+  async findById(
+    id: string,
+    deptId?: string | null,
+  ): Promise<PublishedVersionDetail> {
     const row = await this.versionRepo.findOne({
       where: { termPublishedVersionId: id },
     });
@@ -301,9 +305,14 @@ export class TermPublishedVersionService {
     const term = row.termId == null
       ? undefined
       : (await this.termRepo.findOne({ where: { termId: row.termId } })) ?? undefined;
+    const entries = filterVersionEntries(
+      this.extractEntries(row.snapshot),
+      deptId ?? null,
+    );
     return {
       ...this.toSummary(row, term),
-      entries: this.extractEntries(row.snapshot),
+      entryCount: entries.length,
+      entries,
     };
   }
 

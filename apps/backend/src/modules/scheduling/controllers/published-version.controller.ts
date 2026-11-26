@@ -20,6 +20,7 @@ import {
 import { ScheduleReuseService } from '../services/schedule-reuse.service';
 import { TermPublishedVersionService } from '../services/term-published-version.service';
 import { VersionCompareService } from '../services/version-compare.service';
+import { resolveVersionDeptId } from '../version-scope';
 
 /**
  * Read-only archive of term-wide published snapshots and the cross-term
@@ -48,8 +49,17 @@ export class PublishedVersionController {
   /** One snapshot, including its captured entries. */
   @Get('published-versions/:versionId')
   @Roles('college_dean', 'department_head', 'college_secretary', 'administrator')
-  async findOne(@Param('versionId') versionId: string) {
-    return { data: await this.publishedVersions.findById(versionId) };
+  async findOne(
+    @Param('versionId') versionId: string,
+    @Req() req: any,
+    @Query('deptId') deptId?: string,
+  ) {
+    return {
+      data: await this.publishedVersions.findById(
+        versionId,
+        resolveVersionDeptId(req.profile, deptId),
+      ),
+    };
   }
 
   /** Read-only diff of `published:`, `history:` or `live:` sources. */

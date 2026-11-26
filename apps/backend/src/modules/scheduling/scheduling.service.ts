@@ -992,8 +992,8 @@ export class SchedulingService {
     return this.scheduleVersions.findVersions(termId);
   }
 
-  findVersion(versionId: string) {
-    return this.scheduleVersions.findVersion(versionId);
+  findVersion(versionId: string, deptId?: string | null) {
+    return this.scheduleVersions.findVersion(versionId, deptId);
   }
 
   compareVersions(versionAId: string, versionBId: string) {
