@@ -13,6 +13,8 @@ interface Props {
   laneCount?: number;
   overlapCount?: number;
   onClick?: (entry: ScheduleEntry) => void;
+  onRequestChange?: (entry: ScheduleEntry) => void;
+  requestChangeEntryIds?: Set<string>;
   isDragging?: boolean;
   disabled?: boolean;
   isForeign?: boolean;
@@ -25,6 +27,8 @@ function ClassBlockBase({
   laneCount = 1,
   overlapCount = 1,
   onClick,
+  onRequestChange,
+  requestChangeEntryIds,
   isDragging,
   disabled = false,
   isForeign = false,
@@ -105,6 +109,37 @@ function ClassBlockBase({
     isExternalRoom ||
     isPending;
 
+  // Eligibility comes from the page: the head's own review/finalized entries
+  // only. `disabled` here means drag is locked, so it must not hide the action.
+  const canRequestChange =
+    !isForeign &&
+    !!onRequestChange &&
+    (requestChangeEntryIds?.has(entry.id) ?? false);
+
+  const handleRequestChangeClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    onRequestChange?.(entry);
+  };
+
+  const requestChangeAction = (positionClass: string) =>
+    canRequestChange ? (
+      <button
+        type="button"
+        onClick={handleRequestChangeClick}
+        onKeyDown={(e) => e.stopPropagation()}
+        title="Request change"
+        aria-label={`Request change for ${entry.subjectCode}`}
+        className={clsx(
+          'inline-flex items-center justify-center rounded bg-black/50 text-white leading-none transition-opacity',
+          'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100',
+          'hover:bg-black/70 focus:outline-none focus-visible:ring-1 focus-visible:ring-white',
+          positionClass,
+        )}
+      >
+        <Icon name="feedback" size={11} />
+      </button>
+    ) : null;
+
   // ── Tiny block: collapse into a single dot + short code ──
   if (isTiny) {
     return (
@@ -117,7 +152,7 @@ function ClassBlockBase({
         tabIndex={0}
         aria-label={`${entry.subjectCode}, ${formatTime(entry.startTime)}–${formatTime(entry.endTime)}`}
         className={clsx(
-          'rounded-md px-1 py-0.5 text-white leading-tight select-none',
+          'group rounded-md px-1 py-0.5 text-white leading-tight select-none',
           'overflow-hidden flex items-center gap-1 cursor-pointer',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
           locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
@@ -152,6 +187,7 @@ function ClassBlockBase({
             +{overlapCount - 1}
           </span>
         )}
+        {requestChangeAction('ml-auto shrink-0 p-0.5')}
       </div>
     );
   }
@@ -174,7 +210,7 @@ function ClassBlockBase({
         entry.hasConflict ? ', has conflict' : ''
       }`}
       className={clsx(
-        'rounded-md px-1.5 py-1 text-white leading-tight select-none',
+        'group rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
         locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
@@ -289,6 +325,8 @@ function ClassBlockBase({
           {formatTime(entry.startTime)}–{formatTime(entry.endTime)}
         </div>
       )}
+
+      {requestChangeAction('absolute bottom-0.5 right-0.5 z-10 p-0.5')}
     </div>
   );
 }

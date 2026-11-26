@@ -49,6 +49,7 @@ import RollingValue, {
 import PlotSubjectModal from '../plot-subject/PlotSubjectModal';
 import PlotFocusMode from './components/PlotFocusMode';
 import ScheduleDetailDrawer from './components/ScheduleDetailDrawer';
+import RequestChangeModal from './components/RequestChangeModal';
 import { colorForSubject } from './utils/color.util';
 import StackPicker from './components/StackPicker';
 import ExportToolbar from './export/ExportToolbar';
@@ -219,6 +220,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
     null,
   );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [requestChangeEntry, setRequestChangeEntry] =
+    useState<ScheduleEntry | null>(null);
   const [editEntryId, setEditEntryId] = useState<string | null>(null);
   const [stackOpen, setStackOpen] = useState<ScheduleEntry[] | null>(null);
   const [coveragePanelOpen, setCoveragePanelOpen] = useState(false);
@@ -654,6 +657,23 @@ export default function TimetablePage({ readOnly = false }: Props) {
       editEntryId ? entries.find((e) => e.id === editEntryId) ?? null : null,
     [entries, editEntryId],
   );
+
+  // Only the head's own review/finalized entries can ask the Dean for a change.
+  const requestChangeEntryIds = useMemo(() => {
+    if (readOnly || activeVersion || profile?.role !== 'department_head') {
+      return new Set<string>();
+    }
+    return new Set(
+      entries
+        .filter(
+          (entry) =>
+            (!entry.deptId ||
+              String(entry.deptId) === String(profile?.dept_id)) &&
+            (entry.status === 'review' || entry.status === 'finalized'),
+        )
+        .map((entry) => entry.id),
+    );
+  }, [entries, readOnly, activeVersion, profile?.role, profile?.dept_id]);
 
   const [focusApplied, setFocusApplied] = useState(false);
   useEffect(() => {
@@ -1782,7 +1802,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
             <div className="flex-1 min-h-0" data-tour="tt-grid">
               {layoutMode === 'agenda' ? (
-                <AgendaView entries={entries} onEntryClick={handleClick} />
+                <AgendaView
+                  entries={entries}
+                  onEntryClick={handleClick}
+                  onRequestChange={(entry) => setRequestChangeEntry(entry)}
+                  requestChangeEntryIds={requestChangeEntryIds}
+                />
               ) : (
                 <>
                   <TimetableLegend entries={entries} />
@@ -1792,6 +1817,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
                     fitToContainer
                     onEntryMove={writable ? handleMove : undefined}
                     onEntryClick={handleClick}
+                    onRequestChange={(entry) => setRequestChangeEntry(entry)}
+                    requestChangeEntryIds={requestChangeEntryIds}
                     readOnlyEntryIds={
                       activeVersion
                         ? new Set(entries.map((e) => e.id))
@@ -1858,6 +1885,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
             readOnly={readOnly || !!activeVersion}
           />
         )}
+
+        <RequestChangeModal
+          open={!!requestChangeEntry}
+          entry={requestChangeEntry}
+          onClose={() => setRequestChangeEntry(null)}
+          onSubmitted={() => setRequestChangeEntry(null)}
+        />
 
         <StackPicker
           entries={stackOpen}
