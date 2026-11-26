@@ -65,6 +65,14 @@ function subjectEditRequestHref(
   return requestId ? href(shell, '/subjects', { request: requestId }) : null;
 }
 
+function subjectHref(
+  item: NotificationItem,
+  shell: ShellBase,
+): string | null {
+  const subjectId = asString(item.payload?.subjectId);
+  return subjectId ? href(shell, '/subjects', { subject: subjectId }) : null;
+}
+
 /**
  * Where clicking a notification should take the user.
  *
@@ -84,7 +92,9 @@ export function notificationHref(
     case 'schedule.status_changed':
     case 'schedule.flagged':
     case 'schedule.conflict_detected':
-      return href(shell, '/timetable', { focus: id });
+      return (
+        subjectHref(item, shell) ?? href(shell, '/timetable', { focus: id })
+      );
 
     case 'schedule.unfinalize_requested':
       // The Dean reviews published-unfinalize requests on Schedule Approvals.
@@ -95,7 +105,9 @@ export function notificationHref(
 
     case 'schedule.unfinalize_approved':
     case 'schedule.unfinalize_rejected':
-      return href(shell, '/timetable', { focus: id });
+      return (
+        subjectHref(item, shell) ?? href(shell, '/timetable', { focus: id })
+      );
 
     case 'request.submitted':
     case 'request.approved':
@@ -154,7 +166,9 @@ export function notificationHref(
   // (e.g. rows created before the trigger list was finalised).
   switch (item.entityType) {
     case 'schedule':
-      return href(shell, '/timetable', { focus: id });
+      return (
+        subjectHref(item, shell) ?? href(shell, '/timetable', { focus: id })
+      );
     case 'faculty_request':
       return href(shell, shell === '/dean' ? '/requests' : '/approvals', {
         request: id,
