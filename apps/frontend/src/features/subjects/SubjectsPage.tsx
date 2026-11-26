@@ -14,6 +14,8 @@ import { fetchProspectus } from '../../api/prospectus.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import { useSemesterTypes } from '../../hooks/use-semester-types';
 import RollingValue from '../../components/ui/RollingValue';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
@@ -59,8 +61,6 @@ type StatusFilter = 'all' | 'active' | 'inactive';
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
 type SortDir = 'asc' | 'desc';
 
-type Alert = { kind: 'success' | 'error'; message: string } | null;
-
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -70,19 +70,13 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-function extractErrorMessage(err: any, fallback: string): string {
-  const raw = err?.response?.data?.message;
-  if (Array.isArray(raw)) return raw[0] ?? fallback;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  return err?.message ?? fallback;
-}
-
 export default function SubjectsPage() {
   const qc = useQueryClient();
   const { shortLabelFor } = useSemesterTypes();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
 
   const isCollegeWide =
     profile?.role === 'administrator' ||
@@ -104,13 +98,6 @@ export default function SubjectsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
-
-  // ── Consolidated alert state (error + success share one slot) ──
-  const [alert, setAlert] = useState<Alert>(null);
-  const setSuccess = (m: string | null) =>
-    setAlert(m ? { kind: 'success', message: m } : null);
-  const setError = (m: string | null) =>
-    setAlert(m ? { kind: 'error', message: m } : null);
 
   // ── Detail side panel state ──
   const [detailEntry, setDetailEntry] = useState<SubjectRecord | null>(null);
@@ -262,13 +249,6 @@ export default function SubjectsPage() {
     queryFn: () => fetchDepartments(),
     enabled: !!user,
   });
-
-  // ── Auto-dismiss success only ──
-  useEffect(() => {
-    if (!alert || alert.kind !== 'success') return;
-    const t = setTimeout(() => setAlert(null), 4000);
-    return () => clearTimeout(t);
-  }, [alert]);
 
   // ── Keyboard: / focuses search ──
   useEffect(() => {
@@ -552,13 +532,14 @@ export default function SubjectsPage() {
   const toggleMutation = useMutation({
     mutationFn: toggleSubjectActive,
     onSuccess: () => invalidateAfterSubjectChange(),
-    onError: (err: any) => setError(extractErrorMessage(err, 'Toggle failed')),
+    onError: (err: any) =>
+      feedback.error(extractApiError(err, 'Toggle failed')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteSubject,
     onSuccess: () => {
-      setSuccess('Subject deleted.');
+      feedback.success('Subject deleted.');
       setDeleteTarget(null);
       setDetailEntry(null);
       invalidateAfterSubjectChange();
@@ -571,7 +552,7 @@ export default function SubjectsPage() {
       setDeleteTarget(null);
       setDeleteError({
         subjectCode: target?.subjectCode ?? 'this subject',
-        message: extractErrorMessage(err, 'Delete failed'),
+        message: extractApiError(err, 'Delete failed'),
       });
     },
   });
@@ -583,27 +564,26 @@ export default function SubjectsPage() {
     const targets = selectedSubjects.filter((s) => s.isActive !== activate);
 
     if (targets.length === 0) {
-      setSuccess(
+      feedback.success(
         `All selected subjects are already ${activate ? 'active' : 'inactive'}.`,
       );
       return;
     }
 
     setBulkActionPending(true);
-    setError(null);
     try {
       const results = await Promise.allSettled(
         targets.map((s) => toggleSubjectActive(s.subjectId)),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        setError(
+        feedback.error(
           `${failed} of ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           } failed to ${activate ? 'activate' : 'deactivate'}.`,
         );
       } else {
-        setSuccess(
+        feedback.success(
           `${activate ? 'Activated' : 'Deactivated'} ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           }.`,
@@ -611,7 +591,7 @@ export default function SubjectsPage() {
       }
       invalidateAfterSubjectChange();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Bulk action failed'));
+      feedback.error(extractApiError(err, 'Bulk action failed'));
     } finally {
       setBulkActionPending(false);
     }
@@ -622,20 +602,19 @@ export default function SubjectsPage() {
     if (targets.length === 0) return;
 
     setBulkActionPending(true);
-    setError(null);
     try {
       const results = await Promise.allSettled(
         targets.map((s) => deleteSubject(s.subjectId)),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        setError(
+        feedback.error(
           `${failed} of ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           } could not be deleted. They may still have published schedules or restrictions — deactivate them instead.`,
         );
       } else {
-        setSuccess(
+        feedback.success(
           `Deleted ${targets.length} subject${
             targets.length === 1 ? '' : 's'
           }.`,
@@ -651,7 +630,7 @@ export default function SubjectsPage() {
       }
       invalidateAfterSubjectChange();
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Bulk delete failed'));
+      feedback.error(extractApiError(err, 'Bulk delete failed'));
     } finally {
       setBulkActionPending(false);
     }
@@ -661,8 +640,6 @@ export default function SubjectsPage() {
   const openCreate = () => {
     setEditing(null);
     setMode('create');
-    setError(null);
-    setSuccess(null);
   };
 
   const openEdit = (s: SubjectRecord) => {
@@ -670,15 +647,11 @@ export default function SubjectsPage() {
     setDetailEntry(null);
     setEditing(s);
     setMode('edit');
-    setError(null);
-    setSuccess(null);
   };
 
   // ── Detail panel handlers ──
   const handleOpenDetail = (s: SubjectRecord) => {
     setDetailEntry(s);
-    setError(null);
-    setSuccess(null);
   };
 
   const handleCloseDetail = () => setDetailEntry(null);
@@ -689,8 +662,6 @@ export default function SubjectsPage() {
     setEditing(detailLive);
     setDetailEntry(null);
     setMode('edit');
-    setError(null);
-    setSuccess(null);
   };
 
   // Activation is quick; deactivation cascades to mappings and gets a
@@ -750,7 +721,7 @@ export default function SubjectsPage() {
     hasConsumedEditParam.current = editParam;
 
     if (isForeign(target)) {
-      setError(
+      feedback.error(
         `"${target.subjectCode}" belongs to another department and is read-only.`,
       );
     } else {
@@ -1396,33 +1367,6 @@ export default function SubjectsPage() {
         />
       </div>
 
-      {/* ── Single alert region (error + success share one slot) ── */}
-      <div aria-live="polite" aria-atomic="true">
-        {alert && (
-          <div
-            className={`p-3 rounded-lg border text-sm flex items-start gap-2 ${
-              alert.kind === 'error'
-                ? 'bg-red-100 border-red-300 text-red-700'
-                : 'bg-emerald-100 border-emerald-300 text-emerald-800'
-            }`}
-          >
-            <Icon
-              name={alert.kind === 'error' ? 'error' : 'check_circle'}
-              size={16}
-              className="shrink-0 mt-0.5"
-            />
-            <span className="flex-1">{alert.message}</span>
-            <button
-              onClick={() => setAlert(null)}
-              className="opacity-70 hover:opacity-100"
-              aria-label="Dismiss alert"
-            >
-              <Icon name="close" size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
       {isDH && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
           <Icon name="info" size={16} className="mt-0.5 shrink-0" />
@@ -1635,7 +1579,6 @@ export default function SubjectsPage() {
         myDeptId={myDeptId}
         defaultElective={kindFilter === 'elective'}
         onClose={handleFormClose}
-        onSuccess={(message) => setSuccess(message)}
       />
 
       {/* ── Deactivate confirmation ── */}
@@ -1663,7 +1606,7 @@ export default function SubjectsPage() {
           setDeactivateTarget(null);
           toggleMutation.mutate(target.subjectId, {
             onSuccess: () =>
-              setSuccess(
+              feedback.success(
                 `Subject "${target.subjectCode}" deactivated (not deleted)${
                   count > 0 ? ` along with ${count} active mapping${count === 1 ? '' : 's'}` : ''
                 }.`,

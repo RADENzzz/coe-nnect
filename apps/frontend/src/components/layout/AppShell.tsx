@@ -14,7 +14,6 @@ import { useNavAttention } from '../../hooks/use-nav-attention';
 import SystemStatusBanner from '../../features/auth/components/SystemStatusBanner';
 import NotificationToaster from '../../features/notifications/NotificationToaster';
 import ChatSoundListener from '../../features/chat/ChatSoundListener';
-import { FeedbackProvider } from '../../components/ui/FeedbackToast';
 import { installSoundUnlock } from '../../lib/sound';
 import LiquidBackground from './LiquidBackground';
 import TutorialProvider from '../../features/tutorial/TutorialProvider';
@@ -135,11 +134,9 @@ function ShellInner() {
 export default function AppShell() {
   return (
     <NotificationSocketProvider>
-      <FeedbackProvider>
-        <ChatProvider>
-          <ShellInner />
-        </ChatProvider>
-      </FeedbackProvider>
+      <ChatProvider>
+        <ShellInner />
+      </ChatProvider>
     </NotificationSocketProvider>
   );
 }

@@ -25,6 +25,7 @@ import ResponsiveTable, {
 import StatusBadge from '../../components/ui/StatusBadge';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 type StatusFilter = 'all' | IdpChangeRequestStatus;
 type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
@@ -130,20 +131,6 @@ function formatDateTime(iso: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function apiErrorMessage(err: unknown, fallback: string): string {
-  const value = err as {
-    response?: { data?: { message?: unknown } };
-    message?: unknown;
-  };
-  const message = value?.response?.data?.message;
-  if (Array.isArray(message)) return message.join(' ');
-  if (typeof message === 'string' && message.trim()) return message;
-  if (typeof value?.message === 'string' && value.message.trim()) {
-    return value.message;
-  }
-  return fallback;
 }
 
 function text(value: unknown): string {
@@ -429,7 +416,7 @@ export default function IdpChangeRequestsPage() {
 
     if (deepLinkQuery.isError) {
       feedback.error(
-        apiErrorMessage(
+        extractApiError(
           deepLinkQuery.error,
           `Change request ${deepLinkId} was not found.`,
         ),
@@ -541,7 +528,7 @@ export default function IdpChangeRequestsPage() {
     },
     onError: (err: unknown) => {
       feedback.error(
-        apiErrorMessage(err, 'Could not record the change-request decision.'),
+        extractApiError(err, 'Could not record the change-request decision.'),
       );
     },
   });
@@ -747,7 +734,7 @@ export default function IdpChangeRequestsPage() {
         >
           <Icon name="error" size={18} className="mt-0.5 shrink-0" />
           <span className="flex-1">
-            {apiErrorMessage(
+            {extractApiError(
               requestsQuery.error,
               'Could not load IDP change requests.',
             )}

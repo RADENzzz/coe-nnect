@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import Modal from '../../../components/ui/Modal';
 import type { FacultyRequest } from '../../../api/faculty-requests.api';
+import { extractApiError } from '../../../lib/api-error';
 import { exportApprovalsPdf } from './approvalsReportPdf';
 import { exportApprovalsExcel } from './approvalsReportExcel';
 
@@ -22,11 +24,11 @@ export default function ApprovalsExportToolbar({
   deptName,
   termLabel,
 }: Props) {
+  const feedback = useFeedback();
   const [menuOpen, setMenuOpen] = useState(false);
   const [filenameOpen, setFilenameOpen] = useState<ExportKind | null>(null);
   const [filename, setFilename] = useState('');
   const [busy, setBusy] = useState<ExportKind | 'print' | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,6 @@ export default function ApprovalsExportToolbar({
   };
 
   const openFilename = (ext: ExportKind) => {
-    setError(null);
     setFilename(defaultPrefix());
     setFilenameOpen(ext);
     setMenuOpen(false);
@@ -101,9 +102,11 @@ export default function ApprovalsExportToolbar({
         { rows, deptCode, deptName, termLabel },
         finalName,
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Approvals PDF] Failed:', err);
-      setError(err?.message ?? 'Failed to generate PDF.');
+      feedback.failed(
+        extractApiError(err, err instanceof Error ? err.message : 'Failed to generate PDF.'),
+      );
     } finally {
       setBusy(null);
     }
@@ -121,16 +124,17 @@ export default function ApprovalsExportToolbar({
         { rows, deptCode, deptName, termLabel },
         finalName,
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Approvals Excel] Failed:', err);
-      setError(err?.message ?? 'Failed to generate Excel.');
+      feedback.failed(
+        extractApiError(err, err instanceof Error ? err.message : 'Failed to generate Excel.'),
+      );
     } finally {
       setBusy(null);
     }
   };
 
   const handlePrint = async () => {
-    setError(null);
     setBusy('print');
     setMenuOpen(false);
     try {
@@ -139,9 +143,11 @@ export default function ApprovalsExportToolbar({
         'approvals-print.pdf',
         { print: true },
       );
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Approvals Print] Failed:', err);
-      setError(err?.message ?? 'Failed to open print view.');
+      feedback.failed(
+        extractApiError(err, err instanceof Error ? err.message : 'Failed to open print view.'),
+      );
     } finally {
       setBusy(null);
     }
@@ -153,23 +159,6 @@ export default function ApprovalsExportToolbar({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        {error && (
-          <div
-            role="alert"
-            className="w-full text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 rounded-lg flex items-start gap-2"
-          >
-            <Icon name="error" size={14} className="shrink-0 mt-0.5" />
-            <span className="flex-1">{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-600 hover:text-red-800"
-              aria-label="Dismiss"
-            >
-              <Icon name="close" size={12} />
-            </button>
-          </div>
-        )}
-
         <div className="relative" ref={menuRef}>
           <button
             type="button"

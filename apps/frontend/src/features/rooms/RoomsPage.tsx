@@ -17,6 +17,8 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '../../components/ui/StatusBadge';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import RoomPreferencesModal from './components/RoomPreferencesModal';
 import RoomDetailPanel from './components/RoomDetailPanel';
 import RoomFormModal from './components/RoomFormModal';
@@ -45,6 +47,7 @@ export default function RoomsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isCollegeWide =
@@ -57,9 +60,6 @@ export default function RoomsPage() {
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<RoomRecord | null>(null);
-
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState(
     () => searchParams.get('q') ?? '',
@@ -151,12 +151,6 @@ export default function RoomsPage() {
     },
     [isDH, myDeptId],
   );
-
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 4000);
-    return () => clearTimeout(t);
-  }, [success]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -328,7 +322,7 @@ export default function RoomsPage() {
     },
     onError: (err: any, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(ROOMS_KEY, ctx.prev);
-      setError(err?.response?.data?.message ?? 'Toggle failed');
+      feedback.error(extractApiError(err, 'Toggle failed'));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['rooms'] }),
   });
@@ -344,14 +338,13 @@ export default function RoomsPage() {
       qc.setQueryData<RoomRecord[]>(ROOMS_KEY, (old = []) =>
         old.filter((r) => r.roomId !== id),
       );
-      setSuccess('Room deleted.');
       return { prev };
     },
     onError: (err: any, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(ROOMS_KEY, ctx.prev);
-      setSuccess(null);
-      setError(err?.response?.data?.message ?? 'Delete failed');
+      feedback.error(extractApiError(err, 'Delete failed'));
     },
+    onSuccess: () => feedback.success('Room deleted.'),
     onSettled: () => qc.invalidateQueries({ queryKey: ['rooms'] }),
   });
 
@@ -367,12 +360,6 @@ export default function RoomsPage() {
   };
 
   const closeForm = () => {
-    setMode(null);
-    setEditing(null);
-  };
-
-  const handleFormSuccess = (message: string) => {
-    setSuccess(message);
     setMode(null);
     setEditing(null);
   };
@@ -577,33 +564,6 @@ export default function RoomsPage() {
           </button>
         )}
       </div>
-
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss error"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
 
       <div className="space-y-3" data-tour="rooms-filters">
         <div className="relative">
@@ -943,8 +903,6 @@ export default function RoomsPage() {
         isDH={isDH}
         myDeptId={myDeptId}
         onClose={closeForm}
-        onSuccess={handleFormSuccess}
-        onError={(msg) => setError(msg)}
       />
     </div>
   );

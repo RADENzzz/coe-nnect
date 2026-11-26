@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
 import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   clearFieldError,
   mergeFieldError,
@@ -38,8 +40,6 @@ interface Props {
   isDH: boolean;
   myDeptId: string | null;
   onClose: () => void;
-  onSuccess: (message: string) => void;
-  onError: (message: string) => void;
 }
 
 const LAST_STEP = STEP_DEFS.length - 1;
@@ -57,17 +57,15 @@ export default function RoomFormModal({
   isDH,
   myDeptId,
   onClose,
-  onSuccess,
-  onError,
 }: Props) {
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const open = mode !== null;
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
-  const [formError, setFormError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
@@ -97,7 +95,6 @@ export default function RoomFormModal({
     setStepIdx(0);
     setFieldErrors({});
     setErrors([]);
-    setFormError(null);
     setConfirmClose(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode, room?.roomId]);
@@ -225,13 +222,11 @@ export default function RoomFormModal({
       qc.setQueryData<RoomRecord[]>(ROOMS_KEY, (old = []) =>
         old.map((x) => (x.roomId === ctx?.tempId ? created : x)),
       );
-      onSuccess(`Room ${created.roomNumber} created.`);
+      feedback.success(`Room ${created.roomNumber} created.`);
     },
     onError: (err: any, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(ROOMS_KEY, ctx.prev);
-      onError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to create',
-      );
+      feedback.failed(extractApiError(err, 'Failed to create'));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['rooms'] }),
   });
@@ -257,20 +252,16 @@ export default function RoomFormModal({
       qc.setQueryData<RoomRecord[]>(ROOMS_KEY, (old = []) =>
         old.map((x) => (x.roomId === updated.roomId ? updated : x)),
       );
-      onSuccess(`Room ${updated.roomNumber} updated.`);
+      feedback.success(`Room ${updated.roomNumber} updated.`);
     },
     onError: (err: any, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(ROOMS_KEY, ctx.prev);
-      onError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to update',
-      );
+      feedback.failed(extractApiError(err, 'Failed to update'));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['rooms'] }),
   });
 
   const handleSubmit = () => {
-    setFormError(null);
-
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
@@ -411,21 +402,6 @@ export default function RoomFormModal({
           </div>
 
           <LivePreview form={form} departments={departments} />
-
-          {formError && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span className="flex-1">{formError}</span>
-              <button
-                type="button"
-                onClick={() => setFormError(null)}
-                className="text-red-600 hover:text-red-800"
-                aria-label="Dismiss error"
-              >
-                <Icon name="close" size={14} />
-              </button>
-            </div>
-          )}
 
           {isCreateWizard ? (
             renderStep(stepIdx)

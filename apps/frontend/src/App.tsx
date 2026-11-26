@@ -10,6 +10,7 @@ import { useAuthStore } from './store/auth.store';
 import { ROUTE_LOADERS } from './lib/route-prefetch';
 import { AnimatePresence, motion } from 'motion/react';
 import Icon from './components/ui/Icon';
+import { FeedbackProvider } from './components/ui/FeedbackToast';
 
 // The public landing page is the entry point, so it stays in the initial
 // bundle. Authenticated pages and their shells are split into chunks and
@@ -123,141 +124,143 @@ function App() {
         )}
       </AnimatePresence>
       <MaintenanceGate>
-      {/* Session-scoped Realtime presence + last-seen heartbeat. Sits above
-          the router so changing pages never untracks the signed-in user. */}
-      <PresenceProvider />
-      <Suspense fallback={<RouteFallback />}>
-      <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/maintenance" element={<MaintenancePage />} />
-      <Route path="/recovery/verify" element={<RecoveryVerifyPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <FeedbackProvider>
+          {/* Session-scoped Realtime presence + last-seen heartbeat. Sits above
+            the router so changing pages never untracks the signed-in user. */}
+        <PresenceProvider />
+        <Suspense fallback={<RouteFallback />}>
+        <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/maintenance" element={<MaintenancePage />} />
+        <Route path="/recovery/verify" element={<RecoveryVerifyPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-      {/* Wall page — reachable only when a DH is walled. Login, AuthProvider,
-          and the wall page's "Refresh status" all key off profile.dept_active. */}
-      <Route
-        path="/department-deactivated"
-        element={
-          <ProtectedRoute
-            allowedRoles={['department_head']}
-            redirectTo="/login"
-          />
-        }
-      >
-        <Route index element={<DepartmentDeactivatedPage />} />
-      </Route>
+        {/* Wall page — reachable only when a DH is walled. Login, AuthProvider,
+            and the wall page's "Refresh status" all key off profile.dept_active. */}
+        <Route
+          path="/department-deactivated"
+          element={
+            <ProtectedRoute
+              allowedRoles={['department_head']}
+              redirectTo="/login"
+            />
+          }
+        >
+          <Route index element={<DepartmentDeactivatedPage />} />
+        </Route>
 
-      {/* ═══════════════ DEAN (also serves the hidden dev account) ═══════════════ */}
-      <Route
-        element={
-          <ProtectedRoute
-            allowedRoles={['administrator', 'college_dean', 'college_secretary']}
-            redirectTo="/login"
-          />
-        }
-      >
-        <Route element={<DeanRouteGuard />}>
-          <Route path="/dean" element={<DeanShell />}>
-            <Route index element={<Navigate to="/dean/dashboard" replace />} />
-            <Route path="dashboard" element={<DeanDashboardPage />} />
-            <Route path="departments" element={<DeanDepartmentsPage />} />
-            <Route path="programs" element={<ProgramsPage />} />
-            <Route
-              path="departments/manage"
-              element={<DeanDepartmentsManagePage />}
+        {/* ═══════════════ DEAN (also serves the hidden dev account) ═══════════════ */}
+        <Route
+          element={
+            <ProtectedRoute
+              allowedRoles={['administrator', 'college_dean', 'college_secretary']}
+              redirectTo="/login"
             />
-            <Route path="approvals" element={<DeanApprovalsPage />} />
-            <Route path="requests" element={<ApprovalsPage />} />
-            <Route path="idp/change-requests" element={<IdpChangeRequestsPage />} />
-            <Route path="timetable" element={<TimetablePage readOnly />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="faculty" element={<FacultyPage />} />
-            <Route path="subjects" element={<SubjectsPage />} />
-            <Route path="sections" element={<SectionsPage />} />
-            <Route path="rooms" element={<RoomsPage />} />
-            <Route path="system-settings" element={<SystemConfigPage />} />
-            <Route path="audit-trail" element={<AuditTrailPage />} />
-            <Route path="dev-tools" element={<DevToolsPage />} />
-            <Route path="reports" element={<ReportsHubPage />} />
-            <Route path="reports/workload" element={<FacultyWorkloadPage />} />
-            <Route path="reports/approvals" element={<ApprovalsReportPage />} />
-            <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
-            <Route path="import" element={<ProspectusPdfListPage />} />
-            <Route
-              path="import/:id"
-              element={
-                <RequireDesktop>
-                  <ProspectusPdfEditorPage />
-                </RequireDesktop>
-              }
-            />
-            <Route path="notifications" element={<NotificationsInboxPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="help" element={<HelpPage />} />
+          }
+        >
+          <Route element={<DeanRouteGuard />}>
+            <Route path="/dean" element={<DeanShell />}>
+              <Route index element={<Navigate to="/dean/dashboard" replace />} />
+              <Route path="dashboard" element={<DeanDashboardPage />} />
+              <Route path="departments" element={<DeanDepartmentsPage />} />
+              <Route path="programs" element={<ProgramsPage />} />
+              <Route
+                path="departments/manage"
+                element={<DeanDepartmentsManagePage />}
+              />
+              <Route path="approvals" element={<DeanApprovalsPage />} />
+              <Route path="requests" element={<ApprovalsPage />} />
+              <Route path="idp/change-requests" element={<IdpChangeRequestsPage />} />
+              <Route path="timetable" element={<TimetablePage readOnly />} />
+              <Route path="users" element={<AdminUsersPage />} />
+              <Route path="faculty" element={<FacultyPage />} />
+              <Route path="subjects" element={<SubjectsPage />} />
+              <Route path="sections" element={<SectionsPage />} />
+              <Route path="rooms" element={<RoomsPage />} />
+              <Route path="system-settings" element={<SystemConfigPage />} />
+              <Route path="audit-trail" element={<AuditTrailPage />} />
+              <Route path="dev-tools" element={<DevToolsPage />} />
+              <Route path="reports" element={<ReportsHubPage />} />
+              <Route path="reports/workload" element={<FacultyWorkloadPage />} />
+              <Route path="reports/approvals" element={<ApprovalsReportPage />} />
+              <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+              <Route path="import" element={<ProspectusPdfListPage />} />
+              <Route
+                path="import/:id"
+                element={
+                  <RequireDesktop>
+                    <ProspectusPdfEditorPage />
+                  </RequireDesktop>
+                }
+              />
+              <Route path="notifications" element={<NotificationsInboxPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="help" element={<HelpPage />} />
+            </Route>
           </Route>
         </Route>
-      </Route>
 
-      {/* ═══════════════ DEPARTMENT HEAD ═══════════════ */}
-      <Route
-        element={
-          <ProtectedRoute
-            allowedRoles={['department_head']}
-            redirectTo="/login"
-          />
-        }
-      >
-        {/*
-         * The gate sits BEFORE the AppShell. If the DH's dept is
-         * deactivated, it redirects to /department-deactivated before
-         * AppShell (or its notification/chat providers) ever mounts.
-         * That's the point — no chrome, no polling, no stale fetches.
-         */}
-        <Route element={<DepartmentActiveGate />}>
-          <Route element={<AppShell />}>
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="timetable" element={<TimetablePage />} />
-            <Route path="sections" element={<SectionsPage />} />
-            <Route path="approvals" element={<ApprovalsPage />} />
-            <Route
-              path="approvals/schedule-changes"
-              element={<ScheduleChangeApprovalsPage />}
+        {/* ═══════════════ DEPARTMENT HEAD ═══════════════ */}
+        <Route
+          element={
+            <ProtectedRoute
+              allowedRoles={['department_head']}
+              redirectTo="/login"
             />
-            <Route path="subjects" element={<SubjectsPage />} />
-            <Route path="programs" element={<ProgramsPage />} />
-            <Route path="prospectus" element={<ProspectusPage />} />
-            <Route path="faculty" element={<FacultyPage />} />
-            <Route path="rooms" element={<RoomsPage />} />
-            <Route path="reports" element={<ReportsHubPage />} />
-            <Route path="reports/workload" element={<FacultyWorkloadPage />} />
-            <Route path="reports/approvals" element={<ApprovalsReportPage />} />
-            <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
-            <Route path="import" element={<ProspectusPdfListPage />} />
-            <Route
-              path="import/:id"
-              element={
-                <RequireDesktop>
-                  <ProspectusPdfEditorPage />
-                </RequireDesktop>
-              }
-            />
-            <Route path="notifications" element={<NotificationsInboxPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="help" element={<HelpPage />} />
+          }
+        >
+          {/*
+           * The gate sits BEFORE the AppShell. If the DH's dept is
+           * deactivated, it redirects to /department-deactivated before
+           * AppShell (or its notification/chat providers) ever mounts.
+           * That's the point — no chrome, no polling, no stale fetches.
+           */}
+          <Route element={<DepartmentActiveGate />}>
+            <Route element={<AppShell />}>
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="timetable" element={<TimetablePage />} />
+              <Route path="sections" element={<SectionsPage />} />
+              <Route path="approvals" element={<ApprovalsPage />} />
+              <Route
+                path="approvals/schedule-changes"
+                element={<ScheduleChangeApprovalsPage />}
+              />
+              <Route path="subjects" element={<SubjectsPage />} />
+              <Route path="programs" element={<ProgramsPage />} />
+              <Route path="prospectus" element={<ProspectusPage />} />
+              <Route path="faculty" element={<FacultyPage />} />
+              <Route path="rooms" element={<RoomsPage />} />
+              <Route path="reports" element={<ReportsHubPage />} />
+              <Route path="reports/workload" element={<FacultyWorkloadPage />} />
+              <Route path="reports/approvals" element={<ApprovalsReportPage />} />
+              <Route path="reports/rooms" element={<RoomSufficiencyPage />} />
+              <Route path="import" element={<ProspectusPdfListPage />} />
+              <Route
+                path="import/:id"
+                element={
+                  <RequireDesktop>
+                    <ProspectusPdfEditorPage />
+                  </RequireDesktop>
+                }
+              />
+              <Route path="notifications" element={<NotificationsInboxPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="help" element={<HelpPage />} />
+            </Route>
           </Route>
         </Route>
-      </Route>
 
-      {/* Legacy /admin/* — redirect anything that hits it */}
-      <Route
-        path="/admin/*"
-        element={<Navigate to="/dean/dashboard" replace />}
-      />
+        {/* Legacy /admin/* — redirect anything that hits it */}
+        <Route
+          path="/admin/*"
+          element={<Navigate to="/dean/dashboard" replace />}
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      </Suspense>
+        <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        </Suspense>
+        </FeedbackProvider>
       </MaintenanceGate>
     </>
   );

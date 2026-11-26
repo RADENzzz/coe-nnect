@@ -20,17 +20,18 @@ import Modal from '../../components/ui/Modal';
 import ResponsiveTable, { type Column } from '../../components/ui/ResponsiveTable';
 import type { RowAction } from '../../components/ui/RowActionMenu';
 import { ActiveBadge } from '../../components/ui/StatusBadge';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 type Mode = 'create' | 'edit';
 
 export default function DeanDepartmentsManagePage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const feedback = useFeedback();
 
   const [mode, setMode] = useState<Mode | null>(null);
   const [editing, setEditing] = useState<Department | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({
     deptCode: '',
     deptName: '',
@@ -41,7 +42,6 @@ export default function DeanDepartmentsManagePage() {
   const [deactivateTarget, setDeactivateTarget] = useState<string | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   // ALWAYS include inactive — this is the reactivation surface.
   const { data: departments = [], isLoading } = useQuery({
@@ -102,8 +102,8 @@ export default function DeanDepartmentsManagePage() {
       if (form.headUserId) {
         try {
           await updateUser(form.headUserId, { deptId: dept.deptId });
-        } catch (err) {
-          setError(
+        } catch {
+          feedback.failed(
             'Department created, but head assignment failed. Use the Users page to assign a head.',
           );
           invalidateAfterDeptChange();
@@ -112,15 +112,13 @@ export default function DeanDepartmentsManagePage() {
           return;
         }
       }
-      setSuccess(`Department "${dept.deptName}" created.`);
+      feedback.success(`Department "${dept.deptName}" created.`);
       closeForm();
       invalidateAfterDeptChange();
       qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => {
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to create',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Failed to create'));
     },
   });
 
@@ -133,14 +131,12 @@ export default function DeanDepartmentsManagePage() {
       input: Partial<CreateDepartmentInput>;
     }) => updateDepartment(id, input),
     onSuccess: (dept) => {
-      setSuccess(`Department "${dept.deptName}" updated.`);
+      feedback.success(`Department "${dept.deptName}" updated.`);
       closeForm();
       invalidateAfterDeptChange();
     },
-    onError: (err: any) => {
-      setError(
-        err?.response?.data?.message ?? err.message ?? 'Failed to update',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Failed to update'));
     },
   });
 
@@ -148,7 +144,7 @@ export default function DeanDepartmentsManagePage() {
     mutationFn: toggleDepartmentActive,
     onSuccess: (dept) => {
       // Confirm the state change clearly so the Dean knows it stuck.
-      setSuccess(
+      feedback.success(
         dept.isActive
           ? `Department "${dept.deptName}" reactivated. Its schedules are visible again.`
           : `Department "${dept.deptName}" deactivated. Its schedules are now hidden from DHs.`,
@@ -157,19 +153,18 @@ export default function DeanDepartmentsManagePage() {
       setAdminPassword('');
       invalidateAfterDeptChange();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? 'Toggle failed'),
+    onError: (err: unknown) =>
+      feedback.failed(extractApiError(err, 'Toggle failed')),
   });
 
   const handleConfirmDeactivate = async () => {
     if (!user?.email || !deactivateTarget) return;
     setIsVerifying(true);
-    setVerifyError(null);
     try {
       await reauthenticate(adminPassword);
       toggleMutation.mutate(deactivateTarget);
-    } catch (err: any) {
-      setVerifyError(err?.response?.data?.message || 'Incorrect password');
+    } catch (err: unknown) {
+      feedback.error(extractApiError(err, 'Incorrect password'));
       setIsVerifying(false);
     }
   };
@@ -182,8 +177,6 @@ export default function DeanDepartmentsManagePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
 
     const payload = {
       deptCode: form.deptCode.trim().toUpperCase(),
@@ -207,8 +200,8 @@ export default function DeanDepartmentsManagePage() {
             await updateUser(targetHeadId, { deptId: editing.deptId });
           }
           qc.invalidateQueries({ queryKey: ['users'] });
-        } catch (err: any) {
-          setError(
+        } catch {
+          feedback.failed(
             'Department updated, but head reassignment failed. Use the Users page to fix it.',
           );
         }
@@ -220,8 +213,6 @@ export default function DeanDepartmentsManagePage() {
     setMode('create');
     setEditing(null);
     setForm({ deptCode: '', deptName: '', description: '', headUserId: '' });
-    setError(null);
-    setSuccess(null);
   };
 
   const openEdit = (d: Department) => {
@@ -239,15 +230,12 @@ export default function DeanDepartmentsManagePage() {
       description: d.description ?? '',
       headUserId: head ? head.userId : '',
     });
-    setError(null);
-    setSuccess(null);
   };
 
   const closeForm = () => {
     setMode(null);
     setEditing(null);
     setForm({ deptCode: '', deptName: '', description: '', headUserId: '' });
-    setError(null);
   };
 
   const inactiveCount = departments.filter((d) => !d.isActive).length;
@@ -366,17 +354,6 @@ export default function DeanDepartmentsManagePage() {
           New Department
         </button>
       </div>
-
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-green-700 text-sm">
-          {success}
-        </div>
-      )}
 
       <Modal
         open={!!mode}
@@ -500,7 +477,6 @@ export default function DeanDepartmentsManagePage() {
         onClose={() => {
           setDeactivateTarget(null);
           setAdminPassword('');
-          setVerifyError(null);
         }}
         title="Confirm Deactivation"
         size="sm"
@@ -511,7 +487,6 @@ export default function DeanDepartmentsManagePage() {
               onClick={() => {
                 setDeactivateTarget(null);
                 setAdminPassword('');
-                setVerifyError(null);
               }}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition"
             >
@@ -540,11 +515,6 @@ export default function DeanDepartmentsManagePage() {
               views and blocks new schedule changes until it's reactivated.
             </span>
           </div>
-          {verifyError && (
-            <div className="p-2 bg-red-100 text-red-700 text-xs">
-              {verifyError}
-            </div>
-          )}
           <input
             type="password"
             placeholder="Admin password"

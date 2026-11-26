@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Icon from '../../../components/ui/Icon';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import { useThemeStore } from '../../../store/theme.store';
 import { useMotionStore } from '../../../store/motion.store';
 import {
@@ -84,6 +85,7 @@ export default function AppearanceSettingsTab({
   /** The sidebar-logo uploader only makes sense once signed in. */
   showLogo?: boolean;
 }) {
+  const feedback = useFeedback();
   const appearance = useAppearanceStore((s) => s.appearance);
   const logo = useAppearanceStore((s) => s.logo);
   const setAccent = useAppearanceStore((s) => s.setAccent);
@@ -98,7 +100,6 @@ export default function AppearanceSettingsTab({
 
   const [hexDraft, setHexDraft] = useState(appearance.accent);
   const [resetOpen, setResetOpen] = useState(false);
-  const [logoError, setLogoError] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,13 +124,13 @@ export default function AppearanceSettingsTab({
 
   const handleLogoPick = async (file: File | undefined) => {
     if (!file) return;
-    setLogoError(null);
     setLogoBusy(true);
     try {
       const dataUrl = await toSquareDataUrl(file);
       setLogo(dataUrl);
+      feedback.success('Logo updated.');
     } catch (err) {
-      setLogoError(
+      feedback.failed(
         err instanceof Error ? err.message : 'Could not process that image.',
       );
     } finally {
@@ -441,10 +442,7 @@ export default function AppearanceSettingsTab({
                 {logo && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setLogo(null);
-                      setLogoError(null);
-                    }}
+                    onClick={() => setLogo(null)}
                     className="flex items-center gap-1.5 rounded-lg border border-surface-variant px-3.5 py-2 text-xs font-semibold text-on-surface-variant transition hover:text-on-surface hover:bg-surface-container-low"
                   >
                     <Icon name="delete" size={15} />
@@ -457,12 +455,6 @@ export default function AppearanceSettingsTab({
                 {LOGO_OUTPUT_SIZE}&times;{LOGO_OUTPUT_SIZE}px — nothing is
                 stretched, and transparent PNGs keep their transparency.
               </p>
-              {logoError && (
-                <p className="flex items-center gap-1 text-[11px] font-medium text-red-600">
-                  <Icon name="error" size={13} />
-                  {logoError}
-                </p>
-              )}
             </div>
 
             <input

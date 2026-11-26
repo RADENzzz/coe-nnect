@@ -23,6 +23,8 @@ import {
 import { exportScheduleExcel } from './generateScheduleExcel';
 import ExportFilenameModal from './ExportFilenameModal';
 import ExportSheet from './ExportSheet';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 
 export type ExportFormat = 'agenda' | 'grid' | 'table';
 type Busy = 'pdf' | 'excel' | 'print' | 'share' | null;
@@ -96,6 +98,7 @@ export default function ExportToolbar({
 }: Props) {
   const isMobile = useIsMobile();
   const canShare = useCanShare();
+  const feedback = useFeedback();
 
   const availableFormats = useMemo<ExportFormat[]>(() => {
     const list: ExportFormat[] = [];
@@ -123,7 +126,6 @@ export default function ExportToolbar({
   }, [defaultFormat]);
 
   const [busy, setBusy] = useState<Busy>(null);
-  const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filenameModal, setFilenameModal] = useState<{
     ext: 'pdf' | 'xlsx';
@@ -212,7 +214,6 @@ export default function ExportToolbar({
   };
 
   const runExportPdf = async (filename: string) => {
-    setError(null);
     setBusy('pdf');
     try {
       if (format === 'grid' && gridAvailable) {
@@ -222,16 +223,15 @@ export default function ExportToolbar({
       } else {
         await exportSchedulePdf(tableDocProps, filename);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[PDF export] Failed:', err);
-      setError(err?.message ?? 'Failed to generate PDF.');
+      feedback.failed(extractApiError(err, 'Failed to generate PDF.'));
     } finally {
       setBusy(null);
     }
   };
 
   const runPrint = async () => {
-    setError(null);
     const filename = effectiveFilename.endsWith('.pdf')
       ? effectiveFilename
       : `${effectiveFilename}.pdf`;
@@ -244,9 +244,9 @@ export default function ExportToolbar({
       } else {
         await printSchedulePdf(tableDocProps, filename);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Print] Failed:', err);
-      setError(err?.message ?? 'Failed to open print view.');
+      feedback.failed(extractApiError(err, 'Failed to open print view.'));
     } finally {
       setBusy(null);
     }
@@ -254,7 +254,6 @@ export default function ExportToolbar({
 
   const runShare = async () => {
     if (!canShare) return;
-    setError(null);
     setBusy('share');
     try {
       let file: File;
@@ -277,10 +276,10 @@ export default function ExportToolbar({
           versionContext ? ` (v${versionContext.versionNumber})` : ''
         }`,
       });
-    } catch (err: any) {
-      if (err?.name !== 'AbortError') {
+    } catch (err: unknown) {
+      if ((err as { name?: string } | null)?.name !== 'AbortError') {
         console.error('[Share] Failed:', err);
-        setError(err?.message ?? 'Failed to share PDF.');
+        feedback.failed(extractApiError(err, 'Failed to share PDF.'));
       }
     } finally {
       setBusy(null);
@@ -288,7 +287,6 @@ export default function ExportToolbar({
   };
 
   const runExportExcel = async (filename: string) => {
-    setError(null);
     setBusy('excel');
     try {
       const stem = filename.replace(/\.xlsx$/i, '');
@@ -303,9 +301,9 @@ export default function ExportToolbar({
           ? 'Master'
           : scopeLabel.slice(0, 31),
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Excel export] Failed:', err);
-      setError(err?.message ?? 'Failed to generate Excel file.');
+      feedback.failed(extractApiError(err, 'Failed to generate Excel file.'));
     } finally {
       setBusy(null);
     }
@@ -330,12 +328,6 @@ export default function ExportToolbar({
   if (isMobile) {
     return (
       <>
-        {error && (
-          <div className="w-full text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2 mb-2">
-            {error}
-          </div>
-        )}
-
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
@@ -387,12 +379,6 @@ export default function ExportToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {error && (
-        <div className="w-full text-xs text-red-700 bg-red-50 border border-red-200 px-3 py-2">
-          {error}
-        </div>
-      )}
-
       {availableFormats.length > 1 && (
         <div className="flex items-center border border-surface-variant overflow-hidden">
           {availableFormats.map((f, idx) => {

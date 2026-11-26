@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
 import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   clearFieldError,
   mergeFieldError,
@@ -115,13 +117,6 @@ const EMPTY_FORM: FormState = {
   electiveSemester: '',
 };
 
-function extractErrorMessage(err: any, fallback: string): string {
-  const raw = err?.response?.data?.message;
-  if (Array.isArray(raw)) return raw[0] ?? fallback;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  return err?.message ?? fallback;
-}
-
 interface Props {
   open: boolean;
   mode: 'create' | 'edit' | null;
@@ -133,7 +128,6 @@ interface Props {
   /** Pre-select the elective flag when creating from the Elective tab. */
   defaultElective?: boolean;
   onClose: () => void;
-  onSuccess: (message: string) => void;
 }
 
 export default function SubjectFormModal({
@@ -146,17 +140,16 @@ export default function SubjectFormModal({
   myDeptId,
   defaultElective = false,
   onClose,
-  onSuccess,
 }: Props) {
   const qc = useQueryClient();
   const { options } = useSemesterTypes();
+  const feedback = useFeedback();
   const isWizard = mode === 'create';
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
-  const [formError, setFormError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
@@ -205,7 +198,6 @@ export default function SubjectFormModal({
     setStepIdx(0);
     setFieldErrors({});
     setErrors([]);
-    setFormError(null);
     setConfirmClose(false);
     setTimeout(() => firstFieldRef.current?.focus(), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,11 +364,11 @@ export default function SubjectFormModal({
     mutationFn: createSubject,
     onSuccess: (s) => {
       invalidateAfterSubjectChange();
-      onSuccess(`Subject "${s.subjectCode}" created.`);
+      feedback.success(`Subject "${s.subjectCode}" created.`);
       onClose();
     },
     onError: (err: any) =>
-      setFormError(extractErrorMessage(err, 'Failed to create')),
+      feedback.failed(extractApiError(err, 'Failed to create')),
   });
 
   const updateMutation = useMutation({
@@ -389,11 +381,11 @@ export default function SubjectFormModal({
     }) => updateSubject(id, input),
     onSuccess: (s) => {
       invalidateAfterSubjectChange();
-      onSuccess(`Subject "${s.subjectCode}" updated.`);
+      feedback.success(`Subject "${s.subjectCode}" updated.`);
       onClose();
     },
     onError: (err: any) =>
-      setFormError(extractErrorMessage(err, 'Failed to update')),
+      feedback.failed(extractApiError(err, 'Failed to update')),
   });
 
   const busy = createMutation.isPending || updateMutation.isPending;
@@ -401,8 +393,6 @@ export default function SubjectFormModal({
   // ── Submit ──
 
   const handleSubmit = () => {
-    setFormError(null);
-
     const problems = collectErrors();
     setErrors(problems);
     if (problems.length > 0) {
@@ -1132,21 +1122,6 @@ export default function SubjectFormModal({
                 isMixed={isMixed}
               />
             )}
-
-          {formError && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span className="flex-1">{formError}</span>
-              <button
-                type="button"
-                onClick={() => setFormError(null)}
-                className="text-red-600 hover:text-red-800"
-                aria-label="Dismiss"
-              >
-                <Icon name="close" size={14} />
-              </button>
-            </div>
-          )}
 
           {isWizard ? (
             <form

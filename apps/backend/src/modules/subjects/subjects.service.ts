@@ -168,6 +168,19 @@ export class SubjectsService {
       await this.departments.assertDepartmentActive(found.deptId);
     }
 
+    // ── NEW: refuse if another subject already uses the target code ──
+    // (mirrors the create-path check; an update that keeps its own code is fine)
+    if (dto.subjectCode !== undefined) {
+      const existing = await this.repo.findOne({
+        where: { subjectCode: dto.subjectCode },
+      });
+      if (existing && existing.subjectId !== found.subjectId) {
+        throw new ConflictException(
+          `Subject code "${dto.subjectCode}" already exists`,
+        );
+      }
+    }
+
     const nextIsElective = dto.isElective ?? found.isElective ?? false;
     const nextUnitsMode = dto.unitsMode ?? found.unitsMode ?? 'lec_lab';
     const nextElectiveCategory =

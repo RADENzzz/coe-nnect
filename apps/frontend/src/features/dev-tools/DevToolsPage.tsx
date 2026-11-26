@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
+import { useFeedback } from '../../components/ui/FeedbackToast';
 import BbcodeEditor from '../../components/ui/BbcodeEditor';
 import { Bbcode } from '../../lib/bbcode';
+import { extractApiError } from '../../lib/api-error';
 import {
   fetchSystemState,
   startSeed,
@@ -77,6 +79,7 @@ const STATUS_ROWS: { key: string; label: string; icon: string }[] = [
 
 export default function DevToolsPage() {
   const currentUser = useAuthStore((state) => state.user);
+  const feedback = useFeedback();
 
   const queryClient = useQueryClient();
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,9 +138,6 @@ export default function DevToolsPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-
   const [deactivateTarget, setDeactivateTarget] =
     useState<DevUserRecord | null>(null);
 
@@ -154,12 +154,6 @@ export default function DevToolsPage() {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [lastJobResult]);
-
-  useEffect(() => {
-    if (!actionSuccess) return;
-    const t = setTimeout(() => setActionSuccess(null), 5_000);
-    return () => clearTimeout(t);
-  }, [actionSuccess]);
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -220,22 +214,18 @@ export default function DevToolsPage() {
     mutationFn: startSeed,
     onSuccess: ({ jobId }) => {
       setSeedModalOpen(false);
-      setActionError(null);
-      setActionSuccess(null);
       startPolling(jobId, 'seed');
     },
-    onError: (err: any) => setActionError(err?.message ?? 'Seed failed'),
+    onError: (err) => feedback.failed(extractApiError(err, 'Seed failed')),
   });
 
   const seedFullMutation = useMutation({
     mutationFn: startSeedDemoFull,
     onSuccess: ({ jobId }) => {
-      setActionError(null);
-      setActionSuccess(null);
       startPolling(jobId, 'seed-demo-full');
     },
-    onError: (err: any) =>
-      setActionError(err?.message ?? 'Demo data seed failed'),
+    onError: (err) =>
+      feedback.failed(extractApiError(err, 'Demo data seed failed')),
   });
 
   const resetMutation = useMutation({
@@ -243,11 +233,9 @@ export default function DevToolsPage() {
     onSuccess: ({ jobId }, reseed) => {
       setResetModalOpen(false);
       setResetPhrase('');
-      setActionError(null);
-      setActionSuccess(null);
       startPolling(jobId, reseed ? 'reset-and-seed' : 'reset');
     },
-    onError: (err: any) => setActionError(err?.message ?? 'Reset failed'),
+    onError: (err) => feedback.failed(extractApiError(err, 'Reset failed')),
   });
 
   const passwordMutation = useMutation({
@@ -258,14 +246,11 @@ export default function DevToolsPage() {
       setPasswordTarget(null);
       setNewPassword('');
       setPasswordCopied(false);
-      setActionError(null);
-      setActionSuccess(`Password updated for "${target?.username ?? 'user'}".`);
+      feedback.success(`Password updated for "${target?.username ?? 'user'}".`);
       refetchUsers();
     },
-    onError: (err: any) =>
-      setActionError(
-        err?.response?.data?.message ?? err?.message ?? 'Password reset failed',
-      ),
+    onError: (err) =>
+      feedback.failed(extractApiError(err, 'Password reset failed')),
   });
 
   const renameMutation = useMutation({
@@ -274,30 +259,22 @@ export default function DevToolsPage() {
     onSuccess: (data) => {
       setRenameTarget(null);
       setNewUsername('');
-      setActionError(null);
-      setActionSuccess(`Renamed to "${data.username}".`);
+      feedback.success(`Renamed to "${data.username}".`);
       refetchUsers();
     },
-    onError: (err: any) =>
-      setActionError(
-        err?.response?.data?.message ?? err?.message ?? 'Rename failed',
-      ),
+    onError: (err) => feedback.failed(extractApiError(err, 'Rename failed')),
   });
 
   const toggleActiveMutation = useMutation({
     mutationFn: toggleDevUserActive,
     onSuccess: (data) => {
       setDeactivateTarget(null);
-      setActionError(null);
-      setActionSuccess(
+      feedback.success(
         `User is now ${data.isActive ? 'Active' : 'Deactivated'}.`,
       );
       refetchUsers();
     },
-    onError: (err: any) =>
-      setActionError(
-        err?.response?.data?.message ?? err?.message ?? 'Toggle failed',
-      ),
+    onError: (err) => feedback.failed(extractApiError(err, 'Toggle failed')),
   });
 
   const isBusy =
@@ -344,13 +321,11 @@ export default function DevToolsPage() {
     setPasswordTarget(u);
     setNewPassword(DEMO_PASSWORD);
     setPasswordCopied(false);
-    setActionError(null);
   };
 
   const openRenameModal = (u: DevUserRecord) => {
     setRenameTarget(u);
     setNewUsername(u.username);
-    setActionError(null);
   };
 
   return (
@@ -395,43 +370,6 @@ export default function DevToolsPage() {
           )}
         </div>
       </div>
-
-      {/* ═══════════════ Banners ═══════════════ */}
-      {actionError && (
-        <div
-          role="alert"
-          className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2"
-        >
-          <Icon name="error" size={16} className="mt-0.5 shrink-0" />
-          <span className="flex-1 break-words">{actionError}</span>
-          <button
-            type="button"
-            aria-label="Dismiss error"
-            onClick={() => setActionError(null)}
-            className="text-red-500 hover:text-red-700 shrink-0"
-          >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      )}
-      {actionSuccess && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm flex items-start gap-2"
-        >
-          <Icon name="check_circle" size={16} className="mt-0.5 shrink-0" />
-          <span className="flex-1 break-words">{actionSuccess}</span>
-          <button
-            type="button"
-            aria-label="Dismiss message"
-            onClick={() => setActionSuccess(null)}
-            className="text-emerald-500 hover:text-emerald-700 shrink-0"
-          >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      )}
 
       {/* ═══════════════ System Status ═══════════════ */}
       <SystemStatusCard />
@@ -1301,6 +1239,7 @@ export default function DevToolsPage() {
 // System Status card — write path for the login-page banner
 // ─────────────────────────────────────────────────────────────
 function SystemStatusCard() {
+  const feedback = useFeedback();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data, isLoading } = useQuery({
@@ -1313,7 +1252,6 @@ function SystemStatusCard() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
-  const [saved, setSaved] = useState<string | null>(null);
   const [previewAsUser, setPreviewAsUser] = useState(() =>
     isMaintenancePreviewEnabled(),
   );
@@ -1329,12 +1267,6 @@ function SystemStatusCard() {
     setMessage(data.message ?? '');
   }, [data?.updatedAt]);
 
-  useEffect(() => {
-    if (!saved) return;
-    const t = setTimeout(() => setSaved(null), 4000);
-    return () => clearTimeout(t);
-  }, [saved]);
-
   const saveMutation = useMutation({
     mutationFn: () =>
       updateSystemStatus({
@@ -1347,7 +1279,7 @@ function SystemStatusCard() {
     onSuccess: (next) => {
       queryClient.setQueryData(['system-status'], next);
       queryClient.invalidateQueries({ queryKey: ['dev-tools'] });
-      setSaved(
+      feedback.success(
         maintenanceMode
           ? 'Maintenance mode is ON — only this dev account can sign in.'
           : enabled
@@ -1355,12 +1287,8 @@ function SystemStatusCard() {
             : 'Banner hidden.',
       );
     },
-    onError: (err: any) => {
-      alert(
-        err?.response?.data?.message ??
-          err?.message ??
-          'Failed to save system status.',
-      );
+    onError: (err) => {
+      feedback.failed(extractApiError(err, 'Failed to save system status.'));
     },
   });
 
@@ -1598,16 +1526,6 @@ function SystemStatusCard() {
         </button>
       </div>
 
-      {saved && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="text-xs px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-1.5 animate-slide-up"
-        >
-          <Icon name="check_circle" size={14} />
-          {saved}
-        </div>
-      )}
     </section>
   );
 }

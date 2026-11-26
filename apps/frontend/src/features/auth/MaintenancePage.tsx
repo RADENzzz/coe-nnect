@@ -11,14 +11,16 @@ import {
   isMaintenancePreviewEnabled,
 } from '../../lib/maintenance-preview';
 import Icon from '../../components/ui/Icon';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import CactusRunner from './components/CactusRunner';
 
 export default function MaintenancePage() {
   const navigate = useNavigate();
+  const feedback = useFeedback();
   const profile = useAuthStore((s) => s.profile);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [started, setStarted] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -71,19 +73,18 @@ export default function MaintenancePage() {
   }, [data, showWall, isDev, profile, navigate]);
 
   const handleRefresh = async () => {
-    setError(null);
     setRefreshing(true);
     try {
       const result = await refetch();
       if (result.error) {
-        setError(
-          result.error instanceof Error
-            ? result.error.message
-            : 'Could not reach the status service.',
+        feedback.failed(
+          extractApiError(result.error, 'Could not reach the status service.'),
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not reach the status service.');
+      feedback.failed(
+        extractApiError(e, 'Could not reach the status service.'),
+      );
     } finally {
       setRefreshing(false);
     }
@@ -182,16 +183,6 @@ export default function MaintenancePage() {
                   </p>
                 )}
               </div>
-
-              {error && (
-                <div
-                  role="alert"
-                  className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2"
-                >
-                  <Icon name="error" size={14} className="shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
 
               <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
                 <button

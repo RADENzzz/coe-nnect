@@ -39,7 +39,6 @@ interface Props {
   faculty: FacultyLite[];
   users: UserRecord[];
   submitting: boolean;
-  serverError: string | null;
   onCreate: (input: {
     email: string;
     password: string;
@@ -60,7 +59,6 @@ export default function UserFormModal({
   faculty,
   users,
   submitting,
-  serverError,
   onCreate,
   onUpdate,
 }: Props) {
@@ -212,12 +210,6 @@ export default function UserFormModal({
       size="lg"
     >
       <form onSubmit={submit} className="space-y-4">
-        {serverError && (
-          <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
-            <Icon name="error" size={14} className="shrink-0 mt-0.5" />
-            <span>{serverError}</span>
-          </div>
-        )}
         {errors._ && (
           <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
             {errors._}
