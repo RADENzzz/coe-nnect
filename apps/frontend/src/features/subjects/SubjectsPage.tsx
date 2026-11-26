@@ -1033,6 +1033,34 @@ export default function SubjectsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestParam, requestsLoading, visibleRequests, subjects]);
 
+  // ── Deep-link: open the subject drawer for ?subject=<subjectId> ──
+  const subjectParam = searchParams.get('subject');
+  const hasConsumedSubjectParam = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!subjectParam) return;
+    if (hasConsumedSubjectParam.current === subjectParam) return;
+    if (isLoading) return;
+
+    const target = subjects.find((s) => String(s.subjectId) === subjectParam);
+    const next = new URLSearchParams(searchParams);
+
+    if (!target) {
+      next.delete('subject');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    hasConsumedSubjectParam.current = subjectParam;
+    setDetailEntry(target);
+    setFocusEditAccess(false);
+    setMode(null);
+    setEditing(null);
+    next.delete('subject');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectParam, isLoading, subjects]);
+
   // ── Form-modal close (handles returnTo deep-link) ──
   const handleFormClose = () => {
     setMode(null);

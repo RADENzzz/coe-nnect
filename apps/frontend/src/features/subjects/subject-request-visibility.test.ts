@@ -44,3 +44,18 @@ test('request notification deep link opens the matching subject drawer', () => {
   assert.match(page, /next\.set\('view', 'requests'\)/);
   assert.match(page, /next\.delete\('request'\)/);
 });
+
+test('subject deep link resolves from the loaded catalog', () => {
+  assert.match(page, /searchParams\.get\('subject'\)/);
+  assert.match(page, /hasConsumedSubjectParam/);
+  assert.match(
+    page,
+    /const target = subjects\.find\(\(s\) => String\(s\.subjectId\) === subjectParam\)/,
+  );
+  assert.match(page, /if \(!target\)[\s\S]{0,240}next\.delete\('subject'\)/);
+  assert.match(page, /setDetailEntry\(target\)/);
+  assert.match(page, /setFocusEditAccess\(false\)/);
+  assert.match(page, /setMode\(null\)/);
+  assert.match(page, /setEditing\(null\)/);
+  assert.match(page, /next\.delete\('subject'\)/);
+});
