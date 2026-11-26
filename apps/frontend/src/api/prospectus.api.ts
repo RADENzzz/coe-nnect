@@ -19,6 +19,7 @@ export async function fetchAllProspectus(): Promise<
     subjectId: string;
     yearLevel: number;
     semester: string;
+    isActive: boolean;
     lectureSessionsPerWeek: number;
     lectureMinutesPerSession: number;
     labSessionsPerWeek: number;

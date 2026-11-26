@@ -8,6 +8,7 @@ import {
   fetchFlagged,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { fetchUserDirectory } from '../../api/users.api';
 import { fetchFaculty, fetchFacultyStatusSummary } from '../../api/faculty.api';
 import { fetchFacultyRequests } from '../../api/faculty-requests.api';
@@ -268,7 +269,7 @@ export default function DeanDashboardPage() {
   const deptScheduleStats = useMemo(() => {
     const map = new Map<string, { total: number; completed: number }>();
     for (const row of schedules) {
-      const deptId = row.subject?.deptId;
+      const deptId = getScheduleDeptId(row);
       if (!deptId) continue;
       const key = String(deptId);
       const current = map.get(key) ?? { total: 0, completed: 0 };
@@ -492,7 +493,7 @@ export default function DeanDashboardPage() {
           canApprove ? 'awaits approval' : 'is in review'
         }`,
         detail: [
-          deptCodeFor(schedule.subject?.deptId),
+          deptCodeFor(getScheduleDeptId(schedule)),
           schedule.faculty
             ? `${schedule.faculty.firstName} ${schedule.faculty.lastName}`
             : 'No faculty',
@@ -1507,7 +1508,7 @@ export default function DeanDashboardPage() {
                         {schedule.subject?.subjectCode ?? 'Unknown subject'}
                       </p>
                       <span className="shrink-0 rounded border border-outline-variant bg-surface-container-low px-1.5 py-0.5 text-[10px] font-bold text-on-surface-variant">
-                        {deptCodeFor(schedule.subject?.deptId)}
+                        {deptCodeFor(getScheduleDeptId(schedule))}
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-[11px] text-on-surface-variant">

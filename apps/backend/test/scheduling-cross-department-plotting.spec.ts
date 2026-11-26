@@ -74,11 +74,11 @@ function plottingHarness() {
     unused,
   );
 
-  return { service, scheduleRepo };
+  return { service, scheduleRepo, faculty, departments };
 }
 
-test('a department head can plot a minor subject owned by another department', async () => {
-  const { service, scheduleRepo } = plottingHarness();
+test('a department head plots a foreign minor under their own department', async () => {
+  const { service, scheduleRepo, faculty, departments } = plottingHarness();
 
   const saved = await service.plot(
     {
@@ -93,11 +93,18 @@ test('a department head can plot a minor subject owned by another department', a
     departmentHead as any,
   );
 
-  assert.equal(saved.deptId, '8');
+  assert.equal(saved.deptId, '7');
   assert.equal(scheduleRepo.save.mock.calls.length, 1);
+  const deptCalls = departments.assertDepartmentActive.mock.calls as any[][];
+  assert.equal(deptCalls.length, 1);
+  assert.equal(deptCalls[0][0], '7');
+  const gateCalls = faculty.ensureCrossDeptFacultyRequest.mock
+    .calls as any[][];
+  assert.equal(gateCalls.length, 1);
+  assert.equal(gateCalls[0][0].scheduleDeptId, '7');
 });
 
-test('a department head can plot multiple sessions of a foreign minor subject', async () => {
+test('a department head plots multiple sessions of a foreign minor under their own department', async () => {
   const { service, scheduleRepo } = plottingHarness();
 
   const saved = await service.plotMulti(
@@ -117,9 +124,28 @@ test('a department head can plot multiple sessions of a foreign minor subject', 
   assert.equal(saved.length, 2);
   assert.deepEqual(
     saved.map((entry: any) => entry.deptId),
-    ['8', '8'],
+    ['7', '7'],
   );
   assert.equal(scheduleRepo.save.mock.calls.length, 1);
+});
+
+test('a college-wide role still plots under the subject owning department', async () => {
+  const { service } = plottingHarness();
+
+  const saved = await service.plot(
+    {
+      termId: '1',
+      subjectId: '99',
+      externalFacultyName: 'Visiting Professor',
+      externalRoomName: 'Room 204',
+      dayOfWeek: 'Monday',
+      startTime: '08:00',
+      endTime: '09:30',
+    } as any,
+    { userId: 'u-dean', role: 'college_dean' } as any,
+  );
+
+  assert.equal(saved.deptId, '8');
 });
 
 test('a department head still cannot edit a foreign department schedule entry', async () => {

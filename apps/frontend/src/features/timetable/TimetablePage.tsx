@@ -31,6 +31,7 @@ import {
   type BlockedMinorSummary,
   type CoverageReport,
 } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { fetchSubjects } from '../../api/subjects.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchRooms } from '../../api/rooms.api';
@@ -58,6 +59,8 @@ import { useMoveSchedule } from './hooks/useMoveSchedule';
 import MoveScheduleConfirmModal from './components/MoveScheduleConfirmModal';
 import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
 import { fetchAllProspectus } from '../../api/prospectus.api';
+import { fetchPrograms } from '../../api/programs.api';
+import { buildPlotSubjectOptions } from '../plot-subject/plot-subject-options';
 import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
@@ -123,7 +126,7 @@ function toEntry(raw: RawSchedule): ScheduleEntry {
     flaggedAt: raw.flaggedAt,
     flagReason: raw.flagReason,
     loadType: (raw.loadType ?? 'lecture') as LoadType,
-    deptId: raw.subject?.deptId ?? '',
+    deptId: getScheduleDeptId(raw),
     deptColor: '#800000',
     color: colorForSubject(raw.subjectId),
   };
@@ -163,7 +166,7 @@ function versionEntryToEntry(
     startTime: start.slice(0, 5),
     endTime: end.slice(0, 5),
     loadType: isLab ? 'laboratory' : 'lecture',
-    deptId: raw.dept_id ?? '',
+    deptId: getScheduleDeptId(raw),
     deptColor: '#800000',
     color: colorForSubject(raw.subject_id),
     status: (raw.status as any) ?? 'finalized',
@@ -292,6 +295,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const { data: prospectus = [] } = useQuery({
     queryKey: ['prospectus-all'],
     queryFn: fetchAllProspectus,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: fetchPrograms,
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
@@ -463,27 +473,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, [subjects, unresolvedElectives]);
 
   const plotSubjectOptions = useMemo(
-    () =>
-      plottableSubjects.map((s) => {
-        const entries = prospectus.filter((p) => p.subjectId === s.subjectId);
-        const years = entries.map((p) => ({
-          yearLevel: p.yearLevel,
-          semester: p.semester,
-        }));
-        const first = entries[0];
-        return {
-          subjectId: s.subjectId,
-          subjectCode: s.subjectCode,
-          title: s.title,
-          lectureUnits: s.lectureUnits,
-          labUnits: s.labUnits,
-          deptId: s.deptId,
-          prospectusYears: years,
-          lectureSessionsPerWeek: first?.lectureSessionsPerWeek ?? 1,
-          labSessionsPerWeek: first?.labSessionsPerWeek ?? 1,
-        };
-      }),
-    [plottableSubjects, prospectus],
+    () => buildPlotSubjectOptions(plottableSubjects, prospectus, programs),
+    [plottableSubjects, prospectus, programs],
   );
 
   const { data: pendingAutoGenerate, refetch: refetchPendingAutoGenerate } =

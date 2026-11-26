@@ -22,6 +22,13 @@ import { useAuthStore } from '../../store/auth.store';
 import { SectionHeader, FieldError, HelperText } from './components/PlotFormBits';
 import PlotScheduleFields from './components/PlotScheduleFields';
 import { DAYS, DAY_ABBR, EMPTY_FORM, type MultiDayRow } from './types';
+import {
+  matchesPlotSubjectFilter,
+  resolvePlotScheduleDeptId,
+  type SubjectOption,
+} from './plot-subject-options';
+
+export type { SubjectOption } from './plot-subject-options';
 
 const TIME_OPTIONS = generateSlotBoundaries();
 
@@ -34,18 +41,6 @@ const DAY_ABBR_TO_FULL: Record<string, string> = {
   SAT: 'Saturday',
   SUN: 'Sunday',
 };
-
-export interface SubjectOption {
-  subjectId: string;
-  subjectCode: string;
-  title: string;
-  lectureUnits: number;
-  labUnits: number;
-  deptId?: string;
-  prospectusYears?: Array<{ yearLevel: number; semester: string }>;
-  lectureSessionsPerWeek?: number;
-  labSessionsPerWeek?: number;
-}
 
 export interface FacultyOption {
   facultyId: string;
@@ -171,12 +166,21 @@ export default function PlotSubjectModal({
 
   const selectedFaculty = faculty.find((f) => f.facultyId === form.facultyId);
 
+  const scheduleDeptId = useMemo(
+    () =>
+      resolvePlotScheduleDeptId(selectedSubject?.deptId, {
+        role: profile?.role,
+        deptId: profile?.dept_id,
+      }),
+    [selectedSubject?.deptId, profile?.role, profile?.dept_id],
+  );
+
   const isCrossDeptSelection = useMemo(() => {
     if (facultyMode !== 'system') return false;
     if (!selectedFaculty?.deptId) return false;
-    if (!selectedSubject?.deptId) return false;
-    return String(selectedFaculty.deptId) !== String(selectedSubject.deptId);
-  }, [facultyMode, selectedFaculty, selectedSubject]);
+    if (!scheduleDeptId) return false;
+    return String(selectedFaculty.deptId) !== scheduleDeptId;
+  }, [facultyMode, selectedFaculty, scheduleDeptId]);
 
   const crossDeptName = useMemo(() => {
     if (!isCrossDeptSelection || !selectedFaculty?.deptId) return null;
@@ -242,22 +246,17 @@ export default function PlotSubjectModal({
     return TIME_OPTIONS.slice(startIdx + 1);
   }, [form.startTime]);
 
-  const filteredSubjects = useMemo(() => {
-    return subjects.filter((s) => {
-      if (filterDept && String(s.deptId ?? '') !== filterDept) return false;
-      if (filterYear || filterSem) {
-        const years = s.prospectusYears ?? [];
-        if (years.length === 0) return false;
-        const match = years.some((y) => {
-          if (filterYear && String(y.yearLevel) !== filterYear) return false;
-          if (filterSem && y.semester !== filterSem) return false;
-          return true;
-        });
-        if (!match) return false;
-      }
-      return true;
-    });
-  }, [subjects, filterDept, filterYear, filterSem]);
+  const filteredSubjects = useMemo(
+    () =>
+      subjects.filter((subject) =>
+        matchesPlotSubjectFilter(subject, {
+          filterDept,
+          filterYear,
+          filterSem,
+        }),
+      ),
+    [subjects, filterDept, filterYear, filterSem],
+  );
 
   useEffect(() => {
     if (!form.subjectId) return;

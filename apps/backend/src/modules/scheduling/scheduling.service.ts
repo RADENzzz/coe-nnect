@@ -284,13 +284,20 @@ export class SchedulingService {
     }
 
     const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
+    // A head plots into their own department even when the catalog subject is
+    // owned elsewhere (e.g. a minor offered by another department). College
+    // roles without a department keep the subject owner as the fallback.
+    const scheduleDeptId =
+      user?.role === 'department_head' && user.deptId != null
+        ? String(user.deptId)
+        : subjectDeptId;
 
-    // ── NEW: refuse if subject's dept is deactivated ──
-    await this.departments.assertDepartmentActive(subjectDeptId);
+    // Refuse if the department receiving the schedule is deactivated.
+    await this.departments.assertDepartmentActive(scheduleDeptId);
 
     const gate = await this.faculty.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
-      subjectDeptId,
+      scheduleDeptId,
       termId: dto.termId,
       subjectId: dto.subjectId,
       user,
@@ -358,7 +365,7 @@ export class SchedulingService {
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
-      deptId: subjectDeptId,
+      deptId: scheduleDeptId,
       pendingFacultyRequestId: gate?.requestId ?? null,
       pendingFacultyDeptId: gate?.facultyDeptId ?? null,
       loadType: dto.loadType ?? null,
@@ -375,9 +382,7 @@ export class SchedulingService {
         const targetDHs = await this.recipients.departmentHeadsOf(
           gate.facultyDeptId,
         );
-        const requestingDeptId = user?.deptId
-          ? String(user.deptId)
-          : subjectDeptId;
+        const requestingDeptId = scheduleDeptId ?? subjectDeptId;
         const ctx = await loadRequestContext(
           this.supabase.getAdminClient(),
           {
@@ -452,13 +457,16 @@ export class SchedulingService {
     }
 
     const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
+    const scheduleDeptId =
+      user?.role === 'department_head' && user.deptId != null
+        ? String(user.deptId)
+        : subjectDeptId;
 
-    // ── NEW: refuse if subject's dept is deactivated ──
-    await this.departments.assertDepartmentActive(subjectDeptId);
+    await this.departments.assertDepartmentActive(scheduleDeptId);
 
     const gate = await this.faculty.ensureCrossDeptFacultyRequest({
       facultyId: dto.facultyId,
-      subjectDeptId,
+      scheduleDeptId,
       termId: dto.termId,
       subjectId: dto.subjectId,
       user,
@@ -560,7 +568,7 @@ export class SchedulingService {
       timeslotId: null,
       section: dto.section ?? null,
       sectionId,
-      deptId: subjectDeptId,
+      deptId: scheduleDeptId,
       pendingFacultyRequestId: gate?.requestId ?? null,
       pendingFacultyDeptId: gate?.facultyDeptId ?? null,
       loadType: dto.loadType ?? null,
@@ -719,11 +727,16 @@ export class SchedulingService {
 
     if (!saved.pendingFacultyRequestId && saved.facultyId) {
       const subjDeptId = await this.lookupSubjectDept(saved.subjectId);
+      const scheduleDeptId = saved.deptId
+        ? String(saved.deptId)
+        : user?.role === 'department_head' && user.deptId != null
+          ? String(user.deptId)
+          : subjDeptId;
 
-      if (subjDeptId) {
+      if (scheduleDeptId) {
         const gate = await this.faculty.ensureCrossDeptFacultyRequest({
           facultyId: saved.facultyId,
-          subjectDeptId: subjDeptId,
+          scheduleDeptId,
           termId: saved.termId,
           subjectId: saved.subjectId,
           user,
@@ -738,9 +751,7 @@ export class SchedulingService {
             const targetDHs = await this.recipients.departmentHeadsOf(
               gate.facultyDeptId,
             );
-            const requestingDeptId = user?.deptId
-              ? String(user.deptId)
-              : subjDeptId;
+            const requestingDeptId = scheduleDeptId;
             const ctx = await loadRequestContext(
               this.supabase.getAdminClient(),
               {

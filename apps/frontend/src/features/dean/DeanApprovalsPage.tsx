@@ -5,6 +5,7 @@ import {
   updateScheduleStatus,
   type RawSchedule,
 } from '../../api/schedule.api';
+import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { publishIdpSchedule } from '../../api/idp.api';
 import {
   fetchUnfinalizeRequests,
@@ -181,7 +182,7 @@ function toApprovalScheduleEntry(raw: RawSchedule): ScheduleEntry {
     startTime: start.slice(0, 5),
     endTime: end.slice(0, 5),
     loadType: (raw.loadType ?? 'lecture') as LoadType,
-    deptId: raw.subject?.deptId ?? '',
+    deptId: getScheduleDeptId(raw),
     deptColor: '#800000',
     color: '#800000',
     status: raw.status,
@@ -474,8 +475,10 @@ export default function DeanApprovalsPage() {
     return m;
   }, [departments]);
 
-  const getDeptOfSchedule = (s: RawSchedule) =>
-    s.subject?.deptId ? deptById.get(String(s.subject.deptId)) : null;
+  const getDeptOfSchedule = (s: RawSchedule) => {
+    const deptId = getScheduleDeptId(s);
+    return deptId ? deptById.get(deptId) : null;
+  };
 
   const getRequestDeptCode = (row: RequestRow) => {
     const deptId = row.request.deptId ?? row.request.schedule?.deptId;
@@ -528,7 +531,7 @@ export default function DeanApprovalsPage() {
     const q = searchQuery.trim().toLowerCase();
     return tabFiltered.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (deptFilter && String(s.subject?.deptId ?? '') !== deptFilter) {
+      if (deptFilter && getScheduleDeptId(s) !== deptFilter) {
         return false;
       }
       if (sectionFilter && (s.section ?? '') !== sectionFilter) return false;
