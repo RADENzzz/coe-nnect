@@ -26,7 +26,7 @@ const MIGRATED_FILES = [
   'apps/frontend/src/features/landing/StudentPlannerPanel.tsx',
   'apps/frontend/src/features/reports/export/ApprovalsExportToolbar.tsx',
   'apps/frontend/src/features/system-config/SystemConfigPage.tsx',
-  'apps/frontend/src/features/system-config/components/TermsPanel.tsx',
+  'apps/frontend/src/features/system-config/components/terms/TermManagementSection.tsx',
   'apps/frontend/src/features/system-config/components/SemesterTypesPanel.tsx',
   'apps/frontend/src/features/idp/IdpChangeRequestsPage.tsx',
 ];

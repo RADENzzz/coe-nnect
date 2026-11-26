@@ -12,6 +12,7 @@ import {
 import Icon from '../../components/ui/Icon';
 import TermsPanel from './components/TermsPanel';
 import SemesterTypesPanel from './components/SemesterTypesPanel';
+import { canWriteTerms } from './components/terms/term-shared';
 import Modal from '../../components/ui/Modal';
 import { useFeedback } from '../../components/ui/FeedbackToast';
 import { extractApiError } from '../../lib/api-error';
@@ -212,6 +213,8 @@ export default function SystemConfigPage() {
   // College Dean can write system settings.
   const isAdmin =
     profile?.role === 'administrator' || profile?.role === 'college_dean';
+  // Term management has its own narrower write scope than system settings.
+  const canWrite = canWriteTerms(profile);
 
   const [draft, setDraft] = useState<Record<string, string>>({});
 
@@ -400,7 +403,7 @@ export default function SystemConfigPage() {
 
       {/* Academic Terms — FR 7.1.4 */}
       <div data-tour="sysconfig-terms" className="space-y-5">
-        <TermsPanel isAdmin={isAdmin} />
+        <TermsPanel canWrite={canWrite} />
         <SemesterTypesPanel isAdmin={isAdmin} />
       </div>
 
