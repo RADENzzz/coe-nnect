@@ -2,27 +2,38 @@ import { useQuery } from '@tanstack/react-query';
 import Modal from '../../../components/ui/Modal';
 import Icon from '../../../components/ui/Icon';
 import {
-  compareVersions,
-  type ScheduleVersionSummary,
+  compareVersionSources,
   type ScheduleVersionEntry,
   type VersionCompareResult,
+  type VersionSource,
 } from '../../../api/schedule.api';
 
 interface VersionCompareModalProps {
   open: boolean;
   onClose: () => void;
-  versionA: ScheduleVersionSummary | null;
-  versionB: ScheduleVersionSummary | null;
+  sourceA: VersionSource | null;
+  sourceB: VersionSource | null;
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function displayNumber(value: number | null | undefined): string {
+  return typeof value === 'number' ? String(value) : '—';
+}
+
+function sourceLabel(source: VersionSource | null): string {
+  if (!source) return 'Unknown source';
+  return `${source.kind.charAt(0).toUpperCase() + source.kind.slice(1)} source`;
 }
 
 function entryLabel(e: ScheduleVersionEntry): string {
@@ -47,18 +58,20 @@ function entryLocation(e: ScheduleVersionEntry): string {
 export default function VersionCompareModal({
   open,
   onClose,
-  versionA,
-  versionB,
+  sourceA,
+  sourceB,
 }: VersionCompareModalProps) {
-  const canLoad = open && !!versionA && !!versionB;
+  const canLoad = open && !!sourceA && !!sourceB;
 
   const { data, isLoading, error } = useQuery<VersionCompareResult>({
     queryKey: [
-      'schedule-version-compare',
-      versionA?.versionId,
-      versionB?.versionId,
+      'published-version-compare',
+      sourceA?.kind,
+      sourceA?.id,
+      sourceB?.kind,
+      sourceB?.id,
     ],
-    queryFn: () => compareVersions(versionA!.versionId, versionB!.versionId),
+    queryFn: () => compareVersionSources(sourceA!, sourceB!),
     enabled: canLoad,
     staleTime: 60 * 1000,
   });
@@ -67,7 +80,7 @@ export default function VersionCompareModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Compare versions"
+      title="Compare sources"
       size="lg"
       footer={
         <button
@@ -93,20 +106,23 @@ export default function VersionCompareModal({
 
       {data && (
         <div className="space-y-5">
-          {/* Header */}
+          {/* Header — synthesized published/live sources may lack some metadata. */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 border border-surface-variant rounded bg-surface-container-lowest">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                   <Icon name="history" size={11} />
-                  v{data.versionA.versionNumber}
+                  {sourceLabel(sourceA)}
+                  {typeof data.versionA.versionNumber === 'number'
+                    ? ` · v${data.versionA.versionNumber}`
+                    : ''}
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                   Before
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant mt-2">
-                {data.versionA.entryCount} entries ·{' '}
+                {displayNumber(data.versionA.entryCount)} entries ·{' '}
                 {formatDateTime(data.versionA.lastModifiedAt)}
               </p>
               <p className="text-xs text-on-surface-variant">
@@ -118,14 +134,17 @@ export default function VersionCompareModal({
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">
                   <Icon name="history" size={11} />
-                  v{data.versionB.versionNumber}
+                  {sourceLabel(sourceB)}
+                  {typeof data.versionB.versionNumber === 'number'
+                    ? ` · v${data.versionB.versionNumber}`
+                    : ''}
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                   After
                 </span>
               </div>
               <p className="text-xs text-on-surface-variant mt-2">
-                {data.versionB.entryCount} entries ·{' '}
+                {displayNumber(data.versionB.entryCount)} entries ·{' '}
                 {formatDateTime(data.versionB.lastModifiedAt)}
               </p>
               <p className="text-xs text-on-surface-variant">

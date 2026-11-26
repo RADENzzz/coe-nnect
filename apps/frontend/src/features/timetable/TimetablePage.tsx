@@ -30,6 +30,8 @@ import {
   type UnplottedMinor,
   type BlockedMinorSummary,
   type CoverageReport,
+  type PublishedVersionSummary,
+  type VersionSource,
 } from '../../api/schedule.api';
 import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { fetchSubjects } from '../../api/subjects.api';
@@ -38,6 +40,7 @@ import { fetchRooms } from '../../api/rooms.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchDepartments } from '../../api/departments.api';
 import { useAuthStore } from '../../store/auth.store';
+import { useFeedback } from '../../components/ui/FeedbackToast';
 import LoadingState from '../../components/feedback/LoadingState';
 import ErrorState from '../../components/feedback/ErrorState';
 import EmptyState from '../../components/feedback/EmptyState';
@@ -89,6 +92,18 @@ const DAY_MAP: Record<string, Day> = {
   Saturday: 'SAT',
   Sunday: 'SUN',
 };
+
+/** Normalize the drawer's published/history/live chip selection for the API. */
+function buildVersionSource(selection: VersionSource): VersionSource {
+  switch (selection.kind) {
+    case 'published':
+      return { kind: 'published', id: selection.id };
+    case 'history':
+      return { kind: 'history', id: selection.id };
+    case 'live':
+      return { kind: 'live', id: selection.id };
+  }
+}
 
 function toEntry(raw: RawSchedule): ScheduleEntry {
   const day = raw.dayOfWeek ?? raw.timeSlot?.dayOfWeek ?? 'Monday';
@@ -215,6 +230,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
   const queryClient = useQueryClient();
+  const feedback = useFeedback();
 
   const [plotOpen, setPlotOpen] = useState(false);
   const [focusModeOpen, setFocusModeOpen] = useState(false);
@@ -263,8 +279,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [activeVersion, setActiveVersion] =
     useState<ScheduleVersionSummary | null>(null);
-  const [compareA, setCompareA] = useState<ScheduleVersionSummary | null>(null);
-  const [compareB, setCompareB] = useState<ScheduleVersionSummary | null>(null);
+  const [compareA, setCompareA] = useState<VersionSource | null>(null);
+  const [compareB, setCompareB] = useState<VersionSource | null>(null);
 
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
@@ -1133,12 +1149,26 @@ export default function TimetablePage({ readOnly = false }: Props) {
   }, []);
 
   const handleCompare = useCallback(
-    (a: ScheduleVersionSummary, b: ScheduleVersionSummary) => {
-      setCompareA(a);
-      setCompareB(b);
+    (a: VersionSource, b: VersionSource) => {
+      setCompareA(buildVersionSource(a));
+      setCompareB(buildVersionSource(b));
       setVersionsOpen(false);
     },
     [],
+  );
+
+  const handleReuse = useCallback(
+    (version: PublishedVersionSummary) => {
+      if (!isDepartmentHead || !myDeptId) {
+        feedback.error('Only a department head can reuse published versions.');
+        return;
+      }
+      // Task 10 mounts preflight, the summary modal, and the conflict workspace.
+      feedback.error(
+        `Reuse for ${version.termName} is not available in this build.`,
+      );
+    },
+    [feedback, isDepartmentHead, myDeptId],
   );
 
   // ── Keyboard shortcuts ──
@@ -1896,10 +1926,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
           open={versionsOpen}
           onClose={() => setVersionsOpen(false)}
           termId={activeTerm?.termId}
+          semester={activeTerm?.semester}
+          canReuse={isDepartmentHead && !!myDeptId}
           activeVersionId={activeVersion?.versionId ?? null}
           onViewVersion={handleViewVersion}
           onExitVersionView={handleExitVersionView}
           onCompare={handleCompare}
+          onReuse={handleReuse}
         />
 
         <VersionCompareModal
@@ -1908,8 +1941,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
             setCompareA(null);
             setCompareB(null);
           }}
-          versionA={compareA}
-          versionB={compareB}
+          sourceA={compareA}
+          sourceB={compareB}
         />
 
         <CoveragePanel
