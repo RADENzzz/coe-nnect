@@ -12,6 +12,54 @@ type Repo = ReturnType<typeof createFakeRepository>;
 
 let nextScheduleId = 0;
 
+/**
+ * The real schedule table uses GENERATED ALWAYS AS IDENTITY, so TypeORM may
+ * not pass an explicit schedule_id to save(). The fake repository otherwise
+ * accepts explicit ids, which hid the production failure.
+ */
+function createIdentityScheduleRepo() {
+  const repo = createFakeRepository([], { idKey: 'scheduleId', autoId: true });
+  const createWithoutIdentityCheck = repo.create.getMockImplementation()!;
+  const saveWithoutIdentityCheck = repo.save.getMockImplementation()!;
+  const generatedIds = new WeakSet<object>();
+  repo.create.mockImplementation((input: any) => {
+    const entity = createWithoutIdentityCheck(input);
+    if (input?.scheduleId == null) generatedIds.add(entity);
+    return entity;
+  });
+  repo.save.mockImplementation(async (entity: any) => {
+    if (entity.scheduleId != null && !generatedIds.has(entity)) {
+      throw new Error('cannot insert a non-DEFAULT value into column "schedule_id"');
+    }
+    return saveWithoutIdentityCheck(entity);
+  });
+
+  const query = jest.fn(async (_sql: string, params: any[]) => {
+    const row = {
+      scheduleId: String(params[0]),
+      termId: String(params[1]),
+      subjectId: String(params[2]),
+      sectionId: params[3],
+      section: params[4],
+      facultyId: params[5],
+      externalFacultyName: params[6],
+      roomId: params[7],
+      externalRoomName: params[8],
+      dayOfWeek: params[9],
+      startTime: params[10],
+      endTime: params[11],
+      loadType: params[12],
+      status: params[13],
+      remarks: params[14],
+      deptId: params[15],
+    };
+    repo.rows.push(row as any);
+    return [row];
+  });
+  (repo as any).manager = { query };
+  return { repo, query };
+}
+
 function schedule(
   subjectId: string,
   sectionId: string | null,
@@ -47,12 +95,15 @@ describe('TermPublishedVersionService', () => {
   let versionRepo: Repo;
   let scheduleRepo: Repo;
   let termRepo: Repo;
+  let scheduleQuery: jest.Mock;
   let service: TermPublishedVersionService;
 
   beforeEach(() => {
     nextScheduleId = 0;
     versionRepo = createFakeRepository([], { idKey: 'termPublishedVersionId' });
-    scheduleRepo = createFakeRepository([], { idKey: 'scheduleId', autoId: true });
+    const identitySchedule = createIdentityScheduleRepo();
+    scheduleRepo = identitySchedule.repo;
+    scheduleQuery = identitySchedule.query;
     termRepo = createFakeRepository([], { idKey: 'termId' });
     service = new TermPublishedVersionService(
       versionRepo as any,
@@ -190,12 +241,37 @@ describe('TermPublishedVersionService', () => {
     );
   });
 
-  it('restoreTerm reuses free original schedule ids and reports reassigned ids on collision', async () => {
+  it('restoreTerm reuses free original schedule ids through an identity override', async () => {
+    seedVersionWithEntries(['100', '101']);
+    const result = await service.restoreTerm('1');
+
+    assert.equal(result.restored, 2);
+    assert.deepEqual(result.reassignedIds, []);
+    assert.equal(scheduleQuery.mock.calls.length, 2);
+    assert.match(
+      scheduleQuery.mock.calls[0][0],
+      /INSERT INTO schedule \(.*schedule_id.*\) OVERRIDING SYSTEM VALUE VALUES/i,
+    );
+    assert.deepEqual(Array.from(scheduleQuery.mock.calls, (call) => call[1][0]), [
+      '100',
+      '101',
+    ]);
+    assert.ok(
+      scheduleRepo.save.mock.calls.every(([entity]) => entity.scheduleId == null),
+      'identity ids must never be sent through repository.save',
+    );
+  });
+
+  it('restoreTerm reports reassigned ids on collision without an identity override', async () => {
     seedVersionWithEntries(['100', '101']);
     scheduleRepo.rows.push(schedule('x', null, null, { scheduleId: '101' }));
     const result = await service.restoreTerm('1');
+
     assert.equal(result.restored, 2);
     assert.deepEqual(result.reassignedIds, ['101']);
+    assert.deepEqual(Array.from(scheduleQuery.mock.calls, (call) => call[1][0]), [
+      '100',
+    ]);
   });
 
   it('findBySemester filters on captured semester only', async () => {
@@ -222,7 +298,17 @@ describe('TermPublishedVersionService', () => {
     const managedVersions = createFakeRepository([], { idKey: 'termPublishedVersionId' });
     const managedSchedules = createFakeRepository([], { idKey: 'scheduleId', autoId: true });
     const managedTerms = createFakeRepository([], { idKey: 'termId' });
+    const managedQuery = jest.fn(async (_sql: string, params: any[]) => {
+      const row = {
+        scheduleId: String(params[0]),
+        termId: String(params[1]),
+        subjectId: String(params[2]),
+      };
+      managedSchedules.rows.push(row as any);
+      return [row];
+    });
     const manager = {
+      query: managedQuery,
       getRepository: jest.fn((entity: any) => {
         if (entity === TermPublishedVersion) return managedVersions;
         if (entity === Schedule) return managedSchedules;
@@ -247,10 +333,14 @@ describe('TermPublishedVersionService', () => {
     assert.equal(managedVersions.rows.length, 1);
     assert.equal(versionRepo.save.mock.calls.length, 0);
 
+    // Deactivation clears the live grid before activation restores it, so the
+    // saved id is free and must use the transaction's identity override path.
+    managedSchedules.rows.length = 0;
     const restored = await service.restoreTerm('1', manager as any);
-    assert.deepEqual(restored.reassignedIds, ['m001']);
-    assert.equal(managedSchedules.rows.length, 2);
-    assert.equal(await service.clearTerm('1', manager as any), 2);
+    assert.deepEqual(restored.reassignedIds, []);
+    assert.equal(managedQuery.mock.calls[0][1][0], 'm001');
+    assert.equal(managedSchedules.rows.length, 1);
+    assert.equal(await service.clearTerm('1', manager as any), 1);
     assert.equal(managedSchedules.rows.length, 0);
   });
 });

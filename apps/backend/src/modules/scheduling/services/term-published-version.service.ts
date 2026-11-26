@@ -52,6 +52,34 @@ export type PublishedVersionDetail = PublishedVersionSummary & {
 };
 
 /**
+ * schedule_id is GENERATED ALWAYS AS IDENTITY. TypeORM has no identity-override
+ * option, so preserved ids must be inserted with raw SQL; repository.save()
+ * rejects them under real Postgres semantics.
+ */
+const RESTORE_COLUMNS = [
+  'schedule_id',
+  'term_id',
+  'subject_id',
+  'section_id',
+  'section',
+  'faculty_id',
+  'external_faculty_name',
+  'room_id',
+  'external_room_name',
+  'day_of_week',
+  'start_time',
+  'end_time',
+  'load_type',
+  'status',
+  'remarks',
+  'dept_id',
+] as const;
+const RESTORE_VALUES_SQL = RESTORE_COLUMNS.map((_, index) => `$${index + 1}`).join(', ');
+const RESTORE_INSERT_SQL =
+  `INSERT INTO schedule (${RESTORE_COLUMNS.join(', ')}) ` +
+  `OVERRIDING SYSTEM VALUE VALUES (${RESTORE_VALUES_SQL}) RETURNING schedule_id`;
+
+/**
  * Term-wide snapshots written on publish approval and deactivation, then
  * restored when a term is reactivated. Snapshots are rewritten in place, so
  * their id and version number stay stable; staleness and locked state are
@@ -179,6 +207,7 @@ export class TermPublishedVersionService {
     let restored = 0;
     let skipped = 0;
     const reassignedIds: string[] = [];
+    const executor = manager ?? schedules.manager;
 
     for (const entry of entries) {
       if (!entry.subject_id) {
@@ -188,30 +217,52 @@ export class TermPublishedVersionService {
 
       const originalId = entry.schedule_id == null ? null : String(entry.schedule_id);
       const reuseOriginal = originalId !== null && !occupied.has(originalId);
-      const data: Record<string, unknown> = {
+      const values = [
+        originalId,
         termId,
-        subjectId: String(entry.subject_id),
-        sectionId: this.optionalId(entry.section_id),
-        section: entry.section_code ?? null,
-        facultyId: this.optionalId(entry.faculty_id),
-        externalFacultyName: entry.external_faculty_name ?? null,
-        roomId: this.optionalId(entry.room_id),
-        externalRoomName: entry.external_room_name ?? null,
-        dayOfWeek: entry.day_of_week ?? null,
-        startTime: entry.start_time ?? null,
-        endTime: entry.end_time ?? null,
-        loadType: entry.load_type ?? null,
-        status: entry.status ?? 'draft',
-        remarks: entry.remarks ?? null,
-        deptId: this.optionalId(entry.dept_id),
-      };
-      if (reuseOriginal && originalId !== null) data.scheduleId = originalId;
+        String(entry.subject_id),
+        this.optionalId(entry.section_id),
+        entry.section_code ?? null,
+        this.optionalId(entry.faculty_id),
+        entry.external_faculty_name ?? null,
+        this.optionalId(entry.room_id),
+        entry.external_room_name ?? null,
+        entry.day_of_week ?? null,
+        entry.start_time ?? null,
+        entry.end_time ?? null,
+        entry.load_type ?? null,
+        entry.status ?? 'draft',
+        entry.remarks ?? null,
+        this.optionalId(entry.dept_id),
+      ];
 
-      const created = await schedules.save(
-        schedules.create(data as unknown as Schedule),
-      );
-      occupied.add(String((created as any).scheduleId));
-      if (!reuseOriginal && originalId !== null) reassignedIds.push(originalId);
+      if (reuseOriginal && originalId !== null) {
+        const inserted = (await executor.query(RESTORE_INSERT_SQL, values)) as any[];
+        occupied.add(String(inserted?.[0]?.schedule_id ?? originalId));
+      } else {
+        const data: Record<string, unknown> = {
+          termId: values[1],
+          subjectId: values[2],
+          sectionId: values[3],
+          section: values[4],
+          facultyId: values[5],
+          externalFacultyName: values[6],
+          roomId: values[7],
+          externalRoomName: values[8],
+          dayOfWeek: values[9],
+          startTime: values[10],
+          endTime: values[11],
+          loadType: values[12],
+          status: values[13],
+          remarks: values[14],
+          deptId: values[15],
+        };
+        const created = await schedules.save(
+          schedules.create(data as unknown as Schedule),
+        );
+        occupied.add(String((created as any).scheduleId));
+        if (originalId !== null) reassignedIds.push(originalId);
+      }
       restored += 1;
     }
 
