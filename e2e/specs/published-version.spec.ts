@@ -890,7 +890,7 @@ test('older same-semester versions are grouped by year and marked stale', async 
   await expect(detailDialog).toBeVisible();
   await expect(detailDialog).toContainText(EXTRA_SUBJECT_CODE);
   await expect(detailDialog).toContainText('published');
-  await detailDialog.getByRole('button', { name: 'Close' }).click();
+  await detailDialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(detailDialog).toBeHidden();
 });
 
@@ -921,7 +921,7 @@ test('zero-match reuse closes with a summary and plots nothing', async ({
   await expect(
     summary.getByRole('button', { name: 'Use matched subjects' }),
   ).toHaveCount(0);
-  await summary.getByRole('button', { name: 'Close' }).click();
+  await summary.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(summary).toBeHidden();
 
   await expect(page.getByRole('button', { name: /E2E 999/ })).toHaveCount(0);
