@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { e2eState, gotoApp, loginAs, solveCap } from './helpers';
+import {
+  e2eState,
+  gotoApp,
+  loginAs,
+  seedTutorialState,
+  solveCap,
+} from './helpers';
 
 test('Dean deactivates the E2E department and the DH gets walled', async ({
   page,
@@ -24,7 +30,16 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
 
   const confirm = page.getByRole('dialog', { name: /Confirm Deactivation/i });
   await confirm.getByPlaceholder('Admin password').fill(state.deanPassword);
+
+  const deactivateResponse = page.waitForResponse(
+    (response) =>
+      /\/v1\/departments\/[^/]+\/toggle-active$/.test(response.url()) &&
+      response.request().method() === 'PATCH',
+    { timeout: 30_000 },
+  );
   await confirm.getByRole('button', { name: 'Confirm' }).click();
+  const deactivated = await deactivateResponse;
+  expect(deactivated.ok(), await deactivated.text()).toBeTruthy();
 
   await expect(
     page.getByText(/Department .* deactivated/i),
@@ -33,6 +48,7 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
   // ── 2. Fresh context: DH login should land on the wall ──
   const dhContext = await browser.newContext();
   const dhPage = await dhContext.newPage();
+  await seedTutorialState(dhPage);
 
   await dhPage.goto('/login', { waitUntil: 'domcontentloaded' });
   await dhPage.locator('input[name="email"]').fill(state.headEmail);
@@ -51,7 +67,16 @@ test('Dean deactivates the E2E department and the DH gets walled', async ({
     .getByRole('row', { name: new RegExp(state.deptCode) })
     .getByRole('button', { name: 'Row actions' })
     .click();
+  const reactivateResponse = page.waitForResponse(
+    (response) =>
+      /\/v1\/departments\/[^/]+\/toggle-active$/.test(response.url()) &&
+      response.request().method() === 'PATCH',
+    { timeout: 30_000 },
+  );
   await page.getByRole('menuitem', { name: 'Activate' }).click();
+  const reactivated = await reactivateResponse;
+  expect(reactivated.ok(), await reactivated.text()).toBeTruthy();
+
   await expect(
     page.getByText(/Department .* reactivated/i),
   ).toBeVisible({ timeout: 15_000 });
