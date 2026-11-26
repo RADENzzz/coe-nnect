@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import {
   e2eState,
@@ -10,7 +10,46 @@ import {
   selectById,
   selectTime,
 } from './helpers';
-import { E2E_SCHEDULE, type E2eState } from '../seed';
+import { optionalEnv } from '../env';
+import { E2E_DATA, E2E_SCHEDULE, type E2eState } from '../seed';
+
+/** Arbitrary JSON returned by the archive endpoints. */
+type JsonRecord = Record<string, any>;
+
+/**
+ * The app keeps the Supabase token in localStorage, so a Playwright APIRequest
+ * context (which only shares cookies) needs the token forwarded explicitly.
+ */
+async function apiGet(
+  page: Page,
+  path: string,
+  params?: Record<string, string>,
+): Promise<JsonRecord> {
+  const token = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((item) =>
+      item.includes('auth-token'),
+    );
+    const raw = key ? localStorage.getItem(key) : null;
+    if (!raw) return null;
+    try {
+      return (JSON.parse(raw) as JsonRecord).access_token ?? null;
+    } catch {
+      return null;
+    }
+  });
+  if (!token) throw new Error('No Supabase access token in browser storage');
+
+  const apiBase = optionalEnv(
+    'E2E_API_URL',
+    'http://127.0.0.1:3100/api',
+  ).replace(/\/+$/, '');
+  const response = await page.request.get(`${apiBase}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    ...(params ? { params } : {}),
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  return (await response.json()) as JsonRecord;
+}
 
 /**
  * One ordered, full-stack workflow. Keeping the steps serial lets the same
@@ -199,6 +238,28 @@ test('college dean approves the publish request', async ({ page }) => {
     `Approved — ${state.subjectCode} · ${state.sectionCode}. The entry is published.`,
   );
   await expect(drawer).toBeHidden();
+
+  // The approval transaction must also write this term's saved version.
+  const versions = await apiGet(page, '/v1/schedules/published-versions', {
+    semester: '1st',
+  });
+  const current = (versions.data as JsonRecord[]).find(
+    (version) => String(version.termId) === String(state.termId),
+  );
+  expect(current, JSON.stringify(versions)).toBeTruthy();
+  const detail = await apiGet(
+    page,
+    `/v1/schedules/published-versions/${current!.versionId}`,
+  );
+  expect(detail.data.entries).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        status: 'published',
+        subject_code: E2E_DATA.subjectCode,
+        section_code: E2E_DATA.sectionCode,
+      }),
+    ]),
+  );
 });
 
 test('published schedule is visible on the timetable', async ({ page }) => {

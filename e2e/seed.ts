@@ -377,6 +377,7 @@ async function clearTermWork(
 ): Promise<void> {
   await deleteByTerm(db, 'schedule', termId);
   await deleteByTerm(db, 'schedule_version', termId);
+  await deleteByTerm(db, 'term_published_version', termId);
   await deleteByTerm(db, 'schedule_unscheduled', termId);
   await deleteByTerm(db, 'auto_generate_lock', termId);
   await deleteByTerm(db, 'faculty_request', termId);
