@@ -18,6 +18,8 @@ import {
   cancelSubjectEditRequest,
   respondToSubjectEditRequest,
   type SubjectEditAction,
+  type SubjectEditRequest,
+  type SubjectEditRequestStatus,
 } from '../../api/subject-edit-requests.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
@@ -63,6 +65,14 @@ type MinorFilter = 'all' | 'minor' | 'regular';
 type SubjectKindFilter = 'all' | 'regular' | 'minor' | 'elective';
 type ComponentFilter = 'all' | 'lecture_only' | 'lab_only' | 'mixed';
 type StatusFilter = 'all' | 'active' | 'inactive';
+type SubjectRequestRow = SubjectRecord & {
+  requestId: string;
+  requestStatus: SubjectEditRequestStatus;
+  requestReason: string;
+  requestCreatedAt: string;
+  requestRequestingDeptId: string;
+  requestOwningDeptId: string;
+};
 type SortKey = 'code' | 'title' | 'units' | 'dept' | 'roomType';
 type SortDir = 'asc' | 'desc';
 
@@ -130,6 +140,9 @@ export default function SubjectsPage() {
   const kindFilter = (searchParams.get('kind') ?? 'all') as SubjectKindFilter;
   const compFilter = (searchParams.get('comp') ?? 'all') as ComponentFilter;
   const statusFilter = (searchParams.get('status') ?? 'all') as StatusFilter;
+  const view = searchParams.get('view');
+  const reqStatus = (searchParams.get('reqStatus') ??
+    'pending') as SubjectEditRequestStatus;
   const electiveCategoryFilter = searchParams.get('ecat') ?? '';
   const electiveYearFilter = searchParams.get('eyear') ?? '';
   const electiveSemesterFilter = searchParams.get('eterm') ?? '';
@@ -179,6 +192,17 @@ export default function SubjectsPage() {
     );
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, profile?.role, myDeptId]);
+
+  const selectClassification = useCallback(
+    (key: string) => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('view');
+      if (key === 'all') next.delete('kind');
+      else next.set('kind', key);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const hasAnyFilter =
     !!searchInput ||
@@ -230,6 +254,59 @@ export default function SubjectsPage() {
     () => allSubjects.filter((s) => !s.isPlaceholder),
     [allSubjects],
   );
+
+  // Department-scoped request inbox for the Requests tab. Backend findVisible()
+  // decides which rows this user may see; never reimplement that scope here.
+  const { data: visibleRequests = [], isLoading: requestsLoading } = useQuery({
+    queryKey: ['subject-edit-requests', { visible: true }],
+    queryFn: () => fetchSubjectEditRequests(),
+    enabled: !!user && canManage,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const pendingRequests = useMemo(
+    () => visibleRequests.filter((r) => r.status === 'pending'),
+    [visibleRequests],
+  );
+
+  const requestRows = useMemo<SubjectRequestRow[]>(() => {
+    const newestBySubject = new Map<string, SubjectEditRequest>();
+    for (const request of visibleRequests) {
+      if (request.status !== reqStatus) continue;
+      const subjectKey = String(request.subjectId);
+      const current = newestBySubject.get(subjectKey);
+      if (
+        !current ||
+        new Date(request.createdAt).getTime() >=
+          new Date(current.createdAt).getTime()
+      ) {
+        newestBySubject.set(subjectKey, request);
+      }
+    }
+
+    const rows: SubjectRequestRow[] = [];
+    for (const request of newestBySubject.values()) {
+      const subject = subjects.find(
+        (s) => String(s.subjectId) === String(request.subjectId),
+      );
+      if (!subject) continue;
+      rows.push({
+        ...subject,
+        requestId: request.requestId,
+        requestStatus: request.status,
+        requestReason: request.reason,
+        requestCreatedAt: request.createdAt,
+        requestRequestingDeptId: request.requestingDeptId,
+        requestOwningDeptId: request.owningDeptId,
+      });
+    }
+    return rows.sort(
+      (a, b) =>
+        new Date(b.requestCreatedAt).getTime() -
+        new Date(a.requestCreatedAt).getTime(),
+    );
+  }, [visibleRequests, reqStatus, subjects]);
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -776,6 +853,13 @@ export default function SubjectsPage() {
     setDetailEntry(s);
   };
 
+  const handleOpenRequest = (row: SubjectRequestRow) => {
+    setMode(null);
+    setEditing(null);
+    setDetailEntry(row);
+    setFocusEditAccess(true);
+  };
+
   const handleCloseDetail = () => {
     setFocusEditAccess(false);
     setDetailEntry(null);
@@ -912,6 +996,71 @@ export default function SubjectsPage() {
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editParam, subjects]);
+
+  // ── Deep-link: open the subject drawer for ?request=<requestId> ──
+  const requestParam = searchParams.get('request');
+  const hasConsumedRequestParam = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!requestParam) return;
+    if (hasConsumedRequestParam.current === requestParam) return;
+    if (requestsLoading || isLoading) return;
+
+    const request = visibleRequests.find(
+      (r) => r.requestId === requestParam,
+    );
+    const target = request
+      ? subjects.find(
+          (s) => String(s.subjectId) === String(request.subjectId),
+        )
+      : undefined;
+    const next = new URLSearchParams(searchParams);
+
+    if (!request || !target) {
+      next.delete('request');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    hasConsumedRequestParam.current = requestParam;
+    setDetailEntry(target);
+    setFocusEditAccess(true);
+    setMode(null);
+    setEditing(null);
+    next.set('view', 'requests');
+    next.set('reqStatus', request.status);
+    next.delete('request');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestParam, requestsLoading, isLoading, visibleRequests, subjects]);
+
+  // ── Deep-link: open the subject drawer for ?subject=<subjectId> ──
+  const subjectParam = searchParams.get('subject');
+  const hasConsumedSubjectParam = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!subjectParam) return;
+    if (hasConsumedSubjectParam.current === subjectParam) return;
+    if (isLoading) return;
+
+    const target = subjects.find((s) => String(s.subjectId) === subjectParam);
+    const next = new URLSearchParams(searchParams);
+
+    if (!target) {
+      next.delete('subject');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    hasConsumedSubjectParam.current = subjectParam;
+    setDetailEntry(target);
+    setFocusEditAccess(false);
+    setMode(null);
+    setEditing(null);
+    next.delete('subject');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectParam, isLoading, subjects]);
 
   // ── Form-modal close (handles returnTo deep-link) ──
   const handleFormClose = () => {
@@ -1317,6 +1466,59 @@ export default function SubjectsPage() {
     },
   ];
 
+  const requestColumns: Column<SubjectRequestRow>[] = [
+    {
+      key: 'code',
+      header: 'Code',
+      cardVariant: 'title',
+      cellClassName: 'font-bold font-mono text-primary',
+      render: (r) => r.subjectCode,
+    },
+    {
+      key: 'title',
+      header: 'Title',
+      cardVariant: 'subtitle',
+      render: (r) => r.title,
+    },
+    {
+      key: 'requestStatus',
+      header: 'Status',
+      cardVariant: 'badge',
+      render: (r) => (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+          {r.requestStatus}
+        </span>
+      ),
+    },
+    {
+      key: 'requestingDept',
+      header: 'Requested by',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs',
+      hideOnMobile: true,
+      render: (r) => deptName(r.requestRequestingDeptId),
+    },
+    {
+      key: 'requestReason',
+      header: 'Reason',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs text-on-surface-variant',
+      render: (r) => (
+        <span className="block max-w-xs truncate" title={r.requestReason}>
+          {r.requestReason}
+        </span>
+      ),
+    },
+    {
+      key: 'requestCreatedAt',
+      header: 'Filed',
+      cardVariant: 'meta',
+      cellClassName: 'text-xs text-on-surface-variant',
+      hideOnMobile: true,
+      render: (r) => new Date(r.requestCreatedAt).toLocaleDateString(),
+    },
+  ];
+
   const getActions = (s: SubjectRecord): RowAction[] => {
     if (isForeign(s)) {
       return [
@@ -1350,6 +1552,32 @@ export default function SubjectsPage() {
       },
     ];
   };
+
+  const classificationTabs: Array<{
+    key: string;
+    label: string;
+    icon: string;
+    count: number;
+  }> = [
+    { key: 'all', label: 'All Subjects', icon: 'menu_book', count: kindCounts.all },
+    { key: 'regular', label: 'Regular', icon: 'check_circle', count: kindCounts.regular },
+    { key: 'minor', label: 'Minor', icon: 'school', count: kindCounts.minor },
+    {
+      key: 'elective',
+      label: 'Elective Subjects',
+      icon: 'stars',
+      count: kindCounts.elective,
+    },
+  ];
+  if (canManage) {
+    classificationTabs.push({
+      key: 'requests',
+      label: 'Requests',
+      icon: 'key',
+      count: pendingRequests.length,
+    });
+  }
+  const tableRows = view === 'requests' ? requestRows : filtered;
 
   return (
     <div className="space-y-6">
@@ -1393,42 +1621,20 @@ export default function SubjectsPage() {
           aria-label="Subject classification tabs"
           role="tablist"
         >
-          {(
-            [
-              {
-                key: 'all' as const,
-                label: 'All Subjects',
-                icon: 'menu_book',
-                count: kindCounts.all,
-              },
-              {
-                key: 'regular' as const,
-                label: 'Regular',
-                icon: 'check_circle',
-                count: kindCounts.regular,
-              },
-              {
-                key: 'minor' as const,
-                label: 'Minor',
-                icon: 'school',
-                count: kindCounts.minor,
-              },
-              {
-                key: 'elective' as const,
-                label: 'Elective Subjects',
-                icon: 'stars',
-                count: kindCounts.elective,
-              },
-            ]
-          ).map((t) => {
-            const isActive = kindFilter === t.key;
+          {classificationTabs.map((t) => {
+            const isActive =
+              view === 'requests' ? t.key === 'requests' : kindFilter === t.key;
             return (
               <button
                 key={t.key}
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setFilter('kind', t.key === 'all' ? '' : t.key)}
+                onClick={() =>
+                  t.key === 'requests'
+                    ? setFilter('view', 'requests')
+                    : selectClassification(t.key)
+                }
                 className={`flex items-center gap-2 whitespace-nowrap px-1 py-3 text-sm font-semibold border-b-2 transition ${
                   isActive
                     ? 'border-primary text-primary'
@@ -1452,147 +1658,178 @@ export default function SubjectsPage() {
         </nav>
       </div>
 
-      {/* ── Workflow hint ── */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
-        <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <p className="text-blue-900 font-medium">
-            Step 2 of 3 Academic Structure
-          </p>
-          <p className="text-blue-800 text-xs mt-0.5">
-            Add your department's subjects here first, then map them to programs
-            in the Prospectus. Mark subjects taught by another department as{' '}
-            <strong>minor</strong>.
-          </p>
-        </div>
-        <Link
-          to="/prospectus"
-          className="text-xs font-semibold text-blue-700 hover:text-blue-900 whitespace-nowrap flex items-center gap-1"
-        >
-          Go to Prospectus
-          <Icon name="arrow_forward" size={14} />
-        </Link>
-      </div>
+      {/* ── Catalog-only workflow UI ── */}
+      {view !== 'requests' && (
+        <>
+          {/* ── Workflow hint ── */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3 text-sm">
+            <Icon name="info" size={18} className="text-blue-700 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-blue-900 font-medium">
+                Step 2 of 3 Academic Structure
+              </p>
+              <p className="text-blue-800 text-xs mt-0.5">
+                Add your department's subjects here first, then map them to programs
+                in the Prospectus. Mark subjects taught by another department as{' '}
+                <strong>minor</strong>.
+              </p>
+            </div>
+            <Link
+              to="/prospectus"
+              className="text-xs font-semibold text-blue-700 hover:text-blue-900 whitespace-nowrap flex items-center gap-1"
+            >
+              Go to Prospectus
+              <Icon name="arrow_forward" size={14} />
+            </Link>
+          </div>
 
-      {/* ── Stats strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-        <StatCard
-          label="Total"
-          value={stats.total}
-          icon="menu_book"
-          tone="neutral"
-          loading={isLoading}
-          onClick={hasAnyFilter ? clearAll : undefined}
-        />
-        <StatCard
-          label="Lecture only"
-          value={stats.lectureOnly}
-          icon="meeting_room"
-          tone="blue"
-          loading={isLoading}
-          active={compFilter === 'lecture_only'}
-          onClick={() => applyPreset(PRESETS[3])}
-        />
-        <StatCard
-          label="Lab only"
-          value={stats.labOnly}
-          icon="science"
-          tone="amber"
-          loading={isLoading}
-          active={compFilter === 'lab_only'}
-          onClick={() => applyPreset(PRESETS[4])}
-        />
-        <StatCard
-          label="Mixed"
-          value={stats.mixed}
-          icon="merge_type"
-          tone="purple"
-          loading={isLoading}
-          active={compFilter === 'mixed'}
-          onClick={() => applyPreset(PRESETS[0])}
-        />
-        <StatCard
-          label="Minor"
-          value={stats.minor}
-          icon="school"
-          tone="purple"
-          loading={isLoading}
-          active={minorFilter === 'minor'}
-          onClick={() => applyPreset(PRESETS[1])}
-        />
-        <StatCard
-          label="Electives"
-          value={stats.elective}
-          icon="stars"
-          tone="teal"
-          loading={isLoading}
-          active={kindFilter === 'elective'}
-          onClick={() =>
-            setFilter('kind', kindFilter === 'elective' ? 'all' : 'elective')
-          }
-        />
-        <StatCard
-          label="Inactive"
-          value={stats.inactive}
-          icon="toggle_off"
-          tone={stats.inactive > 0 ? 'rose' : 'neutral'}
-          loading={isLoading}
-          active={statusFilter === 'inactive'}
-          onClick={() =>
-            setFilter('status', statusFilter === 'inactive' ? 'all' : 'inactive')
-          }
-        />
-      </div>
+          {/* ── Stats strip ── */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+            <StatCard
+              label="Total"
+              value={stats.total}
+              icon="menu_book"
+              tone="neutral"
+              loading={isLoading}
+              onClick={hasAnyFilter ? clearAll : undefined}
+            />
+            <StatCard
+              label="Lecture only"
+              value={stats.lectureOnly}
+              icon="meeting_room"
+              tone="blue"
+              loading={isLoading}
+              active={compFilter === 'lecture_only'}
+              onClick={() => applyPreset(PRESETS[3])}
+            />
+            <StatCard
+              label="Lab only"
+              value={stats.labOnly}
+              icon="science"
+              tone="amber"
+              loading={isLoading}
+              active={compFilter === 'lab_only'}
+              onClick={() => applyPreset(PRESETS[4])}
+            />
+            <StatCard
+              label="Mixed"
+              value={stats.mixed}
+              icon="merge_type"
+              tone="purple"
+              loading={isLoading}
+              active={compFilter === 'mixed'}
+              onClick={() => applyPreset(PRESETS[0])}
+            />
+            <StatCard
+              label="Minor"
+              value={stats.minor}
+              icon="school"
+              tone="purple"
+              loading={isLoading}
+              active={minorFilter === 'minor'}
+              onClick={() => applyPreset(PRESETS[1])}
+            />
+            <StatCard
+              label="Electives"
+              value={stats.elective}
+              icon="stars"
+              tone="teal"
+              loading={isLoading}
+              active={kindFilter === 'elective'}
+              onClick={() =>
+                setFilter('kind', kindFilter === 'elective' ? 'all' : 'elective')
+              }
+            />
+            <StatCard
+              label="Inactive"
+              value={stats.inactive}
+              icon="toggle_off"
+              tone={stats.inactive > 0 ? 'rose' : 'neutral'}
+              loading={isLoading}
+              active={statusFilter === 'inactive'}
+              onClick={() =>
+                setFilter('status', statusFilter === 'inactive' ? 'all' : 'inactive')
+              }
+            />
+          </div>
 
-      {isDH && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
-          <span>
-            The catalog shows <strong>all subjects by default</strong>. Each
-            row shows its <strong>owning department</strong> in a colored
-            badge. Rows with a{' '}
-            <Icon name="lock" size={11} className="inline -mb-0.5" /> lock icon
-            belong to another department and are read-only. Use the{' '}
-            <strong>Department filter</strong> to narrow the list.
-          </span>
+          {isDH && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+              <span>
+                The catalog shows <strong>all subjects by default</strong>. Each
+                row shows its <strong>owning department</strong> in a colored
+                badge. Rows with a{' '}
+                <Icon name="lock" size={11} className="inline -mb-0.5" /> lock icon
+                belong to another department and are read-only. Use the{' '}
+                <strong>Department filter</strong> to narrow the list.
+              </span>
+            </div>
+          )}
+
+          {/* ── Filter panel ── */}
+          <div data-tour="subjects-filters">
+            <SubjectFiltersPanel
+              activeFilterCount={activeFilterCount}
+              filtersExpanded={filtersExpanded}
+              setFiltersExpanded={setFiltersExpanded}
+              filteredCount={filtered.length}
+              totalCount={subjects.length}
+              hasAnyFilter={hasAnyFilter}
+              clearAll={clearAll}
+              PRESETS={PRESETS}
+              isPresetActive={isPresetActive}
+              applyPreset={applyPreset}
+              filterPills={filterPills}
+              searchInput={searchInput}
+              setSearchInput={setSearchInput}
+              searchRef={searchRef}
+              deptFilter={deptFilter}
+              roomFilter={roomFilter}
+              minorFilter={minorFilter}
+              compFilter={compFilter}
+              statusFilter={statusFilter}
+              electiveCategoryFilter={electiveCategoryFilter}
+              electiveYearFilter={electiveYearFilter}
+              electiveSemesterFilter={electiveSemesterFilter}
+              electiveCategories={electiveCategories}
+              setFilter={setFilter}
+              departments={departments}
+              deptCounts={deptCounts}
+              ROOM_TYPES={ROOM_TYPES}
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Table ── */}
+      {view === 'requests' && (
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="subject-request-status"
+            className="text-xs font-semibold text-on-surface-variant"
+          >
+            Request status
+          </label>
+          <select
+            id="subject-request-status"
+            value={reqStatus}
+            onChange={(e) => setFilter('reqStatus', e.target.value)}
+            className="rounded-lg border border-surface-variant bg-surface-container-lowest px-2.5 py-1.5 text-xs text-on-surface"
+          >
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="revoked">Revoked</option>
+          </select>
         </div>
       )}
 
-      {/* ── Filter panel ── */}
-      <div data-tour="subjects-filters">
-        <SubjectFiltersPanel
-          activeFilterCount={activeFilterCount}
-          filtersExpanded={filtersExpanded}
-          setFiltersExpanded={setFiltersExpanded}
-          filteredCount={filtered.length}
-          totalCount={subjects.length}
-          hasAnyFilter={hasAnyFilter}
-          clearAll={clearAll}
-          PRESETS={PRESETS}
-          isPresetActive={isPresetActive}
-          applyPreset={applyPreset}
-          filterPills={filterPills}
-          searchInput={searchInput}
-          setSearchInput={setSearchInput}
-          searchRef={searchRef}
-          deptFilter={deptFilter}
-          roomFilter={roomFilter}
-          minorFilter={minorFilter}
-          compFilter={compFilter}
-          statusFilter={statusFilter}
-          electiveCategoryFilter={electiveCategoryFilter}
-          electiveYearFilter={electiveYearFilter}
-          electiveSemesterFilter={electiveSemesterFilter}
-          electiveCategories={electiveCategories}
-          setFilter={setFilter}
-          departments={departments}
-          deptCounts={deptCounts}
-          ROOM_TYPES={ROOM_TYPES}
-        />
-      </div>
-
-      {/* ── Table ── */}
-      {filtered.length === 0 && hasAnyFilter && !isLoading ? (
+      {view !== 'requests' &&
+      filtered.length === 0 &&
+      hasAnyFilter &&
+      !isLoading ? (
         <div className="rounded-xl border border-dashed border-surface-variant bg-surface-container-lowest py-16 text-center">
           <Icon
             name="search_off"
@@ -1615,35 +1852,52 @@ export default function SubjectsPage() {
         </div>
       ) : (
         <div data-tour="subjects-table">
-          <ResponsiveTable
-            columns={columns}
-            rows={filtered}
-            rowKey={(s) => s.subjectId}
-            rowTitle={(s) => s.subjectCode}
-            rowSubtitle={(s) => s.title}
-            isLoading={isLoading}
-            hasSourceRows={subjects.length > 0}
-            emptyMessage="No subjects yet."
-            noMatchMessage="No subjects match your filters."
-            getActions={getActions}
-            onRowClick={(s) => handleOpenDetail(s)}
-            selectable={canManage}
-            selectedKeys={selectedIds}
-            onSelectionChange={setSelectedIds}
-            isRowSelectable={(s) => !isForeign(s)}
-            emptyIcon="menu_book"
-            emptyAction={
-              canManage ? (
-                <button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
-                >
-                  <Icon name="add" size={16} />
-                  Add first subject
-                </button>
-              ) : undefined
-            }
-          />
+          {view === 'requests' ? (
+            <ResponsiveTable<SubjectRequestRow>
+              columns={requestColumns}
+              rows={tableRows as SubjectRequestRow[]}
+              rowKey={(r) => r.requestId}
+              rowTitle={(r) => r.subjectCode}
+              rowSubtitle={(r) => r.title}
+              isLoading={requestsLoading}
+              hasSourceRows={visibleRequests.length > 0}
+              emptyMessage="No edit requests yet."
+              noMatchMessage={`No ${reqStatus} edit requests.`}
+              onRowClick={(row) => handleOpenRequest(row)}
+              selectable={false}
+              emptyIcon="key"
+            />
+          ) : (
+            <ResponsiveTable<SubjectRecord>
+              columns={columns}
+              rows={tableRows as SubjectRecord[]}
+              rowKey={(s) => s.subjectId}
+              rowTitle={(s) => s.subjectCode}
+              rowSubtitle={(s) => s.title}
+              isLoading={isLoading}
+              hasSourceRows={subjects.length > 0}
+              emptyMessage="No subjects yet."
+              noMatchMessage="No subjects match your filters."
+              getActions={getActions}
+              onRowClick={(s) => handleOpenDetail(s)}
+              selectable={canManage}
+              selectedKeys={selectedIds}
+              onSelectionChange={setSelectedIds}
+              isRowSelectable={(s) => !isForeign(s)}
+              emptyIcon="menu_book"
+              emptyAction={
+                canManage ? (
+                  <button
+                    onClick={openCreate}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition"
+                  >
+                    <Icon name="add" size={16} />
+                    Add first subject
+                  </button>
+                ) : undefined
+              }
+            />
+          )}
         </div>
       )}
 

@@ -336,6 +336,7 @@ export class ScheduleUnfinalizeService {
         payload: {
           requestId: request.requestId,
           scheduleId: schedule.scheduleId,
+          subjectId: schedule.subjectId,
           subjectCode,
           subjectTitle: schedule.subject?.title ?? null,
           sectionCode,

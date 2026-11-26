@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const read = (path: string) =>
+  readFileSync(new URL(`../../../../../${path}`, import.meta.url), 'utf8');
+
+const page = read('apps/frontend/src/features/subjects/SubjectsPage.tsx');
+
+test('subjects page exposes department-scoped edit requests', () => {
+  assert.match(page, /searchParams\.get\('view'\)/);
+  assert.match(page, /searchParams\.get\('reqStatus'\)/);
+  assert.match(
+    page,
+    /queryKey: \['subject-edit-requests', \{ visible: true \}\]/,
+  );
+  assert.match(page, /fetchSubjectEditRequests\(\)/);
+  assert.match(page, /staleTime: 0/);
+  assert.match(page, /refetchOnWindowFocus: true/);
+  assert.match(page, /pendingRequests\.length/);
+  assert.match(page, /view === 'requests' \? requestRows : filtered/);
+});
+
+test('requests tab is gated by manage access and selects the requests view', () => {
+  assert.match(page, /if \(canManage\) \{[\s\S]{0,160}label: 'Requests'/);
+  assert.match(page, /setFilter\('view', 'requests'\)/);
+});
+
+test('request rows open the subject drawer on Edit access', () => {
+  assert.match(
+    page,
+    /const handleOpenRequest = \(row: SubjectRequestRow\) => \{[\s\S]*?setFocusEditAccess\(true\);[\s\S]*?\};/,
+  );
+  assert.match(
+    page,
+    /onRowClick=\{\(row\) => handleOpenRequest\(row\)\}/,
+  );
+});
+
+test('request notification deep link opens the matching subject drawer', () => {
+  assert.match(page, /searchParams\.get\('request'\)/);
+  assert.match(page, /hasConsumedRequestParam/);
+  assert.match(page, /if \(requestsLoading \|\| isLoading\) return;/);
+  assert.match(page, /visibleRequests\.find/);
+  assert.match(page, /next\.set\('view', 'requests'\)/);
+  assert.match(page, /next\.set\('reqStatus', request\.status\)/);
+  assert.match(page, /next\.delete\('request'\)/);
+});
+
+test('requests view hides catalog-only workflow UI', () => {
+  assert.match(page, /\{view !== 'requests' && \([\s\S]{0,120}<>/);
+  assert.match(page, /data-tour="subjects-filters"[\s\S]{0,2000}<\/>\s*\)\}/);
+});
+
+test('subject deep link resolves from the loaded catalog', () => {
+  assert.match(page, /searchParams\.get\('subject'\)/);
+  assert.match(page, /hasConsumedSubjectParam/);
+  assert.match(
+    page,
+    /const target = subjects\.find\(\(s\) => String\(s\.subjectId\) === subjectParam\)/,
+  );
+  assert.match(page, /if \(!target\)[\s\S]{0,240}next\.delete\('subject'\)/);
+  assert.match(page, /setDetailEntry\(target\)/);
+  assert.match(page, /setFocusEditAccess\(false\)/);
+  assert.match(page, /setMode\(null\)/);
+  assert.match(page, /setEditing\(null\)/);
+  assert.match(page, /next\.delete\('subject'\)/);
+});

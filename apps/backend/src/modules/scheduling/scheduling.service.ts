@@ -894,6 +894,7 @@ export class SchedulingService {
           newStatus: status,
           changedBy: user?.userId ?? null,
           changedByName: user?.username ?? user?.email ?? null,
+          subjectId: saved.subjectId,
           subjectCode,
           subjectTitle,
           sectionCode,
