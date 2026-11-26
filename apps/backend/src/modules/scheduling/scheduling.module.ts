@@ -27,6 +27,7 @@ import { SchedulePublishRequest } from './entities/schedule-publish-request.enti
 import { ScheduleChangeRequest } from './entities/schedule-change-request.entity';
 import { TermPublishedVersion } from './entities/term-published-version.entity';
 import { TermPublishedVersionService } from './services/term-published-version.service';
+import { VersionCompareService } from './services/version-compare.service';
 import { TermLifecycleService } from './services/term-lifecycle.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
 import { ScheduleChangeRequestService } from './services/schedule-change-request.service';
@@ -75,6 +76,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleVersionService,
     SchedulingCoverageService,
     TermPublishedVersionService,
+    VersionCompareService,
     TermLifecycleService,
     SolverClient,
     RolesGuard,
@@ -85,6 +87,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     SchedulePublishService,
     ScheduleChangeRequestService,
     TermPublishedVersionService,
+    VersionCompareService,
     TermLifecycleService,
   ],
 })
