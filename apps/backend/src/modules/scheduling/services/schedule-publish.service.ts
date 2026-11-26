@@ -143,7 +143,7 @@ export class SchedulePublishService {
       .leftJoinAndSelect('s.term', 'term')
       .leftJoinAndSelect('r.requestedByUser', 'requestedByUser')
       .leftJoinAndSelect('requestedByUser.faculty', 'requestedByFaculty')
-      .orderBy('r.created_at', 'DESC')
+      .orderBy('r.createdAt', 'DESC')
       .take(200);
 
     if (status) qb.andWhere('r.status = :status', { status });

@@ -132,7 +132,7 @@ export class ScheduleUnfinalizeService {
       .leftJoinAndSelect('s.term', 'term')
       .leftJoinAndSelect('r.requestedByUser', 'requestedByUser')
       .leftJoinAndSelect('requestedByUser.faculty', 'requestedByFaculty')
-      .orderBy('r.created_at', 'DESC')
+      .orderBy('r.createdAt', 'DESC')
       .take(200);
 
     const status = this.parseStatus(input.status);
