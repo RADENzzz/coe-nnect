@@ -36,3 +36,11 @@ test('request rows open the subject drawer on Edit access', () => {
     /onRowClick=\{\(row\) => handleOpenRequest\(row\)\}/,
   );
 });
+
+test('request notification deep link opens the matching subject drawer', () => {
+  assert.match(page, /searchParams\.get\('request'\)/);
+  assert.match(page, /hasConsumedRequestParam/);
+  assert.match(page, /visibleRequests\.find/);
+  assert.match(page, /next\.set\('view', 'requests'\)/);
+  assert.match(page, /next\.delete\('request'\)/);
+});

@@ -997,6 +997,42 @@ export default function SubjectsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editParam, subjects]);
 
+  // ── Deep-link: open the subject drawer for ?request=<requestId> ──
+  const requestParam = searchParams.get('request');
+  const hasConsumedRequestParam = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!requestParam) return;
+    if (hasConsumedRequestParam.current === requestParam) return;
+    if (requestsLoading || subjects.length === 0) return;
+
+    const request = visibleRequests.find(
+      (r) => r.requestId === requestParam,
+    );
+    const target = request
+      ? subjects.find(
+          (s) => String(s.subjectId) === String(request.subjectId),
+        )
+      : undefined;
+    const next = new URLSearchParams(searchParams);
+
+    if (!request || !target) {
+      next.delete('request');
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    hasConsumedRequestParam.current = requestParam;
+    setDetailEntry(target);
+    setFocusEditAccess(true);
+    setMode(null);
+    setEditing(null);
+    next.set('view', 'requests');
+    next.delete('request');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestParam, requestsLoading, visibleRequests, subjects]);
+
   // ── Form-modal close (handles returnTo deep-link) ──
   const handleFormClose = () => {
     setMode(null);
