@@ -8,6 +8,8 @@ import { Subject } from '../subjects/entities/subject.entity';
 import { Faculty } from '../faculty/entities/faculty.entity';
 import { Room } from '../rooms/entities/room.entity';
 import { User } from '../users/entities/user.entity';
+import { SchedulePublishService } from './services/schedule-publish.service';
+import { SchedulePublishController } from './schedule-publish.controller';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { AutoGenerateService } from './services/auto-generate.service';
@@ -45,12 +47,17 @@ import { DepartmentsModule } from '../departments/departments.module';
     NotificationsModule,
     DepartmentsModule,
   ],
-  // The unfinalize controller goes first: its literal routes must resolve
+  // The request controllers go first: their literal routes must resolve
   // before the scheduling controller's `:id` routes.
-  controllers: [ScheduleUnfinalizeController, SchedulingController],
+  controllers: [
+    ScheduleUnfinalizeController,
+    SchedulePublishController,
+    SchedulingController,
+  ],
   providers: [
     SchedulingService,
     ScheduleUnfinalizeService,
+    SchedulePublishService,
     AutoGenerateService,
     RuleContextBuilder,
     ScheduleFacultyService,
@@ -60,6 +67,6 @@ import { DepartmentsModule } from '../departments/departments.module';
     SolverClient,
     RolesGuard,
   ],
-  exports: [SchedulingService, ScheduleUnfinalizeService],
+  exports: [SchedulingService, ScheduleUnfinalizeService, SchedulePublishService],
 })
 export class SchedulingModule {}
