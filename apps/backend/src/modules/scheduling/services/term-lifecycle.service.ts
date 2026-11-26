@@ -86,11 +86,27 @@ export class TermLifecycleService {
     const term = await this.termRepo.findOne({ where: { termId } });
     if (!term) throw new NotFoundException('Term not found');
 
-    const [statusCounts, pendingRequests, saved] = await Promise.all([
-      this.countStatuses(this.scheduleRepo, String(term.termId)),
+    const [pendingRequests, saved] = await Promise.all([
       this.countPendingRequests(String(term.termId)),
       this.versions.findBySemester(),
     ]);
+    const savedVersion =
+      saved.find((version) => String(version.termId) === String(term.termId)) ??
+      null;
+
+    // A deactivated term has no live rows: activation restores them from the
+    // saved snapshot, so the dialog must report what that snapshot contains.
+    let statusCounts: TermLifecycleSummary['statusCounts'];
+    if (action === 'activate') {
+      statusCounts = savedVersion
+        ? await this.countSnapshotStatuses(savedVersion.versionId)
+        : { draft: 0, review: 0, finalized: 0, published: 0 };
+    } else {
+      statusCounts = await this.countStatuses(
+        this.scheduleRepo,
+        String(term.termId),
+      );
+    }
 
     let otherTerm: TermLifecycleSummary['otherTerm'] = null;
     if (action === 'activate') {
@@ -114,9 +130,7 @@ export class TermLifecycleService {
       termName: term.termName,
       statusCounts,
       pendingRequests,
-      savedVersion:
-        saved.find((version) => String(version.termId) === String(term.termId)) ??
-        null,
+      savedVersion,
       otherTerm,
     };
   }
@@ -329,6 +343,22 @@ export class TermLifecycleService {
       finalized: counts[2],
       published: counts[3],
     };
+  }
+
+  private async countSnapshotStatuses(
+    versionId: string,
+  ): Promise<TermLifecycleSummary['statusCounts']> {
+    const entries = await this.versions.entriesFor(versionId);
+    const counts: TermLifecycleSummary['statusCounts'] = {
+      draft: 0,
+      review: 0,
+      finalized: 0,
+      published: 0,
+    };
+    for (const entry of entries) {
+      if (STATUSES.includes(entry.status)) counts[entry.status] += 1;
+    }
+    return counts;
   }
 
   private async countPendingRequests(

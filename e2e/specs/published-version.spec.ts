@@ -697,7 +697,18 @@ test('reactivating a term restores its rows and swaps the other term out', async
     `Saved and cleared from the currently active term "${SWAP_TERM.termName}"`,
   );
   await expect(e2eDialog).toContainText(
-    /draft 1, review 1, finalized 1, published 1/,
+    new RegExp(
+      `Restored rows for "${escapeRegExp(E2E_DATA.termName)}"\\s*\\(\\s*` +
+        'draft\\s+1,\\s*review\\s+1,\\s*finalized\\s+1,\\s*published\\s+1\\s*\\)\\.',
+    ),
+  );
+  await expect(e2eDialog).toContainText(
+    new RegExp(
+      `Saved and cleared from the currently active term "${escapeRegExp(
+        SWAP_TERM.termName,
+      )}"\\s*\\(\\s*` +
+        'draft\\s+1,\\s*review\\s+1,\\s*finalized\\s+1,\\s*published\\s+1\\s*\\)\\;',
+    ),
   );
   const e2eActivate = page.waitForResponse(
     (response) =>

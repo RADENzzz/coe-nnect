@@ -8,6 +8,7 @@ import { SchedulePublishRequest } from '../src/modules/scheduling/entities/sched
 import { ScheduleChangeRequest } from '../src/modules/scheduling/entities/schedule-change-request.entity';
 import { ScheduleUnfinalizeRequest } from '../src/modules/scheduling/entities/schedule-unfinalize-request.entity';
 import { TermLifecycleService } from '../src/modules/scheduling/services/term-lifecycle.service';
+import type { PublishedVersionEntry } from '../src/modules/scheduling/services/term-published-version.service';
 import { createFakeRepository } from './fakes/repository.fake';
 import { deanProfile } from './helpers/profiles';
 
@@ -19,6 +20,7 @@ function buildService() {
   const publishRepo = createFakeRepository([], { idKey: 'requestId' });
   const changeRepo = createFakeRepository([], { idKey: 'requestId' });
   const unfinalizeRepo = createFakeRepository([], { idKey: 'requestId' });
+  const versionEntries = new Map<string, PublishedVersionEntry[]>();
 
   const versions = {
     writeTerm: jest.fn(
@@ -44,6 +46,9 @@ function buildService() {
       return before - scheduleRepo.rows.length;
     }),
     findBySemester: jest.fn(async (_semester?: string) => [] as any[]),
+    entriesFor: jest.fn(async (versionId: string) =>
+      versionEntries.get(versionId) ?? [],
+    ),
   };
 
   let facultyCount = 0;
@@ -146,6 +151,7 @@ function buildService() {
     changeRepo,
     unfinalizeRepo,
     versions,
+    versionEntries,
     manager,
     facultyQuery,
     supabaseFacultyUpdate,
@@ -235,7 +241,46 @@ describe('TermLifecycleService', () => {
     );
   }
 
+  function snapshotEntry(
+    status: PublishedVersionEntry['status'],
+    index: number,
+  ): PublishedVersionEntry {
+    return {
+      schedule_id: `saved-${index}`,
+      subject_id: String(index),
+      subject_code: `SUBJ-${index}`,
+      subject_title: `Subject ${index}`,
+      section_id: null,
+      section_code: null,
+      faculty_id: null,
+      external_faculty_name: null,
+      faculty_name: null,
+      room_id: null,
+      room_number: null,
+      building: null,
+      external_room_name: null,
+      day_of_week: 'Monday',
+      start_time: '10:00:00',
+      end_time: '11:30:00',
+      load_type: 'lecture',
+      status,
+      remarks: null,
+      dept_id: '1',
+      session_index: 0,
+    };
+  }
+
   function seedSavedVersion(termId = '1') {
+    const entries = [
+      snapshotEntry('draft', 1),
+      snapshotEntry('review', 2),
+      snapshotEntry('review', 3),
+      snapshotEntry('finalized', 4),
+      snapshotEntry('published', 5),
+      snapshotEntry('published', 6),
+      snapshotEntry('published', 7),
+    ];
+    env.versionEntries.set(`v-${termId}`, entries);
     env.versions.findBySemester.mockResolvedValue([
       {
         versionId: `v-${termId}`,
@@ -243,7 +288,7 @@ describe('TermLifecycleService', () => {
         termName: termId === '1' ? 'First Term' : 'Second Term',
         semester: '1st',
         schoolYear: '2026-2027',
-        entryCount: 4,
+        entryCount: entries.length,
         stale: false,
         locked: true,
         publishedAt: null,
@@ -277,6 +322,7 @@ describe('TermLifecycleService', () => {
     assert.equal(summary.termName, 'First Term');
     assert.equal(summary.savedVersion?.versionId, 'v-1');
     assert.equal(summary.otherTerm, null);
+    expect(env.versions.entriesFor).not.toHaveBeenCalled();
   });
 
   it('saves all rows and closes pending requests before clearing the grid', async () => {
@@ -361,7 +407,7 @@ describe('TermLifecycleService', () => {
     assert.equal(env.scheduleRepo.rows.length, 1);
   });
 
-  it('includes the active term being swapped out in the activation summary', async () => {
+  it('reports saved snapshot counts and live counts for the term being swapped out in the activation summary', async () => {
     seedTerm('1');
     seedTerm('2', true);
     seedSchedules({ draft: 3, published: 1 }, '2');
@@ -374,10 +420,10 @@ describe('TermLifecycleService', () => {
     const summary = await env.service.summary('1', 'activate');
 
     assert.deepEqual(summary.statusCounts, {
-      draft: 0,
-      review: 0,
-      finalized: 0,
-      published: 0,
+      draft: 1,
+      review: 2,
+      finalized: 1,
+      published: 3,
     });
     assert.deepEqual(summary.otherTerm, {
       termId: '2',
@@ -385,6 +431,30 @@ describe('TermLifecycleService', () => {
       statusCounts: { draft: 3, review: 0, finalized: 0, published: 1 },
     });
     assert.equal(summary.savedVersion?.versionId, 'v-1');
+    expect(env.versions.entriesFor).toHaveBeenCalledWith('v-1');
+  });
+
+  it('reports zero restored counts when activation has no saved version', async () => {
+    seedTerm('1');
+    seedTerm('2', true);
+    seedSchedules({ draft: 3 }, '2');
+
+    const summary = await env.service.summary('1', 'activate');
+
+    assert.deepEqual(summary.statusCounts, {
+      draft: 0,
+      review: 0,
+      finalized: 0,
+      published: 0,
+    });
+    assert.deepEqual(summary.otherTerm?.statusCounts, {
+      draft: 3,
+      review: 0,
+      finalized: 0,
+      published: 0,
+    });
+    assert.equal(summary.savedVersion, null);
+    expect(env.versions.entriesFor).not.toHaveBeenCalled();
   });
 
   it('restores cancelled faculty requests and rethrows the original error when clearing the grid fails', async () => {
