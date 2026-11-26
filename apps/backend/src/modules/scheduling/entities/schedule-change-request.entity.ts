@@ -18,10 +18,11 @@ export type ScheduleChangeRequestStatus =
   | 'cancelled';
 
 /**
- * A department head's request to change a draft schedule entry.
+ * A department head's request to change a review or finalized schedule entry.
  *
- * A draft entry can only be edited through an approved request: the row
- * records the reason, and the Dean either approves or rejects it.
+ * Filing is limited to entries the head cannot edit directly; the row records
+ * the reason and the Dean approves or rejects it. Approval returns the entry to
+ * Draft, the only editable state.
  */
 @Entity('schedule_change_request')
 export class ScheduleChangeRequest {

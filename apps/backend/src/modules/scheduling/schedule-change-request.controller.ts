@@ -19,7 +19,8 @@ import { CreateScheduleChangeRequestDto } from './dto/create-schedule-change-req
 import { RespondScheduleChangeRequestDto } from './dto/respond-schedule-change-request.dto';
 
 /**
- * Dean-approved change requests for draft schedule entries.
+ * Change requests for review or finalized schedule entries; approval returns
+ * the entry to Draft.
  *
  * Kept in its own controller so the scheduling controller's `:id` routes stay
  * untouched. Both controllers share the `v1/schedules` prefix; the inbox route
@@ -65,7 +66,7 @@ export class ScheduleChangeRequestController {
     return { data: await this.service.findForSchedule(id, req.profile) };
   }
 
-  /** DH files a request instead of editing a draft entry directly. */
+  /** DH files a request instead of editing a review/finalized entry directly. */
   @Auditable({
     action: 'schedule.change_request',
     source: 'Scheduling',

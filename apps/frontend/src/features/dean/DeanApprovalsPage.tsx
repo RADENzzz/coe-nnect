@@ -39,6 +39,10 @@ import { extractApiError } from '../../lib/api-error';
 import ApprovalDetailDrawer, {
   type ApprovalDrawerTarget,
 } from './components/ApprovalDetailDrawer';
+import {
+  clearRequestDeepLinkParams,
+  reviewRowAction,
+} from './dean-approval-actions';
 import type { Day, LoadType, ScheduleEntry } from '../timetable/types';
 
 const STATUS_LABELS: Record<
@@ -240,10 +244,15 @@ export default function DeanApprovalsPage() {
 
   const clearDeepLinkParam = useCallback(
     (param: DeepLinkParam) => {
-      const next = new URLSearchParams(searchParams);
+      // The unfinalize notification injects ?status=published with ?request=.
+      // Both must go together, or the status-follow effect resets the tab after
+      // the request param is cleared.
+      const next =
+        param === 'request'
+          ? clearRequestDeepLinkParams(searchParams)
+          : new URLSearchParams(searchParams);
       if (param === 'publishRequest') next.delete('publishRequest');
-      else if (param === 'request') next.delete('request');
-      else next.delete('changeRequest');
+      if (param === 'changeRequest') next.delete('changeRequest');
       setSearchParams(next, { replace: true });
     },
     [searchParams, setSearchParams],
@@ -864,17 +873,13 @@ export default function DeanApprovalsPage() {
       key: 'actions',
       header: 'Actions',
       cardVariant: 'actions',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => setDrawerTarget(row)}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-surface-container-low transition"
-        >
-          Review
-        </button>
-      ),
+      // ResponsiveTable builds action cells from getActions, not render.
+      render: () => null,
     },
   ];
+
+  const getRequestActions = (row: RequestRow): RowAction[] =>
+    reviewRowAction(row, setDrawerTarget);
 
   const getActions = (s: RawSchedule): RowAction[] => {
     const isPending = statusMutation.isPending;
@@ -1172,6 +1177,7 @@ export default function DeanApprovalsPage() {
             hasSourceRows={requestRowsByTab.length > 0}
             emptyMessage={`No ${activeTab} requests yet.`}
             noMatchMessage="No requests match your filters."
+            getActions={getRequestActions}
             selectable={false}
             onRowClick={(row) => setDrawerTarget(row)}
           />

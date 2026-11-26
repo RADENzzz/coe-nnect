@@ -30,9 +30,11 @@ export default function RequestChangeModal({
   const feedback = useFeedback();
   const [reason, setReason] = useState('');
 
+  // The drawer keeps this modal mounted between open/close cycles for the
+  // same entry, so the reason must reset on reopening, not only on id change.
   useEffect(() => {
-    setReason('');
-  }, [entry?.id]);
+    if (open) setReason('');
+  }, [open, entry?.id]);
 
   const mutation = useMutation({
     mutationFn: () => {

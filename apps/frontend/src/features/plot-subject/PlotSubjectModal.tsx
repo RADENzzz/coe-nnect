@@ -285,8 +285,7 @@ export default function PlotSubjectModal({
   }, [faculty, departments]);
 
   useEffect(() => {
-    const defaultDept =
-      profile?.role === 'department_head' && myDeptId ? myDeptId : '';
+    const defaultDept = '';
 
     if (!open) {
       setForm(EMPTY_FORM);
@@ -379,7 +378,6 @@ export default function PlotSubjectModal({
     open,
     editing,
     myDeptId,
-    profile?.role,
     presetSubjectId,
     presetSection,
     presetFacultyId,

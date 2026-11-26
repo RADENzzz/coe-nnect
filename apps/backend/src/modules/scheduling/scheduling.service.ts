@@ -1,10 +1,5 @@
 // apps/backend/src/modules/scheduling/scheduling.service.ts
-import {
-  Injectable,
-  BadRequestException,
-  Logger,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Schedule } from './entities/schedule.entity';
@@ -290,15 +285,6 @@ export class SchedulingService {
 
     const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
 
-    if (user && user.role === 'department_head') {
-      const myDept = user.deptId != null ? String(user.deptId) : null;
-      if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
-        throw new ForbiddenException(
-          'You can only plot subjects that belong to your own department.',
-        );
-      }
-    }
-
     // ── NEW: refuse if subject's dept is deactivated ──
     await this.departments.assertDepartmentActive(subjectDeptId);
 
@@ -466,15 +452,6 @@ export class SchedulingService {
     }
 
     const subjectDeptId = await this.lookupSubjectDept(dto.subjectId);
-
-    if (user && user.role === 'department_head') {
-      const myDept = user.deptId != null ? String(user.deptId) : null;
-      if (!myDept || !subjectDeptId || subjectDeptId !== myDept) {
-        throw new ForbiddenException(
-          'You can only plot subjects that belong to your own department.',
-        );
-      }
-    }
 
     // ── NEW: refuse if subject's dept is deactivated ──
     await this.departments.assertDepartmentActive(subjectDeptId);

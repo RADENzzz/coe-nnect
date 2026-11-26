@@ -36,3 +36,20 @@ test('request change modal invalidates every affected query after filing', () =>
   assert.match(modalSource, /\['flagged'\]/);
   assert.doesNotMatch(modalSource, /window\.alert|window\.confirm|window\.prompt/);
 });
+
+test('request change modal clears a stale reason when reopened for the same entry', () => {
+  const modalSource = read(
+    'apps/frontend/src/features/timetable/components/RequestChangeModal.tsx',
+  );
+
+  assert.ok(
+    /useEffect\(\(\) => \{\s*if \(open\) setReason\(''\);\s*\}, \[open, entry\?\.id\]\);/.test(
+      modalSource,
+    ),
+    'reason must reset when the modal is opened, even for the same entry id',
+  );
+  assert.ok(
+    !/\}, \[entry\?\.id\]\);/.test(modalSource),
+    'entry id alone must not be the only reset trigger',
+  );
+});
