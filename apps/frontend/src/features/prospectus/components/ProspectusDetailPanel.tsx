@@ -6,6 +6,11 @@ import { isAnyModalOpen } from '../../../components/ui/Modal';
 import type { ProspectusRecord } from '../../../api/prospectus.api';
 import type { SubjectRecord } from '../../../api/subjects.api';
 import { lockBodyScroll } from '@/lib/body-scroll-lock';
+import {
+  SESSION_LIMITS,
+  buildSessionsPerWeekPatch,
+  type SessionsPerWeekPatch,
+} from '../utils/sessions-per-week';
 
 type Tab = 'overview' | 'schedule';
 
@@ -26,6 +31,7 @@ interface Props {
   onDuplicateSlot: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  onSaveSessions?: (id: string, patch: SessionsPerWeekPatch) => Promise<void>;
 }
 
 const ROOM_TYPE_META: Record<string, { icon: string; label: string }> = {
@@ -64,6 +70,7 @@ export default function ProspectusDetailPanel({
   onDuplicateSlot,
   onToggleActive,
   onDelete,
+  onSaveSessions,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -253,7 +260,13 @@ export default function ProspectusDetailPanel({
             </>
           )}
 
-          {tab === 'schedule' && <ScheduleTab entry={entry} />}
+          {tab === 'schedule' && (
+            <ScheduleTab
+              entry={entry}
+              canWrite={canWrite}
+              onSaveSessions={onSaveSessions}
+            />
+          )}
         </div>
 
         {/* Footer actions */}
@@ -343,12 +356,54 @@ export default function ProspectusDetailPanel({
 
 // ── Tab: Schedule ──
 
-function ScheduleTab({ entry }: { entry: ProspectusRecord }) {
+function ScheduleTab({
+  entry,
+  canWrite,
+  onSaveSessions,
+}: {
+  entry: ProspectusRecord;
+  canWrite: boolean;
+  onSaveSessions?: (id: string, patch: SessionsPerWeekPatch) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<SessionsPerWeekPatch>({
+    lectureSessionsPerWeek: entry.lectureSessionsPerWeek ?? 1,
+    labSessionsPerWeek: entry.labSessionsPerWeek ?? 1,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft({
+      lectureSessionsPerWeek: entry.lectureSessionsPerWeek ?? 1,
+      labSessionsPerWeek: entry.labSessionsPerWeek ?? 1,
+    });
+  }, [
+    entry.prospectusId,
+    entry.lectureSessionsPerWeek,
+    entry.labSessionsPerWeek,
+  ]);
+
+  const dirty =
+    draft.lectureSessionsPerWeek !== (entry.lectureSessionsPerWeek ?? 1) ||
+    draft.labSessionsPerWeek !== (entry.labSessionsPerWeek ?? 1);
+
+  const handleSave = async () => {
+    if (!onSaveSessions || !dirty || saving) return;
+    setSaving(true);
+    try {
+      await onSaveSessions(entry.prospectusId, buildSessionsPerWeekPatch(draft));
+    } catch {
+      // ProspectusPage already reported the API error through feedback.error.
+      // Keep the draft so the user can retry or close without saving.
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const hasLecture = (entry.subject?.lectureUnits ?? 0) > 0;
   const hasLab = (entry.subject?.labUnits ?? 0) > 0;
-  const lecSessions = entry.lectureSessionsPerWeek ?? 1;
+  const lecSessions = draft.lectureSessionsPerWeek;
   const lecMinutes = entry.lectureMinutesPerSession ?? 90;
-  const labSessions = entry.labSessionsPerWeek ?? 1;
+  const labSessions = draft.labSessionsPerWeek;
   const labMinutes = entry.labMinutesPerSession ?? 180;
   const lecHours = (lecSessions * lecMinutes) / 60;
   const labHours = (labSessions * labMinutes) / 60;
@@ -389,6 +444,31 @@ function ScheduleTab({ entry }: { entry: ProspectusRecord }) {
       </div>
 
       {hasLecture && (
+        <SessionStepper
+          label="Lecture sessions/week"
+          value={draft.lectureSessionsPerWeek}
+          min={SESSION_LIMITS.lecture.min}
+          max={SESSION_LIMITS.lecture.max}
+          disabled={!canWrite || saving}
+          onChange={(next) =>
+            setDraft((prev) => ({ ...prev, lectureSessionsPerWeek: next }))
+          }
+        />
+      )}
+      {hasLab && (
+        <SessionStepper
+          label="Laboratory sessions/week"
+          value={draft.labSessionsPerWeek}
+          min={SESSION_LIMITS.lab.min}
+          max={SESSION_LIMITS.lab.max}
+          disabled={!canWrite || saving}
+          onChange={(next) =>
+            setDraft((prev) => ({ ...prev, labSessionsPerWeek: next }))
+          }
+        />
+      )}
+
+      {hasLecture && (
         <PatternCard
           variant="lecture"
           label="Lecture"
@@ -410,6 +490,63 @@ function ScheduleTab({ entry }: { entry: ProspectusRecord }) {
           units={Number(entry.subject?.labUnits ?? 0)}
         />
       )}
+      {canWrite && (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!dirty || saving || !onSaveSessions}
+          className="w-full px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-on-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SessionStepper({
+  label,
+  value,
+  min,
+  max,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  disabled: boolean;
+  onChange: (next: number) => void;
+}) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+      <span className="text-xs font-semibold text-on-surface">{label}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`Decrease ${label}`}
+          disabled={disabled || value <= min}
+          onClick={() => onChange(clamp(value - 1))}
+          className="w-7 h-7 rounded border border-outline-variant text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          −
+        </button>
+        <span className="min-w-6 text-center font-mono text-sm font-bold">
+          {value}
+        </span>
+        <button
+          type="button"
+          aria-label={`Increase ${label}`}
+          disabled={disabled || value >= max}
+          onClick={() => onChange(clamp(value + 1))}
+          className="w-7 h-7 rounded border border-outline-variant text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }

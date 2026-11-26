@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   fetchProspectus,
+  updateProspectus,
   toggleProspectusActive,
   deleteProspectus,
   createProspectus,
@@ -27,6 +28,11 @@ import ProspectusFormModal from './components/ProspectusFormModal';
 import FillSlotModal from './components/FillSlotModal';
 import ProspectusDetailPanel from './components/ProspectusDetailPanel';
 import { useSemesterTypes } from '../../hooks/use-semester-types';
+import {
+  buildSessionsPerWeekPatch,
+  formatSessionsPerWeek,
+  type SessionsPerWeekPatch,
+} from './utils/sessions-per-week';
 
 const YEAR_LEVELS = [1, 2, 3, 4, 5, 6];
 
@@ -393,6 +399,19 @@ export default function ProspectusPage() {
     },
     onError: (err: any) =>
       feedback.error(extractApiError(err, 'Failed to duplicate field')),
+  });
+
+  const updateSessionsMutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: SessionsPerWeekPatch }) =>
+      updateProspectus(id, patch),
+    onSuccess: () => {
+      feedback.success('Sessions per week updated.');
+      invalidateAfterProspectusChange();
+    },
+    onError: (err: unknown) =>
+      feedback.error(
+        extractApiError(err, 'Failed to update sessions per week'),
+      ),
   });
 
   // ── Bulk action: activate/deactivate ALL visible (quick path) ──
@@ -790,6 +809,13 @@ export default function ProspectusPage() {
       cardVariant: 'mono',
       cellClassName: '',
       render: renderUnits,
+    },
+    {
+      key: 'sessionsPerWeek',
+      header: 'Sessions/wk',
+      cardVariant: 'mono',
+      cellClassName: 'whitespace-nowrap text-xs text-on-surface-variant',
+      render: (e) => formatSessionsPerWeek(e),
     },
     {
       key: 'type',
@@ -1376,6 +1402,9 @@ export default function ProspectusPage() {
           onDuplicateSlot={() => handleDuplicateSlot(detailLive)}
           onToggleActive={handleToggleFromDetail}
           onDelete={handleDeleteFromDetail}
+          onSaveSessions={(id, patch) =>
+            updateSessionsMutation.mutateAsync({ id, patch }).then(() => undefined)
+          }
         />
       )}
 
