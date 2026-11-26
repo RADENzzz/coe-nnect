@@ -97,6 +97,14 @@ export function notificationHref(
       // Publish outcomes focus the timetable, never the subject drawer.
       return href(shell, '/timetable', { focus: id });
 
+    case 'schedule.change_requested':
+      return href(shell, '/approvals', { changeRequest: id });
+
+    case 'schedule.change_approved':
+    case 'schedule.change_rejected':
+      // Change outcomes focus the timetable, never the subject drawer.
+      return href(shell, '/timetable', { focus: id });
+
     case 'schedule.status_changed':
     case 'schedule.flagged':
     case 'schedule.conflict_detected':
@@ -190,6 +198,8 @@ export function notificationHref(
       });
     case 'schedule_publish_request':
       return href(shell, '/approvals', { publishRequest: id });
+    case 'schedule_change_request':
+      return href(shell, '/approvals', { changeRequest: id });
     case 'faculty':
       return href(shell, '/faculty', { faculty: id });
     case 'term':
@@ -225,6 +235,12 @@ export function notificationIcon(item: NotificationItem): string {
     case 'schedule.publish_approved':
       return 'task_alt';
     case 'schedule.publish_rejected':
+      return 'cancel';
+    case 'schedule.change_requested':
+      return 'pending_actions';
+    case 'schedule.change_approved':
+      return 'task_alt';
+    case 'schedule.change_rejected':
       return 'cancel';
     case 'request.submitted':
       return 'swap_horiz';
