@@ -80,8 +80,8 @@ const ROWS: PlottedRow[] = [
     startLabel: E2E_SCHEDULE.startLabel,
     endLabel: E2E_SCHEDULE.endLabel,
   },
-  { day: 'Tuesday', startLabel: '08:00 AM', endLabel: '09:30 AM' },
-  { day: 'Wednesday', startLabel: '09:30 AM', endLabel: '11:00 AM' },
+  { day: 'Tuesday', startLabel: '8:00 AM', endLabel: '9:30 AM' },
+  { day: 'Wednesday', startLabel: '9:30 AM', endLabel: '11:00 AM' },
   { day: 'Thursday', startLabel: '11:00 AM', endLabel: '12:30 PM' },
 ];
 
