@@ -83,6 +83,7 @@ export class ScheduleFlagService {
         reason,
         flaggedBy: user.userId,
         flaggedByName: user.username ?? user.email ?? null,
+        subjectId: found.subjectId,
         subjectCode,
         subjectTitle,
         sectionCode,
