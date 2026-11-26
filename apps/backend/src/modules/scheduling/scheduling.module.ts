@@ -24,8 +24,11 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { ScheduleVersion } from './entities/schedule-version.entity';
 import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-request.entity';
 import { SchedulePublishRequest } from './entities/schedule-publish-request.entity';
+import { ScheduleChangeRequest } from './entities/schedule-change-request.entity';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
+import { ScheduleChangeRequestService } from './services/schedule-change-request.service';
 import { ScheduleUnfinalizeController } from './schedule-unfinalize.controller';
+import { ScheduleChangeRequestController } from './schedule-change-request.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DepartmentsModule } from '../departments/departments.module';
 
@@ -36,6 +39,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       ScheduleVersion,
       ScheduleUnfinalizeRequest,
       SchedulePublishRequest,
+      ScheduleChangeRequest,
       TimeSlot,
       Term,
       Subject,
@@ -52,12 +56,14 @@ import { DepartmentsModule } from '../departments/departments.module';
   controllers: [
     ScheduleUnfinalizeController,
     SchedulePublishController,
+    ScheduleChangeRequestController,
     SchedulingController,
   ],
   providers: [
     SchedulingService,
     ScheduleUnfinalizeService,
     SchedulePublishService,
+    ScheduleChangeRequestService,
     AutoGenerateService,
     RuleContextBuilder,
     ScheduleFacultyService,
@@ -67,6 +73,11 @@ import { DepartmentsModule } from '../departments/departments.module';
     SolverClient,
     RolesGuard,
   ],
-  exports: [SchedulingService, ScheduleUnfinalizeService, SchedulePublishService],
+  exports: [
+    SchedulingService,
+    ScheduleUnfinalizeService,
+    SchedulePublishService,
+    ScheduleChangeRequestService,
+  ],
 })
 export class SchedulingModule {}
