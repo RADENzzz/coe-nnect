@@ -5,6 +5,10 @@ import { FindOptionsWhere, Repository } from 'typeorm';
 
 import { Schedule } from '../entities/schedule.entity';
 import {
+  filterVersionEntries,
+  resolveVersionDeptId,
+} from '../version-scope';
+import {
   compareEntries,
   ScheduleVersionService,
   type ComparedVersionSummary,
@@ -66,10 +70,12 @@ export class VersionCompareService {
     sourceA: string,
     sourceB: string,
     actor: any,
+    requestedDeptId?: string | null,
   ): Promise<VersionCompareResult> {
+    const deptId = resolveVersionDeptId(actor, requestedDeptId);
     const [a, b] = await Promise.all([
-      this.normalize(parseSource(sourceA), actor),
-      this.normalize(parseSource(sourceB), actor),
+      this.normalize(parseSource(sourceA), actor, deptId),
+      this.normalize(parseSource(sourceB), actor, deptId),
     ]);
 
     return compareEntries(
@@ -80,10 +86,19 @@ export class VersionCompareService {
     );
   }
 
-  private async normalize(source: VersionSource, actor: any): Promise<NormalizedSource> {
+  private async normalize(
+    source: VersionSource,
+    actor: any,
+    deptId: string | null,
+  ): Promise<NormalizedSource> {
     switch (source.kind) {
       case 'published': {
-        const entries = await this.publishedVersions.entriesFor(source.id);
+        const entries = this.withSessionIndexes(
+          filterVersionEntries(
+            await this.publishedVersions.entriesFor(source.id),
+            deptId,
+          ),
+        );
         return {
           entries,
           summary: this.summary(source.id, null, null, null, entries.length),
@@ -93,7 +108,10 @@ export class VersionCompareService {
         const version = await this.scheduleVersions.findVersion(source.id);
         const raw = (version.snapshot as { entries?: unknown } | null)?.entries;
         const entries = this.withSessionIndexes(
-          (Array.isArray(raw) ? raw : []) as ComparableEntry[],
+          filterVersionEntries(
+            (Array.isArray(raw) ? raw : []) as ComparableEntry[],
+            deptId,
+          ),
         );
         return {
           entries,
@@ -107,22 +125,21 @@ export class VersionCompareService {
         };
       }
       case 'live': {
-        const isHead = actor?.role === 'department_head';
-        if (isHead && (actor.deptId == null || String(actor.deptId).trim() === '')) {
-          throw new BadRequestException(
-            'Department head actor is missing a department id for a live source',
-          );
-        }
         const where: FindOptionsWhere<Schedule> = { termId: source.id };
-        if (isHead) {
-          where.deptId = String(actor.deptId);
+        if (deptId !== null) {
+          where.deptId = deptId;
         }
         const rows = await this.scheduleRepo.find({
           where,
           relations: ['subject', 'faculty', 'room', 'sectionRef'],
           order: { scheduleId: 'ASC' },
         });
-        const entries = this.withSessionIndexes(rows.map((row) => this.toEntry(row)));
+        const entries = this.withSessionIndexes(
+          filterVersionEntries(
+            rows.map((row) => this.toEntry(row)),
+            deptId,
+          ),
+        );
         return {
           entries,
           summary: this.summary(

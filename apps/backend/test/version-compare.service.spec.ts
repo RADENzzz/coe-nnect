@@ -216,7 +216,9 @@ describe('VersionCompareService', () => {
 
     const dhResult = await service.compareSources('live:1', 'published:9', departmentHeadProfile);
     assert.equal(dhResult.versionA.entryCount, 1);
-    assert.equal(dhResult.added.length, 2);
+    assert.deepEqual(dhResult.entriesA.map((e) => e.dept_id), ['1']);
+    assert.deepEqual(dhResult.entriesB.map((e) => e.dept_id), ['1']);
+    assert.equal(dhResult.added.length, 0);
     assert.equal(dhResult.unchanged, 1);
 
     const deanResult = await service.compareSources('live:1', 'published:9', deanProfile);
@@ -305,6 +307,86 @@ describe('VersionCompareService', () => {
     assert.deepEqual(
       snapshot.entries.map((e: Record<string, unknown>) => e.session_index),
       [0, 1, 0],
+    );
+  });
+
+  it('filters all source kinds before diffing and returns both filtered grids', async () => {
+    const publishedEntries = [
+      entry({ subject_id: 'S1', section_id: 'SEC1', dept_id: '1' }),
+      entry({ subject_id: 'S2', section_id: 'SEC2', dept_id: '2' }),
+      entry({ subject_id: 'S3', section_id: 'SEC3', dept_id: null }),
+    ];
+    seedPublished('9', publishedEntries);
+    seedHistory('11', 'termA', publishedEntries);
+
+    const result = await service.compareSources(
+      'history:11',
+      'published:9',
+      deanProfile,
+      '2',
+    );
+
+    assert.deepEqual(result.entriesA.map((e) => e.subject_id), ['S2']);
+    assert.deepEqual(result.entriesB.map((e) => e.subject_id), ['S2']);
+    assert.deepEqual([result.versionA.entryCount, result.versionB.entryCount], [1, 1]);
+    assert.equal(result.added.length, 0);
+    assert.equal(result.removed.length, 0);
+    assert.equal(result.unchanged, 1);
+  });
+
+  it('forces a department head to their own department even when deptId is overridden', async () => {
+    seedPublished('9', [
+      entry({ subject_id: 'S1', dept_id: '1' }),
+      entry({ subject_id: 'S2', dept_id: '2' }),
+    ]);
+    scheduleRepo.rows.push(
+      liveRow('live-1', 'S1', 'SEC1', 'lecture', '1'),
+      liveRow('live-2', 'S2', 'SEC2', 'lecture', '2'),
+    );
+
+    const result = await service.compareSources(
+      'live:1',
+      'published:9',
+      departmentHeadProfile,
+      '2',
+    );
+
+    assert.deepEqual(result.entriesA.map((e) => e.dept_id), ['1']);
+    assert.deepEqual(result.entriesB.map((e) => e.dept_id), ['1']);
+    assert.equal(result.added.length, 0);
+    assert.equal(result.removed.length, 0);
+  });
+
+  it('includes null-department rows only in an all-department compare', async () => {
+    seedPublished('9', [
+      entry({ subject_id: 'S1', dept_id: null }),
+      entry({ subject_id: 'S2', dept_id: '2' }),
+    ]);
+    seedHistory('11', 'termA', [
+      entry({ subject_id: 'S1', dept_id: null }),
+      entry({ subject_id: 'S2', dept_id: '2' }),
+    ]);
+
+    const all = await service.compareSources('history:11', 'published:9', deanProfile);
+    const scoped = await service.compareSources('history:11', 'published:9', deanProfile, '2');
+
+    assert.equal(all.entriesA.length, 2);
+    assert.equal(scoped.entriesA.length, 1);
+    assert.equal(scoped.entriesA[0].dept_id, '2');
+  });
+
+  it('normalizes session indexes after department filtering', async () => {
+    seedPublished('9', [
+      entry({ subject_id: 'S1', section_id: 'SEC1', session_index: 0, dept_id: '2' }),
+      entry({ subject_id: 'S1', section_id: 'SEC1', session_index: undefined as any, dept_id: '2' }),
+      entry({ subject_id: 'S1', section_id: 'SEC1', session_index: 1, dept_id: '1' }),
+    ]);
+
+    const result = await service.compareSources('published:9', 'published:9', deanProfile, '2');
+
+    assert.deepEqual(
+      result.entriesA.map((e) => e.session_index),
+      [0, 1],
     );
   });
 });

@@ -19,6 +19,7 @@ describe('published version route contract', () => {
     assert.match(controller, /@Get\('published-versions'\)/);
     assert.match(controller, /@Get\('published-versions\/:versionId'\)/);
     assert.match(controller, /@Get\('version-compare'\)/);
+    assert.match(controller, /@Query\('deptId'\) deptId\?: string/);
     assert.match(
       controller,
       /@Roles\('college_dean', 'department_head', 'college_secretary', 'administrator'\)/,

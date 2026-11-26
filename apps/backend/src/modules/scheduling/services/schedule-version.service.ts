@@ -23,6 +23,8 @@ export type ComparedVersionSummary = {
 export type VersionCompareResult = {
   versionA: ComparedVersionSummary;
   versionB: ComparedVersionSummary;
+  entriesA: Array<Record<string, unknown>>;
+  entriesB: Array<Record<string, unknown>>;
   added: Array<Record<string, unknown>>;
   removed: Array<Record<string, unknown>>;
   moved: Array<{
@@ -94,7 +96,16 @@ export function compareEntries(
     }
   }
 
-  return { versionA, versionB, added, removed, moved, unchanged };
+  return {
+    versionA,
+    versionB,
+    entriesA,
+    entriesB,
+    added,
+    removed,
+    moved,
+    unchanged,
+  };
 }
 
 function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
