@@ -13,6 +13,13 @@ import {
   unfinalizeRequesterName,
   type ScheduleUnfinalizeRequest,
 } from '../../api/schedule-unfinalize.api';
+import {
+  fetchPublishRequests,
+  respondToPublishRequest,
+  publishRequestLabel,
+  publishRequesterName,
+  type SchedulePublishRequest,
+} from '../../api/schedule-publish-request.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { fetchDepartments } from '../../api/departments.api';
@@ -39,7 +46,7 @@ const STATUS_LABELS: Record<
 
 type TabFilter = 'review' | 'finalized' | 'all';
 type StatusFilter = 'all' | 'draft' | 'review' | 'finalized' | 'published';
-type BatchAction = 'finalize' | 'publish' | 'unfinalize-published';
+type BatchAction = 'finalize' | 'unfinalize-published';
 
 const STATUS_VALUES: StatusFilter[] = [
   'all',
@@ -58,6 +65,11 @@ interface PendingConfirmation {
 
 interface RequestDecision {
   request: ScheduleUnfinalizeRequest;
+  action: 'approve' | 'reject';
+}
+
+interface PublishDecision {
+  request: SchedulePublishRequest;
   action: 'approve' | 'reject';
 }
 
@@ -113,6 +125,23 @@ export default function DeanApprovalsPage() {
     if (searchParams.get('request')) {
       const next = new URLSearchParams(searchParams);
       next.delete('request');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  // ── Finalized publish requests ──
+  const [publishDecision, setPublishDecision] =
+    useState<PublishDecision | null>(null);
+  const [publishDecisionRemarks, setPublishDecisionRemarks] = useState('');
+  const publishDeepLinkHandledRef = useRef<string | null>(null);
+  const deepLinkPublishRequestId = searchParams.get('publishRequest');
+
+  const closePublishDecision = useCallback(() => {
+    setPublishDecision(null);
+    setPublishDecisionRemarks('');
+    if (searchParams.get('publishRequest')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('publishRequest');
       setSearchParams(next, { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -192,6 +221,22 @@ export default function DeanApprovalsPage() {
     [unfinalizeRequests],
   );
 
+  // Publish requests are likewise not term-scoped: department heads can file
+  // them for any term, and notification links carry only the request id.
+  const {
+    data: publishRequests = [],
+    isLoading: publishRequestsLoading,
+  } = useQuery({
+    queryKey: ['schedule-publish-requests'],
+    queryFn: () => fetchPublishRequests(),
+    staleTime: 15_000,
+  });
+
+  const pendingPublishRequests = useMemo(
+    () => publishRequests.filter((r) => r.status === 'pending'),
+    [publishRequests],
+  );
+
   // `?request=<id>` from the bell opens the decision dialog for that request.
   useEffect(() => {
     if (!deepLinkRequestId) {
@@ -211,6 +256,27 @@ export default function DeanApprovalsPage() {
       feedback.error(`That unfinalize request is already ${match.status}.`);
     }
   }, [deepLinkRequestId, unfinalizeRequests, feedback]);
+
+  // `?publishRequest=<id>` opens the publish decision modal independently of
+  // the unfinalize `?request=<id>` deep link.
+  useEffect(() => {
+    if (!deepLinkPublishRequestId) {
+      publishDeepLinkHandledRef.current = null;
+      return;
+    }
+    if (publishDeepLinkHandledRef.current === deepLinkPublishRequestId) return;
+    const match = publishRequests.find(
+      (r) => String(r.requestId) === deepLinkPublishRequestId,
+    );
+    if (!match) return;
+    publishDeepLinkHandledRef.current = deepLinkPublishRequestId;
+    if (match.status === 'pending') {
+      setPublishDecision({ request: match, action: 'approve' });
+      setPublishDecisionRemarks('');
+    } else {
+      feedback.error(`That publish request is already ${match.status}.`);
+    }
+  }, [deepLinkPublishRequestId, publishRequests, feedback]);
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -254,6 +320,38 @@ export default function DeanApprovalsPage() {
           : `Rejected — ${label} stays Published.`,
       );
       closeRequestDecision();
+    },
+    onError: (err: unknown) => {
+      feedback.error(extractApiError(err, 'The decision could not be saved.'));
+    },
+  });
+
+  const publishDecisionMutation = useMutation({
+    mutationFn: ({
+      requestId,
+      action,
+      remarks,
+    }: {
+      requestId: string;
+      action: 'approve' | 'reject';
+      remarks: string;
+    }) => respondToPublishRequest(requestId, action, remarks),
+    onSuccess: (saved, variables) => {
+      const label = publishRequestLabel(saved);
+      qc.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
+      qc.invalidateQueries({
+        queryKey: ['schedule-publish-request', saved.scheduleId],
+      });
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      qc.invalidateQueries({ queryKey: ['coverage'] });
+      qc.invalidateQueries({ queryKey: ['flagged'] });
+      qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
+      feedback.success(
+        variables.action === 'approve'
+          ? `Approved — ${label} is published on the public planner. Send to IDP remains a separate manual step.`
+          : `Rejected — ${label} stays Finalized.`,
+      );
+      closePublishDecision();
     },
     onError: (err: unknown) => {
       feedback.error(extractApiError(err, 'The decision could not be saved.'));
@@ -335,9 +433,6 @@ export default function DeanApprovalsPage() {
   const selectedPendingCount = selectedRows.filter(
     (s) => s.status === 'review',
   ).length;
-  const selectedFinalizedCount = selectedRows.filter(
-    (s) => s.status === 'finalized',
-  ).length;
   const selectedPublishedCount = selectedRows.filter(
     (s) => s.status === 'published',
   ).length;
@@ -400,12 +495,8 @@ export default function DeanApprovalsPage() {
   const performAction = useCallback(
     async (action: BatchAction | 'return-to-draft', ids: string[]) => {
       if (ids.length === 0) return;
-      const nextStatus: 'draft' | 'finalized' | 'published' =
-        action === 'finalize'
-          ? 'finalized'
-          : action === 'publish'
-          ? 'published'
-          : 'draft';
+      const nextStatus: 'draft' | 'finalized' =
+        action === 'finalize' ? 'finalized' : 'draft';
 
       // Run all updates, collecting successes and failures.
       const results = await Promise.allSettled(
@@ -429,28 +520,6 @@ export default function DeanApprovalsPage() {
       qc.invalidateQueries({ queryKey: ['flagged'] });
       qc.invalidateQueries({ queryKey: ['coverage'] });
 
-      let idpPublishResult:
-        | Awaited<ReturnType<typeof publishIdpSchedule>>
-        | undefined;
-      let idpPublishError: string | undefined;
-      if (action === 'publish' && succeeded.length > 0) {
-        if (!activeTerm?.semester) {
-          idpPublishError =
-            'The active term has no semester configured, so the IDP schedule could not be queued.';
-        } else {
-          try {
-            idpPublishResult = await publishIdpSchedule(
-              `${activeTerm.schoolYear}-${activeTerm.semester}`,
-            );
-          } catch (err: unknown) {
-            idpPublishError = extractApiError(
-              err,
-              'The IDP schedule could not be queued.',
-            );
-          }
-        }
-      }
-
       // Clear the successful ones from the selection.
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -462,37 +531,24 @@ export default function DeanApprovalsPage() {
         const verb =
           action === 'finalize'
             ? 'Finalized'
-            : action === 'publish'
-            ? 'Published'
             : action === 'unfinalize-published'
             ? 'Unfinalized'
             : 'Returned to draft';
         feedback.success(
           `${verb} ${succeeded.length} schedule${
             succeeded.length === 1 ? '' : 's'
-          }.${
-            idpPublishResult?.queued
-              ? ` Term schedule queued for IDP (${idpPublishResult.entryCount} entries).`
-              : ''
-          }`,
+          }.`,
         );
-        if (idpPublishError) {
-          feedback.failed(
-            `Schedules were published in CoE-NNECT, but IDP queueing failed: ${idpPublishError}`,
-          );
-        }
       } else {
         feedback.failed(
           `${succeeded.length} succeeded, ${failures.length} failed. ${extractApiError(
             failures[0].reason,
             '',
-          )}${
-            idpPublishError ? ` IDP queueing failed: ${idpPublishError}` : ''
-          }`.trim(),
+          )}`.trim(),
         );
       }
     },
-    [qc, activeTerm, feedback],
+    [qc, feedback],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -613,17 +669,6 @@ export default function DeanApprovalsPage() {
         },
       ];
     }
-    if (s.status === 'finalized') {
-      return [
-        {
-          label: 'Publish',
-          icon: 'publish',
-          // Wrap in confirmation — cannot be un-published.
-          onClick: () => openConfirm('publish', [s.scheduleId]),
-          disabled: isPending,
-        },
-      ];
-    }
     if (s.status === 'published') {
       return [
         {
@@ -648,13 +693,6 @@ export default function DeanApprovalsPage() {
           title: `Finalize ${count} ${noun}?`,
           body: `This will move ${count} ${noun} to Finalized status. They'll be locked from further edits until unfinalized.`,
           confirmLabel: count === 1 ? 'Finalize' : `Finalize ${count}`,
-          tone: 'primary' as const,
-        };
-      case 'publish':
-        return {
-          title: `Publish ${count} ${noun}?`,
-          body: `This will publish ${count} ${noun} for all departments and queue the term's finalized schedule for IDP. Publishing cannot be undone.`,
-          confirmLabel: count === 1 ? 'Publish' : `Publish ${count}`,
           tone: 'primary' as const,
         };
       case 'return-to-draft':
@@ -810,6 +848,114 @@ export default function DeanApprovalsPage() {
                             action: 'reject',
                           });
                           setDecisionRemarks('');
+                        }}
+                        className="inline-flex items-center gap-1.5 border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                      >
+                        <Icon name="cancel" size={14} />
+                        Reject
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {/* ── Finalized publish requests ── */}
+      {(publishRequestsLoading || pendingPublishRequests.length > 0) && (
+        <section
+          className="border border-blue-200 bg-blue-50/50"
+          aria-label="Publish requests"
+        >
+          <div className="border-b border-blue-200 px-4 py-3">
+            <div className="flex items-start gap-2">
+              <Icon
+                name="pending_actions"
+                size={18}
+                className="mt-0.5 shrink-0 text-blue-700"
+              />
+              <div className="min-w-0">
+                <h2 className="flex flex-wrap items-center gap-2 text-sm font-bold text-blue-900">
+                  Publish requests
+                  {pendingPublishRequests.length > 0 && (
+                    <span className="inline-flex min-w-[20px] items-center justify-center bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white">
+                      {pendingPublishRequests.length}
+                    </span>
+                  )}
+                </h2>
+                <p className="mt-0.5 text-xs text-blue-800">
+                  Approving publishes the entry on the public planner. Sending
+                  the term schedule to IDP stays a separate manual step.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {publishRequestsLoading ? (
+            <p className="px-4 py-4 text-xs text-blue-800">
+              Loading requests…
+            </p>
+          ) : (
+            <ul className="divide-y divide-blue-200">
+              {pendingPublishRequests.map((request) => {
+                const deptId = request.schedule?.deptId ?? request.deptId;
+                const dept = deptId ? deptById.get(String(deptId)) : null;
+                return (
+                  <li
+                    key={request.requestId}
+                    className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-start md:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-900">
+                          {publishRequestLabel(request)}
+                        </span>
+                        {dept && (
+                          <span className="inline-flex items-center border border-blue-300 bg-blue-100 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-blue-900">
+                            {dept.code}
+                          </span>
+                        )}
+                        {request.schedule?.term?.termName && (
+                          <span className="text-[11px] font-medium text-blue-900">
+                            {request.schedule.term.termName}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-blue-800">
+                          {new Date(request.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Requested by{' '}
+                        <strong className="text-slate-800">
+                          {publishRequesterName(request)}
+                        </strong>
+                      </p>
+                      <p
+                        className="mt-1 max-w-xl truncate text-xs italic text-slate-700"
+                        title={request.note ?? undefined}
+                      >
+                        “{request.note ?? 'No note provided.'}”
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPublishDecision({ request, action: 'approve' });
+                          setPublishDecisionRemarks('');
+                        }}
+                        className="inline-flex items-center gap-1.5 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                      >
+                        <Icon name="check_circle" size={14} />
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPublishDecision({ request, action: 'reject' });
+                          setPublishDecisionRemarks('');
                         }}
                         className="inline-flex items-center gap-1.5 border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
                       >
@@ -1036,16 +1182,6 @@ export default function DeanApprovalsPage() {
                   Finalize {selectedPendingCount}
                 </button>
               )}
-              {selectedFinalizedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleBatch('publish')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition"
-                >
-                  <Icon name="publish" size={14} />
-                  Publish {selectedFinalizedCount}
-                </button>
-              )}
               {selectedPublishedCount > 0 && (
                 <button
                   type="button"
@@ -1215,6 +1351,117 @@ export default function DeanApprovalsPage() {
               />
               <p className="mt-1 text-right text-xs text-slate-400">
                 {decisionRemarks.length}/500
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Publish request decision modal ── */}
+      <Modal
+        open={!!publishDecision}
+        onClose={closePublishDecision}
+        title={
+          publishDecision?.action === 'approve'
+            ? 'Approve publish request?'
+            : 'Reject publish request?'
+        }
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closePublishDecision}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                publishDecision &&
+                publishDecisionMutation.mutate({
+                  requestId: publishDecision.request.requestId,
+                  action: publishDecision.action,
+                  remarks: publishDecisionRemarks.trim(),
+                })
+              }
+              disabled={
+                publishDecisionMutation.isPending ||
+                (publishDecision?.action === 'reject' &&
+                  !publishDecisionRemarks.trim())
+              }
+              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition disabled:opacity-50 ${
+                publishDecision?.action === 'approve'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-red-600 hover:bg-red-700'
+              }`}
+            >
+              {publishDecisionMutation.isPending
+                ? 'Saving…'
+                : publishDecision?.action === 'approve'
+                ? 'Approve & publish'
+                : 'Reject request'}
+            </button>
+          </>
+        }
+      >
+        {publishDecision && (
+          <div className="space-y-3">
+            <div className="border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-sm font-semibold text-slate-900">
+                {publishRequestLabel(publishDecision.request)}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Requested by {publishRequesterName(publishDecision.request)} ·{' '}
+                {new Date(publishDecision.request.createdAt).toLocaleString()}
+                {publishDecision.request.schedule?.term?.termName
+                  ? ` · ${publishDecision.request.schedule.term.termName}`
+                  : ''}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Note
+              </p>
+              <p className="mt-1 break-words text-sm text-slate-700">
+                {publishDecision.request.note ?? 'No note provided.'}
+              </p>
+            </div>
+
+            <p className="text-sm text-slate-600">
+              {publishDecision.action === 'approve'
+                ? 'Approving publishes the entry on the public planner. Sending the term schedule to IDP remains a separate manual step.'
+                : 'Rejecting returns the entry to Draft. The requester is notified with your remarks.'}
+            </p>
+
+            <div>
+              <label
+                htmlFor="publish-decision-remarks"
+                className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500"
+              >
+                Remarks{' '}
+                {publishDecision.action === 'approve'
+                  ? '(optional)'
+                  : '(required)'}
+              </label>
+              <textarea
+                id="publish-decision-remarks"
+                value={publishDecisionRemarks}
+                onChange={(e) => setPublishDecisionRemarks(e.target.value)}
+                rows={3}
+                maxLength={500}
+                required={publishDecision.action === 'reject'}
+                placeholder={
+                  publishDecision.action === 'approve'
+                    ? 'e.g. Verified with the department head'
+                    : 'e.g. Resolve the room conflict before publishing'
+                }
+                className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              />
+              <p className="mt-1 text-right text-xs text-slate-400">
+                {publishDecisionRemarks.length}/500
               </p>
             </div>
           </div>
