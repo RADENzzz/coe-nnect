@@ -51,6 +51,7 @@ const RoomsPage = lazy(ROUTE_LOADERS['/rooms']);
 const ProspectusPage = lazy(ROUTE_LOADERS['/prospectus']);
 const ProgramsPage = lazy(ROUTE_LOADERS['/programs']);
 const SystemConfigPage = lazy(ROUTE_LOADERS['/dean/system-settings']);
+const TermManagementPage = lazy(ROUTE_LOADERS['/dean/system-settings/terms']);
 const AuditTrailPage = lazy(ROUTE_LOADERS['/dean/audit-trail']);
 const FacultyWorkloadPage = lazy(ROUTE_LOADERS['/reports/workload']);
 const ReportsHubPage = lazy(ROUTE_LOADERS['/reports']);
@@ -179,6 +180,10 @@ function App() {
               <Route path="sections" element={<SectionsPage />} />
               <Route path="rooms" element={<RoomsPage />} />
               <Route path="system-settings" element={<SystemConfigPage />} />
+              <Route
+                path="system-settings/terms"
+                element={<TermManagementPage />}
+              />
               <Route path="audit-trail" element={<AuditTrailPage />} />
               <Route path="dev-tools" element={<DevToolsPage />} />
               <Route path="reports" element={<ReportsHubPage />} />

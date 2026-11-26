@@ -74,6 +74,17 @@ function subjectHref(
 }
 
 /**
+ * Dean-shell term deep links resolve to `/system-settings/terms?termId=<id>`,
+ * where the full term page highlights the matching row. The DH shell has no
+ * term manager, so it keeps the timetable fallback.
+ */
+function termHref(shell: ShellBase, id: string | null): string {
+  return shell === '/dean'
+    ? href(shell, '/system-settings/terms', { termId: id })
+    : href(shell, '/timetable');
+}
+
+/**
  * Where clicking a notification should take the user.
  *
  * Resolution order:
@@ -144,10 +155,7 @@ export function notificationHref(
       return href(shell, '/faculty', { faculty: id });
 
     case 'term.activated':
-      // Only the Dean shell has System Settings → Terms.
-      return shell === '/dean'
-        ? href(shell, '/system-settings', { termId: id })
-        : href(shell, '/timetable');
+      return termHref(shell, id);
 
     case 'prospectus.imported':
       return id ? href(shell, `/import/${id}`) : href(shell, '/import');
@@ -203,9 +211,7 @@ export function notificationHref(
     case 'faculty':
       return href(shell, '/faculty', { faculty: id });
     case 'term':
-      return shell === '/dean'
-        ? href(shell, '/system-settings', { termId: id })
-        : href(shell, '/timetable');
+      return termHref(shell, id);
     case 'prospectus_pdf':
       return id ? href(shell, `/import/${id}`) : href(shell, '/import');
     case 'user':

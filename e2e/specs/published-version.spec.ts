@@ -601,6 +601,21 @@ test('saved version is written when the Dean approves publish', async ({
   }
 });
 
+test('full term page filters and deep-links to a term', async ({ page }) => {
+  await loginAs(page, 'dean');
+  await gotoApp(page, '/dean/system-settings');
+  await page.getByRole('link', { name: 'Open full page' }).click();
+  await expect(page).toHaveURL(/\/dean\/system-settings\/terms$/);
+
+  await page.getByLabel('Search terms').fill(E2E_DATA.termName);
+  const termRow = page.locator(`#term-${state.termId}`);
+  await expect(termRow).toBeVisible();
+
+  await gotoApp(page, `/dean/system-settings/terms?termId=${state.termId}`);
+  await expect(termRow).toBeVisible();
+  await expect(termRow).toHaveClass(/ring-2/);
+});
+
 test('term deactivation warns about drafts and clears the live grid', async ({
   page,
 }) => {
@@ -613,7 +628,7 @@ test('term deactivation warns about drafts and clears the live grid', async ({
   await setRowStatus(page, ROWS[3], 'finalized');
 
   await loginAs(page, 'dean');
-  await gotoApp(page, '/dean/system-settings');
+  await gotoApp(page, `/dean/system-settings/terms?termId=${state.termId}`);
   const termRow = page.locator(`#term-${state.termId}`);
   await expect(termRow).toBeVisible();
   await termRow.getByRole('button', { name: 'Deactivate' }).click();
@@ -681,7 +696,7 @@ test('reactivating a term restores its rows and swaps the other term out', async
   });
 
   await loginAs(page, 'dean');
-  await gotoApp(page, '/dean/system-settings');
+  await gotoApp(page, `/dean/system-settings/terms?termId=${state.termId}`);
 
   const swapRow = page.locator(`#term-${swapTermId}`);
   await swapRow.getByRole('button', { name: 'Activate' }).click();

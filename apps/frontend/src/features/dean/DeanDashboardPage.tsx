@@ -13,6 +13,7 @@ import { fetchUserDirectory } from '../../api/users.api';
 import { fetchFaculty, fetchFacultyStatusSummary } from '../../api/faculty.api';
 import { fetchFacultyRequests } from '../../api/faculty-requests.api';
 import { fetchDesignations } from '../../api/system-config.api';
+import { canWriteTerms } from '../system-config/components/terms/term-shared';
 import Icon from '../../components/ui/Icon';
 import RollingValue, {
   RollingNumber,
@@ -111,6 +112,8 @@ export default function DeanDashboardPage() {
   const isSecretary = role === 'college_secretary';
   const isDean = role === 'college_dean';
   const canApprove = isDean || role === 'administrator';
+  // Term writes are narrower than approvals: secretary yes, administrator no.
+  const canWrite = canWriteTerms(profile);
   const roleLabel = role ? humanizeRole(role) : undefined;
   const approvalsPath = canApprove ? '/dean/approvals' : '/dean/timetable';
 
@@ -819,15 +822,15 @@ export default function DeanDashboardPage() {
               <Icon name="open_in_new" size={16} />
             </a>
             <Link
-              to="/dean/system-settings#academic-terms"
+              to="/dean/system-settings/terms"
               className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container-low"
             >
               <Icon name="calendar_month" size={14} />
               Terms
             </Link>
-            {canApprove && (
+            {canWrite && (
               <Link
-                to="/dean/system-settings?newTerm=1"
+                to="/dean/system-settings/terms?newTerm=1"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition hover:opacity-90"
               >
                 <Icon name="add" size={14} />
