@@ -7,6 +7,7 @@ import {
   updateRemarks,
   flagSchedule,
   unflagSchedule,
+  type EditableScheduleStatus,
 } from '../../../api/schedule.api';
 import {
   createUnfinalizeRequest,
@@ -173,11 +174,9 @@ export default function ScheduleDetailDrawer({
   const { data: publishRequest } = useQuery({
     queryKey: ['schedule-publish-request', entry?.id],
     queryFn: () => fetchSchedulePublishRequest(entry!.id),
-    enabled:
-      !!entry &&
-      isDH &&
-      ownsEntry &&
-      (entry.status === 'finalized' || entry.status === 'draft'),
+    // Load the latest decision for any status so a rejected request stays
+    // visible until it is resolved by a newer request.
+    enabled: !!entry && isDH && ownsEntry,
     staleTime: 15_000,
   });
   const publishPending = publishRequest?.status === 'pending';
@@ -216,7 +215,7 @@ export default function ScheduleDetailDrawer({
   });
 
   const statusMutation = useMutation({
-    mutationFn: (status: 'draft' | 'review' | 'finalized' | 'published') =>
+    mutationFn: (status: EditableScheduleStatus) =>
       updateScheduleStatus(entry!.id, status),
     onSuccess: () => {
       invalidateAfterMutation();
@@ -228,6 +227,17 @@ export default function ScheduleDetailDrawer({
     onError: (err: unknown) => {
       feedback.failed(extractApiError(err, 'Status update failed'));
       setUnfinalizeOpen(false);
+    },
+  });
+
+  const cancelFinalizeMutation = useMutation({
+    mutationFn: () => updateScheduleStatus(entry!.id, 'draft'),
+    onSuccess: () => {
+      invalidateAfterMutation();
+      feedback.success('Finalization cancelled. The entry is back in Draft.');
+    },
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Could not cancel finalization'));
     },
   });
 
@@ -302,8 +312,8 @@ export default function ScheduleDetailDrawer({
     deleteMutation.mutate();
   };
 
-  const handleStatusChange = (newStatus: string) => {
-    statusMutation.mutate(newStatus as any);
+  const handleStatusChange = (newStatus: EditableScheduleStatus) => {
+    statusMutation.mutate(newStatus);
   };
 
   const handleToggleLock = () => {
@@ -424,7 +434,8 @@ export default function ScheduleDetailDrawer({
                   <>
                     This entry is finalized. Click{' '}
                     <strong>Request publish approval</strong> to send it to the
-                    Dean.
+                    Dean, or <strong>Cancel finalization</strong> to return it to
+                    Draft.
                   </>
                 ) : (
                   <>
@@ -500,32 +511,30 @@ export default function ScheduleDetailDrawer({
             </div>
           )}
 
-          {publishRequest?.status === 'rejected' &&
-            entry.status === 'draft' &&
-            isDH &&
-            writable && (
-              <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
-                <Icon
-                  name="feedback"
-                  filled
-                  size={16}
-                  className="shrink-0 mt-0.5"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold">Dean note</p>
-                  {publishRequest.responseRemarks && (
-                    <p className="mt-0.5 break-words">
-                      {publishRequest.responseRemarks}
-                    </p>
-                  )}
-                  {publishRequest.respondedAt && (
-                    <p className="mt-1 text-[10px] text-rose-700">
-                      {new Date(publishRequest.respondedAt).toLocaleString()}
-                    </p>
-                  )}
-                </div>
+          {publishRequest?.status === 'rejected' && isDH && writable && (
+            <div className="px-5 py-3 bg-rose-50 border-b border-rose-200 flex items-start gap-2 text-xs text-rose-900">
+              <Icon
+                name="feedback"
+                filled
+                size={16}
+                className="shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold">
+                  Dean note — previous publish request
+                </p>
+                <p className="mt-0.5 break-words">
+                  {publishRequest.responseRemarks ||
+                    'The Dean did not provide a reason.'}
+                </p>
+                {publishRequest.respondedAt && (
+                  <p className="mt-1 text-[10px] text-rose-700">
+                    Decided {new Date(publishRequest.respondedAt).toLocaleString()}
+                  </p>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
           {changeRequest?.status === 'pending' && canRequestChange && (
             <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2 text-xs text-amber-900">
@@ -808,7 +817,11 @@ export default function ScheduleDetailDrawer({
                   {entry.status !== 'published' && (
                     <select
                       value={entry.status ?? 'draft'}
-                      onChange={(e) => handleStatusChange(e.target.value)}
+                      onChange={(e) =>
+                        handleStatusChange(
+                          e.target.value as EditableScheduleStatus,
+                        )
+                      }
                       disabled={statusMutation.isPending || locked}
                       className="flex-1 bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
                     >
@@ -848,6 +861,26 @@ export default function ScheduleDetailDrawer({
                   <p className="text-xs text-primary mt-1 animate-pulse">
                     Updating status…
                   </p>
+                )}
+                {entry.status === 'finalized' && isDH && writable && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => cancelFinalizeMutation.mutate()}
+                      disabled={
+                        cancelFinalizeMutation.isPending ||
+                        statusMutation.isPending
+                      }
+                      className="px-3 py-2 rounded-lg text-sm font-semibold border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {cancelFinalizeMutation.isPending
+                        ? 'Cancelling…'
+                        : 'Cancel finalization'}
+                    </button>
+                    <p className="mt-1 text-[11px] text-on-surface-variant">
+                      Returns this entry to Draft and closes any pending
+                      publish request.
+                    </p>
+                  </div>
                 )}
               </div>
             )}

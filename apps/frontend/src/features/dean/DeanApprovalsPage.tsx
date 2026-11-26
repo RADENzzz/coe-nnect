@@ -3,6 +3,7 @@ import {
   fetchSchedules,
   fetchActiveTerm,
   updateScheduleStatus,
+  type EditableScheduleStatus,
   type RawSchedule,
 } from '../../api/schedule.api';
 import { getScheduleDeptId } from '../../api/schedule-ownership';
@@ -453,7 +454,7 @@ export default function DeanApprovalsPage() {
       status,
     }: {
       id: string;
-      status: 'draft' | 'review' | 'finalized' | 'published';
+      status: EditableScheduleStatus;
     }) => updateScheduleStatus(id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
