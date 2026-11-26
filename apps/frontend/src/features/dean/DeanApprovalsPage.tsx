@@ -275,8 +275,11 @@ export default function DeanApprovalsPage() {
       setPublishDecisionRemarks('');
     } else {
       feedback.error(`That publish request is already ${match.status}.`);
+      const next = new URLSearchParams(searchParams);
+      next.delete('publishRequest');
+      setSearchParams(next, { replace: true });
     }
-  }, [deepLinkPublishRequestId, publishRequests, feedback]);
+  }, [deepLinkPublishRequestId, publishRequests, feedback, searchParams, setSearchParams]);
 
   const statusMutation = useMutation({
     mutationFn: ({

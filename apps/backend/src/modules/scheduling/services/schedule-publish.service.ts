@@ -339,7 +339,7 @@ export class SchedulePublishService {
         title: `${approved ? 'Publish approved' : 'Publish rejected'}: ${entryLabel}`,
         body: approved
           ? `${decidedByName} approved the request. ${entryLabel} is now Published.`
-          : `${decidedByName} rejected the request. ${entryLabel} stays in Draft.` +
+          : `${decidedByName} rejected the request. ${entryLabel} was returned to Draft.` +
             (request.responseRemarks
               ? ` Note: ${request.responseRemarks}`
               : ''),
