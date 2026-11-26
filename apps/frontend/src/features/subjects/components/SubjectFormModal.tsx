@@ -166,7 +166,7 @@ export default function SubjectFormModal({
   // Reset state when the modal opens.
   useEffect(() => {
     if (!open) return;
-    if (mode === 'create') {
+    if (isWizard) {
       setForm({
         ...EMPTY_FORM,
         deptId: isDH && myDeptId ? myDeptId : '',
@@ -263,18 +263,50 @@ export default function SubjectFormModal({
     [subjects],
   );
 
+  // Unlabeling a MINOR transfers ownership to the acting department. The
+  // backend reads the department from the submitted payload, so validation,
+  // the dirty check and the payload must all use the effective department.
+  const effectiveDeptId =
+    mode === 'edit' && subject?.isMinor && !form.isMinor
+      ? myDeptId || form.deptId
+      : form.deptId;
+
+  // A department editing another department's MINOR cannot pick an owner in
+  // the select (its options are scoped to the actor's department). Keep the
+  // field read-only in both states: while MINOR it shows the current owner;
+  // once unlabeled it shows the department that will actually own the subject
+  // on save — the same effectiveDeptId submitted as payload.deptId.
+  const lockedMinorOwner =
+    mode === 'edit' &&
+    !!subject?.isMinor &&
+    !!myDeptId &&
+    String(subject.deptId ?? '') !== myDeptId;
+  const unlabelTransfer = lockedMinorOwner && !form.isMinor;
+  const lockedDeptId = unlabelTransfer
+    ? effectiveDeptId
+    : String(subject?.deptId ?? '');
+  const lockedDepartment = departments.find(
+    (d) => String(d.deptId) === lockedDeptId,
+  );
+  const lockedOwnerLabel = lockedDepartment
+    ? `[${lockedDepartment.deptCode}] ${lockedDepartment.deptName}`
+    : lockedDeptId || '—';
+  const lockedOwnerHint = unlabelTransfer
+    ? 'Ownership will transfer to your department on save.'
+    : 'Locked to owning department. Unlabel the MINOR to transfer it to your department.';
+
   // ── Per-step validation ──
 
   const validateIdentity = (): FieldErrors => {
     const errs: FieldErrors = {};
     if (!form.subjectCode.trim()) errs.subjectCode = 'Subject code is required';
     if (!form.title.trim()) errs.title = 'Title is required';
-    if (!form.deptId) errs.deptId = 'Department is required';
+    if (!effectiveDeptId) errs.deptId = 'Department is required';
     const code = form.subjectCode.trim().toLowerCase();
     const dup = subjects.find(
       (s) =>
         s.subjectId !== subject?.subjectId &&
-        String(s.deptId) === form.deptId &&
+        String(s.deptId) === effectiveDeptId &&
         (s.subjectCode ?? '').trim().toLowerCase() === code,
     );
     if (dup)
@@ -454,7 +486,9 @@ export default function SubjectFormModal({
       electiveSemester: form.isElective
         ? form.electiveSemester || null
         : null,
-      deptId: form.deptId,
+      // Unlabeling a MINOR (subject.isMinor && !form.isMinor) hands ownership
+      // to myDeptId, so the submitted owner is the effective department.
+      deptId: effectiveDeptId,
     };
 
     if (mode === 'create') createMutation.mutate(payload);
@@ -497,7 +531,7 @@ export default function SubjectFormModal({
         form.unitsMode !== (subject.unitsMode ?? 'lec_lab') ||
         form.requiredRoomType !==
           ((subject.requiredRoomType ?? '') as '' | SubjectRoomType) ||
-        form.deptId !== (subject.deptId ?? '') ||
+        effectiveDeptId !== (subject.deptId ?? '') ||
         form.isMinor !== (subject.isMinor ?? false) ||
         form.isElective !== (subject.isElective ?? false) ||
         form.electiveCategory !== (subject.electiveCategory ?? '') ||
@@ -540,25 +574,41 @@ export default function SubjectFormModal({
           label="Department"
           required
           error={fieldErrors.deptId}
-          hint={isDH ? 'Locked to your department.' : undefined}
+          hint={
+            lockedMinorOwner
+              ? lockedOwnerHint
+              : isDH
+              ? 'Locked to your department.'
+              : undefined
+          }
         >
-          <select
-            id="deptId"
-            value={form.deptId}
-            onChange={(e) => setField('deptId', e.target.value)}
-            disabled={isDH}
-            className={`${inputClass(!!fieldErrors.deptId)} disabled:opacity-60 disabled:cursor-not-allowed`}
-          >
-            <option value="">Select a department…</option>
-            {departments
-              .filter((d) => d.isActive)
-              .filter((d) => !isDH || String(d.deptId) === myDeptId)
-              .map((d) => (
-                <option key={d.deptId} value={d.deptId}>
-                  [{d.deptCode}] {d.deptName}
-                </option>
-              ))}
-          </select>
+          {lockedMinorOwner ? (
+            <div
+              id="deptId"
+              className={`${inputClass(false)} flex items-center gap-2 bg-surface-container text-on-surface-variant`}
+            >
+              <Icon name="lock" size={14} className="shrink-0" />
+              <span className="truncate">{lockedOwnerLabel}</span>
+            </div>
+          ) : (
+            <select
+              id="deptId"
+              value={form.deptId}
+              onChange={(e) => setField('deptId', e.target.value)}
+              disabled={isDH}
+              className={`${inputClass(!!fieldErrors.deptId)} disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              <option value="">Select a department…</option>
+              {departments
+                .filter((d) => d.isActive)
+                .filter((d) => !isDH || String(d.deptId) === myDeptId)
+                .map((d) => (
+                  <option key={d.deptId} value={d.deptId}>
+                    [{d.deptCode}] {d.deptName}
+                  </option>
+                ))}
+            </select>
+          )}
         </FormField>
         <div className="md:col-span-2">
           <FormField label="Title" required error={fieldErrors.title}>
