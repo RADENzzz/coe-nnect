@@ -56,6 +56,15 @@ function roleLabel(role: string): string {
   return ROLE_LABELS[role] ?? role.replace(/_/g, ' ');
 }
 
+function subjectEditRequestHref(
+  item: NotificationItem,
+  shell: ShellBase,
+): string | null {
+  const requestId =
+    asString(item.payload?.requestId) ?? asString(item.entityId);
+  return requestId ? href(shell, '/subjects', { request: requestId }) : null;
+}
+
 /**
  * Where clicking a notification should take the user.
  *
@@ -95,6 +104,13 @@ export function notificationHref(
       return href(shell, shell === '/dean' ? '/requests' : '/approvals', {
         request: id,
       });
+
+    case 'subject_edit_request.submitted':
+    case 'subject_edit_request.approved':
+    case 'subject_edit_request.rejected':
+    case 'subject_edit_request.cancelled':
+    case 'subject_edit_request.revoked':
+      return subjectEditRequestHref(item, shell);
 
     case 'faculty.overloaded':
       return href(shell, '/faculty', { faculty: id });
@@ -143,6 +159,8 @@ export function notificationHref(
       return href(shell, shell === '/dean' ? '/requests' : '/approvals', {
         request: id,
       });
+    case 'subject_edit_request':
+      return subjectEditRequestHref(item, shell);
     case 'schedule_unfinalize_request':
       return href(shell, '/approvals', {
         request: id,
@@ -186,6 +204,12 @@ export function notificationIcon(item: NotificationItem): string {
       return 'cancel';
     case 'request.cancelled':
       return 'undo';
+    case 'subject_edit_request.submitted':
+    case 'subject_edit_request.approved':
+    case 'subject_edit_request.rejected':
+    case 'subject_edit_request.cancelled':
+    case 'subject_edit_request.revoked':
+      return 'key';
     case 'auto_generate.started':
     case 'auto_generate.finished':
     case 'auto_generate.failed':
