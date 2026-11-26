@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/auth.store';
 import Icon from '../../components/ui/Icon';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 /**
  * Shown to a Department Head whose own department has been deactivated
@@ -20,14 +22,13 @@ import Icon from '../../components/ui/Icon';
 export default function DepartmentDeactivatedPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const profile = useAuthStore((s) => s.profile);
   const clearAuth = useAuthStore((s) => s.clearAuth);
 
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleRefresh = async () => {
-    setError(null);
     setRefreshing(true);
     try {
       const {
@@ -49,8 +50,11 @@ export default function DepartmentDeactivatedPage() {
         .maybeSingle();
 
       if (qErr || !data) {
-        setError(
-          'Could not verify your department status. Please try again, or log out and back in.',
+        feedback.failed(
+          extractApiError(
+            qErr,
+            'Could not verify your department status. Please try again, or log out and back in.',
+          ),
         );
         return;
       }
@@ -91,12 +95,12 @@ export default function DepartmentDeactivatedPage() {
         qc.invalidateQueries();
         navigate('/dashboard', { replace: true });
       } else {
-        setError(
+        feedback.failed(
           'Still deactivated. Contact the College Dean to reactivate your department.',
         );
       }
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to refresh status.');
+    } catch (err) {
+      feedback.failed(extractApiError(err, 'Failed to refresh status.'));
     } finally {
       setRefreshing(false);
     }
@@ -184,14 +188,6 @@ export default function DepartmentDeactivatedPage() {
               </li>
             </ul>
           </div>
-
-          {/* Error */}
-          {error && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
-              <Icon name="error" size={14} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3 pt-2">

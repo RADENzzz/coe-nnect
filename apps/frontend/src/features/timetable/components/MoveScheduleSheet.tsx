@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import BottomSheet from '../../../components/ui/BottomSheet';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import type { ScheduleEntry, Day } from '../types';
 import {
   DAYS,
@@ -39,16 +40,15 @@ export default function MoveScheduleSheet({
   onMove,
   isPending,
 }: Props) {
+  const feedback = useFeedback();
   const [day, setDay] = useState<Day>('MON');
   const [startTime, setStartTime] = useState('07:00');
-  const [error, setError] = useState<string | null>(null);
 
   // Reset form whenever a new entry is targeted
   useEffect(() => {
     if (!entry) return;
     setDay(entry.day);
     setStartTime(entry.startTime);
-    setError(null);
   }, [entry?.id, entry?.day, entry?.startTime]);
 
   // Available start times: half-hour slots that leave enough room for the duration
@@ -76,12 +76,11 @@ export default function MoveScheduleSheet({
   const hasChanges = day !== entry.day || startTime !== entry.startTime;
 
   const handleSubmit = async () => {
-    setError(null);
     const result = await onMove(entry.id, day, startTime);
     if (result.ok) {
       onClose();
     } else if (result.reason) {
-      setError(result.reason);
+      feedback.error(result.reason);
     }
   };
 
@@ -122,12 +121,6 @@ export default function MoveScheduleSheet({
       }
     >
       <div className="space-y-5">
-        {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm whitespace-pre-wrap">
-            {error}
-          </div>
-        )}
-
         {/* Day picker */}
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">

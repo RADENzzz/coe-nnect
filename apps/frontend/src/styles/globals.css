@@ -459,6 +459,18 @@ html.theme-transition .app-shell > div > main {
   }
 }
 
+@property --feedback-sheen-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@property --feedback-sheen-length {
+  syntax: '<angle>';
+  initial-value: 140deg;
+  inherits: false;
+}
+
 @layer utilities {
   /* Keep floating action bars clear of the mobile bottom navigation. */
   .above-bottom-nav {
@@ -1192,6 +1204,84 @@ html.theme-transition .app-shell > div > main {
     to {
       transform: scaleX(0);
     }
+  }
+
+  @keyframes feedback-sheen {
+    from {
+      --feedback-sheen-angle: 0deg;
+      --feedback-sheen-length: 140deg;
+    }
+    to {
+      --feedback-sheen-angle: 360deg;
+      --feedback-sheen-length: 0deg;
+    }
+  }
+
+  .feedback-sheen {
+    position: absolute;
+    inset: -2px;
+    padding: 2px;
+    background: conic-gradient(
+      from var(--feedback-sheen-angle),
+      transparent 0deg,
+      currentColor var(--feedback-sheen-length),
+      transparent calc(var(--feedback-sheen-length) * 1.08),
+      transparent 360deg
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: feedback-sheen var(--feedback-duration, 6000ms) linear forwards;
+  }
+
+  @supports (color: color-mix(in srgb, red 50%, white)) {
+    .feedback-sheen {
+      background: conic-gradient(
+        from var(--feedback-sheen-angle),
+        transparent 0deg,
+        color-mix(in srgb, currentColor 45%, white) var(--feedback-sheen-length),
+        transparent calc(var(--feedback-sheen-length) * 1.08),
+        transparent 360deg
+      );
+    }
+  }
+
+  @keyframes feedback-result-draw {
+    from {
+      stroke-dashoffset: 32;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .feedback-result-path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 32;
+    stroke-dashoffset: 32;
+    animation: feedback-result-draw 620ms ease-out 120ms forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .feedback-sheen {
+      display: none;
+    }
+    .feedback-result-path {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* The portal lives on <body>, outside the shell DOM. When any shell is
+     mounted, clear its 48px sticky TopBar with a small breathing gap;
+     public/auth routes keep the smaller `top-3` offset from the component. */
+  body:has(.app-shell) .feedback-portal {
+    top: 60px;
   }
 
   @keyframes icon-pop {

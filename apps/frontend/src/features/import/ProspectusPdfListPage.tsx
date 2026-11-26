@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
 import Icon from '@/components/ui/Icon';
+import { useFeedback } from '@/components/ui/FeedbackToast';
+import { extractApiError } from '@/lib/api-error';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ResponsiveTable, { type Column } from '@/components/ui/ResponsiveTable';
@@ -24,6 +26,7 @@ export default function ProspectusPdfListPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
   const shell = shellForPath(location.pathname);
   const {
     activeTypes,
@@ -36,7 +39,6 @@ export default function ProspectusPdfListPage() {
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProspectusPdf | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const departmentId = profile?.dept_id ? String(profile.dept_id) : undefined;
@@ -86,8 +88,8 @@ export default function ProspectusPdfListPage() {
       setUploadOpen(false);
       openPdf(pdf.pdfId);
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? 'Upload failed');
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Upload failed'));
     },
   });
 
@@ -97,8 +99,8 @@ export default function ProspectusPdfListPage() {
       qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
       setDeleteTarget(null);
     },
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? 'Delete failed');
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Delete failed'));
     },
   });
 
@@ -253,24 +255,6 @@ export default function ProspectusPdfListPage() {
           </button>
         )}
       </div>
-
-      {/* Error banner */}
-      {error && (
-        <div
-          role="alert"
-          className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2"
-        >
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
 
       {/* Search bar */}
       {pdfs.length > 0 && (

@@ -12,11 +12,13 @@ import type { SubjectRecord } from '../../../api/subjects.api';
 import Modal from '../../../components/ui/Modal';
 import Icon from '../../../components/ui/Icon';
 import FormErrorSummary from '../../../components/ui/FormErrorSummary';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import {
   clearFieldError,
   mergeFieldError,
   type FieldError,
 } from '../../../components/ui/form-errors';
+import { extractApiError } from '../../../lib/api-error';
 import { useSemesterTypes } from '../../../hooks/use-semester-types';
 import {
   validateProspectusForm,
@@ -194,6 +196,7 @@ export default function ProspectusFormModal({
 }: Props) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const feedback = useFeedback();
   const { activeTypes, labelFor } = useSemesterTypes();
   const createSemesterDefault =
     (defaultSemester && activeTypes.some((t) => t.code === defaultSemester)
@@ -206,7 +209,6 @@ export default function ProspectusFormModal({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [stepIdx, setStepIdx] = useState(0);
-  const [formError, setFormError] = useState<string | null>(null);
   const [subjectSearch, setSubjectSearch] = useState('');
   const [subjectDropdownOpen, setSubjectDropdownOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -293,7 +295,6 @@ export default function ProspectusFormModal({
       setSubjectSearch('');
     }
     setStepIdx(0);
-    setFormError(null);
     setFieldErrors({});
     setErrors([]);
     setSubjectDropdownOpen(false);
@@ -386,10 +387,10 @@ export default function ProspectusFormModal({
     mutationFn: createProspectus,
     onSuccess: () => {
       invalidateAfterProspectusChange();
+      feedback.success('Prospectus entry created');
       onClose();
     },
-    onError: (err: any) =>
-      setFormError(err?.response?.data?.message ?? err.message ?? 'Failed to create'),
+    onError: (err) => feedback.failed(extractApiError(err, 'Failed to create')),
   });
 
   const updateMutation = useMutation({
@@ -397,10 +398,10 @@ export default function ProspectusFormModal({
       updateProspectus(id, input),
     onSuccess: () => {
       invalidateAfterProspectusChange();
+      feedback.success('Prospectus entry updated');
       onClose();
     },
-    onError: (err: any) =>
-      setFormError(err?.response?.data?.message ?? err.message ?? 'Failed to update'),
+    onError: (err) => feedback.failed(extractApiError(err, 'Failed to update')),
   });
 
   // ── Validation ──
@@ -470,7 +471,6 @@ export default function ProspectusFormModal({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    setFormError(null);
 
     const problems = collectErrors();
     setErrors(problems);
@@ -752,21 +752,6 @@ export default function ProspectusFormModal({
           <div ref={errorSummaryRef}>
             <FormErrorSummary errors={errors} onJump={jumpToField} />
           </div>
-
-          {formError && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2 rounded-lg">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span className="flex-1">{formError}</span>
-              <button
-                type="button"
-                onClick={() => setFormError(null)}
-                className="text-red-600 hover:text-red-800"
-                aria-label="Dismiss"
-              >
-                <Icon name="close" size={14} />
-              </button>
-            </div>
-          )}
 
           <form
             id="prospectus-form"

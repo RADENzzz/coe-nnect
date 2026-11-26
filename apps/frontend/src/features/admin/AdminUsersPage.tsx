@@ -14,6 +14,7 @@ import { fetchDepartments } from '../../api/departments.api';
 import { fetchFaculty } from '../../api/faculty.api';
 import { reauthenticate } from '../../api/auth.api';
 import Icon from '@/components/ui/Icon';
+import { useFeedback } from '@/components/ui/FeedbackToast';
 import ResponsiveTable, { type Column } from '@/components/ui/ResponsiveTable';
 import type { RowAction } from '@/components/ui/RowActionMenu';
 import StatusBadge, { ActiveBadge } from '@/components/ui/StatusBadge';
@@ -27,11 +28,13 @@ import {
   type RoleFilterValue,
 } from './components';
 import { ROLE_LABELS, ROLE_TONE } from './components/constants';
+import { extractApiError } from '@/lib/api-error';
 
 type Mode = 'create' | 'edit';
 
 export default function AdminUsersPage() {
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const user = useAuthStore((s) => s.user);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -43,10 +46,6 @@ export default function AdminUsersPage() {
     null,
   );
 
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const [roleFilter, setRoleFilter] = useState<RoleFilterValue>('all');
   const [deptListFilter, setDeptListFilter] = useState<string>('all');
@@ -56,13 +55,6 @@ export default function AdminUsersPage() {
     const q = searchParams.get('q');
     if (q) setSearchQuery(q);
   }, [searchParams]);
-
-  // Auto-dismiss success toast
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 4000);
-    return () => clearTimeout(t);
-  }, [success]);
 
   // ── Data ─────────────────────────────────────────────────────────────
   const { data: users = [], isLoading } = useQuery({
@@ -99,23 +91,21 @@ export default function AdminUsersPage() {
   const createMutation = useMutation({
     mutationFn: createUser,
     onSuccess: (u) => {
-      setSuccess(`User "${u.username}" created.`);
+      feedback.success(`User "${u.username}" created.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) =>
-      setFormError(err?.response?.data?.message ?? err.message ?? 'Failed to create user'),
+    onError: (err) => feedback.failed(extractApiError(err, 'Failed to create user')),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: any }) => updateUser(id, input),
     onSuccess: (u) => {
-      setSuccess(`User "${u.username}" updated.`);
+      feedback.success(`User "${u.username}" updated.`);
       closeForm();
       qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) =>
-      setFormError(err?.response?.data?.message ?? err.message ?? 'Failed to update user'),
+    onError: (err) => feedback.failed(extractApiError(err, 'Failed to update user')),
   });
 
   const toggleMutation = useMutation({
@@ -130,9 +120,13 @@ export default function AdminUsersPage() {
       );
       return { prev };
     },
-    onError: (err: any, _userId, ctx) => {
+    onSuccess: (data) =>
+      feedback.success(
+        `User is now ${data.isActive ? 'active' : 'deactivated'}.`,
+      ),
+    onError: (err, _userId, ctx) => {
       if (ctx?.prev) qc.setQueryData(['users'], ctx.prev);
-      setPageError(err?.response?.data?.message ?? 'Toggle failed');
+      feedback.failed(extractApiError(err, 'Toggle failed'));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
@@ -152,22 +146,17 @@ export default function AdminUsersPage() {
   const closeForm = () => {
     setFormMode(null);
     setEditing(null);
-    setFormError(null);
   };
 
   const openCreate = () => {
     setFormMode('create');
     setEditing(null);
-    setFormError(null);
-    setPageError(null);
-    setSuccess(null);
   };
 
   const openEdit = (u: UserRecord) => {
     setDrawerUserId(null);
     setFormMode('edit');
     setEditing(u);
-    setFormError(null);
   };
 
   // Deep-link receiver: /users?user=<id>  →  opens the drawer.
@@ -188,7 +177,7 @@ export default function AdminUsersPage() {
     if (!user?.email || !actionTarget) return;
     await reauthenticate(password);                          // throws on bad password
     await deleteMutation.mutateAsync(actionTarget.userId);  // throws on delete failure
-    setSuccess(`User "${actionTarget.username}" deleted.`);
+    feedback.success(`User "${actionTarget.username}" deleted.`);
     if (String(drawerUserId) === String(actionTarget.userId)) setDrawerUserId(null);
     setActionTarget(null);
   };
@@ -341,25 +330,6 @@ export default function AdminUsersPage() {
 
       <UserStatsCards users={visibleUsers} loading={isLoading} />
 
-      {pageError && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-center justify-between gap-2">
-          <span>{pageError}</span>
-          <button onClick={() => setPageError(null)} aria-label="Dismiss" className="text-red-600">
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-green-700 text-sm flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5">
-            <Icon name="check_circle" size={14} /> {success}
-          </span>
-          <button onClick={() => setSuccess(null)} aria-label="Dismiss" className="text-green-700">
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-
       <UserFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -421,7 +391,6 @@ export default function AdminUsersPage() {
           faculty={faculty}
           users={users}
           submitting={createMutation.isPending || updateMutation.isPending}
-          serverError={formError}
           onCreate={(input) => createMutation.mutate(input as any)}
           onUpdate={(id, input) => updateMutation.mutate({ id, input })}
         />

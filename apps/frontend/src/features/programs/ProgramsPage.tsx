@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -14,6 +14,8 @@ import { fetchDepartments } from '../../api/departments.api';
 import Icon from '../../components/ui/Icon';
 import Modal from '../../components/ui/Modal';
 import RollingValue from '../../components/ui/RollingValue';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import ResponsiveTable, {
   type Column,
 } from '../../components/ui/ResponsiveTable';
@@ -37,17 +39,6 @@ const EMPTY_FORM: FormState = {
   isActive: true,
 };
 
-/**
- * Extract the server's message from a failed mutation. NestJS returns
- * `{ message: string | string[], error, statusCode }`.
- */
-function extractErrorMessage(err: any, fallback: string): string {
-  const raw = err?.response?.data?.message;
-  if (Array.isArray(raw)) return raw[0] ?? fallback;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  return err?.message ?? fallback;
-}
-
 const inputClass = (hasError: boolean) =>
   `w-full rounded-lg border px-3 py-2 text-sm bg-surface-container-lowest text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30 ${
     hasError ? 'border-red-400' : 'border-surface-variant'
@@ -64,6 +55,7 @@ export default function ProgramsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
+  const feedback = useFeedback();
 
   const role = profile?.role;
   const isDH = role === 'department_head';
@@ -80,8 +72,6 @@ export default function ProgramsPage() {
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -147,12 +137,6 @@ export default function ProgramsPage() {
     };
   }, [scopedPrograms]);
 
-  useEffect(() => {
-    if (!success) return;
-    const t = setTimeout(() => setSuccess(null), 4000);
-    return () => clearTimeout(t);
-  }, [success]);
-
   const invalidateAfterProgramChange = () => {
     qc.invalidateQueries({ queryKey: ['programs'] });
     qc.invalidateQueries({ queryKey: ['prospectus'] });
@@ -162,12 +146,14 @@ export default function ProgramsPage() {
   const createMutation = useMutation({
     mutationFn: createProgram,
     onSuccess: (p) => {
-      setSuccess(`Program "${p.programCode}" created. You can now import a prospectus or add sections.`);
+      feedback.success(
+        `Program "${p.programCode}" created. You can now import a prospectus or add sections.`,
+      );
       closeForm();
       invalidateAfterProgramChange();
     },
     onError: (err: any) =>
-      setError(extractErrorMessage(err, 'Failed to create program')),
+      feedback.error(extractApiError(err, 'Failed to create program')),
   });
 
   const updateMutation = useMutation({
@@ -179,18 +165,18 @@ export default function ProgramsPage() {
       input: Partial<CreateProgramInput>;
     }) => updateProgram(id, input),
     onSuccess: (p) => {
-      setSuccess(`Program "${p.programCode}" updated.`);
+      feedback.success(`Program "${p.programCode}" updated.`);
       closeForm();
       invalidateAfterProgramChange();
     },
     onError: (err: any) =>
-      setError(extractErrorMessage(err, 'Failed to update program')),
+      feedback.error(extractApiError(err, 'Failed to update program')),
   });
 
   const toggleMutation = useMutation({
     mutationFn: toggleProgramActive,
     onSuccess: (p) => {
-      setSuccess(
+      feedback.success(
         p.isActive
           ? `Program "${p.programCode}" reactivated.`
           : `Program "${p.programCode}" deactivated. It no longer appears in pickers.`,
@@ -198,7 +184,7 @@ export default function ProgramsPage() {
       invalidateAfterProgramChange();
     },
     onError: (err: any) =>
-      setError(extractErrorMessage(err, 'Failed to update status')),
+      feedback.error(extractApiError(err, 'Failed to update status')),
   });
 
   const closeForm = () => {
@@ -216,7 +202,6 @@ export default function ProgramsPage() {
       deptId: isDH && myDeptId ? myDeptId : '',
     });
     setFieldErrors({});
-    setError(null);
   };
 
   const openEdit = (program: ProgramRecord) => {
@@ -230,7 +215,6 @@ export default function ProgramsPage() {
       isActive: program.isActive,
     });
     setFieldErrors({});
-    setError(null);
   };
 
   const handleChange = (
@@ -249,8 +233,6 @@ export default function ProgramsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
 
     const errs: Partial<Record<keyof FormState, string>> = {};
     if (!form.programCode.trim()) errs.programCode = 'Program code is required';
@@ -416,34 +398,6 @@ export default function ProgramsPage() {
           loading={isLoading}
         />
       </div>
-
-      {/* ── Banners ── */}
-      {error && (
-        <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss error"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="p-3 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess(null)}
-            className="text-emerald-700 hover:text-emerald-900"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
 
       {isDH && !myDeptId && (
         <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm flex items-start gap-2">

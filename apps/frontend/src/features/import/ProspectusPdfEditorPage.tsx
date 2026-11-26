@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '@/components/ui/Icon';
+import { useFeedback } from '@/components/ui/FeedbackToast';
+import { extractApiError } from '@/lib/api-error';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import {
@@ -64,6 +66,7 @@ export default function ProspectusPdfEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const {
     activeTypes,
     sortOrderFor,
@@ -97,7 +100,6 @@ export default function ProspectusPdfEditorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [dirtyTableIds, setDirtyTableIds] = useState<Set<string>>(new Set());
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
-  const [tableError, setTableError] = useState<string | null>(null);
 
   const { data: pdfRecord, isLoading: metaLoading } = useQuery({
     queryKey: ['prospectus-pdf', id],
@@ -357,9 +359,11 @@ export default function ProspectusPdfEditorPage() {
       );
       setDirtyTableIds(new Set());
       if (pendingNavigation) navigate(pendingNavigation);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to save before leaving', err);
-      alert('Failed to save changes. Please check your connection.');
+      feedback.failed(
+        extractApiError(err, 'Failed to save changes. Please check your connection.'),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -635,21 +639,16 @@ export default function ProspectusPdfEditorPage() {
         setSelection({ kind: 'table', tableId: created.tableId });
         setEditing({ kind: 'none' });
         setDrawingMode({ kind: 'idle' });
-        setTableError(null);
         qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
-      } catch (err) {
-        const message =
-          (err as { response?: { data?: { message?: string | string[] } } })
-            ?.response?.data?.message ?? 'Failed to create the table';
-        setTableError(
-          Array.isArray(message) ? message.join(', ') : String(message),
-        );
+      } catch (err: unknown) {
+        feedback.failed(extractApiError(err, 'Failed to create the table'));
         setDrawingMode({ kind: 'idle' });
         console.error('Failed to create table', err);
       }
     },
     [
       drawingMode,
+      feedback,
       id,
       pageIndex,
       pdfRecord,
@@ -911,7 +910,7 @@ export default function ProspectusPdfEditorPage() {
       if (!table) return;
       const items = textItemsForTable(table);
       if (!items) {
-        setTableError(
+        feedback.error(
           'The PDF text layer is still loading. Try again in a moment.',
         );
         return;
@@ -930,22 +929,20 @@ export default function ProspectusPdfEditorPage() {
       );
 
       if (columns.length === 0) {
-        setTableError(
+        feedback.error(
           'Could not read a column header inside this table. Adjust the region or pick a layout preset instead.',
         );
         return;
       }
 
-      setTableError(null);
       handleColumnsChange(tableId, columns);
     },
-    [tables, textItemsForTable, handleColumnsChange],
+    [feedback, tables, textItemsForTable, handleColumnsChange],
   );
 
   const handleAutoDetected = useCallback(
     (created: ProspectusPdfTable[]) => {
       created.forEach(upsertTable);
-      setTableError(null);
       void qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
 
       const first = created[0];
@@ -1032,9 +1029,9 @@ export default function ProspectusPdfEditorPage() {
       });
       // Per-PDF counts on the list page change when rows are saved.
       void qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Failed to save table');
+      feedback.failed(extractApiError(err, 'Failed to save table'));
     } finally {
       setIsSaving(false);
     }
@@ -1090,14 +1087,14 @@ export default function ProspectusPdfEditorPage() {
       // The list page shows per-PDF table counts; refresh it in the
       // background without blocking the editor.
       void qc.invalidateQueries({ queryKey: ['prospectus-pdfs'] });
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to delete table', err);
       // The server still owns the table, so pull the authoritative state
       // back into the editor.
       void qc.invalidateQueries({ queryKey: ['prospectus-pdf', id] });
-      alert('Failed to delete table');
+      feedback.failed(extractApiError(err, 'Failed to delete table'));
     }
-  }, [deleteTableId, id, qc, removeTable]);
+  }, [deleteTableId, feedback, id, qc, removeTable]);
 
   const confirmDeleteRow = useCallback(async () => {
     if (!deleteRowTarget) return;
@@ -1271,22 +1268,6 @@ export default function ProspectusPdfEditorPage() {
           </button>
         </div>
       </div>
-
-      {/* Create/update errors — these used to only reach the console, so a
-          blocked "Add Table" looked like nothing happened. */}
-      {tableError && (
-        <div className="p-3 rounded-lg border border-red-300 bg-red-50 text-red-900 text-sm flex items-start gap-2">
-          <Icon name="error" size={18} className="shrink-0 mt-0.5" />
-          <div className="flex-1">{tableError}</div>
-          <button
-            type="button"
-            onClick={() => setTableError(null)}
-            className="px-2 py-0.5 rounded text-xs font-semibold bg-white/70 hover:bg-white transition"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       {/* Drawing mode banner */}
       {drawingMode.kind !== 'idle' && (

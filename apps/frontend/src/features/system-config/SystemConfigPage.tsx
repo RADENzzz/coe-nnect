@@ -14,6 +14,7 @@ import TermsPanel from './components/TermsPanel';
 import SemesterTypesPanel from './components/SemesterTypesPanel';
 import Modal from '../../components/ui/Modal';
 import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 // ────────────────────────────────────────────
 // Field metadata — how each setting is grouped and rendered
@@ -198,16 +199,6 @@ function formatDefaultValue(
   return `${value}${field.unit ? ` ${field.unit}` : ''}`;
 }
 
-function apiErrorMessage(err: any, fallback: string): string {
-  const message = err?.response?.data?.message;
-  if (Array.isArray(message)) return message.join(' ');
-  if (typeof message === 'string' && message.trim()) return message;
-  if (typeof err?.message === 'string' && err.message.trim()) {
-    return err.message;
-  }
-  return fallback;
-}
-
 // ────────────────────────────────────────────
 // Page
 // ────────────────────────────────────────────
@@ -287,7 +278,7 @@ export default function SystemConfigPage() {
       qc.invalidateQueries({ queryKey: ['system-settings'] });
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'The server rejected the update.'), {
+      feedback.failed(extractApiError(err, 'The server rejected the update.'), {
         title: 'Could not save settings',
       }),
   });
@@ -564,7 +555,7 @@ function DesignationsPanel({
       onChanged();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'The designation was not created.'), {
+      feedback.failed(extractApiError(err, 'The designation was not created.'), {
         title: 'Could not add designation',
       }),
   });
@@ -582,7 +573,7 @@ function DesignationsPanel({
       onChanged();
     },
     onError: (err: any) =>
-      feedback.failed(apiErrorMessage(err, 'The designation was not deleted.'), {
+      feedback.failed(extractApiError(err, 'The designation was not deleted.'), {
         title: 'Could not delete designation',
       }),
   });

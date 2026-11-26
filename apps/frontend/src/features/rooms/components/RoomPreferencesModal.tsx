@@ -7,6 +7,8 @@ import {
 } from '@tanstack/react-query';
 import Icon from '../../../components/ui/Icon';
 import Modal from '../../../components/ui/Modal';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import type { Department } from '../../../api/departments.api';
 import { useAuthStore } from '../../../store/auth.store';
 import {
@@ -31,6 +33,7 @@ export default function RoomPreferencesModal({
   departments,
 }: Props) {
   const qc = useQueryClient();
+  const feedback = useFeedback();
   const profile = useAuthStore((s) => s.profile);
 
   const isDH = profile?.role === 'department_head';
@@ -40,7 +43,6 @@ export default function RoomPreferencesModal({
     profile?.role === 'administrator';
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : null;
 
-  const [error, setError] = useState<string | null>(null);
   const [priority, setPriority] = useState(1);
   const [deleteTarget, setDeleteTarget] =
     useState<RoomPreferenceRecord | null>(null);
@@ -61,7 +63,6 @@ export default function RoomPreferencesModal({
   useEffect(() => {
     if (!open) {
       setPriority(1);
-      setError(null);
       setDeleteTarget(null);
     }
   }, [open]);
@@ -111,13 +112,11 @@ export default function RoomPreferencesModal({
       return { prev };
     },
     onSuccess: () => {
-      setError(null);
+      feedback.success('Room preference saved.');
     },
-    onError: (err: any, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(prefsKey, ctx.prev);
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to save',
-      );
+      feedback.failed(extractApiError(err, 'Failed to save'));
     },
     onSettled: async () => {
       await refetch();
@@ -141,12 +140,10 @@ export default function RoomPreferencesModal({
       }
       return { prev };
     },
-    onSuccess: () => setError(null),
-    onError: (err: any, _vars, ctx) => {
+    onSuccess: () => feedback.success('Room preference removed.'),
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(prefsKey, ctx.prev);
-      setError(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to remove',
-      );
+      feedback.failed(extractApiError(err, 'Failed to remove'));
     },
     onSettled: async () => {
       await refetch();
@@ -203,12 +200,6 @@ export default function RoomPreferencesModal({
                   cannot be preferred.
                 </p>
               </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
-              {error}
             </div>
           )}
 

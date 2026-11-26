@@ -24,6 +24,8 @@ import type { RowAction } from '../../components/ui/RowActionMenu';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 
 const STATUS_LABELS: Record<
   string,
@@ -62,6 +64,7 @@ interface RequestDecision {
 export default function DeanApprovalsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const feedback = useFeedback();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const initialStatusParam = searchParams.get('status');
@@ -95,22 +98,18 @@ export default function DeanApprovalsPage() {
   const [sectionFilter, setSectionFilter] = useState('');
   const [facultyFilter, setFacultyFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [idpPublishPending, setIdpPublishPending] = useState(false);
 
   // ── Published-unfinalize requests ──
   const [requestDecision, setRequestDecision] =
     useState<RequestDecision | null>(null);
   const [decisionRemarks, setDecisionRemarks] = useState('');
-  const [decisionError, setDecisionError] = useState<string | null>(null);
   const deepLinkHandledRef = useRef<string | null>(null);
   const deepLinkRequestId = searchParams.get('request');
 
   const closeRequestDecision = useCallback(() => {
     setRequestDecision(null);
     setDecisionRemarks('');
-    setDecisionError(null);
     if (searchParams.get('request')) {
       const next = new URLSearchParams(searchParams);
       next.delete('request');
@@ -208,11 +207,10 @@ export default function DeanApprovalsPage() {
     if (match.status === 'pending') {
       setRequestDecision({ request: match, action: 'approve' });
       setDecisionRemarks('');
-      setDecisionError(null);
     } else {
-      setActionError(`That unfinalize request is already ${match.status}.`);
+      feedback.error(`That unfinalize request is already ${match.status}.`);
     }
-  }, [deepLinkRequestId, unfinalizeRequests]);
+  }, [deepLinkRequestId, unfinalizeRequests, feedback]);
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -225,12 +223,9 @@ export default function DeanApprovalsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] });
       qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
-      setActionError(null);
     },
-    onError: (err: any) => {
-      setActionError(
-        err?.response?.data?.message ?? 'Action failed. Please try again.',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Action failed. Please try again.'));
     },
   });
 
@@ -253,29 +248,17 @@ export default function DeanApprovalsPage() {
       });
       qc.invalidateQueries({ queryKey: ['flagged'] });
       qc.invalidateQueries({ queryKey: ['coverage'] });
-      setActionError(null);
-      setActionSuccess(
+      feedback.success(
         variables.action === 'approve'
           ? `Approved — ${label} is back in Draft and removed from the public schedule.`
           : `Rejected — ${label} stays Published.`,
       );
       closeRequestDecision();
     },
-    onError: (err: any) => {
-      setDecisionError(
-        err?.response?.data?.message ??
-          err?.message ??
-          'The decision could not be saved.',
-      );
+    onError: (err: unknown) => {
+      feedback.error(extractApiError(err, 'The decision could not be saved.'));
     },
   });
-
-  // ── Clear success message after 3s ──
-  useEffect(() => {
-    if (!actionSuccess) return;
-    const t = setTimeout(() => setActionSuccess(null), 3000);
-    return () => clearTimeout(t);
-  }, [actionSuccess]);
 
   // ── Dept lookup (subject → dept) ──
   const deptById = useMemo(() => {
@@ -381,27 +364,22 @@ export default function DeanApprovalsPage() {
 
   const sendActiveTermToIdp = async () => {
     if (!activeTerm?.semester) {
-      setActionError(
+      feedback.error(
         'The active term has no semester configured, so the IDP schedule could not be queued.',
       );
       return;
     }
 
     setIdpPublishPending(true);
-    setActionError(null);
     try {
       const result = await publishIdpSchedule(
         `${activeTerm.schoolYear}-${activeTerm.semester}`,
       );
-      setActionSuccess(
+      feedback.success(
         `Term schedule queued for IDP (${result.entryCount} entries).`,
       );
-    } catch (err: any) {
-      setActionError(
-        err?.response?.data?.message ??
-          err?.message ??
-          'The IDP schedule could not be queued.',
-      );
+    } catch (err: unknown) {
+      feedback.error(extractApiError(err, 'The IDP schedule could not be queued.'));
     } finally {
       setIdpPublishPending(false);
     }
@@ -464,11 +442,11 @@ export default function DeanApprovalsPage() {
             idpPublishResult = await publishIdpSchedule(
               `${activeTerm.schoolYear}-${activeTerm.semester}`,
             );
-          } catch (err: any) {
-            idpPublishError =
-              err?.response?.data?.message ??
-              err?.message ??
-              'The IDP schedule could not be queued.';
+          } catch (err: unknown) {
+            idpPublishError = extractApiError(
+              err,
+              'The IDP schedule could not be queued.',
+            );
           }
         }
       }
@@ -489,7 +467,7 @@ export default function DeanApprovalsPage() {
             : action === 'unfinalize-published'
             ? 'Unfinalized'
             : 'Returned to draft';
-        setActionSuccess(
+        feedback.success(
           `${verb} ${succeeded.length} schedule${
             succeeded.length === 1 ? '' : 's'
           }.${
@@ -498,24 +476,23 @@ export default function DeanApprovalsPage() {
               : ''
           }`,
         );
-        setActionError(
-          idpPublishError
-            ? `Schedules were published in CoE-NNECT, but IDP queueing failed: ${idpPublishError}`
-            : null,
-        );
+        if (idpPublishError) {
+          feedback.failed(
+            `Schedules were published in CoE-NNECT, but IDP queueing failed: ${idpPublishError}`,
+          );
+        }
       } else {
-        setActionError(
-          `${succeeded.length} succeeded, ${failures.length} failed. ${
-            failures[0].reason?.response?.data?.message ??
-            failures[0].reason?.message ??
-            ''
-          }${
+        feedback.failed(
+          `${succeeded.length} succeeded, ${failures.length} failed. ${extractApiError(
+            failures[0].reason,
+            '',
+          )}${
             idpPublishError ? ` IDP queueing failed: ${idpPublishError}` : ''
           }`.trim(),
         );
       }
     },
-    [qc, activeTerm],
+    [qc, activeTerm, feedback],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -736,26 +713,6 @@ export default function DeanApprovalsPage() {
         </div>
       </div>
 
-      {actionError && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2">
-          <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{actionError}</span>
-          <button
-            onClick={() => setActionError(null)}
-            className="text-red-600 hover:text-red-800"
-            aria-label="Dismiss"
-          >
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-      )}
-      {actionSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-start gap-2">
-          <Icon name="check_circle" size={16} className="shrink-0 mt-0.5" />
-          <span className="flex-1">{actionSuccess}</span>
-        </div>
-      )}
-
       {/* ── Published unfinalize requests ── */}
       {(requestsLoading || pendingRequests.length > 0) && (
         <section
@@ -839,7 +796,6 @@ export default function DeanApprovalsPage() {
                             action: 'approve',
                           });
                           setDecisionRemarks('');
-                          setDecisionError(null);
                         }}
                         className="inline-flex items-center gap-1.5 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
                       >
@@ -854,7 +810,6 @@ export default function DeanApprovalsPage() {
                             action: 'reject',
                           });
                           setDecisionRemarks('');
-                          setDecisionError(null);
                         }}
                         className="inline-flex items-center gap-1.5 border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
                       >
@@ -1234,13 +1189,6 @@ export default function DeanApprovalsPage() {
                 ? 'Approving sets the entry back to Draft and removes it from the public planner and the IDP feed.'
                 : 'Rejecting keeps the entry Published. The requester is notified with your remarks.'}
             </p>
-
-            {decisionError && (
-              <div className="flex items-start gap-2 border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
-                <Icon name="error" size={14} className="mt-0.5 shrink-0" />
-                <span className="flex-1">{decisionError}</span>
-              </div>
-            )}
 
             <div>
               <label

@@ -10,7 +10,9 @@ import {
 import { fetchSubjects, type SubjectRecord } from '../../../api/subjects.api';
 import type { FacultyRecord } from '../../../api/faculty.api';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
 import Modal from '../../../components/ui/Modal';
+import { extractApiError } from '../../../lib/api-error';
 import ResponsiveTable, {
   type Column,
 } from '../../../components/ui/ResponsiveTable';
@@ -23,18 +25,9 @@ interface Props {
   faculty: FacultyRecord | null;
 }
 
-/**
- * Normalise whatever a mutation might throw (Axios error, plain Error,
- * network failure, or a raw string) into a display string.
- */
-function extractMessage(err: unknown, fallback: string): string {
-  const e = err as any;
-  return e?.response?.data?.message ?? e?.message ?? fallback;
-}
-
 export default function QualificationsModal({ open, onClose, faculty }: Props) {
   const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
+  const feedback = useFeedback();
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [removeTarget, setRemoveTarget] = useState<FacultyQualification | null>(
     null,
@@ -50,7 +43,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
     setSelectedKeys(new Set());
     setBulkConfirmOpen(false);
     setRemoveTarget(null);
-    setError(null);
   }, [faculty?.facultyId, open]);
 
   const qualsKey = useMemo(
@@ -105,10 +97,11 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       );
       qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
       qc.invalidateQueries({ queryKey: ['faculty'] });
+      feedback.success('Qualification added.');
     },
-    onError: (err: any, _v, ctx) => {
+    onError: (err, _v, ctx) => {
       if (ctx?.previous) qc.setQueryData(qualsKey, ctx.previous);
-      setError(extractMessage(err, 'Failed to add'));
+      feedback.failed(extractApiError(err, 'Failed to add'));
     },
   });
 
@@ -128,10 +121,11 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       qc.invalidateQueries({ queryKey: ['faculty-status-summary'] });
       qc.invalidateQueries({ queryKey: ['faculty'] });
       setRemoveTarget(null);
+      feedback.success('Qualification removed.');
     },
-    onError: (err: any, _v, ctx) => {
+    onError: (err, _v, ctx) => {
       if (ctx?.previous) qc.setQueryData(qualsKey, ctx.previous);
-      setError(extractMessage(err, 'Failed to remove'));
+      feedback.failed(extractApiError(err, 'Failed to remove'));
     },
   });
 
@@ -153,12 +147,12 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
       qc.invalidateQueries({ queryKey: ['faculty'] });
       setSelectedKeys(new Set());
       setBulkConfirmOpen(false);
-      setError(null);
+      feedback.success('Qualifications removed.');
     },
-    onError: (err: any, _v, ctx) => {
+    onError: (err, _v, ctx) => {
       if (ctx?.previous) qc.setQueryData(qualsKey, ctx.previous);
       setBulkConfirmOpen(false);
-      setError(extractMessage(err, 'Failed to remove'));
+      feedback.failed(extractApiError(err, 'Failed to remove'));
     },
   });
 
@@ -324,13 +318,6 @@ export default function QualificationsModal({ open, onClose, faculty }: Props) {
         }
       >
         <div className="space-y-4">
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 text-sm rounded-lg flex items-start gap-2">
-              <Icon name="error" size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900 flex items-start gap-2">
             <Icon name="info" size={16} className="shrink-0 mt-0.5" />
             <div>

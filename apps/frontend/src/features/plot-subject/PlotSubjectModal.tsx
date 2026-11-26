@@ -11,6 +11,8 @@ import {
 import { fetchSections } from '../../api/sections.api';
 import type { ScheduleEntry } from '../timetable/types';
 import Icon from '../../components/ui/Icon';
+import { useFeedback } from '../../components/ui/FeedbackToast';
+import { extractApiError } from '../../lib/api-error';
 import { useSemesterTypes } from '../../hooks/use-semester-types';
 import {
   generateSlotBoundaries,
@@ -122,6 +124,7 @@ export default function PlotSubjectModal({
   presetLoadType,
 }: Props) {
   const queryClient = useQueryClient();
+  const feedback = useFeedback();
   const { options } = useSemesterTypes();
   const profile = useAuthStore((s) => s.profile);
   const myDeptId = profile?.dept_id != null ? String(profile.dept_id) : '';
@@ -568,10 +571,8 @@ export default function PlotSubjectModal({
       invalidateAfterMutation();
       onClose();
     },
-    onError: (err: any) => {
-      alert(
-        err?.response?.data?.message ?? err?.message ?? 'Failed to plot subject',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Failed to plot subject'));
       setSubmitting(false);
     },
   });
@@ -582,12 +583,8 @@ export default function PlotSubjectModal({
       invalidateAfterMutation();
       onClose();
     },
-    onError: (err: any) => {
-      alert(
-        err?.response?.data?.message ??
-          err?.message ??
-          'Failed to plot sessions',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Failed to plot sessions'));
       setSubmitting(false);
     },
   });
@@ -609,12 +606,8 @@ export default function PlotSubjectModal({
       invalidateAfterMutation();
       onClose();
     },
-    onError: (err: any) => {
-      alert(
-        err?.response?.data?.message ??
-          err?.message ??
-          'Failed to update schedule entry',
-      );
+    onError: (err: unknown) => {
+      feedback.failed(extractApiError(err, 'Failed to update schedule entry'));
       setSubmitting(false);
     },
   });
