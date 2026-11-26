@@ -253,7 +253,15 @@ describe('SubjectEditRequestsService', () => {
       expect(h.requestRepo.rows).toHaveLength(1);
       expect(dispatch).toHaveBeenCalledWith(
         'subject_edit_request.submitted',
-        expect.objectContaining({ entityType: 'subject_edit_request' }),
+        expect.objectContaining({
+          entityType: 'subject_edit_request',
+          title: expect.stringContaining('CS 101'),
+          payload: expect.objectContaining({
+            subjectCode: 'CS 101',
+            requestId: expect.any(String),
+            subjectId: expect.any(String),
+          }),
+        }),
       );
     });
   });

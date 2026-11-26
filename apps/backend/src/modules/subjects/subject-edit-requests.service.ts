@@ -394,6 +394,11 @@ export class SubjectEditRequestsService {
     request: SubjectEditRequest,
   ): Promise<void> {
     try {
+      const subject = await this.subjectRepo.findOne({
+        where: { subjectId: String(request.subjectId) },
+      });
+      const subjectCode =
+        subject?.subjectCode?.trim() || `Subject ${request.subjectId}`;
       const ownerHeads = await this.recipients.departmentHeadsOf(
         String(request.owningDeptId),
       );
@@ -425,13 +430,14 @@ export class SubjectEditRequestsService {
           ...recipients,
           ...collegeWide,
         ]),
-        title: `Subject edit request ${triggerKey.split('.')[1]}`,
-        body: `Subject ${request.subjectId}: edit request is ${request.status}.`,
+        title: `${subjectCode} — edit request ${triggerKey.split('.')[1]}`,
+        body: `${subjectCode}: edit request is ${request.status}.`,
         entityType: 'subject_edit_request',
         entityId: String(request.requestId),
         payload: {
           requestId: String(request.requestId),
           subjectId: String(request.subjectId),
+          subjectCode,
           requestingDeptId: String(request.requestingDeptId),
           owningDeptId: String(request.owningDeptId),
           status: request.status,
