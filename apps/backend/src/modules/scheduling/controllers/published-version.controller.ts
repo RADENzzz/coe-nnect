@@ -20,6 +20,7 @@ import {
 import { ScheduleReuseService } from '../services/schedule-reuse.service';
 import { TermPublishedVersionService } from '../services/term-published-version.service';
 import { VersionCompareService } from '../services/version-compare.service';
+import { resolveVersionDeptId } from '../version-scope';
 
 /**
  * Read-only archive of term-wide published snapshots and the cross-term
@@ -40,27 +41,37 @@ export class PublishedVersionController {
 
   /** Archive browser: summaries, optionally narrowed by semester. */
   @Get('published-versions')
-  @Roles('college_dean', 'department_head', 'administrator')
+  @Roles('college_dean', 'department_head', 'college_secretary', 'administrator')
   async findAll(@Query('semester') semester?: string) {
     return { data: await this.publishedVersions.findBySemester(semester) };
   }
 
   /** One snapshot, including its captured entries. */
   @Get('published-versions/:versionId')
-  @Roles('college_dean', 'department_head', 'administrator')
-  async findOne(@Param('versionId') versionId: string) {
-    return { data: await this.publishedVersions.findById(versionId) };
+  @Roles('college_dean', 'department_head', 'college_secretary', 'administrator')
+  async findOne(
+    @Param('versionId') versionId: string,
+    @Req() req: any,
+    @Query('deptId') deptId?: string,
+  ) {
+    return {
+      data: await this.publishedVersions.findById(
+        versionId,
+        resolveVersionDeptId(req.profile, deptId),
+      ),
+    };
   }
 
   /** Read-only diff of `published:`, `history:` or `live:` sources. */
   @Get('version-compare')
-  @Roles('college_dean', 'department_head', 'administrator')
+  @Roles('college_dean', 'department_head', 'college_secretary', 'administrator')
   async compareVersions(
     @Query('a') a: string,
     @Query('b') b: string,
     @Req() req: any,
+    @Query('deptId') deptId?: string,
   ) {
-    return { data: await this.compare.compareSources(a, b, req.profile) };
+    return { data: await this.compare.compareSources(a, b, req.profile, deptId) };
   }
 
   /** Draft-only preview of reusing published rows into a target term. */

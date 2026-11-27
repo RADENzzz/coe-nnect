@@ -53,6 +53,8 @@ export const ROUTE_LOADERS = {
   '/dean/rooms': () => import('../features/rooms/RoomsPage'),
   '/dean/system-settings': () =>
     import('../features/system-config/SystemConfigPage'),
+  '/dean/system-settings/terms': () =>
+    import('../features/system-config/TermManagementPage'),
   '/dean/audit-trail': () => import('../features/audit-trail/AuditTrailPage'),
   '/dean/dev-tools': () => import('../features/dev-tools/DevToolsPage'),
   '/dean/reports': () => import('../features/reports/ReportsHubPage'),

@@ -3,6 +3,17 @@ export type Day = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
 
 export const DAYS: Day[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
+/** Backend full day names → grid day codes. Shared by snapshots and live rows. */
+export const DAY_MAP: Record<string, Day> = {
+  Monday: 'MON',
+  Tuesday: 'TUE',
+  Wednesday: 'WED',
+  Thursday: 'THU',
+  Friday: 'FRI',
+  Saturday: 'SAT',
+  Sunday: 'SUN',
+};
+
 export const OPERATING_HOURS = {
   start: '07:00',
   end: '19:00',

@@ -24,6 +24,8 @@ interface VersionHistoryDrawerProps {
   semester: string | null | undefined;
   /** Only a department head who owns the target department may reuse. */
   canReuse: boolean;
+  /** Department scope applied to read-only published snapshot details. */
+  scopeDeptId: string;
   /** Currently-viewed finalize version id, if in read-only version mode. */
   activeVersionId: string | null;
   /** Click a finalize version → switch the timetable to read-only view of it. */
@@ -245,6 +247,7 @@ export default function VersionHistoryDrawer({
   termId,
   semester,
   canReuse,
+  scopeDeptId,
   activeVersionId,
   onViewVersion,
   onExitVersionView,
@@ -305,8 +308,9 @@ export default function VersionHistoryDrawer({
     isLoading: detailLoading,
     error: detailError,
   } = useQuery({
-    queryKey: ['published-version-detail', detailVersion?.versionId],
-    queryFn: () => fetchPublishedVersion(detailVersion!.versionId),
+    queryKey: ['published-version-detail', detailVersion?.versionId, scopeDeptId],
+    queryFn: () =>
+      fetchPublishedVersion(detailVersion!.versionId, scopeDeptId || undefined),
     enabled: !!detailVersion && tab === 'published',
     staleTime: 60 * 1000,
   });

@@ -11,6 +11,7 @@ import { In, Repository } from 'typeorm';
 import { SupabaseService } from '../../../database/supabase.service';
 import { Schedule } from '../entities/schedule.entity';
 import { ScheduleVersion } from '../entities/schedule-version.entity';
+import { filterVersionEntries } from '../version-scope';
 
 export type ComparedVersionSummary = {
   versionId: string;
@@ -23,6 +24,8 @@ export type ComparedVersionSummary = {
 export type VersionCompareResult = {
   versionA: ComparedVersionSummary;
   versionB: ComparedVersionSummary;
+  entriesA: Array<Record<string, unknown>>;
+  entriesB: Array<Record<string, unknown>>;
   added: Array<Record<string, unknown>>;
   removed: Array<Record<string, unknown>>;
   moved: Array<{
@@ -94,7 +97,16 @@ export function compareEntries(
     }
   }
 
-  return { versionA, versionB, added, removed, moved, unchanged };
+  return {
+    versionA,
+    versionB,
+    entriesA,
+    entriesB,
+    added,
+    removed,
+    moved,
+    unchanged,
+  };
 }
 
 function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
@@ -287,9 +299,10 @@ export class ScheduleVersionService {
     });
   }
 
-  /** Fetch a single version with its full snapshot. */
+  /** Fetch a single version with its full snapshot, optionally dept-scoped. */
   async findVersion(
     versionId: string,
+    deptId?: string | null,
   ): Promise<ScheduleVersion & { finalizedByName: string | null }> {
     const found = await this.versionRepo.findOne({
       where: { versionId },
@@ -314,7 +327,23 @@ export class ScheduleVersionService {
       }
     }
 
-    return Object.assign(found, { finalizedByName });
+    let snapshot = found.snapshot;
+    if (deptId != null) {
+      const entries = filterVersionEntries(
+        this.extractEntries(found.snapshot) as Array<{
+          dept_id?: string | number | null;
+        }>,
+        deptId,
+      );
+      snapshot = {
+        ...(found.snapshot ?? {}),
+        entries,
+        entry_count: entries.length,
+      };
+    }
+
+    // Never mutate the repository row: callers may reuse the same entity.
+    return { ...found, finalizedByName, snapshot };
   }
 
   /** Compare two snapshots of the same term (finalize history only). */

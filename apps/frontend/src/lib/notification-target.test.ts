@@ -341,3 +341,33 @@ test('uses distinct non-empty icons for change request notifications', () => {
   assert.ok(icons.every((icon) => icon.length > 0));
   assert.equal(new Set(icons).size, icons.length);
 });
+
+test('term notifications open the full term page with the term highlighted', () => {
+  for (const triggerKey of ['term.activated', 'subject.updated']) {
+    assert.equal(
+      notificationHref(
+        notification({
+          triggerKey,
+          entityType: 'term',
+          entityId: '7',
+        }),
+        '/dean',
+      ),
+      '/dean/system-settings/terms?termId=7',
+    );
+  }
+
+  // The DH shell has no term manager, so its fallback stays on the timetable.
+  for (const triggerKey of ['term.activated', 'subject.updated']) {
+    assert.equal(
+      notificationHref(
+        notification({
+          triggerKey,
+          entityType: 'term',
+          entityId: '7',
+        }),
+      ),
+      '/timetable',
+    );
+  }
+});

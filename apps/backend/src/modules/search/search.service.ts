@@ -320,7 +320,7 @@ export class SearchService {
       sublabel: [row.semester, row.is_active ? 'Active' : null]
         .filter(Boolean)
         .join(' - '),
-      path: `/dean/system-settings?termId=${row.term_id}#academic-terms`,
+      path: `/dean/system-settings/terms?termId=${row.term_id}`,
     }));
   }
 }

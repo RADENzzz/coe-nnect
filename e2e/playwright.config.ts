@@ -69,6 +69,9 @@ const webServerEnv: Record<string, string> = {
   // production login bucket is ten per minute by design. Give E2E its own
   // headroom instead of weakening the production default or the assertions.
   LOGIN_THROTTLE_LIMIT: '50',
+  // Reload-heavy browser flows also cross the default 300 API requests/minute.
+  // Keep the production global bucket at 300 and give E2E its own headroom.
+  THROTTLE_LIMIT: '1200',
   VITE_API_BASE_URL: apiURL,
   VITE_SUPABASE_URL: supabaseURL,
   VITE_SUPABASE_ANON_KEY: anonKey,

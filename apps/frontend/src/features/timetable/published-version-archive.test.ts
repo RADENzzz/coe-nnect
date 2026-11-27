@@ -48,4 +48,19 @@ test('published archive drawer, source compare modal, and page handlers are wire
   assert.match(page, /sourceA=/);
   assert.match(page, /sourceB=/);
   assert.match(page, /useFeedback\(\)/);
+
+  // Department-scoped visual compare contracts.
+  assert.match(modal, /departments: Department\[\]/);
+  assert.match(modal, /scopeDeptId: string/);
+  assert.match(modal, /data\.entriesA/);
+  assert.match(modal, /data\.entriesB/);
+  assert.equal((modal.match(/<TimetableGrid/g) ?? []).length, 2);
+  assert.match(modal, /diffToneByEntryId/);
+  assert.match(modal, /compareVersionSources\(sourceA!, sourceB!, deptId/);
+  assert.match(modal, /'published-version-compare'[\s\S]*?deptId/);
+  assert.match(modal, /Department:|All departments/);
+  assert.match(modal, /Changes/);
+  assert.match(drawer, /scopeDeptId/);
+  assert.match(page, /scopeDeptId=/);
+  assert.match(page, /departments=/);
 });
