@@ -728,6 +728,9 @@ export class AutoGenerateService {
             const candidateSchedule = Array.isArray(candidate?.schedule)
               ? candidate.schedule
               : [];
+            const candidateUnscheduled = Array.isArray(candidate?.unscheduled)
+              ? candidate.unscheduled
+              : [];
             let timeoutHandle: NodeJS.Timeout | undefined;
             try {
               const validation = await Promise.race([
@@ -751,10 +754,11 @@ export class AutoGenerateService {
               }
               validatedCandidates.push({
                 ...candidate,
+                candidateId: `candidate-${validatedCandidates.length + 1}`,
                 schedule: candidateSchedule,
-                unscheduled: Array.isArray(candidate?.unscheduled)
-                  ? candidate.unscheduled
-                  : [],
+                unscheduled: candidateUnscheduled,
+                placedCount: candidateSchedule.length,
+                unscheduledCount: candidateUnscheduled.length,
                 warnings: [
                   ...(Array.isArray(candidate?.warnings) ? candidate.warnings : []),
                   ...validation.softWarnings,

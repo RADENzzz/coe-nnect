@@ -253,6 +253,88 @@ describe('AutoGenerateService candidate mode', () => {
     expect(result.currentAutoDraftCount).toBe(1);
   });
 
+  it('assigns unique UI candidate ids and count metadata to every generated candidate', async () => {
+    const solverCandidates = [
+      {
+        schedule: [
+          {
+            sectionId: 'sec-1',
+            subjectId: 'sub-1',
+            facultyId: 'fac-1',
+            roomId: 'room-1',
+            day: 'Monday',
+            startTime: '08:00',
+            endTime: '09:00',
+            loadType: 'lecture',
+          },
+        ],
+        unscheduled: [],
+        objectiveValue: 1,
+        solveTimeSeconds: 0.1,
+      },
+      {
+        schedule: [
+          {
+            sectionId: 'sec-2',
+            subjectId: 'sub-2',
+            facultyId: 'fac-2',
+            roomId: 'room-2',
+            day: 'Tuesday',
+            startTime: '10:00',
+            endTime: '11:00',
+            loadType: 'lecture',
+          },
+          {
+            sectionId: 'sec-3',
+            subjectId: 'sub-3',
+            facultyId: 'fac-3',
+            roomId: 'room-3',
+            day: 'Wednesday',
+            startTime: '13:00',
+            endTime: '14:00',
+            loadType: 'lecture',
+          },
+        ],
+        unscheduled: [
+          {
+            sectionId: 'sec-4',
+            subjectId: 'sub-4',
+            kind: 'lecture',
+            sessionIndex: 0,
+            sectionCode: 'A',
+            subjectCode: 'SUB-4',
+          },
+        ],
+        objectiveValue: 0.9,
+        solveTimeSeconds: 0.2,
+      },
+    ];
+    const solverClient = {
+      solve: jest.fn().mockResolvedValue({
+        status: 'success',
+        candidates: solverCandidates,
+        solveTimeSeconds: 0.3,
+      }),
+    };
+    const { service } = makeService({ solverClient });
+
+    const result = await service.autoGenerate(termId, deptId, userId, {
+      candidateCount: 2,
+    } as any);
+
+    expect(result.candidates).toHaveLength(2);
+    for (const candidate of result.candidates) {
+      expect(typeof candidate.candidateId).toBe('string');
+      expect(candidate.candidateId.length).toBeGreaterThan(0);
+    }
+    const ids = result.candidates.map((candidate: any) => candidate.candidateId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(result.candidates[0].placedCount).toBe(1);
+    expect(result.candidates[0].unscheduledCount).toBe(0);
+    expect(result.candidates[1].placedCount).toBe(2);
+    expect(result.candidates[1].unscheduledCount).toBe(1);
+  });
+
   it('sends candidate notifications only to the initiating user', async () => {
     const { service, dispatcher, recipients } = makeService();
 
