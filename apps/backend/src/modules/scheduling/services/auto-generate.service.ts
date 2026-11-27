@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
 } from '@nestjs/common';
@@ -15,9 +16,16 @@ import {
 } from '../../notifications/notification-context';
 import { Schedule } from '../entities/schedule.entity';
 import { RuleContextBuilder } from './rule-context.builder';
+import { ConfirmCandidatePayload } from '../dto/confirm-auto-generate.dto';
 import { SchedulingCoverageService } from './scheduling-coverage.service';
 import { SolverClient } from './solver.client';
 import { DepartmentsService } from '../../departments/departments.service';
+import {
+  buildAutoGenerateToken,
+  candidateFingerprint,
+  ownAutoDraftRowToCandidateBlock,
+  verifyAutoGenerateToken,
+} from './auto-generate-candidate.util';
 
 @Injectable()
 export class AutoGenerateService {
@@ -29,6 +37,52 @@ export class AutoGenerateService {
    * Cleared on success/failure in the finally-adjacent paths.
    */
   private readonly autoGenerateInFlight = new Set<string>();
+
+  /**
+   * Lock RPCs exist in two deployed shapes: `(term, dept, ...)` and the
+   * older migration's `(term, ...)`. Remember whichever shape worked so a
+   * service instance does not repeat the PostgREST function lookup on every
+   * subsequent lock operation.
+   */
+  private readonly lockRpcSignature = new Map<string, 'dept' | 'term'>();
+
+  private isMissingFunctionSignatureError(error: any, fn: string): boolean {
+    if (!error) return false;
+    if (error.code === 'PGRST202') return true;
+    return String(error.message ?? '').includes(
+      `Could not find the function public.${fn}(`,
+    );
+  }
+
+  /** Try the dept-scoped RPC payload first, then the term-scoped migration shape. */
+  private async callLockRpc<T = any>(
+    fn: string,
+    deptScopedArgs: Record<string, unknown>,
+    termScopedArgs: Record<string, unknown>,
+  ): Promise<{ data: T | null; error: any }> {
+    const cached = this.lockRpcSignature.get(fn);
+    const signatures: Array<'dept' | 'term'> =
+      cached === 'term' ? ['term', 'dept'] : ['dept', 'term'];
+
+    for (const signature of signatures) {
+      const result = await this.supabase
+        .getAdminClient()
+        .rpc(fn, signature === 'dept' ? deptScopedArgs : termScopedArgs);
+
+      if (!result.error) {
+        this.lockRpcSignature.set(fn, signature);
+        return result;
+      }
+
+      // Only a missing function justifies trying the other signature.
+      // Any other database error must surface to the caller unchanged.
+      if (!this.isMissingFunctionSignatureError(result.error, fn)) {
+        return result;
+      }
+    }
+
+    throw new Error(`No compatible ${fn} RPC signature is available`);
+  }
 
   private flightKey(termId: string, deptId: string): string {
     return `${termId}:${deptId}`;
@@ -104,7 +158,7 @@ export class AutoGenerateService {
     termId: string,
     deptId: string,
     userId: string,
-    options: { acknowledgeUnplottedMinors?: boolean } = {},
+    options: { acknowledgeUnplottedMinors?: boolean; candidateCount?: number } = {},
   ) {
     this.logger.log(
       `Auto-generate requested: term=${termId} dept=${deptId} by=${userId}`,
@@ -125,6 +179,10 @@ export class AutoGenerateService {
           'An auto-generate is already running for this department in this term. ' +
           'Please wait for it to finish, then try again.',
       };
+    }
+
+    if ((options.candidateCount ?? 0) >= 2) {
+      return this.generateCandidates(termId, deptId, userId, options);
     }
 
     const locked = await this.tryAcquireAutoGenerateLock(
@@ -184,33 +242,44 @@ export class AutoGenerateService {
 
     this.autoGenerateInFlight.add(key);
 
-    const starterDHs = await this.recipients.departmentHeadsOf(deptId);
-    const contextDb = this.supabase.getAdminClient();
-    const [dept, termName] = await Promise.all([
-      loadDeptLabel(contextDb, deptId),
-      loadTermName(contextDb, termId),
-    ]);
-    const deptLabel =
-      dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
+    let starterDHs: string[] = [];
+    let dept: { deptCode: string | null; deptName: string | null } = {
+      deptCode: null,
+      deptName: null,
+    };
+    let termName: string | null = null;
+    let deptLabel = `Department ${deptId}`;
+    try {
+      starterDHs = await this.recipients.departmentHeadsOf(deptId);
+      const contextDb = this.supabase.getAdminClient();
+      [dept, termName] = await Promise.all([
+        loadDeptLabel(contextDb, deptId),
+        loadTermName(contextDb, termId),
+      ]);
+      deptLabel = dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
 
-    await this.dispatcher.dispatch('auto_generate.started', {
-      recipientUserIds: starterDHs,
-      title: `Auto-generate started: ${deptLabel}`,
-      body:
-        `Schedule generation started for ${deptLabel}` +
-        (termName ? ` · ${termName}` : '') +
-        '.',
-      entityType: 'term',
-      entityId: termId,
-      payload: {
-        deptId,
-        deptCode: dept.deptCode,
-        deptName: dept.deptName,
-        termId,
-        termName,
-        triggeredBy: userId,
-      },
-    });
+      await this.dispatcher.dispatch('auto_generate.started', {
+        recipientUserIds: starterDHs,
+        title: `Auto-generate started: ${deptLabel}`,
+        body:
+          `Schedule generation started for ${deptLabel}` +
+          (termName ? ` · ${termName}` : '') +
+          '.',
+        entityType: 'term',
+        entityId: termId,
+        payload: {
+          deptId,
+          deptCode: dept.deptCode,
+          deptName: dept.deptName,
+          termId,
+          termName,
+          triggeredBy: userId,
+        },
+      });
+    } catch (err) {
+      this.autoGenerateInFlight.delete(key);
+      throw err;
+    }
 
     try {
       // ═══════════════════════════════════════════════════════════════
@@ -281,6 +350,7 @@ export class AutoGenerateService {
           const validation = await this.validateGeneratedSchedule(
             termId,
             solveResult.schedule,
+            new Set<string>(),
           );
           if (validation.hardFailures.length > 0) {
             return { kind: 'validation-error', validation };
@@ -487,7 +557,481 @@ export class AutoGenerateService {
     }
   }
 
-  private async buildSolverProblem(termId: string, deptId: string) {
+  private async getOwnAutoDraftScheduleRows(termId: string, deptId: string) {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('schedule')
+      .select(
+        'schedule_id, section_id, subject_id, load_type, day_of_week, start_time, end_time, room_id, faculty_id, section',
+      )
+      .eq('term_id', termId)
+      .eq('dept_id', deptId)
+      .eq('status', 'draft')
+      .like('remarks', 'Auto-generated by solver%');
+
+    if (error) {
+      this.logger.warn(
+        `Failed to snapshot own auto-draft rows for term=${termId} dept=${deptId}: ${error.message}`,
+      );
+      return [];
+    }
+
+    return data ?? [];
+  }
+
+  private async getOwnAutoDraftUnscheduledRows(termId: string, deptId: string) {
+    const { data, error } = await this.supabase
+      .getAdminClient()
+      .from('schedule_unscheduled')
+      .select('section_id, subject_id, kind, session_index')
+      .eq('term_id', termId)
+      .eq('dept_id', deptId);
+
+    if (error) {
+      this.logger.warn(
+        `Failed to snapshot own unscheduled rows for term=${termId} dept=${deptId}: ${error.message}`,
+      );
+      return [];
+    }
+
+    return data ?? [];
+  }
+
+  private async generateCandidates(
+    termId: string,
+    deptId: string,
+    userId: string,
+    options: { acknowledgeUnplottedMinors?: boolean; candidateCount?: number },
+  ): Promise<any> {
+    const key = this.flightKey(termId, deptId);
+    const candidateCount = options.candidateCount ?? 2;
+
+    if (!options.acknowledgeUnplottedMinors) {
+      try {
+        const unplottedMinors = await this.coverage.findUnplottedMinors(
+          termId,
+          deptId,
+        );
+        if (unplottedMinors.length > 0) {
+          this.logger.warn(
+            `Auto-generate blocked: ${unplottedMinors.length} unplotted minor(s) for term=${termId} dept=${deptId}`,
+          );
+
+          return {
+            success: false,
+            blockedByUnplottedMinors: true,
+            message:
+              `${unplottedMinors.length} minor subject${
+                unplottedMinors.length === 1 ? '' : 's'
+              } in the prospectus have not been plotted yet. ` +
+              `Plot them first, or confirm to generate without them.`,
+            unplottedMinors: unplottedMinors.map((m) => ({
+              subjectId: m.subjectId,
+              subjectCode: m.subjectCode,
+              title: m.title,
+              yearLevel: m.yearLevel,
+              semester: m.semester,
+              programCode: m.programCode,
+            })),
+          };
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Unplotted-minors pre-flight check failed (continuing): ${(err as Error).message}`,
+        );
+      }
+    }
+
+    this.autoGenerateInFlight.add(key);
+
+    let dept: { deptCode: string | null; deptName: string | null } = {
+      deptCode: null,
+      deptName: null,
+    };
+    let termName: string | null = null;
+    let deptLabel = `Department ${deptId}`;
+    try {
+      const contextDb = this.supabase.getAdminClient();
+      [dept, termName] = await Promise.all([
+        loadDeptLabel(contextDb, deptId),
+        loadTermName(contextDb, termId),
+      ]);
+      deptLabel = dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
+
+      // Candidate sessions live only in the initiating user's tab; other
+      // department heads cannot review them (design §7.5).
+      await this.dispatcher.dispatch('auto_generate.started', {
+        recipientUserIds: [userId],
+        title: `Auto-generate started: ${deptLabel}`,
+        body:
+          `Schedule generation started for ${deptLabel}` +
+          (termName ? ` · ${termName}` : '') +
+          '.',
+        entityType: 'term',
+        entityId: termId,
+        payload: {
+          deptId,
+          deptCode: dept.deptCode,
+          deptName: dept.deptName,
+          termId,
+          termName,
+          triggeredBy: userId,
+        },
+      });
+    } catch (err) {
+      this.autoGenerateInFlight.delete(key);
+      throw err;
+    }
+
+    let lockHeldByUs = false;
+    try {
+      const outcome = await this.runSerially(termId, async () => {
+        const existingLock = await this.getAutoGenerateLock(termId, deptId, userId);
+        if (existingLock?.state === 'pending_confirm') {
+          return {
+            kind: 'pending-lock' as const,
+            message:
+              'A previous auto-generate preview is still pending. ' +
+              'Finish or discard that preview before generating candidates.',
+          };
+        }
+
+        const locked = await this.tryAcquireAutoGenerateLock(
+          termId,
+          deptId,
+          userId,
+        );
+        if (!locked) {
+          return {
+            kind: 'busy' as const,
+            message:
+              'An auto-generate is already running for this department in this term. ' +
+              'Please wait for it to finish, then try again.',
+          };
+        }
+        lockHeldByUs = true;
+
+        try {
+          const ownRows = await this.getOwnAutoDraftScheduleRows(termId, deptId);
+          const ownUnscheduledRows = await this.getOwnAutoDraftUnscheduledRows(
+            termId,
+            deptId,
+          );
+          const ownAutoDraftIds = new Set(
+            ownRows
+              .map((r: any) => String(r.schedule_id ?? ''))
+              .filter((id: string) => id.length > 0),
+          );
+
+          const problem = await this.buildSolverProblem(
+            termId,
+            deptId,
+            ownAutoDraftIds,
+          );
+          const sufficiency = this.analyzeRoomSufficiency(problem);
+          if (!sufficiency.sufficient) {
+            return { kind: 'room-deficit' as const, sufficiency };
+          }
+
+          const maxTimeSeconds = Math.max(
+            15,
+            Math.floor(180 / Math.max(2, candidateCount)),
+          );
+          let solveResult: any;
+          try {
+            solveResult = await this.solverClient.solve(
+              {
+                ...problem,
+                candidateCount,
+                maxTimeSeconds,
+              },
+              { timeoutMs: 240_000, attempts: 1 },
+            );
+          } catch (err) {
+            return { kind: 'solver-error' as const, error: err as Error };
+          }
+
+          if (solveResult?.status === 'no-candidates') {
+            return {
+              kind: 'no-candidates' as const,
+              message:
+                solveResult.message ??
+                'No distinct schedule candidates could be generated with the current constraints.',
+            };
+          }
+
+          if (solveResult?.status !== 'success') {
+            return {
+              kind: 'no-solution' as const,
+              message: solveResult?.message,
+            };
+          }
+
+          const rawCandidates: any[] = Array.isArray(solveResult?.candidates)
+            ? solveResult.candidates
+            : [
+                {
+                  schedule: solveResult?.schedule ?? [],
+                  unscheduled: solveResult?.unscheduled ?? [],
+                  objectiveValue: solveResult?.objectiveValue ?? null,
+                  solveTimeSeconds: solveResult?.solveTimeSeconds ?? null,
+                },
+              ];
+
+          const validationBudgetMs = 60_000;
+          const validationStarted = Date.now();
+          const validatedCandidates: any[] = [];
+          const validationTimeoutMessage =
+            'Candidate validation took too long. No candidates were returned.';
+          for (const candidate of rawCandidates) {
+            const remainingMs =
+              validationBudgetMs - (Date.now() - validationStarted);
+            if (remainingMs <= 0) {
+              return {
+                kind: 'validation-timeout' as const,
+                message: validationTimeoutMessage,
+              };
+            }
+            const candidateSchedule = Array.isArray(candidate?.schedule)
+              ? candidate.schedule
+              : [];
+            const candidateUnscheduled = Array.isArray(candidate?.unscheduled)
+              ? candidate.unscheduled
+              : [];
+            let timeoutHandle: NodeJS.Timeout | undefined;
+            try {
+              const validation = await Promise.race([
+                this.validateGeneratedSchedule(
+                  termId,
+                  candidateSchedule,
+                  ownAutoDraftIds,
+                ),
+                new Promise<never>((_, reject) => {
+                  timeoutHandle = setTimeout(
+                    () => reject(new Error('VALIDATION_TIMEOUT')),
+                    remainingMs,
+                  );
+                }),
+              ]);
+              if (validation.hardFailures.length > 0) {
+                this.logger.warn(
+                  `Dropping candidate with ${validation.hardFailures.length} hard validation failure(s) for term=${termId} dept=${deptId}`,
+                );
+                continue;
+              }
+              validatedCandidates.push({
+                ...candidate,
+                candidateId: `candidate-${validatedCandidates.length + 1}`,
+                schedule: candidateSchedule,
+                unscheduled: candidateUnscheduled,
+                placedCount: candidateSchedule.length,
+                unscheduledCount: candidateUnscheduled.length,
+                warnings: [
+                  ...(Array.isArray(candidate?.warnings) ? candidate.warnings : []),
+                  ...validation.softWarnings,
+                ],
+              });
+            } catch (err) {
+              if ((err as Error)?.message === 'VALIDATION_TIMEOUT') {
+                return {
+                  kind: 'validation-timeout' as const,
+                  message: validationTimeoutMessage,
+                };
+              }
+              throw err;
+            } finally {
+              if (timeoutHandle) clearTimeout(timeoutHandle);
+            }
+          }
+
+          if (validatedCandidates.length === 0) {
+            return {
+              kind: 'no-candidates' as const,
+              message:
+                'No distinct schedule candidates could be generated with the current constraints.',
+            };
+          }
+
+          const ownDraftBlocks = ownRows.map((row: any) =>
+            ownAutoDraftRowToCandidateBlock(row),
+          );
+          const ownUnscheduled = ownUnscheduledRows.map((row: any) => ({
+            sectionId: String(row.section_id ?? ''),
+            subjectId: String(row.subject_id ?? ''),
+            kind: String(row.kind ?? ''),
+            sessionIndex: Number(row.session_index ?? 0),
+            sectionCode: row.section_code ?? null,
+            subjectCode: row.subject_code ?? null,
+          }));
+          const fingerprint = candidateFingerprint(ownDraftBlocks, ownUnscheduled);
+          const generatedAt = new Date().toISOString();
+          const generationTokenHash = buildAutoGenerateToken({
+            termId,
+            deptId,
+            userId,
+            generatedAt,
+            fingerprint,
+          });
+          const generationToken = `${Buffer.from(generatedAt, 'utf8').toString('base64url')}.${generationTokenHash}`;
+
+          return {
+            kind: 'ok' as const,
+            candidates: validatedCandidates,
+            currentAutoDraftCount: ownRows.length,
+            generationToken,
+          };
+        } finally {
+          if (lockHeldByUs) {
+            await this.releaseAutoGenerateLock(termId, deptId, userId);
+            lockHeldByUs = false;
+          }
+        }
+      });
+
+      if (outcome.kind === 'pending-lock' || outcome.kind === 'busy') {
+        return { success: false, message: outcome.message };
+      }
+
+      if (outcome.kind === 'room-deficit') {
+        const { sufficiency } = outcome;
+        this.logger.warn(`Auto-generate blocked: ${sufficiency.hint}`);
+
+        const admins = await this.recipients.administrators();
+        const dean = await this.recipients.collegeDean();
+        await this.dispatcher.dispatch('room_sufficiency.below_threshold', {
+          recipientUserIds: this.recipients.uniq([...admins, ...dean]),
+          title: `Room shortage: ${deptLabel}`,
+          body: sufficiency.hint,
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
+            deficits: sufficiency.deficits,
+          },
+        });
+
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: [userId],
+          title: `Auto-generate failed: ${deptLabel}`,
+          body: sufficiency.hint,
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
+            reason: 'insufficient_rooms',
+            deficits: sufficiency.deficits,
+            candidateCount,
+          },
+        });
+
+        return {
+          success: false,
+          message: sufficiency.hint,
+          roomDeficits: sufficiency.deficits,
+        };
+      }
+
+      if (outcome.kind === 'solver-error') {
+        this.logger.error('Solver service call failed', outcome.error);
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: [userId],
+          title: `Auto-generate failed: ${deptLabel}`,
+          body: 'Solver service is unavailable. Please try again later.',
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
+            reason: 'solver_unavailable',
+            error: outcome.error.message,
+            candidateCount,
+          },
+        });
+        return { success: false, message: 'Solver service unavailable' };
+      }
+
+      if (
+        outcome.kind === 'no-solution' ||
+        outcome.kind === 'no-candidates' ||
+        outcome.kind === 'validation-timeout'
+      ) {
+        await this.dispatcher.dispatch('auto_generate.failed', {
+          recipientUserIds: [userId],
+          title: `Auto-generate failed: ${deptLabel}`,
+          body: outcome.message ?? 'No candidates could be generated.',
+          entityType: 'term',
+          entityId: termId,
+          payload: {
+            deptId,
+            deptCode: dept.deptCode,
+            deptName: dept.deptName,
+            termId,
+            termName,
+            reason: outcome.kind,
+            candidateCount,
+          },
+        });
+        return {
+          success: false,
+          message: outcome.message ?? 'No candidates could be generated.',
+        };
+      }
+
+      await this.dispatcher.dispatch('auto_generate.finished', {
+        recipientUserIds: [userId],
+        title: `Auto-generate finished: ${deptLabel}`,
+        body:
+          `Generated ${outcome.candidates.length} candidate option${
+            outcome.candidates.length === 1 ? '' : 's'
+          } for ${deptLabel}` +
+          (termName ? ` · ${termName}` : '') +
+          '. Review them in the tab that started generation.',
+        entityType: 'term',
+        entityId: termId,
+        payload: {
+          deptId,
+          deptCode: dept.deptCode,
+          deptName: dept.deptName,
+          termId,
+          termName,
+          candidateCount: outcome.candidates.length,
+        },
+      });
+
+      return {
+        success: true,
+        mode: 'candidates',
+        candidates: outcome.candidates,
+        currentAutoDraftCount: outcome.currentAutoDraftCount,
+        generationToken: outcome.generationToken,
+      };
+    } catch (err) {
+      if (lockHeldByUs) {
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
+        lockHeldByUs = false;
+      }
+      throw err;
+    } finally {
+      this.autoGenerateInFlight.delete(key);
+    }
+  }
+
+  private async buildSolverProblem(
+    termId: string,
+    deptId: string,
+    excludeScheduleIds: Set<string> = new Set(),
+  ) {
     const db = this.supabase.getAdminClient();
 
     const { data: programs, error: progErr } = await db
@@ -838,15 +1382,17 @@ export class AutoGenerateService {
           SCHEDULING_SETTING_DEFAULTS.end_hour_alignment_weight,
         ),
       },
-      existingSchedule: (existingScheduleRows ?? []).map((row) => ({
-        scheduleId: String(row.schedule_id),
-        facultyId: row.faculty_id ? String(row.faculty_id) : null,
-        roomId: row.room_id ? String(row.room_id) : null,
-        sectionId: row.section_id ? String(row.section_id) : null,
-        day: row.day_of_week ?? 'Monday',
-        startTime: row.start_time ?? '00:00',
-        endTime: row.end_time ?? '00:00',
-      })),
+      existingSchedule: (existingScheduleRows ?? [])
+        .filter((row) => !excludeScheduleIds.has(String(row.schedule_id)))
+        .map((row) => ({
+          scheduleId: String(row.schedule_id),
+          facultyId: row.faculty_id ? String(row.faculty_id) : null,
+          roomId: row.room_id ? String(row.room_id) : null,
+          sectionId: row.section_id ? String(row.section_id) : null,
+          day: row.day_of_week ?? 'Monday',
+          startTime: row.start_time ?? '00:00',
+          endTime: row.end_time ?? '00:00',
+        })),
       existingSubjectLoadCounts: (() => {
         const counts = new Map<
           string,
@@ -858,6 +1404,9 @@ export class AutoGenerateService {
           }
         >();
         for (const row of existingScheduleRows ?? []) {
+          if (excludeScheduleIds.has(String(row.schedule_id))) {
+            continue;
+          }
           if (
             !row.section_id ||
             !row.subject_id ||
@@ -941,6 +1490,7 @@ export class AutoGenerateService {
       endTime: string;
       loadType?: string;
     }>,
+    excludeAutoDraftIds: Set<string>,
   ): Promise<{
     hardFailures: Array<{ ruleId: string; ruleName: string; reason: string }>;
     softWarnings: Array<{ ruleId: string; ruleName: string; reason: string }>;
@@ -961,6 +1511,7 @@ export class AutoGenerateService {
       `Auto-generate soft rules: [${Array.from(softForAuto).join(', ')}]`,
     );
 
+    const excludeScheduleIds = [...excludeAutoDraftIds];
     for (const block of schedule) {
       try {
         const context = await this.ruleContextBuilder.build({
@@ -973,6 +1524,7 @@ export class AutoGenerateService {
           startTime: block.startTime,
           endTime: block.endTime,
           loadType: (block.loadType as any) ?? undefined,
+          excludeScheduleIds,
         });
         const result = this.constraints.evaluate(context);
 
@@ -1712,21 +2264,29 @@ export class AutoGenerateService {
     termId: string,
     deptId: string,
     userId: string,
+    ttlSeconds = 300,
   ): Promise<boolean> {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .rpc('try_acquire_auto_generate_lock', {
+    const { data, error } = await this.callLockRpc<boolean>(
+      'try_acquire_auto_generate_lock',
+      {
         p_term_id: Number(termId),
         p_dept_id: Number(deptId),
         p_user_id: userId,
-        p_ttl_seconds: 300,
-      });
+        p_ttl_seconds: ttlSeconds,
+      },
+      {
+        p_term_id: Number(termId),
+        p_user_id: userId,
+        p_ttl_seconds: ttlSeconds,
+      },
+    );
 
     if (error) {
-      this.logger.error(
-        `Failed to acquire auto-generate lock for term=${termId} dept=${deptId}: ${error.message}`,
-      );
-      return false;
+      const message =
+        `Failed to acquire auto-generate lock for term=${termId} dept=${deptId}: ` +
+        `${error.message}`;
+      this.logger.error(message);
+      throw new Error(message);
     }
 
     return data === true;
@@ -1737,13 +2297,18 @@ export class AutoGenerateService {
     deptId: string,
     userId: string,
   ): Promise<void> {
-    const { error } = await this.supabase
-      .getAdminClient()
-      .rpc('release_auto_generate_lock', {
+    const { error } = await this.callLockRpc(
+      'release_auto_generate_lock',
+      {
         p_term_id: Number(termId),
         p_dept_id: Number(deptId),
         p_user_id: userId,
-      });
+      },
+      {
+        p_term_id: Number(termId),
+        p_user_id: userId,
+      },
+    );
 
     if (error) {
       this.logger.warn(
@@ -1757,18 +2322,525 @@ export class AutoGenerateService {
     deptId: string,
     userId: string,
   ): Promise<void> {
-    const { error } = await this.supabase
-      .getAdminClient()
-      .rpc('mark_auto_generate_pending', {
+    const { error } = await this.callLockRpc(
+      'mark_auto_generate_pending',
+      {
         p_term_id: Number(termId),
         p_dept_id: Number(deptId),
         p_user_id: userId,
         p_ttl_seconds: 600,
-      });
+      },
+      {
+        p_term_id: Number(termId),
+        p_user_id: userId,
+        p_ttl_seconds: 600,
+      },
+    );
     if (error) {
       this.logger.warn(
         `Failed to mark pending lock for term=${termId} dept=${deptId}: ${error.message}`,
       );
+    }
+  }
+
+  /**
+   * Mirror solver.py `compute_blocks` and its existing-load filter. Expected
+   * counts come from buildSolverProblem(termId, deptId, ownAutoDraftIds), the
+   * same exclusion view generation used, so a crafted or truncated candidate
+   * cannot replace real drafts with a partial schedule.
+   */
+  private expectedCandidateBlockCounts(problem: any): Map<string, number> {
+    const counts = new Map<string, number>();
+    const countKey = (sectionId: string, subjectId: string, loadType: string) =>
+      `${sectionId}:${subjectId}:${loadType}`;
+
+    const subjectById = new Map<string, any>(
+      (problem?.subjects ?? []).map((subject: any) => [
+        String(subject.subjectId),
+        subject,
+      ]),
+    );
+    // solver.py uses prospectus_by_subject.setdefault: first row wins.
+    const prospectusForSubject = new Map<string, any>();
+    for (const entry of problem?.prospectus ?? []) {
+      const subjectId = String(entry.subjectId);
+      if (!prospectusForSubject.has(subjectId)) {
+        prospectusForSubject.set(subjectId, entry);
+      }
+    }
+    const existingByKey = new Map<string, number>();
+    for (const row of problem?.existingSubjectLoadCounts ?? []) {
+      existingByKey.set(
+        countKey(
+          String(row.sectionId),
+          String(row.subjectId),
+          String(row.loadType),
+        ),
+        Number(row.count ?? 0),
+      );
+    }
+
+    const addSessions = (
+      sectionId: string,
+      subjectId: string,
+      loadType: 'lecture' | 'laboratory',
+      units: number,
+      sessions: number,
+    ) => {
+      if (!(Number(units) > 0)) return;
+      const key = countKey(sectionId, subjectId, loadType);
+      const alreadyLoaded = existingByKey.get(key) ?? 0;
+      const remaining = Math.max(0, Number(sessions ?? 0) - alreadyLoaded);
+      counts.set(key, (counts.get(key) ?? 0) + remaining);
+    };
+
+    for (const section of problem?.sections ?? []) {
+      if (!section?.programId || section?.yearLevel == null) continue;
+      const sectionId = String(section.sectionId);
+      for (const entry of problem?.prospectus ?? []) {
+        if (
+          entry.programId !== section.programId ||
+          entry.yearLevel !== section.yearLevel
+        ) {
+          continue;
+        }
+        const subjectId = String(entry.subjectId);
+        const subject = subjectById.get(subjectId);
+        if (!subject) continue;
+        // First prospectus row per subject, as in the solver.
+        const prospectus = prospectusForSubject.get(subjectId)!;
+        addSessions(
+          sectionId,
+          subjectId,
+          'lecture',
+          subject.lectureUnits,
+          prospectus.lecture_sessions_per_week ?? 1,
+        );
+        addSessions(
+          sectionId,
+          subjectId,
+          'laboratory',
+          subject.labUnits,
+          prospectus.lab_sessions_per_week ?? 1,
+        );
+      }
+    }
+
+    return counts;
+  }
+
+  private actualCandidateBlockCounts(
+    schedule: any[],
+    unscheduled: any[],
+  ): Map<string, number> {
+    const counts = new Map<string, number>();
+    const add = (sectionId: any, subjectId: any, loadType: string) => {
+      const key = `${String(sectionId)}:${String(subjectId)}:${loadType}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    };
+
+    for (const block of schedule) {
+      add(block?.sectionId, block?.subjectId, String(block?.loadType ?? ''));
+    }
+    for (const block of unscheduled) {
+      const kind = String(block?.kind ?? '');
+      add(
+        block?.sectionId,
+        block?.subjectId,
+        kind === 'lab' ? 'laboratory' : kind,
+      );
+    }
+    return counts;
+  }
+
+  private assertCandidateBlockCountsMatch(
+    problem: any,
+    schedule: any[],
+    unscheduled: any[],
+  ): void {
+    const expected = this.expectedCandidateBlockCounts(problem);
+    const actual = this.actualCandidateBlockCounts(schedule, unscheduled);
+    for (const key of new Set([...expected.keys(), ...actual.keys()])) {
+      if ((actual.get(key) ?? 0) !== (expected.get(key) ?? 0)) {
+        throw new BadRequestException(
+          'Candidate session counts do not match the prospectus.',
+        );
+      }
+    }
+  }
+
+  async confirmAutoGenerateCandidate(
+    termId: string,
+    deptId: string,
+    userId: string,
+    payload: ConfirmCandidatePayload,
+  ): Promise<{ success: boolean }> {
+    const candidateId = String(payload?.candidate?.candidateId ?? '');
+    this.logger.log(
+      `Candidate confirm requested: term=${termId} dept=${deptId} by=${userId} candidate=${candidateId}`,
+    );
+
+    // Serialize the whole Accept with generation and other departments'
+    // Accepts in this term. The lock is acquired inside the queued task, so
+    // queue wait time does not consume the 60s lock TTL.
+    return this.runSerially(termId, async () =>
+      this.confirmCandidateCriticalSection(
+        termId,
+        deptId,
+        userId,
+        payload,
+        candidateId,
+      ),
+    );
+  }
+
+  private async confirmCandidateCriticalSection(
+    termId: string,
+    deptId: string,
+    userId: string,
+    payload: ConfirmCandidatePayload,
+    candidateId: string,
+  ): Promise<{ success: boolean }> {
+    const locked = await this.tryAcquireAutoGenerateLock(
+      termId,
+      deptId,
+      userId,
+      60,
+    );
+    if (!locked) {
+      throw new ConflictException(
+        'Another generation or confirmation is in progress.',
+      );
+    }
+
+    let lockHeld = true;
+    try {
+      const db = this.supabase.getAdminClient();
+
+      // Step 2: snapshot + fingerprint and stale-token check.
+      const ownRows = await this.getOwnAutoDraftScheduleRows(termId, deptId);
+      const ownUnscheduledRows = await this.getOwnAutoDraftUnscheduledRows(
+        termId,
+        deptId,
+      );
+      const ownAutoDraftIds = new Set(
+        ownRows
+          .map((r: any) => String(r.schedule_id ?? ''))
+          .filter((id: string) => id.length > 0),
+      );
+      const ownDraftBlocks = ownRows.map((row: any) =>
+        ownAutoDraftRowToCandidateBlock(row),
+      );
+      const ownUnscheduled = ownUnscheduledRows.map((row: any) => ({
+        sectionId: String(row.section_id ?? ''),
+        subjectId: String(row.subject_id ?? ''),
+        kind: String(row.kind ?? ''),
+        sessionIndex: Number(row.session_index ?? 0),
+        sectionCode: row.section_code ?? null,
+        subjectCode: row.subject_code ?? null,
+      }));
+      const fingerprint = candidateFingerprint(ownDraftBlocks, ownUnscheduled);
+
+      const token = String(payload?.generationToken ?? '');
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 2) {
+        throw new ConflictException(
+          'The schedule changed since these options were generated. Regenerate before accepting.',
+        );
+      }
+      let generatedAt: string;
+      try {
+        generatedAt = Buffer.from(tokenParts[0], 'base64url').toString('utf8');
+      } catch {
+        throw new ConflictException(
+          'The schedule changed since these options were generated. Regenerate before accepting.',
+        );
+      }
+      const hash = tokenParts[1];
+      const tokenValid = verifyAutoGenerateToken(hash, {
+        termId,
+        deptId,
+        userId,
+        generatedAt,
+        fingerprint,
+      });
+      if (!tokenValid) {
+        throw new ConflictException(
+          'The schedule changed since these options were generated. Regenerate before accepting.',
+        );
+      }
+
+      const candidate = payload?.candidate as any;
+      const schedule = Array.isArray(candidate?.schedule)
+        ? candidate.schedule
+        : [];
+      const unscheduled = Array.isArray(candidate?.unscheduled)
+        ? candidate.unscheduled
+        : [];
+
+      // Step 3: payload structure validation.
+      for (const block of schedule) {
+        const missing =
+          !block?.sectionId ||
+          !block?.subjectId ||
+          !block?.facultyId ||
+          !block?.roomId ||
+          !block?.day ||
+          !block?.startTime ||
+          !block?.endTime ||
+          (block?.loadType !== 'lecture' && block?.loadType !== 'laboratory');
+        if (missing) {
+          throw new BadRequestException('Invalid candidate block payload.');
+        }
+      }
+      for (const u of unscheduled) {
+        if (
+          !u?.sectionId ||
+          !u?.subjectId ||
+          !u?.kind ||
+          !Number.isInteger(u?.sessionIndex)
+        ) {
+          throw new BadRequestException('Invalid unscheduled payload.');
+        }
+      }
+
+      // Step 4: reject any subject whose source_dept is non-empty.
+      const subjectIds: string[] = Array.from(
+        new Set([
+          ...schedule.map((b: any) => String(b.subjectId)),
+          ...unscheduled.map((u: any) => String(u.subjectId)),
+        ]),
+      );
+      if (subjectIds.length > 0) {
+        const { data: subjects, error: subErr } = await db
+          .from('subject')
+          .select('subject_id, source_dept')
+          .in('subject_id', subjectIds);
+        if (subErr) {
+          throw new BadRequestException(
+            `Failed to validate candidate subjects: ${subErr.message}`,
+          );
+        }
+        const byId = new Map<string, any>(
+          (subjects ?? []).map((s: any) => [String(s.subject_id), s]),
+        );
+        for (const sid of subjectIds) {
+          const row = byId.get(sid);
+          if (!row) {
+            throw new BadRequestException(
+              `Unknown subject in candidate: ${sid}`,
+            );
+          }
+          const sourceDept = row.source_dept;
+          if (sourceDept !== null && sourceDept !== undefined && String(sourceDept).trim() !== '') {
+            throw new BadRequestException(
+              `Subject ${sid} belongs to a source department and cannot be accepted.`,
+            );
+          }
+        }
+      }
+
+      // Step 5: duplicates and overlaps within candidate.
+      const seen = new Set<string>();
+      const toMinutes = (t: string) => {
+        const [h, m] = String(t).split(':').map(Number);
+        return h * 60 + (m ?? 0);
+      };
+      const intervalsByScope = new Map<
+        string,
+        Array<{ start: number; end: number }>
+      >();
+      for (const b of schedule) {
+        const sessionIndex = (b as any).sessionIndex;
+        const hasSessionIndex =
+          sessionIndex !== undefined &&
+          sessionIndex !== null &&
+          String(sessionIndex) !== '';
+        const dupKey = hasSessionIndex
+          ? `${b.sectionId}|${b.subjectId}|${b.loadType}|${Number(sessionIndex)}`
+          : `${b.sectionId}|${b.subjectId}|${b.loadType}|${b.day}|${b.startTime}`;
+        if (seen.has(dupKey)) {
+          throw new BadRequestException('Duplicate candidate block detected.');
+        }
+        seen.add(dupKey);
+
+        const start = toMinutes(b.startTime);
+        const end = toMinutes(b.endTime);
+        if (!(end > start)) {
+          throw new BadRequestException('Invalid candidate block time range.');
+        }
+        const scopeKeys = [
+          `section:${b.sectionId}:${b.day}`,
+          `faculty:${b.facultyId}:${b.day}`,
+          `room:${b.roomId}:${b.day}`,
+        ];
+        for (const scope of scopeKeys) {
+          const list = intervalsByScope.get(scope) ?? [];
+          for (const iv of list) {
+            if (start < iv.end && end > iv.start) {
+              throw new BadRequestException(
+                'Overlapping candidate block detected.',
+              );
+            }
+          }
+          list.push({ start, end });
+          intervalsByScope.set(scope, list);
+        }
+      }
+
+      // Step 6: verify every (section, subject, loadType) session count
+      // against the active-term prospectus/problem with own auto-drafts
+      // excluded, before any snapshot/delete/insert.
+      const problem = await this.buildSolverProblem(
+        termId,
+        deptId,
+        ownAutoDraftIds,
+      );
+      this.assertCandidateBlockCountsMatch(problem, schedule, unscheduled);
+
+      // Step 7: recompute counts and warnings; ignore client values.
+      const placedCount = schedule.length;
+      const unscheduledCount = unscheduled.length;
+
+      // Step 8: revalidate against live data.
+      const validation = await this.validateGeneratedSchedule(
+        termId,
+        schedule.map((b: any) => ({
+          sectionId: String(b.sectionId),
+          sectionCode: String(b.sectionCode ?? b.section ?? ''),
+          subjectId: String(b.subjectId),
+          facultyId: String(b.facultyId),
+          roomId: String(b.roomId),
+          day: String(b.day),
+          startTime: String(b.startTime),
+          endTime: String(b.endTime),
+          loadType: b.loadType,
+        })),
+        ownAutoDraftIds,
+      );
+      const recomputedWarnings = [...validation.softWarnings];
+      this.logger.log(
+        `Candidate ${candidateId} recomputed: placed=${placedCount} unscheduled=${unscheduledCount} warnings=${recomputedWarnings.length}`,
+      );
+      if (validation.hardFailures.length > 0) {
+        throw new ConflictException({
+          message: 'Candidate failed validation against current schedule state.',
+          failures: validation.hardFailures,
+        });
+      }
+
+      // Step 9: compensating write protocol.
+      const { data: snapshotRows, error: snapErr } = await db
+        .from('schedule')
+        .select('*')
+        .eq('term_id', termId)
+        .eq('dept_id', deptId)
+        .eq('status', 'draft')
+        .like('remarks', 'Auto-generated by solver%');
+      if (snapErr) {
+        throw new BadRequestException(
+          `Failed to snapshot own auto-drafts: ${snapErr.message}`,
+        );
+      }
+      const snapshot = (snapshotRows ?? []).map((r: any) => {
+        const { schedule_id, ...rest } = r;
+        return rest;
+      });
+
+      const candidateMarker = `Auto-generated by solver (candidate ${candidateId || 'unknown'})`;
+
+      const { error: clearErr } = await db
+        .from('schedule')
+        .delete()
+        .eq('term_id', termId)
+        .eq('dept_id', deptId)
+        .eq('status', 'draft')
+        .like('remarks', 'Auto-generated by solver%');
+      if (clearErr) {
+        throw new BadRequestException(
+          `Failed to clear own auto-drafts: ${clearErr.message}`,
+        );
+      }
+
+      if (schedule.length > 0) {
+        const insertRows = schedule.map((b: any) => ({
+          term_id: termId,
+          subject_id: b.subjectId,
+          faculty_id: b.facultyId,
+          room_id: b.roomId,
+          timeslot_id: null,
+          section: b.sectionCode ?? b.section ?? null,
+          section_id: b.sectionId,
+          dept_id: deptId,
+          load_type: b.loadType,
+          day_of_week: b.day,
+          start_time:
+            String(b.startTime).length === 5 ? `${b.startTime}:00` : b.startTime,
+          end_time:
+            String(b.endTime).length === 5 ? `${b.endTime}:00` : b.endTime,
+          status: 'draft',
+          remarks: candidateMarker,
+        }));
+
+        const { error: insertErr } = await db.from('schedule').insert(insertRows);
+        if (insertErr) {
+          this.logger.error(
+            `Candidate insert failed for term=${termId} dept=${deptId} candidate=${candidateId}: ${insertErr.message}`,
+          );
+          // Delete partial rows with marker, then restore snapshot.
+          const { error: cleanupErr } = await db
+            .from('schedule')
+            .delete()
+            .eq('term_id', termId)
+            .eq('dept_id', deptId)
+            .eq('status', 'draft')
+            .eq('remarks', candidateMarker);
+          if (cleanupErr) {
+            this.logger.error(
+              `CRITICAL: Failed to clean partial candidate rows for term=${termId} dept=${deptId} candidate=${candidateId}: ${cleanupErr.message}`,
+            );
+            throw new ConflictException(
+              'Candidate insert failed and partial-row cleanup failed. Manual recovery may be required.',
+            );
+          }
+
+          if (snapshot.length > 0) {
+            const { error: restoreErr } = await db
+              .from('schedule')
+              .insert(snapshot);
+            if (restoreErr) {
+              this.logger.error(
+                `CRITICAL: Failed to restore own auto-draft snapshot for term=${termId} dept=${deptId} candidate=${candidateId}: ${restoreErr.message}`,
+              );
+              throw new ConflictException(
+                'Candidate insert failed and snapshot restore failed. Manual recovery may be required.',
+              );
+            }
+          }
+
+          throw new ConflictException(
+            `Failed to insert selected candidate: ${insertErr.message}`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `Candidate confirmed: term=${termId} dept=${deptId} candidate=${candidateId} placed=${placedCount} unscheduled=${unscheduledCount}`,
+      );
+
+      return { success: true };
+    } finally {
+      if (lockHeld) {
+        try {
+          await this.releaseAutoGenerateLock(termId, deptId, userId);
+        } catch (releaseErr) {
+          this.logger.warn(
+            `Failed to release confirm lock for term=${termId} dept=${deptId} candidate=${candidateId}: ${(releaseErr as Error).message}`,
+          );
+        } finally {
+          lockHeld = false;
+        }
+      }
     }
   }
 
@@ -1816,12 +2888,16 @@ export class AutoGenerateService {
     state: 'running' | 'pending_confirm';
     expiresAt: string;
   } | null> {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .rpc('get_auto_generate_lock', {
+    const { data, error } = await this.callLockRpc<any[]>(
+      'get_auto_generate_lock',
+      {
         p_term_id: Number(termId),
         p_dept_id: Number(deptId),
-      });
+      },
+      {
+        p_term_id: Number(termId),
+      },
+    );
 
     if (error) {
       this.logger.warn(
