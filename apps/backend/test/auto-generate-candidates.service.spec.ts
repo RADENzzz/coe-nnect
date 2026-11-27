@@ -266,4 +266,50 @@ describe('AutoGenerateService candidate mode', () => {
     expect(finishedCalls[0][1].payload.candidateCount).toBe(1);
     expect(finishedCalls[0][1].payload.scheduleCount).toBeUndefined();
   });
+
+  it('fails cleanly when in-flight validation exceeds the 60s budget', async () => {
+    jest.useFakeTimers();
+    const realDateNow = Date.now;
+    const base = 1_000_000;
+    let dateNowCalls = 0;
+    Date.now = jest.fn(() => {
+      dateNowCalls += 1;
+      return dateNowCalls === 1 ? base : base + 59_999;
+    }) as any;
+
+    try {
+      const { service, supabase } = makeService();
+      let validationCalled!: () => void;
+      const validationCalledPromise = new Promise<void>((resolve) => {
+        validationCalled = resolve;
+      });
+      jest
+        .spyOn(service as any, 'validateGeneratedSchedule')
+        .mockImplementation(() => {
+          validationCalled();
+          return new Promise(() => {});
+        });
+
+      dateNowCalls = 0;
+      const resultPromise = service.autoGenerate(termId, deptId, userId, {
+        candidateCount: 2,
+      } as any);
+      await validationCalledPromise;
+      await jest.advanceTimersByTimeAsync(60_005);
+      const result: any = await resultPromise;
+
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/validation took too long/i);
+      expect(result.candidates).toBeUndefined();
+
+      const scheduleFrom = supabase.db.from.mock.calls
+        .filter(([table]: [string]) => table === 'schedule')
+        .map(([table]: [string]) => supabase.fromBuilders[table]);
+      expect(scheduleFrom.some((b: any) => b?.delete?.mock?.calls?.length > 0)).toBe(false);
+      expect(scheduleFrom.some((b: any) => b?.insert?.mock?.calls?.length > 0)).toBe(false);
+    } finally {
+      Date.now = realDateNow;
+      jest.useRealTimers();
+    }
+  });
 });

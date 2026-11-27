@@ -710,46 +710,63 @@ export class AutoGenerateService {
           const validationBudgetMs = 60_000;
           const validationStarted = Date.now();
           const validatedCandidates: any[] = [];
+          const validationTimeoutMessage =
+            'Candidate validation took too long. No candidates were returned.';
           for (const candidate of rawCandidates) {
-            if (Date.now() - validationStarted > validationBudgetMs) {
+            const remainingMs =
+              validationBudgetMs - (Date.now() - validationStarted);
+            if (remainingMs <= 0) {
               return {
                 kind: 'validation-timeout' as const,
-                message:
-                  'Candidate validation took too long. No candidates were returned.',
+                message: validationTimeoutMessage,
               };
             }
             const candidateSchedule = Array.isArray(candidate?.schedule)
               ? candidate.schedule
               : [];
-            const validation = await this.validateGeneratedSchedule(
-              termId,
-              candidateSchedule,
-              ownAutoDraftIds,
-            );
-            if (Date.now() - validationStarted > validationBudgetMs) {
-              return {
-                kind: 'validation-timeout' as const,
-                message:
-                  'Candidate validation took too long. No candidates were returned.',
-              };
+            let timeoutHandle: NodeJS.Timeout | undefined;
+            try {
+              const validation = await Promise.race([
+                this.validateGeneratedSchedule(
+                  termId,
+                  candidateSchedule,
+                  ownAutoDraftIds,
+                ),
+                new Promise<never>((_, reject) => {
+                  timeoutHandle = setTimeout(
+                    () => reject(new Error('VALIDATION_TIMEOUT')),
+                    remainingMs,
+                  );
+                }),
+              ]);
+              if (validation.hardFailures.length > 0) {
+                this.logger.warn(
+                  `Dropping candidate with ${validation.hardFailures.length} hard validation failure(s) for term=${termId} dept=${deptId}`,
+                );
+                continue;
+              }
+              validatedCandidates.push({
+                ...candidate,
+                schedule: candidateSchedule,
+                unscheduled: Array.isArray(candidate?.unscheduled)
+                  ? candidate.unscheduled
+                  : [],
+                warnings: [
+                  ...(Array.isArray(candidate?.warnings) ? candidate.warnings : []),
+                  ...validation.softWarnings,
+                ],
+              });
+            } catch (err) {
+              if ((err as Error)?.message === 'VALIDATION_TIMEOUT') {
+                return {
+                  kind: 'validation-timeout' as const,
+                  message: validationTimeoutMessage,
+                };
+              }
+              throw err;
+            } finally {
+              if (timeoutHandle) clearTimeout(timeoutHandle);
             }
-            if (validation.hardFailures.length > 0) {
-              this.logger.warn(
-                `Dropping candidate with ${validation.hardFailures.length} hard validation failure(s) for term=${termId} dept=${deptId}`,
-              );
-              continue;
-            }
-            validatedCandidates.push({
-              ...candidate,
-              schedule: candidateSchedule,
-              unscheduled: Array.isArray(candidate?.unscheduled)
-                ? candidate.unscheduled
-                : [],
-              warnings: [
-                ...(Array.isArray(candidate?.warnings) ? candidate.warnings : []),
-                ...validation.softWarnings,
-              ],
-            });
           }
 
           if (validatedCandidates.length === 0) {
