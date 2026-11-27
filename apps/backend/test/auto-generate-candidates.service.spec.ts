@@ -464,4 +464,65 @@ describe('AutoGenerateService candidate mode', () => {
       jest.useRealTimers();
     }
   });
+
+  it('clears the in-memory guard when candidate started-notification setup fails before the critical section', async () => {
+    const dispatcher = {
+      dispatch: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('started notification failed'))
+        .mockResolvedValue(undefined),
+    };
+    const recipients = {
+      departmentHeadsOf: jest.fn().mockResolvedValue(['dh-1']),
+      administrators: jest.fn().mockResolvedValue([]),
+      collegeDean: jest.fn().mockResolvedValue([]),
+      uniq: jest.fn((arr: string[]) => Array.from(new Set(arr))),
+    };
+    const { service } = makeService({ dispatcher, recipients });
+    const options = { candidateCount: 2 } as any;
+
+    await expect(
+      service.autoGenerate(termId, deptId, userId, options),
+    ).rejects.toThrow('started notification failed');
+
+    const result: any = await service.autoGenerate(
+      termId,
+      deptId,
+      userId,
+      options,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.mode).toBe('candidates');
+    expect(result.candidates.length).toBeGreaterThan(0);
+  });
+
+  it('clears the in-memory guard when department-head lookup fails before the critical section in legacy mode', async () => {
+    const recipients = {
+      departmentHeadsOf: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('department head lookup failed'))
+        .mockResolvedValue(['dh-1']),
+      administrators: jest.fn().mockResolvedValue([]),
+      collegeDean: jest.fn().mockResolvedValue([]),
+      uniq: jest.fn((arr: string[]) => Array.from(new Set(arr))),
+    };
+    const solverClient = {
+      solve: jest.fn().mockResolvedValue({
+        status: 'success',
+        schedule: [],
+        unscheduled: [],
+        solveTimeSeconds: 0.1,
+      }),
+    };
+    const { service } = makeService({ recipients, solverClient });
+
+    await expect(
+      service.autoGenerate(termId, deptId, userId),
+    ).rejects.toThrow('department head lookup failed');
+
+    const result: any = await service.autoGenerate(termId, deptId, userId);
+
+    expect(result.success).toBe(true);
+  });
 });

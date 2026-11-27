@@ -196,33 +196,44 @@ export class AutoGenerateService {
 
     this.autoGenerateInFlight.add(key);
 
-    const starterDHs = await this.recipients.departmentHeadsOf(deptId);
-    const contextDb = this.supabase.getAdminClient();
-    const [dept, termName] = await Promise.all([
-      loadDeptLabel(contextDb, deptId),
-      loadTermName(contextDb, termId),
-    ]);
-    const deptLabel =
-      dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
+    let starterDHs: string[] = [];
+    let dept: { deptCode: string | null; deptName: string | null } = {
+      deptCode: null,
+      deptName: null,
+    };
+    let termName: string | null = null;
+    let deptLabel = `Department ${deptId}`;
+    try {
+      starterDHs = await this.recipients.departmentHeadsOf(deptId);
+      const contextDb = this.supabase.getAdminClient();
+      [dept, termName] = await Promise.all([
+        loadDeptLabel(contextDb, deptId),
+        loadTermName(contextDb, termId),
+      ]);
+      deptLabel = dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
 
-    await this.dispatcher.dispatch('auto_generate.started', {
-      recipientUserIds: starterDHs,
-      title: `Auto-generate started: ${deptLabel}`,
-      body:
-        `Schedule generation started for ${deptLabel}` +
-        (termName ? ` · ${termName}` : '') +
-        '.',
-      entityType: 'term',
-      entityId: termId,
-      payload: {
-        deptId,
-        deptCode: dept.deptCode,
-        deptName: dept.deptName,
-        termId,
-        termName,
-        triggeredBy: userId,
-      },
-    });
+      await this.dispatcher.dispatch('auto_generate.started', {
+        recipientUserIds: starterDHs,
+        title: `Auto-generate started: ${deptLabel}`,
+        body:
+          `Schedule generation started for ${deptLabel}` +
+          (termName ? ` · ${termName}` : '') +
+          '.',
+        entityType: 'term',
+        entityId: termId,
+        payload: {
+          deptId,
+          deptCode: dept.deptCode,
+          deptName: dept.deptName,
+          termId,
+          termName,
+          triggeredBy: userId,
+        },
+      });
+    } catch (err) {
+      this.autoGenerateInFlight.delete(key);
+      throw err;
+    }
 
     try {
       // ═══════════════════════════════════════════════════════════════
@@ -587,34 +598,44 @@ export class AutoGenerateService {
 
     this.autoGenerateInFlight.add(key);
 
-    const contextDb = this.supabase.getAdminClient();
-    const [dept, termName] = await Promise.all([
-      loadDeptLabel(contextDb, deptId),
-      loadTermName(contextDb, termId),
-    ]);
-    const deptLabel =
-      dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
+    let dept: { deptCode: string | null; deptName: string | null } = {
+      deptCode: null,
+      deptName: null,
+    };
+    let termName: string | null = null;
+    let deptLabel = `Department ${deptId}`;
+    try {
+      const contextDb = this.supabase.getAdminClient();
+      [dept, termName] = await Promise.all([
+        loadDeptLabel(contextDb, deptId),
+        loadTermName(contextDb, termId),
+      ]);
+      deptLabel = dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
 
-    // Candidate sessions live only in the initiating user's tab; other
-    // department heads cannot review them (design §7.5).
-    await this.dispatcher.dispatch('auto_generate.started', {
-      recipientUserIds: [userId],
-      title: `Auto-generate started: ${deptLabel}`,
-      body:
-        `Schedule generation started for ${deptLabel}` +
-        (termName ? ` · ${termName}` : '') +
-        '.',
-      entityType: 'term',
-      entityId: termId,
-      payload: {
-        deptId,
-        deptCode: dept.deptCode,
-        deptName: dept.deptName,
-        termId,
-        termName,
-        triggeredBy: userId,
-      },
-    });
+      // Candidate sessions live only in the initiating user's tab; other
+      // department heads cannot review them (design §7.5).
+      await this.dispatcher.dispatch('auto_generate.started', {
+        recipientUserIds: [userId],
+        title: `Auto-generate started: ${deptLabel}`,
+        body:
+          `Schedule generation started for ${deptLabel}` +
+          (termName ? ` · ${termName}` : '') +
+          '.',
+        entityType: 'term',
+        entityId: termId,
+        payload: {
+          deptId,
+          deptCode: dept.deptCode,
+          deptName: dept.deptName,
+          termId,
+          termName,
+          triggeredBy: userId,
+        },
+      });
+    } catch (err) {
+      this.autoGenerateInFlight.delete(key);
+      throw err;
+    }
 
     let lockHeldByUs = false;
     try {
