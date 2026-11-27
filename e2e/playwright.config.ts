@@ -33,6 +33,9 @@ const apiPort = api.port || '3100';
 const apiPrefix = api.pathname.replace(/^\/+|\/+$/g, '') || 'api';
 const frontend = new URL(baseURL);
 const frontendPort = frontend.port || '5174';
+const solverURL = withoutTrailingSlash(
+  optionalEnv('E2E_SOLVER_URL', 'http://127.0.0.1:8000'),
+);
 const isLocalDatabase = /(^|[@/])(localhost|127\.0\.0\.1|\[::1\])(?=[:/]|$)/i.test(
   databaseURL,
 );
@@ -61,6 +64,7 @@ const webServerEnv: Record<string, string> = {
   SUPABASE_URL: supabaseURL,
   SUPABASE_ANON_KEY: anonKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+  SOLVER_URL: solverURL,
   FRONTEND_URL: baseURL,
   // Required for the login CAPTCHA. Test-only value: challenges and redeems
   // only need to agree within one run, and E2E never touches production.
@@ -138,6 +142,16 @@ export default defineConfig({
   webServer: skipWebServer
     ? undefined
     : [
+        {
+          command:
+            'python -m uvicorn main:app --host 127.0.0.1 --port 8000',
+          cwd: resolve(process.cwd(), 'packages', 'solver-service'),
+          url: `${solverURL}/health`,
+          timeout: 60_000,
+          reuseExistingServer: false,
+          gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
+          env: webServerEnv,
+        },
         {
           command:
             'pnpm --filter @coe-nnect/backend build && ' +
