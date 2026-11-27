@@ -2203,7 +2203,6 @@ export class AutoGenerateService {
       .getAdminClient()
       .rpc('try_acquire_auto_generate_lock', {
         p_term_id: Number(termId),
-        p_dept_id: Number(deptId),
         p_user_id: userId,
         p_ttl_seconds: ttlSeconds,
       });
@@ -2227,7 +2226,6 @@ export class AutoGenerateService {
       .getAdminClient()
       .rpc('release_auto_generate_lock', {
         p_term_id: Number(termId),
-        p_dept_id: Number(deptId),
         p_user_id: userId,
       });
 
@@ -2247,7 +2245,6 @@ export class AutoGenerateService {
       .getAdminClient()
       .rpc('mark_auto_generate_pending', {
         p_term_id: Number(termId),
-        p_dept_id: Number(deptId),
         p_user_id: userId,
         p_ttl_seconds: 600,
       });
@@ -2807,7 +2804,6 @@ export class AutoGenerateService {
       .getAdminClient()
       .rpc('get_auto_generate_lock', {
         p_term_id: Number(termId),
-        p_dept_id: Number(deptId),
       });
 
     if (error) {

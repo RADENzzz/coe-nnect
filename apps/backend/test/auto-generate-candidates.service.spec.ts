@@ -229,6 +229,69 @@ describe('AutoGenerateService candidate mode', () => {
     expect(events).toContain('release');
   });
 
+  it('acquires the generation lock with the applied RPC signature', async () => {
+    const { service, rpc } = makeService();
+
+    await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+
+    const acquireCalls = rpc.mock.calls.filter(
+      ([fn]: [string]) => fn === 'try_acquire_auto_generate_lock',
+    );
+    expect(acquireCalls).toHaveLength(1);
+    expect(acquireCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_user_id: userId,
+      p_ttl_seconds: 300,
+    });
+    expect(acquireCalls[0][1]).not.toHaveProperty('p_dept_id');
+  });
+
+  it('releases the generation lock with the applied RPC signature', async () => {
+    const { service, rpc } = makeService();
+
+    await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+
+    const releaseCalls = rpc.mock.calls.filter(
+      ([fn]: [string]) => fn === 'release_auto_generate_lock',
+    );
+    expect(releaseCalls).toHaveLength(1);
+    expect(releaseCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_user_id: userId,
+    });
+    expect(releaseCalls[0][1]).not.toHaveProperty('p_dept_id');
+  });
+
+  it('reads the generation lock with the applied RPC signature', async () => {
+    const { service, rpc } = makeService();
+
+    await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+
+    const getCalls = rpc.mock.calls.filter(
+      ([fn]: [string]) => fn === 'get_auto_generate_lock',
+    );
+    expect(getCalls).toHaveLength(1);
+    expect(getCalls[0][1]).toEqual({ p_term_id: Number(termId) });
+    expect(getCalls[0][1]).not.toHaveProperty('p_dept_id');
+  });
+
+  it('marks pending with the applied RPC signature', async () => {
+    const { service, rpc } = makeService();
+
+    await (service as any).markAutoGeneratePending(termId, deptId, userId);
+
+    const pendingCalls = rpc.mock.calls.filter(
+      ([fn]: [string]) => fn === 'mark_auto_generate_pending',
+    );
+    expect(pendingCalls).toHaveLength(1);
+    expect(pendingCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_user_id: userId,
+      p_ttl_seconds: 600,
+    });
+    expect(pendingCalls[0][1]).not.toHaveProperty('p_dept_id');
+  });
+
   it('does not mark pending_confirm in candidate mode', async () => {
     const rpc = makeRpc();
     const supabase = makeSupabase(rpc);

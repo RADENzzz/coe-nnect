@@ -907,21 +907,28 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
   it('serializes accepts across departments in the same term', async () => {
     const otherDept = '21';
     const events: string[] = [];
-    const rpc = jest.fn(async (fn: string, args?: any) => {
-      if (fn === 'try_acquire_auto_generate_lock') {
-        events.push(`acquire:${String(args?.p_dept_id)}`);
-        return { data: true, error: null };
-      }
-      if (fn === 'release_auto_generate_lock') {
-        events.push(`release:${String(args?.p_dept_id)}`);
-        return { data: true, error: null };
-      }
-      return { data: null, error: null };
-    });
+    const rpc = jest.fn(async () => ({ data: true, error: null }));
     const { service, from } = makeService({
       rpc,
       tableResponses: { subject: [subjectResponse, subjectResponse] },
     });
+
+    const acquireLock = (service as any).tryAcquireAutoGenerateLock.bind(service);
+    jest
+      .spyOn(service as any, 'tryAcquireAutoGenerateLock')
+      .mockImplementation(
+        async (term: string, lockDeptId: string, lockUserId: string, ttl?: number) => {
+          events.push(`acquire:${lockDeptId}`);
+          return acquireLock(term, lockDeptId, lockUserId, ttl);
+        },
+      );
+    const releaseLock = (service as any).releaseAutoGenerateLock.bind(service);
+    jest
+      .spyOn(service as any, 'releaseAutoGenerateLock')
+      .mockImplementation(async (term: string, lockDeptId: string, lockUserId: string) => {
+        events.push(`release:${lockDeptId}`);
+        return releaseLock(term, lockDeptId, lockUserId);
+      });
 
     let signalFirstEntered!: () => void;
     const firstEntered = new Promise<void>((resolve) => {
