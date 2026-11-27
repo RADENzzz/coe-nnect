@@ -5,9 +5,43 @@ describe('AutoGenerateService candidate mode', () => {
   const deptId = '20';
   const userId = 'user-1';
 
+  const lockFunctions = new Set([
+    'try_acquire_auto_generate_lock',
+    'release_auto_generate_lock',
+    'mark_auto_generate_pending',
+    'get_auto_generate_lock',
+  ]);
+
+  function missingFunctionError(fn: string, byMessageOnly = false) {
+    return {
+      data: null,
+      error: byMessageOnly
+        ? {
+            message: `Could not find the function public.${fn}(p_term_id, p_user_id) in the schema cache`,
+          }
+        : {
+            code: 'PGRST202',
+            message: `Could not find the function public.${fn}(p_term_id, p_user_id) in the schema cache`,
+          },
+    };
+  }
+
+  function rpcCalls(rpc: jest.Mock, fn: string) {
+    return rpc.mock.calls.filter(([name]: [string]) => name === fn);
+  }
+
+  // Default RPC mock emulates CI's migrated schema: only term-scoped lock
+  // signatures exist, so a dept-scoped payload gets PostgREST's PGRST202.
   function makeRpc(overrides: Record<string, any> = {}) {
-    return jest.fn(async (fn: string, _args?: any) => {
-      if (overrides[fn]) return overrides[fn](fn, _args);
+    return jest.fn(async (fn: string, args?: any) => {
+      if (overrides[fn]) return overrides[fn](fn, args);
+      if (
+        lockFunctions.has(fn) &&
+        args &&
+        Object.prototype.hasOwnProperty.call(args, 'p_dept_id')
+      ) {
+        return missingFunctionError(fn);
+      }
       if (fn === 'try_acquire_auto_generate_lock') return { data: true, error: null };
       if (fn === 'release_auto_generate_lock') return { data: true, error: null };
       if (fn === 'mark_auto_generate_pending') return { data: true, error: null };
@@ -229,67 +263,77 @@ describe('AutoGenerateService candidate mode', () => {
     expect(events).toContain('release');
   });
 
-  it('acquires the generation lock with the applied RPC signature', async () => {
+  it('retries the term-scoped acquire signature when the dept-scoped RPC is missing', async () => {
     const { service, rpc } = makeService();
 
-    await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+    const result = await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
 
-    const acquireCalls = rpc.mock.calls.filter(
-      ([fn]: [string]) => fn === 'try_acquire_auto_generate_lock',
-    );
-    expect(acquireCalls).toHaveLength(1);
+    expect(result.success).toBe(true);
+    const acquireCalls = rpcCalls(rpc, 'try_acquire_auto_generate_lock');
+    expect(acquireCalls).toHaveLength(2);
     expect(acquireCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+      p_ttl_seconds: 300,
+    });
+    expect(acquireCalls[1][1]).toEqual({
       p_term_id: Number(termId),
       p_user_id: userId,
       p_ttl_seconds: 300,
     });
-    expect(acquireCalls[0][1]).not.toHaveProperty('p_dept_id');
   });
 
-  it('releases the generation lock with the applied RPC signature', async () => {
+  it('retries the term-scoped release signature when the dept-scoped RPC is missing', async () => {
     const { service, rpc } = makeService();
 
     await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
 
-    const releaseCalls = rpc.mock.calls.filter(
-      ([fn]: [string]) => fn === 'release_auto_generate_lock',
-    );
-    expect(releaseCalls).toHaveLength(1);
+    const releaseCalls = rpcCalls(rpc, 'release_auto_generate_lock');
+    expect(releaseCalls).toHaveLength(2);
     expect(releaseCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+    });
+    expect(releaseCalls[1][1]).toEqual({
       p_term_id: Number(termId),
       p_user_id: userId,
     });
-    expect(releaseCalls[0][1]).not.toHaveProperty('p_dept_id');
   });
 
-  it('reads the generation lock with the applied RPC signature', async () => {
+  it('retries the term-scoped get-lock signature when the dept-scoped RPC is missing', async () => {
     const { service, rpc } = makeService();
 
     await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
 
-    const getCalls = rpc.mock.calls.filter(
-      ([fn]: [string]) => fn === 'get_auto_generate_lock',
-    );
-    expect(getCalls).toHaveLength(1);
-    expect(getCalls[0][1]).toEqual({ p_term_id: Number(termId) });
-    expect(getCalls[0][1]).not.toHaveProperty('p_dept_id');
+    const getCalls = rpcCalls(rpc, 'get_auto_generate_lock');
+    expect(getCalls).toHaveLength(2);
+    expect(getCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+    });
+    expect(getCalls[1][1]).toEqual({ p_term_id: Number(termId) });
   });
 
-  it('marks pending with the applied RPC signature', async () => {
+  it('retries the term-scoped pending signature when the dept-scoped RPC is missing', async () => {
     const { service, rpc } = makeService();
 
     await (service as any).markAutoGeneratePending(termId, deptId, userId);
 
-    const pendingCalls = rpc.mock.calls.filter(
-      ([fn]: [string]) => fn === 'mark_auto_generate_pending',
-    );
-    expect(pendingCalls).toHaveLength(1);
+    const pendingCalls = rpcCalls(rpc, 'mark_auto_generate_pending');
+    expect(pendingCalls).toHaveLength(2);
     expect(pendingCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+      p_ttl_seconds: 600,
+    });
+    expect(pendingCalls[1][1]).toEqual({
       p_term_id: Number(termId),
       p_user_id: userId,
       p_ttl_seconds: 600,
     });
-    expect(pendingCalls[0][1]).not.toHaveProperty('p_dept_id');
   });
 
   it('does not mark pending_confirm in candidate mode', async () => {
@@ -524,5 +568,88 @@ describe('AutoGenerateService candidate mode', () => {
     const result: any = await service.autoGenerate(termId, deptId, userId);
 
     expect(result.success).toBe(true);
+  });
+
+  it('uses only the dept-scoped acquire signature when that RPC is available', async () => {
+    const acquire = jest.fn().mockResolvedValue({ data: true, error: null });
+    const rpc = makeRpc({ try_acquire_auto_generate_lock: acquire });
+    const { service } = makeService({ rpc });
+
+    const result = await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+
+    expect(result.success).toBe(true);
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(acquire).toHaveBeenCalledWith('try_acquire_auto_generate_lock', {
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+      p_ttl_seconds: 300,
+    });
+  });
+
+  it('recognizes a message-only missing-function error and falls back to the term-scoped acquire signature', async () => {
+    const acquire = jest.fn(async (_fn: string, args: any) => {
+      if (Object.prototype.hasOwnProperty.call(args, 'p_dept_id')) {
+        return missingFunctionError('try_acquire_auto_generate_lock', true);
+      }
+      return { data: true, error: null };
+    });
+    const rpc = makeRpc({ try_acquire_auto_generate_lock: acquire });
+    const { service } = makeService({ rpc });
+
+    const result = await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+
+    expect(result.success).toBe(true);
+    expect(acquire).toHaveBeenCalledTimes(2);
+    expect(acquire.mock.calls[1][1]).not.toHaveProperty('p_dept_id');
+  });
+
+  it('throws an infrastructure error instead of a busy result when no acquire signature exists', async () => {
+    const acquire = jest
+      .fn()
+      .mockResolvedValue(missingFunctionError('try_acquire_auto_generate_lock'));
+    const rpc = makeRpc({ try_acquire_auto_generate_lock: acquire });
+    const { service, dispatcher } = makeService({ rpc });
+
+    await expect(
+      service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any),
+    ).rejects.toThrow(
+      'No compatible try_acquire_auto_generate_lock RPC signature is available',
+    );
+    expect(acquire).toHaveBeenCalledTimes(2);
+    const finished = dispatcher.dispatch.mock.calls.filter(
+      ([event]: [string]) => event === 'auto_generate.finished',
+    );
+    expect(finished).toHaveLength(0);
+  });
+
+  it('surfaces a non-signature RPC error without retrying the acquire function', async () => {
+    const acquire = jest.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: '42501',
+        message: 'permission denied for function try_acquire_auto_generate_lock',
+      },
+    });
+    const rpc = makeRpc({ try_acquire_auto_generate_lock: acquire });
+    const { service } = makeService({ rpc });
+
+    await expect(
+      service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any),
+    ).rejects.toThrow(/permission denied for function/);
+    expect(acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches the successful acquire signature for later calls on the same service', async () => {
+    const { service, rpc } = makeService();
+
+    await (service as any).tryAcquireAutoGenerateLock(termId, deptId, userId);
+    await (service as any).tryAcquireAutoGenerateLock(termId, deptId, userId);
+
+    const acquireCalls = rpcCalls(rpc, 'try_acquire_auto_generate_lock');
+    expect(acquireCalls).toHaveLength(3);
+    expect(acquireCalls[0][1]).toHaveProperty('p_dept_id');
+    expect(acquireCalls[1][1]).not.toHaveProperty('p_dept_id');
+    expect(acquireCalls[2][1]).toEqual(acquireCalls[1][1]);
   });
 });

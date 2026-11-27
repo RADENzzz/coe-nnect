@@ -38,6 +38,52 @@ export class AutoGenerateService {
    */
   private readonly autoGenerateInFlight = new Set<string>();
 
+  /**
+   * Lock RPCs exist in two deployed shapes: `(term, dept, ...)` and the
+   * older migration's `(term, ...)`. Remember whichever shape worked so a
+   * service instance does not repeat the PostgREST function lookup on every
+   * subsequent lock operation.
+   */
+  private readonly lockRpcSignature = new Map<string, 'dept' | 'term'>();
+
+  private isMissingFunctionSignatureError(error: any, fn: string): boolean {
+    if (!error) return false;
+    if (error.code === 'PGRST202') return true;
+    return String(error.message ?? '').includes(
+      `Could not find the function public.${fn}(`,
+    );
+  }
+
+  /** Try the dept-scoped RPC payload first, then the term-scoped migration shape. */
+  private async callLockRpc<T = any>(
+    fn: string,
+    deptScopedArgs: Record<string, unknown>,
+    termScopedArgs: Record<string, unknown>,
+  ): Promise<{ data: T | null; error: any }> {
+    const cached = this.lockRpcSignature.get(fn);
+    const signatures: Array<'dept' | 'term'> =
+      cached === 'term' ? ['term', 'dept'] : ['dept', 'term'];
+
+    for (const signature of signatures) {
+      const result = await this.supabase
+        .getAdminClient()
+        .rpc(fn, signature === 'dept' ? deptScopedArgs : termScopedArgs);
+
+      if (!result.error) {
+        this.lockRpcSignature.set(fn, signature);
+        return result;
+      }
+
+      // Only a missing function justifies trying the other signature.
+      // Any other database error must surface to the caller unchanged.
+      if (!this.isMissingFunctionSignatureError(result.error, fn)) {
+        return result;
+      }
+    }
+
+    throw new Error(`No compatible ${fn} RPC signature is available`);
+  }
+
   private flightKey(termId: string, deptId: string): string {
     return `${termId}:${deptId}`;
   }
@@ -2220,19 +2266,27 @@ export class AutoGenerateService {
     userId: string,
     ttlSeconds = 300,
   ): Promise<boolean> {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .rpc('try_acquire_auto_generate_lock', {
+    const { data, error } = await this.callLockRpc<boolean>(
+      'try_acquire_auto_generate_lock',
+      {
+        p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
+        p_user_id: userId,
+        p_ttl_seconds: ttlSeconds,
+      },
+      {
         p_term_id: Number(termId),
         p_user_id: userId,
         p_ttl_seconds: ttlSeconds,
-      });
+      },
+    );
 
     if (error) {
-      this.logger.error(
-        `Failed to acquire auto-generate lock for term=${termId} dept=${deptId}: ${error.message}`,
-      );
-      return false;
+      const message =
+        `Failed to acquire auto-generate lock for term=${termId} dept=${deptId}: ` +
+        `${error.message}`;
+      this.logger.error(message);
+      throw new Error(message);
     }
 
     return data === true;
@@ -2243,12 +2297,18 @@ export class AutoGenerateService {
     deptId: string,
     userId: string,
   ): Promise<void> {
-    const { error } = await this.supabase
-      .getAdminClient()
-      .rpc('release_auto_generate_lock', {
+    const { error } = await this.callLockRpc(
+      'release_auto_generate_lock',
+      {
+        p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
+        p_user_id: userId,
+      },
+      {
         p_term_id: Number(termId),
         p_user_id: userId,
-      });
+      },
+    );
 
     if (error) {
       this.logger.warn(
@@ -2262,13 +2322,20 @@ export class AutoGenerateService {
     deptId: string,
     userId: string,
   ): Promise<void> {
-    const { error } = await this.supabase
-      .getAdminClient()
-      .rpc('mark_auto_generate_pending', {
+    const { error } = await this.callLockRpc(
+      'mark_auto_generate_pending',
+      {
+        p_term_id: Number(termId),
+        p_dept_id: Number(deptId),
+        p_user_id: userId,
+        p_ttl_seconds: 600,
+      },
+      {
         p_term_id: Number(termId),
         p_user_id: userId,
         p_ttl_seconds: 600,
-      });
+      },
+    );
     if (error) {
       this.logger.warn(
         `Failed to mark pending lock for term=${termId} dept=${deptId}: ${error.message}`,
@@ -2821,11 +2888,16 @@ export class AutoGenerateService {
     state: 'running' | 'pending_confirm';
     expiresAt: string;
   } | null> {
-    const { data, error } = await this.supabase
-      .getAdminClient()
-      .rpc('get_auto_generate_lock', {
+    const { data, error } = await this.callLockRpc<any[]>(
+      'get_auto_generate_lock',
+      {
         p_term_id: Number(termId),
-      });
+        p_dept_id: Number(deptId),
+      },
+      {
+        p_term_id: Number(termId),
+      },
+    );
 
     if (error) {
       this.logger.warn(

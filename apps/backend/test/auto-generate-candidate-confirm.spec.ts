@@ -143,9 +143,39 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     return `${Buffer.from(generatedAt, 'utf8').toString('base64url')}.${hash}`;
   }
 
+  const lockFunctions = new Set([
+    'try_acquire_auto_generate_lock',
+    'release_auto_generate_lock',
+    'mark_auto_generate_pending',
+    'get_auto_generate_lock',
+  ]);
+
+  function missingFunctionError(fn: string) {
+    return {
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: `Could not find the function public.${fn}(p_term_id, p_user_id) in the schema cache`,
+      },
+    };
+  }
+
+  function rpcCalls(rpc: jest.Mock, fn: string) {
+    return rpc.mock.calls.filter(([name]: [string]) => name === fn);
+  }
+
+  // Default RPC mock emulates CI's migrated schema: only term-scoped lock
+  // signatures exist, so a dept-scoped payload gets PostgREST's PGRST202.
   function makeRpc(overrides: Record<string, any> = {}) {
-    return jest.fn(async (fn: string, _args?: any) => {
-      if (overrides[fn]) return overrides[fn](fn, _args);
+    return jest.fn(async (fn: string, args?: any) => {
+      if (overrides[fn]) return overrides[fn](fn, args);
+      if (
+        lockFunctions.has(fn) &&
+        args &&
+        Object.prototype.hasOwnProperty.call(args, 'p_dept_id')
+      ) {
+        return missingFunctionError(fn);
+      }
       if (fn === 'try_acquire_auto_generate_lock')
         return { data: true, error: null };
       if (fn === 'release_auto_generate_lock')
@@ -984,5 +1014,94 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     expect(events.filter((event) => event === `acquire:${otherDept}`)).toHaveLength(1);
     expect(events.filter((event) => event === `release:${deptId}`)).toHaveLength(1);
     expect(events.filter((event) => event === `release:${otherDept}`)).toHaveLength(1);
+  });
+
+  it('acquires and releases the accept lock with both RPC signatures', async () => {
+    const { service, rpc } = makeService({
+      tableResponses: { subject: subjectResponse },
+    });
+
+    await expect(
+      service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+        generationToken: makeToken(),
+        candidate: baseCandidate as any,
+      }),
+    ).resolves.toEqual({ success: true });
+
+    const acquireCalls = rpcCalls(rpc, 'try_acquire_auto_generate_lock');
+    expect(acquireCalls).toHaveLength(2);
+    expect(acquireCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+      p_ttl_seconds: 60,
+    });
+    expect(acquireCalls[1][1]).toEqual({
+      p_term_id: Number(termId),
+      p_user_id: userId,
+      p_ttl_seconds: 60,
+    });
+
+    const releaseCalls = rpcCalls(rpc, 'release_auto_generate_lock');
+    expect(releaseCalls).toHaveLength(2);
+    expect(releaseCalls[0][1]).toEqual({
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+    });
+    expect(releaseCalls[1][1]).toEqual({
+      p_term_id: Number(termId),
+      p_user_id: userId,
+    });
+  });
+
+  it('uses only the dept-scoped accept lock signature when that RPC is available', async () => {
+    const acquire = jest.fn().mockResolvedValue({ data: true, error: null });
+    const rpc = makeRpc({ try_acquire_auto_generate_lock: acquire });
+    const { service } = makeService({
+      rpc,
+      tableResponses: { subject: subjectResponse },
+    });
+
+    await expect(
+      service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+        generationToken: makeToken(),
+        candidate: baseCandidate as any,
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(acquire).toHaveBeenCalledWith('try_acquire_auto_generate_lock', {
+      p_term_id: Number(termId),
+      p_dept_id: Number(deptId),
+      p_user_id: userId,
+      p_ttl_seconds: 60,
+    });
+  });
+
+  it('throws an infrastructure error instead of a conflict when no accept lock signature exists', async () => {
+    const acquire = jest
+      .fn()
+      .mockResolvedValue(missingFunctionError('try_acquire_auto_generate_lock'));
+    const rpc = makeRpc({ try_acquire_auto_generate_lock: acquire });
+    const { service, from } = makeService({ rpc });
+    const confirmPromise = service.confirmAutoGenerateCandidate(
+      termId,
+      deptId,
+      userId,
+      {
+        generationToken: makeToken(),
+        candidate: baseCandidate as any,
+      },
+    );
+
+    await expect(confirmPromise).rejects.not.toBeInstanceOf(ConflictException);
+    await expect(confirmPromise).rejects.toThrow(
+      'No compatible try_acquire_auto_generate_lock RPC signature is available',
+    );
+    expect(acquire).toHaveBeenCalledTimes(2);
+    expect(
+      (from.mock.calls as any[]).filter(([table]) => table === 'schedule'),
+    ).toHaveLength(0);
   });
 });
