@@ -128,7 +128,10 @@ export class SchedulingController {
       dto.termId,
       deptId,
       req.user.id,
-      { acknowledgeUnplottedMinors: dto.acknowledgeUnplottedMinors === true },
+      {
+        acknowledgeUnplottedMinors: dto.acknowledgeUnplottedMinors === true,
+        candidateCount: dto.candidateCount,
+      },
     );
     return { data };
   }
