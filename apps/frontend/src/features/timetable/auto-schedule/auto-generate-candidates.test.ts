@@ -66,3 +66,20 @@ test('chooser emits no native dialogs or local toast state', () => {
   assert.doesNotMatch(chooser, /useState[^\n]*failure/i, 'no local failure state');
   assert.doesNotMatch(chooser, /Toast/, 'no local toast');
 });
+
+test('candidate schedule uses raw solver blocks and chooser maps them for preview', () => {
+  const api = read('apps/frontend/src/api/schedule.api.ts');
+  const chooser = read(
+    'apps/frontend/src/features/timetable/auto-schedule/AutoScheduleCandidateChooser.tsx',
+  );
+
+  assert.match(api, /AutoGenerateCandidateBlock/, 'raw candidate block type must exist');
+  assert.doesNotMatch(
+    api,
+    /schedule:\s*ScheduleEntry\[\]/,
+    'candidate schedule must not be typed as ScheduleEntry[]',
+  );
+  assert.match(api, /schedule:\s*AutoGenerateCandidateBlock\[\]/, 'candidate schedule must use raw block type');
+  assert.match(chooser, /DAY_MAP/, 'chooser must map raw day names through DAY_MAP');
+  assert.match(chooser, /TimetableGrid/, 'chooser still renders TimetableGrid');
+});

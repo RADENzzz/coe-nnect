@@ -3,9 +3,14 @@ import { createPortal } from 'react-dom';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import Icon from '../../../components/ui/Icon';
 import { lockBodyScroll } from '@/lib/body-scroll-lock';
-import type { AutoGenerateCandidate } from '../../../api/schedule.api';
+import type {
+  AutoGenerateCandidate,
+  AutoGenerateCandidateBlock,
+} from '../../../api/schedule.api';
 import TimetableGrid from '../components/TimetableGrid';
 import type { ScheduleEntry } from '../types';
+import { colorForSubject } from '../utils/color.util';
+import { DAY_MAP } from '../utils/time.util';
 
 export interface AutoScheduleCandidateChooserProps {
   candidates: AutoGenerateCandidate[];
@@ -23,6 +28,51 @@ function readOnlyIds(entries: ScheduleEntry[]): Set<string> {
 function formatSolveTime(value: number | null): string {
   if (value == null || Number.isNaN(value)) return '—';
   return `${value.toFixed(1)}s`;
+}
+
+function mapCandidateBlocksToEntries(
+  candidateId: string,
+  blocks: AutoGenerateCandidateBlock[],
+  currentEntries: ScheduleEntry[],
+): ScheduleEntry[] {
+  const bySubject = new Map(currentEntries.map((e) => [e.subjectId, e]));
+  const bySection = new Map(currentEntries.map((e) => [e.sectionId, e]));
+  const byFaculty = new Map(currentEntries.map((e) => [e.facultyId, e]));
+  const byRoom = new Map(currentEntries.map((e) => [e.roomId, e]));
+
+  return blocks.map((block, index) => {
+    const subject = bySubject.get(block.subjectId);
+    const section = bySection.get(block.sectionId);
+    const faculty = byFaculty.get(block.facultyId);
+    const room = byRoom.get(block.roomId);
+    const day = DAY_MAP[block.day] ?? 'MON';
+
+    return {
+      id: `${candidateId}:${index}`,
+      subjectId: block.subjectId,
+      subjectCode: block.subjectCode ?? subject?.subjectCode ?? '—',
+      subjectTitle: subject?.subjectTitle ?? '',
+      sectionId: block.sectionId,
+      sectionCode: block.sectionCode ?? section?.sectionCode ?? '—',
+      facultyId: block.facultyId,
+      facultyName: faculty?.facultyName ?? '—',
+      externalFacultyName: null,
+      roomId: block.roomId,
+      roomNumber: room?.roomNumber ?? '—',
+      externalRoomName: room?.externalRoomName ?? null,
+      pendingFacultyRequestId: null,
+      pendingFacultyDeptId: null,
+      building: room?.building ?? '',
+      day,
+      startTime: block.startTime,
+      endTime: block.endTime,
+      loadType: block.loadType,
+      deptId: subject?.deptId ?? '',
+      deptColor: subject?.deptColor ?? '',
+      color: subject?.color ?? colorForSubject(block.subjectId),
+      status: 'draft',
+    } satisfies ScheduleEntry;
+  });
 }
 
 function CandidateThumbnail({
@@ -81,8 +131,23 @@ export default function AutoScheduleCandidateChooser({
     [candidates, selectedCandidateId],
   );
 
+  const mappedCandidateEntries = useMemo(() => {
+    const entries = new Map<string, ScheduleEntry[]>();
+    for (const candidate of candidates) {
+      entries.set(
+        candidate.candidateId,
+        mapCandidateBlocksToEntries(
+          candidate.candidateId,
+          candidate.schedule,
+          currentEntries,
+        ),
+      );
+    }
+    return entries;
+  }, [candidates, currentEntries]);
+
   const previewEntries = selectedCandidate
-    ? selectedCandidate.schedule
+    ? (mappedCandidateEntries.get(selectedCandidate.candidateId) ?? [])
     : currentEntries;
   const previewReadOnlyIds = useMemo(
     () => readOnlyIds(previewEntries),
@@ -184,7 +249,7 @@ export default function AutoScheduleCandidateChooser({
                     <Chip>{`Solve ${formatSolveTime(candidate.solveTimeSeconds)}`}</Chip>
                   </div>
                   <CandidateThumbnail
-                    entries={candidate.schedule}
+                    entries={mappedCandidateEntries.get(candidate.candidateId) ?? []}
                     label={`${optionLabel} thumbnail`}
                   />
                 </button>

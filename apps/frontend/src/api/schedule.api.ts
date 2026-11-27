@@ -1,5 +1,4 @@
 import { api } from './client';
-import type { ScheduleEntry } from '../features/timetable/types';
 
 // ────────────────────────────────────────────
 // Core types
@@ -125,9 +124,24 @@ export interface BlockedMinorSummary {
   programCode: string | null;
 }
 
+export interface AutoGenerateCandidateBlock {
+  sectionId: string;
+  subjectId: string;
+  facultyId: string;
+  roomId: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  loadType: 'lecture' | 'laboratory';
+  sectionCode?: string;
+  subjectCode?: string;
+  sessionIndex?: number;
+  [key: string]: unknown;
+}
+
 export interface AutoGenerateCandidate {
   candidateId: string;
-  schedule: ScheduleEntry[];
+  schedule: AutoGenerateCandidateBlock[];
   unscheduled: UnscheduledBlock[];
   placedCount: number;
   unscheduledCount: number;
