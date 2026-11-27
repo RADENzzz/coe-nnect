@@ -254,9 +254,16 @@ describe('AutoGenerateService candidate mode', () => {
   });
 
   it('sends candidate notifications only to the initiating user', async () => {
-    const { service, dispatcher } = makeService();
+    const { service, dispatcher, recipients } = makeService();
 
     await service.autoGenerate(termId, deptId, userId, { candidateCount: 2 } as any);
+
+    const startedCalls = dispatcher.dispatch.mock.calls.filter(
+      ([event]: [string]) => event === 'auto_generate.started',
+    );
+    expect(startedCalls).toHaveLength(1);
+    expect(startedCalls[0][1].recipientUserIds).toEqual([userId]);
+    expect(recipients.departmentHeadsOf).not.toHaveBeenCalled();
 
     const finishedCalls = dispatcher.dispatch.mock.calls.filter(
       ([event]: [string]) => event === 'auto_generate.finished',

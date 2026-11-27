@@ -11,6 +11,65 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
   const userId = 'user-1';
   const generatedAt = '2026-11-27T10:00:00.000Z';
 
+  const baseProblem = {
+    termId,
+    deptId,
+    sections: [{ sectionId: 'sec-1', programId: 'prog-1', yearLevel: 1 }],
+    subjects: [{ subjectId: 'sub-1', lectureUnits: 1, labUnits: 0 }],
+    prospectus: [
+      {
+        subjectId: 'sub-1',
+        programId: 'prog-1',
+        yearLevel: 1,
+        lecture_sessions_per_week: 1,
+        lab_sessions_per_week: 0,
+      },
+    ],
+    existingSubjectLoadCounts: [],
+  };
+
+  // Mirrors compute_blocks: 2 lectures - 1 already loaded = 1 remaining;
+  // 3 labs - 1 already loaded = 2 remaining.
+  const labProblem = {
+    ...baseProblem,
+    subjects: [{ subjectId: 'sub-1', lectureUnits: 2, labUnits: 3 }],
+    prospectus: [
+      {
+        subjectId: 'sub-1',
+        programId: 'prog-1',
+        yearLevel: 1,
+        lecture_sessions_per_week: 2,
+        lab_sessions_per_week: 3,
+      },
+    ],
+    existingSubjectLoadCounts: [
+      { sectionId: 'sec-1', subjectId: 'sub-1', loadType: 'lecture', count: 1 },
+      { sectionId: 'sec-1', subjectId: 'sub-1', loadType: 'laboratory', count: 1 },
+    ],
+  };
+
+  const twoSubjectProblem = {
+    ...baseProblem,
+    subjects: [
+      { subjectId: 'sub-1', lectureUnits: 1, labUnits: 0 },
+      { subjectId: 'sub-2', lectureUnits: 1, labUnits: 0 },
+    ],
+    prospectus: [
+      ...baseProblem.prospectus,
+      {
+        subjectId: 'sub-2',
+        programId: 'prog-1',
+        yearLevel: 1,
+        lecture_sessions_per_week: 1,
+        lab_sessions_per_week: 0,
+      },
+    ],
+  };
+
+  function mockProblem(service: AutoGenerateService, problem: any = baseProblem) {
+    jest.spyOn(service as any, 'buildSolverProblem').mockResolvedValue(problem);
+  }
+
   const baseOwnDraftRows = [
     {
       schedule_id: 'draft-1',
@@ -47,7 +106,11 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     unscheduled: [],
   };
 
-  function makeToken(ownRows = baseOwnDraftRows, ownUnscheduled: any[] = []) {
+  function makeToken(
+    ownRows = baseOwnDraftRows,
+    ownUnscheduled: any[] = [],
+    tokenDeptId = deptId,
+  ) {
     const ownDraftBlocks = ownRows.map((r) => ({
       sectionId: String(r.section_id),
       subjectId: String(r.subject_id),
@@ -70,7 +133,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     );
     const hash = buildAutoGenerateToken({
       termId,
-      deptId,
+      deptId: tokenDeptId,
       userId,
       generatedAt,
       fingerprint,
@@ -142,6 +205,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     ownRows?: any[];
     ownUnscheduled?: any[];
     validation?: { hardFailures: any[]; softWarnings: any[] };
+    problem?: any;
   } = {}) {
     const rpc = options.rpc ?? makeRpc();
     const { from, calls } = makeFrom(options.tableResponses ?? {});
@@ -178,6 +242,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
       .mockResolvedValue(
         options.validation ?? { hardFailures: [], softWarnings: [] },
       );
+    mockProblem(service, options.problem);
 
     return { service, supabase, db, from, calls, rpc };
   }
@@ -427,6 +492,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
       hardFailures: [],
       softWarnings: [],
     });
+    mockProblem(service);
 
     const token = makeToken(snapshotRows);
     await service.confirmAutoGenerateCandidate(termId, deptId, userId, {
@@ -533,6 +599,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
       hardFailures: [],
       softWarnings: [],
     });
+    mockProblem(service);
 
     const token = makeToken(snapshotRows);
     await expect(
@@ -639,6 +706,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
       hardFailures: [],
       softWarnings: [],
     });
+    mockProblem(service);
 
     const token = makeToken(snapshotRows);
     await expect(
@@ -718,6 +786,7 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
       hardFailures: [],
       softWarnings: [],
     });
+    mockProblem(service, twoSubjectProblem);
 
     const token = makeToken();
     await service.confirmAutoGenerateCandidate(termId, deptId, userId, {
@@ -736,5 +805,177 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     });
 
     expect(insertTables).not.toContain('schedule_unscheduled');
+  });
+
+  const subjectResponse = {
+    data: [{ subject_id: 'sub-1', source_dept: null }],
+    error: null,
+  };
+
+  it('accepts prospectus-matched counts across placed and unscheduled blocks', async () => {
+    const { service, from } = makeService({
+      problem: labProblem,
+      tableResponses: { subject: subjectResponse },
+    });
+    const candidate = {
+      candidateId: 'cand-counts',
+      schedule: [{ ...baseCandidate.schedule[0] }],
+      // The UI sends `lab`; confirm must normalize it to `laboratory`.
+      unscheduled: [
+        { sectionId: 'sec-1', subjectId: 'sub-1', kind: 'lab', sessionIndex: 1 },
+        { sectionId: 'sec-1', subjectId: 'sub-1', kind: 'lab', sessionIndex: 2 },
+      ],
+    };
+
+    await expect(
+      service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+        generationToken: makeToken(),
+        candidate: candidate as any,
+      }),
+    ).resolves.toEqual({ success: true });
+    expect((from.mock.calls as any[]).some(([table]) => table === 'schedule')).toBe(true);
+  });
+
+  it('rejects a truncated candidate before any schedule write', async () => {
+    const { service, from } = makeService({
+      problem: labProblem,
+      tableResponses: { subject: subjectResponse },
+    });
+    const candidate = {
+      candidateId: 'cand-truncated',
+      schedule: [],
+      unscheduled: [
+        { sectionId: 'sec-1', subjectId: 'sub-1', kind: 'lab', sessionIndex: 1 },
+      ],
+    };
+
+    const confirmPromise = service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+      generationToken: makeToken(),
+      candidate: candidate as any,
+    });
+    await expect(confirmPromise).rejects.toBeInstanceOf(BadRequestException);
+    await expect(confirmPromise).rejects.toThrow(/session counts do not match/i);
+    expect(from).not.toHaveBeenCalledWith('schedule');
+  });
+
+  it('rejects an extra session count before any schedule write', async () => {
+    const { service, from } = makeService({
+      problem: labProblem,
+      tableResponses: { subject: subjectResponse },
+    });
+    const candidate = {
+      candidateId: 'cand-extra',
+      schedule: [{ ...baseCandidate.schedule[0] }],
+      unscheduled: [
+        { sectionId: 'sec-1', subjectId: 'sub-1', kind: 'lecture', sessionIndex: 0 },
+        { sectionId: 'sec-1', subjectId: 'sub-1', kind: 'lab', sessionIndex: 1 },
+        { sectionId: 'sec-1', subjectId: 'sub-1', kind: 'lab', sessionIndex: 2 },
+      ],
+    };
+
+    const confirmPromise = service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+      generationToken: makeToken(),
+      candidate: candidate as any,
+    });
+    await expect(confirmPromise).rejects.toBeInstanceOf(BadRequestException);
+    await expect(confirmPromise).rejects.toThrow(/session counts do not match/i);
+    expect(from).not.toHaveBeenCalledWith('schedule');
+  });
+
+  it('rejects an unknown section key before any schedule write', async () => {
+    const { service, from } = makeService({
+      problem: labProblem,
+      tableResponses: { subject: subjectResponse },
+    });
+    const candidate = {
+      candidateId: 'cand-unknown-key',
+      schedule: [{ ...baseCandidate.schedule[0] }],
+      unscheduled: [
+        { sectionId: 'sec-unknown', subjectId: 'sub-1', kind: 'lab', sessionIndex: 1 },
+      ],
+    };
+
+    const confirmPromise = service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+      generationToken: makeToken(),
+      candidate: candidate as any,
+    });
+    await expect(confirmPromise).rejects.toBeInstanceOf(BadRequestException);
+    await expect(confirmPromise).rejects.toThrow(/session counts do not match/i);
+    expect(from).not.toHaveBeenCalledWith('schedule');
+  });
+
+  it('serializes accepts across departments in the same term', async () => {
+    const otherDept = '21';
+    const events: string[] = [];
+    const rpc = jest.fn(async (fn: string, args?: any) => {
+      if (fn === 'try_acquire_auto_generate_lock') {
+        events.push(`acquire:${String(args?.p_dept_id)}`);
+        return { data: true, error: null };
+      }
+      if (fn === 'release_auto_generate_lock') {
+        events.push(`release:${String(args?.p_dept_id)}`);
+        return { data: true, error: null };
+      }
+      return { data: null, error: null };
+    });
+    const { service, from } = makeService({
+      rpc,
+      tableResponses: { subject: [subjectResponse, subjectResponse] },
+    });
+
+    let signalFirstEntered!: () => void;
+    const firstEntered = new Promise<void>((resolve) => {
+      signalFirstEntered = resolve;
+    });
+    let releaseFirst!: () => void;
+    const firstMayFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    (service as any).getOwnAutoDraftScheduleRows.mockImplementation(
+      async (_term: string, snapshotDept: string) => {
+        if (String(snapshotDept) === deptId) {
+          signalFirstEntered();
+          await firstMayFinish;
+        }
+        return baseOwnDraftRows;
+      },
+    );
+
+    const payloadFor = (tokenDeptId: string) => ({
+      generationToken: makeToken(baseOwnDraftRows, [], tokenDeptId),
+      candidate: baseCandidate as any,
+    });
+
+    const first = service.confirmAutoGenerateCandidate(
+      termId,
+      deptId,
+      userId,
+      payloadFor(deptId),
+    );
+    await firstEntered;
+
+    const second = service.confirmAutoGenerateCandidate(
+      termId,
+      otherDept,
+      userId,
+      payloadFor(otherDept),
+    );
+    void second.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The second Accept must still be queued: no lock attempt and no writes
+    // while the first is inside its critical section.
+    expect(events).not.toContain(`acquire:${otherDept}`);
+    expect(
+      (from.mock.calls as any[]).filter(([table]) => table === 'schedule'),
+    ).toHaveLength(0);
+
+    releaseFirst();
+    await expect(first).resolves.toEqual({ success: true });
+    await expect(second).resolves.toEqual({ success: true });
+    expect(events.filter((event) => event === `acquire:${deptId}`)).toHaveLength(1);
+    expect(events.filter((event) => event === `acquire:${otherDept}`)).toHaveLength(1);
+    expect(events.filter((event) => event === `release:${deptId}`)).toHaveLength(1);
+    expect(events.filter((event) => event === `release:${otherDept}`)).toHaveLength(1);
   });
 });

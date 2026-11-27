@@ -587,7 +587,6 @@ export class AutoGenerateService {
 
     this.autoGenerateInFlight.add(key);
 
-    const starterDHs = await this.recipients.departmentHeadsOf(deptId);
     const contextDb = this.supabase.getAdminClient();
     const [dept, termName] = await Promise.all([
       loadDeptLabel(contextDb, deptId),
@@ -596,8 +595,10 @@ export class AutoGenerateService {
     const deptLabel =
       dept.deptCode ?? dept.deptName ?? `Department ${deptId}`;
 
+    // Candidate sessions live only in the initiating user's tab; other
+    // department heads cannot review them (design §7.5).
     await this.dispatcher.dispatch('auto_generate.started', {
-      recipientUserIds: starterDHs,
+      recipientUserIds: [userId],
       title: `Auto-generate started: ${deptLabel}`,
       body:
         `Schedule generation started for ${deptLabel}` +
@@ -2253,6 +2254,132 @@ export class AutoGenerateService {
     }
   }
 
+  /**
+   * Mirror solver.py `compute_blocks` and its existing-load filter. Expected
+   * counts come from buildSolverProblem(termId, deptId, ownAutoDraftIds), the
+   * same exclusion view generation used, so a crafted or truncated candidate
+   * cannot replace real drafts with a partial schedule.
+   */
+  private expectedCandidateBlockCounts(problem: any): Map<string, number> {
+    const counts = new Map<string, number>();
+    const countKey = (sectionId: string, subjectId: string, loadType: string) =>
+      `${sectionId}:${subjectId}:${loadType}`;
+
+    const subjectById = new Map<string, any>(
+      (problem?.subjects ?? []).map((subject: any) => [
+        String(subject.subjectId),
+        subject,
+      ]),
+    );
+    // solver.py uses prospectus_by_subject.setdefault: first row wins.
+    const prospectusForSubject = new Map<string, any>();
+    for (const entry of problem?.prospectus ?? []) {
+      const subjectId = String(entry.subjectId);
+      if (!prospectusForSubject.has(subjectId)) {
+        prospectusForSubject.set(subjectId, entry);
+      }
+    }
+    const existingByKey = new Map<string, number>();
+    for (const row of problem?.existingSubjectLoadCounts ?? []) {
+      existingByKey.set(
+        countKey(
+          String(row.sectionId),
+          String(row.subjectId),
+          String(row.loadType),
+        ),
+        Number(row.count ?? 0),
+      );
+    }
+
+    const addSessions = (
+      sectionId: string,
+      subjectId: string,
+      loadType: 'lecture' | 'laboratory',
+      units: number,
+      sessions: number,
+    ) => {
+      if (!(Number(units) > 0)) return;
+      const key = countKey(sectionId, subjectId, loadType);
+      const alreadyLoaded = existingByKey.get(key) ?? 0;
+      const remaining = Math.max(0, Number(sessions ?? 0) - alreadyLoaded);
+      counts.set(key, (counts.get(key) ?? 0) + remaining);
+    };
+
+    for (const section of problem?.sections ?? []) {
+      if (!section?.programId || section?.yearLevel == null) continue;
+      const sectionId = String(section.sectionId);
+      for (const entry of problem?.prospectus ?? []) {
+        if (
+          entry.programId !== section.programId ||
+          entry.yearLevel !== section.yearLevel
+        ) {
+          continue;
+        }
+        const subjectId = String(entry.subjectId);
+        const subject = subjectById.get(subjectId);
+        if (!subject) continue;
+        // First prospectus row per subject, as in the solver.
+        const prospectus = prospectusForSubject.get(subjectId)!;
+        addSessions(
+          sectionId,
+          subjectId,
+          'lecture',
+          subject.lectureUnits,
+          prospectus.lecture_sessions_per_week ?? 1,
+        );
+        addSessions(
+          sectionId,
+          subjectId,
+          'laboratory',
+          subject.labUnits,
+          prospectus.lab_sessions_per_week ?? 1,
+        );
+      }
+    }
+
+    return counts;
+  }
+
+  private actualCandidateBlockCounts(
+    schedule: any[],
+    unscheduled: any[],
+  ): Map<string, number> {
+    const counts = new Map<string, number>();
+    const add = (sectionId: any, subjectId: any, loadType: string) => {
+      const key = `${String(sectionId)}:${String(subjectId)}:${loadType}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    };
+
+    for (const block of schedule) {
+      add(block?.sectionId, block?.subjectId, String(block?.loadType ?? ''));
+    }
+    for (const block of unscheduled) {
+      const kind = String(block?.kind ?? '');
+      add(
+        block?.sectionId,
+        block?.subjectId,
+        kind === 'lab' ? 'laboratory' : kind,
+      );
+    }
+    return counts;
+  }
+
+  private assertCandidateBlockCountsMatch(
+    problem: any,
+    schedule: any[],
+    unscheduled: any[],
+  ): void {
+    const expected = this.expectedCandidateBlockCounts(problem);
+    const actual = this.actualCandidateBlockCounts(schedule, unscheduled);
+    for (const key of new Set([...expected.keys(), ...actual.keys()])) {
+      if ((actual.get(key) ?? 0) !== (expected.get(key) ?? 0)) {
+        throw new BadRequestException(
+          'Candidate session counts do not match the prospectus.',
+        );
+      }
+    }
+  }
+
   async confirmAutoGenerateCandidate(
     termId: string,
     deptId: string,
@@ -2264,6 +2391,27 @@ export class AutoGenerateService {
       `Candidate confirm requested: term=${termId} dept=${deptId} by=${userId} candidate=${candidateId}`,
     );
 
+    // Serialize the whole Accept with generation and other departments'
+    // Accepts in this term. The lock is acquired inside the queued task, so
+    // queue wait time does not consume the 60s lock TTL.
+    return this.runSerially(termId, async () =>
+      this.confirmCandidateCriticalSection(
+        termId,
+        deptId,
+        userId,
+        payload,
+        candidateId,
+      ),
+    );
+  }
+
+  private async confirmCandidateCriticalSection(
+    termId: string,
+    deptId: string,
+    userId: string,
+    payload: ConfirmCandidatePayload,
+    candidateId: string,
+  ): Promise<{ success: boolean }> {
     const locked = await this.tryAcquireAutoGenerateLock(
       termId,
       deptId,
@@ -2451,11 +2599,21 @@ export class AutoGenerateService {
         }
       }
 
-      // Step 6: recompute counts and warnings; ignore client values.
+      // Step 6: verify every (section, subject, loadType) session count
+      // against the active-term prospectus/problem with own auto-drafts
+      // excluded, before any snapshot/delete/insert.
+      const problem = await this.buildSolverProblem(
+        termId,
+        deptId,
+        ownAutoDraftIds,
+      );
+      this.assertCandidateBlockCountsMatch(problem, schedule, unscheduled);
+
+      // Step 7: recompute counts and warnings; ignore client values.
       const placedCount = schedule.length;
       const unscheduledCount = unscheduled.length;
 
-      // Step 7: revalidate against live data.
+      // Step 8: revalidate against live data.
       const validation = await this.validateGeneratedSchedule(
         termId,
         schedule.map((b: any) => ({
@@ -2482,7 +2640,7 @@ export class AutoGenerateService {
         });
       }
 
-      // Step 8: compensating write protocol.
+      // Step 9: compensating write protocol.
       const { data: snapshotRows, error: snapErr } = await db
         .from('schedule')
         .select('*')
