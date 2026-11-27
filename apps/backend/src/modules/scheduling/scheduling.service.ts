@@ -1106,7 +1106,7 @@ export class SchedulingService {
     termId: string,
     deptId: string,
     userId: string,
-    options: { acknowledgeUnplottedMinors?: boolean } = {},
+    options: { acknowledgeUnplottedMinors?: boolean; candidateCount?: number } = {},
   ) {
     return this.autoGenerateService.autoGenerate(termId, deptId, userId, options);
   }

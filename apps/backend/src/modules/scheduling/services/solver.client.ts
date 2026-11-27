@@ -74,13 +74,19 @@ export class SolverClient implements OnModuleInit {
     return this.wakePromise;
   }
 
-  async solve(problem: unknown): Promise<any> {
+  async solve(
+    problem: unknown,
+    options?: { timeoutMs?: number; attempts?: number },
+  ): Promise<any> {
     let lastErr: unknown;
+    const maxAttempts = options?.attempts ?? SolverClient.MAX_ATTEMPTS;
+    const requestConfig =
+      options?.timeoutMs != null ? { timeout: options.timeoutMs } : undefined;
 
-    for (let attempt = 1; attempt <= SolverClient.MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await this.wakeUp();
-        const { data } = await this.http.post('/solve', problem);
+        const { data } = await this.http.post('/solve', problem, requestConfig);
         return data;
       } catch (err) {
         lastErr = err;
@@ -95,7 +101,7 @@ export class SolverClient implements OnModuleInit {
           e.code === 'ECONNRESET' ||
           e.code === 'ETIMEDOUT';
 
-        if (!transient || attempt === SolverClient.MAX_ATTEMPTS) {
+        if (!transient || attempt === maxAttempts) {
           throw err;
         }
 
@@ -103,7 +109,7 @@ export class SolverClient implements OnModuleInit {
         const delay = 2000 * attempt;
         this.logger.warn(
           `Solver /solve transient (${e.response?.status ?? e.code ?? 'network'}), ` +
-            `attempt ${attempt}/${SolverClient.MAX_ATTEMPTS} failed, ` +
+            `attempt ${attempt}/${maxAttempts} failed, ` +
             `retry ${attempt + 1} in ${delay}ms`,
         );
         await new Promise((r) => setTimeout(r, delay));
