@@ -29,6 +29,7 @@ export const E2E_DATA = {
   facultyLastName: 'Instructor',
   roomBuilding: 'E2E Building',
   roomNumber: 'E2E-101',
+  labRoomNumber: 'E2E-LAB-101',
   termName: 'E2E First Semester',
   schoolYear: '2026-2027',
   headEmail: 'e2e.head@example.com',
@@ -283,6 +284,38 @@ async function ensureFaculty(db: Db, deptId: string): Promise<string> {
   return insertRow(db, 'faculty', values, 'faculty_id');
 }
 
+async function ensureFacultyQualification(
+  db: Db,
+  facultyId: string,
+  subjectId: string,
+): Promise<void> {
+  const existing = await findFirst(
+    db,
+    'faculty_qualification',
+    ['qual_id'],
+    { faculty_id: facultyId, subject_id: subjectId },
+  );
+  const values = { source_system: 'e2e-seed' };
+
+  if (existing) {
+    await updateRow(
+      db,
+      'faculty_qualification',
+      'qual_id',
+      String(existing.qual_id),
+      values,
+    );
+    return;
+  }
+
+  await insertRow(
+    db,
+    'faculty_qualification',
+    { faculty_id: facultyId, subject_id: subjectId, ...values },
+    'qual_id',
+  );
+}
+
 async function ensureRoom(db: Db, deptId: string): Promise<string> {
   const existing = await findFirst(db, 'room', ['room_id'], {
     building: E2E_DATA.roomBuilding,
@@ -292,6 +325,27 @@ async function ensureRoom(db: Db, deptId: string): Promise<string> {
     room_number: E2E_DATA.roomNumber,
     building: E2E_DATA.roomBuilding,
     room_type: 'lecture_room',
+    capacity: 40,
+    dept_id: deptId,
+    is_active: true,
+  };
+
+  if (existing) {
+    await updateRow(db, 'room', 'room_id', String(existing.room_id), values);
+    return String(existing.room_id);
+  }
+  return insertRow(db, 'room', values, 'room_id');
+}
+
+async function ensureLabRoom(db: Db, deptId: string): Promise<string> {
+  const existing = await findFirst(db, 'room', ['room_id'], {
+    building: E2E_DATA.roomBuilding,
+    room_number: E2E_DATA.labRoomNumber,
+  });
+  const values = {
+    room_number: E2E_DATA.labRoomNumber,
+    building: E2E_DATA.roomBuilding,
+    room_type: 'laboratory',
     capacity: 40,
     dept_id: deptId,
     is_active: true,
@@ -499,6 +553,8 @@ export async function seedE2eData(): Promise<E2eState> {
   const termId = await ensureTerm(db);
   const facultyId = await ensureFaculty(db, departmentId);
   const roomId = await ensureRoom(db, departmentId);
+  await ensureLabRoom(db, departmentId);
+  await ensureFacultyQualification(db, facultyId, subjectId);
 
   await ensureSection(db, programId);
   await ensureProspectus(db, programId, subjectId);
