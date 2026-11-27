@@ -21,6 +21,7 @@ import { ScheduleChangeRequestService } from './services/schedule-change-request
 import { SupabaseService } from '../../database/supabase.service';
 import { User } from '../users/entities/user.entity';
 import { PlotMultiDto } from './dto/plot-multi.dto';
+import { ConfirmCandidatePayload } from './dto/confirm-auto-generate.dto';
 import { NotificationDispatcherService } from '../notifications/notification-dispatcher.service';
 import { RecipientsService } from '../notifications/recipients.service';
 import { loadRequestContext } from '../notifications/notification-context';
@@ -34,6 +35,17 @@ type DayOfWeek =
   | 'Friday'
   | 'Saturday'
   | 'Sunday';
+
+// The concrete candidate confirm implementation lands in the Accept task.
+// This local shape keeps the contract wireable without weakening the type.
+interface CandidateConfirmDelegate {
+  confirmAutoGenerateCandidate(
+    termId: string,
+    deptId: string,
+    userId: string,
+    payload: ConfirmCandidatePayload,
+  ): Promise<{ success: boolean }>;
+}
 
 @Injectable()
 export class SchedulingService {
@@ -1113,6 +1125,17 @@ export class SchedulingService {
 
   confirmAutoGenerate(termId: string, deptId: string, userId: string) {
     return this.autoGenerateService.confirmAutoGenerate(termId, deptId, userId);
+  }
+
+  confirmAutoGenerateCandidate(
+    termId: string,
+    deptId: string,
+    userId: string,
+    payload: ConfirmCandidatePayload,
+  ): Promise<{ success: boolean }> {
+    return (
+      this.autoGenerateService as AutoGenerateService & CandidateConfirmDelegate
+    ).confirmAutoGenerateCandidate(termId, deptId, userId, payload);
   }
 
   discardAutoGenerate(termId: string, deptId: string, userId: string) {
