@@ -105,3 +105,22 @@ test('reuse summary, conflict workspace, and page handlers are wired', () => {
     /status\s*:\s*['"](?:published|review|finalized)['"]/,
   );
 });
+
+test('reuse E2E registers the preflight waiter before clicking Reuse', () => {
+  const spec = read('e2e/specs/published-version.spec.ts');
+  const start = spec.indexOf('async function clickReuse(');
+  assert.ok(start >= 0, 'clickReuse helper must exist');
+
+  const end = spec.indexOf('\n}\n', start);
+  assert.ok(end >= 0, 'clickReuse helper must be complete');
+  const helper = spec.slice(start, end);
+
+  const waiter = helper.indexOf('page.waitForResponse(');
+  const click = helper.indexOf('.click();');
+  assert.ok(waiter >= 0, 'clickReuse must wait for the preflight response');
+  assert.ok(click >= 0, 'clickReuse must click the Reuse button');
+  assert.ok(
+    waiter < click,
+    'waitForResponse must be registered before the Reuse click',
+  );
+});

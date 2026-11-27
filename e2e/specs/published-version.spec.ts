@@ -480,9 +480,6 @@ async function clickReuse(
   drawer: ReturnType<typeof archiveDrawer>,
   termName: string,
 ): Promise<JsonRecord> {
-  await versionRow(drawer, termName)
-    .getByRole('button', { name: `Reuse ${termName}` })
-    .click();
   const responsePromise = page.waitForResponse(
     (response) =>
       /\/v1\/schedules\/published-versions\/[^/]+\/preflight$/.test(
@@ -490,6 +487,9 @@ async function clickReuse(
       ) && response.request().method() === 'POST',
     { timeout: 30_000 },
   );
+  await versionRow(drawer, termName)
+    .getByRole('button', { name: `Reuse ${termName}` })
+    .click();
   const response = await responsePromise;
   expect(response.ok(), await response.text()).toBeTruthy();
   return ((await response.json()) as JsonRecord).data as JsonRecord;
