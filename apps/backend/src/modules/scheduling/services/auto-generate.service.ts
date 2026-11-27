@@ -2369,7 +2369,10 @@ export class AutoGenerateService {
 
       // Step 4: reject any subject whose source_dept is non-empty.
       const subjectIds: string[] = Array.from(
-        new Set(schedule.map((b: any) => String(b.subjectId))),
+        new Set([
+          ...schedule.map((b: any) => String(b.subjectId)),
+          ...unscheduled.map((u: any) => String(u.subjectId)),
+        ]),
       );
       if (subjectIds.length > 0) {
         const { data: subjects, error: subErr } = await db
@@ -2451,10 +2454,6 @@ export class AutoGenerateService {
       // Step 6: recompute counts and warnings; ignore client values.
       const placedCount = schedule.length;
       const unscheduledCount = unscheduled.length;
-      const recomputedWarnings: string[] = [];
-      this.logger.log(
-        `Candidate ${candidateId} recomputed: placed=${placedCount} unscheduled=${unscheduledCount} warnings=${recomputedWarnings.length}`,
-      );
 
       // Step 7: revalidate against live data.
       const validation = await this.validateGeneratedSchedule(
@@ -2471,6 +2470,10 @@ export class AutoGenerateService {
           loadType: b.loadType,
         })),
         ownAutoDraftIds,
+      );
+      const recomputedWarnings = [...validation.softWarnings];
+      this.logger.log(
+        `Candidate ${candidateId} recomputed: placed=${placedCount} unscheduled=${unscheduledCount} warnings=${recomputedWarnings.length}`,
       );
       if (validation.hardFailures.length > 0) {
         throw new ConflictException({
@@ -2547,7 +2550,10 @@ export class AutoGenerateService {
             .eq('remarks', candidateMarker);
           if (cleanupErr) {
             this.logger.error(
-              `Failed to clean partial candidate rows for term=${termId} dept=${deptId} candidate=${candidateId}: ${cleanupErr.message}`,
+              `CRITICAL: Failed to clean partial candidate rows for term=${termId} dept=${deptId} candidate=${candidateId}: ${cleanupErr.message}`,
+            );
+            throw new ConflictException(
+              'Candidate insert failed and partial-row cleanup failed. Manual recovery may be required.',
             );
           }
 
@@ -2578,8 +2584,15 @@ export class AutoGenerateService {
       return { success: true };
     } finally {
       if (lockHeld) {
-        await this.releaseAutoGenerateLock(termId, deptId, userId);
-        lockHeld = false;
+        try {
+          await this.releaseAutoGenerateLock(termId, deptId, userId);
+        } catch (releaseErr) {
+          this.logger.warn(
+            `Failed to release confirm lock for term=${termId} dept=${deptId} candidate=${candidateId}: ${(releaseErr as Error).message}`,
+          );
+        } finally {
+          lockHeld = false;
+        }
       }
     }
   }

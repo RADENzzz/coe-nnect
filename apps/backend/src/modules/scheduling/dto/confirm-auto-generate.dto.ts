@@ -53,6 +53,11 @@ export class ConfirmCandidateBlockDto {
 
   @IsIn(['lecture', 'laboratory'])
   loadType!: 'lecture' | 'laboratory';
+
+  /** Optional; when present, duplicate detection uses it per decision. */
+  @IsOptional()
+  @IsInt()
+  sessionIndex?: number;
 }
 
 /** Client-side waiting list; never persisted by confirm. */
