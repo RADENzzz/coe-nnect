@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { ScheduleEntry } from '../features/timetable/types';
 
 // ────────────────────────────────────────────
 // Core types
@@ -124,6 +125,16 @@ export interface BlockedMinorSummary {
   programCode: string | null;
 }
 
+export interface AutoGenerateCandidate {
+  candidateId: string;
+  schedule: ScheduleEntry[];
+  unscheduled: UnscheduledBlock[];
+  placedCount: number;
+  unscheduledCount: number;
+  warnings: Array<{ ruleId: string; ruleName: string; reason: string }>;
+  solveTimeSeconds: number | null;
+}
+
 export interface AutoGenerateResult {
   success: boolean;
   message?: string;
@@ -137,12 +148,17 @@ export interface AutoGenerateResult {
   /** Set when auto-generate refused to run because unplotted minors exist. */
   blockedByUnplottedMinors?: boolean;
   unplottedMinors?: BlockedMinorSummary[];
+
+  mode?: 'candidates';
+  candidates?: AutoGenerateCandidate[];
+  currentAutoDraftCount?: number;
+  generationToken?: string;
 }
 
 export async function autoGenerateSchedule(
   termId: string,
   deptId: string,
-  options?: { acknowledgeUnplottedMinors?: boolean },
+  options?: { acknowledgeUnplottedMinors?: boolean; candidateCount?: number },
 ): Promise<AutoGenerateResult> {
   const { data } = await api.post(
     '/v1/schedules/auto-generate',
@@ -151,8 +167,11 @@ export async function autoGenerateSchedule(
       deptId,
       acknowledgeUnplottedMinors:
         options?.acknowledgeUnplottedMinors === true,
+      ...(options?.candidateCount !== undefined
+        ? { candidateCount: options.candidateCount }
+        : {}),
     },
-    { timeout: 120_000 },
+    { timeout: options?.candidateCount !== undefined ? 300_000 : 120_000 },
   );
   return data.data;
 }
@@ -164,6 +183,21 @@ export async function confirmAutoGenerate(
   const { data } = await api.post('/v1/schedules/auto-generate/confirm', {
     termId,
     deptId,
+  });
+  return data.data;
+}
+
+export async function confirmAutoGenerateCandidate(
+  termId: string,
+  deptId: string,
+  payload: { generationToken: string; candidate: AutoGenerateCandidate },
+): Promise<{ success: boolean }> {
+  const { data } = await api.post('/v1/schedules/auto-generate/confirm', {
+    termId,
+    deptId,
+    mode: 'candidate',
+    generationToken: payload.generationToken,
+    candidate: payload.candidate,
   });
   return data.data;
 }
