@@ -36,16 +36,7 @@ type DayOfWeek =
   | 'Saturday'
   | 'Sunday';
 
-// The concrete candidate confirm implementation lands in the Accept task.
-// This local shape keeps the contract wireable without weakening the type.
-interface CandidateConfirmDelegate {
-  confirmAutoGenerateCandidate(
-    termId: string,
-    deptId: string,
-    userId: string,
-    payload: ConfirmCandidatePayload,
-  ): Promise<{ success: boolean }>;
-}
+
 
 @Injectable()
 export class SchedulingService {
@@ -1133,9 +1124,12 @@ export class SchedulingService {
     userId: string,
     payload: ConfirmCandidatePayload,
   ): Promise<{ success: boolean }> {
-    return (
-      this.autoGenerateService as AutoGenerateService & CandidateConfirmDelegate
-    ).confirmAutoGenerateCandidate(termId, deptId, userId, payload);
+    return this.autoGenerateService.confirmAutoGenerateCandidate(
+      termId,
+      deptId,
+      userId,
+      payload,
+    );
   }
 
   discardAutoGenerate(termId: string, deptId: string, userId: string) {
