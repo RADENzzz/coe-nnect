@@ -26,6 +26,7 @@ export interface BuildContextInput {
   endTime: string;
   loadType?: 'lecture' | 'laboratory' | 'other';
   excludeScheduleId?: string;
+  excludeScheduleIds?: string[];
 
   /**
    * External room name (2026-10-15).
@@ -57,10 +58,14 @@ export class RuleContextBuilder {
     ] = await Promise.all([
       this.loadSubject(input.subjectId),
       input.facultyId
-        ? this.loadFaculty(input.facultyId, input.termId)
+        ? this.loadFaculty(input.facultyId, input.termId, input.excludeScheduleIds)
         : Promise.resolve(null),
       input.roomId ? this.loadRoom(input.roomId) : Promise.resolve(null),
-      this.loadExistingSchedule(input.termId, input.dayOfWeek),
+      this.loadExistingSchedule(
+        input.termId,
+        input.dayOfWeek,
+        input.excludeScheduleIds,
+      ),
       input.facultyId
         ? this.loadFacultyCommitments(
             input.facultyId,
@@ -137,7 +142,11 @@ export class RuleContextBuilder {
     };
   }
 
-  private async loadFaculty(facultyId: string, termId: string): Promise<FacultyContext> {
+  private async loadFaculty(
+    facultyId: string,
+    termId: string,
+    excludeScheduleIds?: string[],
+  ): Promise<FacultyContext> {
     const { data, error } = await this.db
       .from('faculty')
       .select(
@@ -217,7 +226,7 @@ export class RuleContextBuilder {
         ? Number(data.required_hours)
         : Math.max(0, 18 - releaseHours);
 
-    const { data: assigned, error: assignedErr } = await this.db
+    let assignedQuery = this.db
       .from('schedule')
       .select(
         `
@@ -227,6 +236,14 @@ export class RuleContextBuilder {
       )
       .eq('term_id', termId)
       .eq('faculty_id', facultyId);
+    if (excludeScheduleIds && excludeScheduleIds.length > 0) {
+      assignedQuery = assignedQuery.not(
+        'schedule_id',
+        'in',
+        `(${excludeScheduleIds.join(',')})`,
+      );
+    }
+    const { data: assigned, error: assignedErr } = await assignedQuery;
 
     if (assignedErr) {
       this.logger.warn(
@@ -284,14 +301,23 @@ export class RuleContextBuilder {
   private async loadExistingSchedule(
     termId: string,
     dayOfWeek: string,
+    excludeScheduleIds?: string[],
   ): Promise<ScheduleEntryContext[]> {
-    const { data, error } = await this.db
+    let query = this.db
       .from('schedule')
       .select(
         'schedule_id, term_id, subject_id, faculty_id, room_id, external_room_name, section, load_type, day_of_week, start_time, end_time',
       )
       .eq('term_id', termId)
       .eq('day_of_week', dayOfWeek);
+    if (excludeScheduleIds && excludeScheduleIds.length > 0) {
+      query = query.not(
+        'schedule_id',
+        'in',
+        `(${excludeScheduleIds.join(',')})`,
+      );
+    }
+    const { data, error } = await query;
 
     if (error) {
       this.logger.error(`loadExistingSchedule failed: ${error.message}`);

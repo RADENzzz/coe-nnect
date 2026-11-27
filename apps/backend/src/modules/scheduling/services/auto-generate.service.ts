@@ -281,6 +281,7 @@ export class AutoGenerateService {
           const validation = await this.validateGeneratedSchedule(
             termId,
             solveResult.schedule,
+            new Set<string>(),
           );
           if (validation.hardFailures.length > 0) {
             return { kind: 'validation-error', validation };
@@ -941,6 +942,7 @@ export class AutoGenerateService {
       endTime: string;
       loadType?: string;
     }>,
+    excludeAutoDraftIds: Set<string>,
   ): Promise<{
     hardFailures: Array<{ ruleId: string; ruleName: string; reason: string }>;
     softWarnings: Array<{ ruleId: string; ruleName: string; reason: string }>;
@@ -961,6 +963,7 @@ export class AutoGenerateService {
       `Auto-generate soft rules: [${Array.from(softForAuto).join(', ')}]`,
     );
 
+    const excludeScheduleIds = [...excludeAutoDraftIds];
     for (const block of schedule) {
       try {
         const context = await this.ruleContextBuilder.build({
@@ -973,6 +976,7 @@ export class AutoGenerateService {
           startTime: block.startTime,
           endTime: block.endTime,
           loadType: (block.loadType as any) ?? undefined,
+          excludeScheduleIds,
         });
         const result = this.constraints.evaluate(context);
 
