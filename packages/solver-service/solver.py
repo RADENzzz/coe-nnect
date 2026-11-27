@@ -2,6 +2,7 @@ from ortools.sat.python import cp_model
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Tuple
 from collections import defaultdict
+import math
 import os
 
 # ═══════════════════════════════════════════
@@ -145,6 +146,8 @@ class SolveRequest(BaseModel):
     existingSchedule: List[ExistingScheduleBlock] = []
     existingSubjectLoadCounts: List[ExistingSubjectLoadCount] = []
     roomPreferences: List[RoomPreference] = []
+    candidateCount: int = 1
+    maxTimeSeconds: Optional[float] = None
 
 
 # ═══════════════════════════════════════════
@@ -224,9 +227,119 @@ def _has_conflict(intervals: list, start: int, end: int) -> bool:
     return False
 
 
+def normalize_placement(schedule: list[dict]) -> tuple:
+    return tuple(
+        sorted(
+            (b["sectionId"], b["subjectId"], b["loadType"], b["day"], b["startTime"])
+            for b in schedule
+        )
+    )
+
+
 # ═══════════════════════════════════════════
 # Solver
 # ═══════════════════════════════════════════
+
+def _solve_once(
+    model,
+    X,
+    block_dur,
+    section_by_id,
+    subject_by_id,
+    block_group,
+    unscheduled_vars,
+    max_time_seconds,
+):
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = max_time_seconds
+    solver.parameters.num_workers = _SOLVER_WORKERS
+    solver.parameters.relative_gap_limit = 0.05
+    solver.parameters.interleave_search = True
+    solver.parameters.cp_model_presolve = True
+    solver.parameters.log_search_progress = bool(
+        os.environ.get("SOLVER_VERBOSE", "0") == "1"
+    )
+
+    status = solver.Solve(model)
+
+    status_name = {
+        cp_model.OPTIMAL: "OPTIMAL",
+        cp_model.FEASIBLE: "FEASIBLE",
+        cp_model.INFEASIBLE: "INFEASIBLE",
+        cp_model.MODEL_INVALID: "MODEL_INVALID",
+        cp_model.UNKNOWN: "UNKNOWN",
+    }.get(status, str(status))
+
+    try:
+        wall_time = solver.WallTime()
+    except Exception:
+        wall_time = 0.0
+
+    print(f"[solver] status={status_name} wall_time={wall_time:.2f}s")
+
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {
+            "status_name": status_name,
+            "solveTimeSeconds": wall_time,
+            "schedule": [],
+            "unscheduled": [],
+            "objectiveValue": None,
+        }
+
+    schedule = []
+    value = solver.Value
+    for key, v in X:
+        if value(v) == 1:
+            sec_id, subj_id, kind, sess_idx, day, start_min, room_id, fac_id = key
+            dur = block_dur[key]
+            schedule.append(
+                {
+                    "sectionId": sec_id,
+                    "sectionCode": section_by_id[sec_id].sectionCode,
+                    "subjectId": subj_id,
+                    "facultyId": fac_id,
+                    "roomId": room_id,
+                    "day": day,
+                    "startTime": min_to_hhmm(start_min),
+                    "endTime": min_to_hhmm(start_min + dur),
+                    "loadType": "laboratory" if kind == "lab" else "lecture",
+                }
+            )
+
+    unscheduled_list = []
+    for u, group_key in unscheduled_vars:
+        if value(u) == 1:
+            sec_id, subj_id, kind, sess_idx = group_key
+            subj = subject_by_id.get(subj_id)
+            sec = section_by_id.get(sec_id)
+            unscheduled_list.append(
+                {
+                    "sectionId": sec_id,
+                    "sectionCode": sec.sectionCode if sec else "?",
+                    "subjectId": subj_id,
+                    "subjectCode": subj.subjectCode if subj else "?",
+                    "kind": kind,
+                    "sessionIndex": sess_idx,
+                }
+            )
+
+    print(
+        f"[solver] assigned={len(schedule)}/{len(block_group)} blocks, "
+        f"unscheduled={len(unscheduled_list)}"
+    )
+
+    try:
+        objective_value = solver.ObjectiveValue()
+    except Exception:
+        objective_value = None
+    return {
+        "status_name": status_name,
+        "solveTimeSeconds": wall_time,
+        "schedule": schedule,
+        "unscheduled": unscheduled_list,
+        "objectiveValue": objective_value,
+    }
+
 
 def solve_schedule(req: SolveRequest) -> dict:
     print(
@@ -661,113 +774,143 @@ def solve_schedule(req: SolveRequest) -> dict:
     if objective_terms:
         model.Minimize(sum(objective_terms))
 
-    # ═══════════════════════════════════════════
-    # SOLVE
-    # ═══════════════════════════════════════════
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = _SOLVER_MAX_TIME
-    solver.parameters.num_workers = _SOLVER_WORKERS
-
-    # ── Speed-oriented tuning ──
-    # Stop as soon as any feasible solution is found *that is within 5% of the
-    # best bound*. For your problem (soft-cost objective, many feasible
-    # solutions), this typically fires in <5s and doesn't change output quality
-    # noticeably — a 5% worse objective is invisible to the DH eyeballing the
-    # preview.
-    solver.parameters.relative_gap_limit  = 0.05
-
-    # Interleave search across workers from the start. Without this, CP-SAT's
-    # default is to let one worker "lead" and the others only diverge after it
-    # stalls — which for 70k-var models means the leader runs alone for 20-30s
-    # before portfolio diversification kicks in.
-    solver.parameters.interleave_search   = True
-
-    # Prune the domain at presolve. Costs a tiny bit of presolve CPU, but every
-    # subsequent propagation round is cheaper and the model proto sent to the
-    # workers shrinks meaningfully on this size of graph.
-    solver.parameters.cp_model_presolve   = True   # (this is already default)
-
-    # Log progress. If it's still slow, this is what tells you *why*.
-    solver.parameters.log_search_progress = bool(os.environ.get("SOLVER_VERBOSE", "0") == "1")
-
-    status = solver.Solve(model)
-
-    status_name = {
-        cp_model.OPTIMAL:     "OPTIMAL",
-        cp_model.FEASIBLE:    "FEASIBLE",
-        cp_model.INFEASIBLE:  "INFEASIBLE",
-        cp_model.MODEL_INVALID: "MODEL_INVALID",
-        cp_model.UNKNOWN:     "UNKNOWN",
-    }.get(status, str(status))
-
-    print(f"[solver] status={status_name} wall_time={solver.WallTime():.2f}s")
-
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if status == cp_model.UNKNOWN:
+    candidate_count = max(1, int(getattr(req, "candidateCount", 1) or 1))
+    if candidate_count == 1:
+        result = _solve_once(
+            model,
+            X,
+            block_dur,
+            section_by_id,
+            subject_by_id,
+            block_group,
+            unscheduled_vars,
+            _SOLVER_MAX_TIME,
+        )
+        status_name = result["status_name"]
+        if status_name not in ("OPTIMAL", "FEASIBLE"):
+            if status_name == "UNKNOWN":
+                return {
+                    "status": "timeout",
+                    "message":
+                        "The solver hit its time limit before finishing the "
+                        "search. This is not an impossible schedule — try "
+                        "generating again, or reduce the term load if it keeps "
+                        "happening.",
+                    "solveTimeSeconds": result["solveTimeSeconds"],
+                    "solveStatus": status_name,
+                    "unscheduled": [],
+                }
             return {
-                "status": "timeout",
-                "message":
-                    "The solver hit its time limit before finishing the "
-                    "search. This is not an impossible schedule — try "
-                    "generating again, or reduce the term load if it keeps "
-                    "happening.",
-                "solveTimeSeconds": solver.WallTime(),
+                "status": "infeasible",
+                "message": "No valid schedule exists with the current constraints.",
+                "solveTimeSeconds": result["solveTimeSeconds"],
                 "solveStatus": status_name,
                 "unscheduled": [],
             }
         return {
-            "status": "infeasible",
-            "message": "No valid schedule exists with the current constraints.",
-            "solveTimeSeconds": solver.WallTime(),
+            "status": "success",
+            "solveTimeSeconds": result["solveTimeSeconds"],
+            "schedule": result["schedule"],
+            "unscheduled": result["unscheduled"],
             "solveStatus": status_name,
+        }
+
+    max_time = (
+        req.maxTimeSeconds
+        if req.maxTimeSeconds is not None
+        else max(15, math.floor(180 / candidate_count))
+    )
+
+    vars_by_visible: Dict[tuple, list] = defaultdict(list)
+    vars_by_pair: Dict[tuple, list] = defaultdict(list)
+    for key, v in X:
+        sec_id, subj_id, kind, _sess_idx, day, start_min, _room_id, _fac_id = key
+        load_type = "laboratory" if kind == "lab" else "lecture"
+        start_str = min_to_hhmm(start_min)
+        vars_by_visible[(sec_id, subj_id, load_type, day, start_str)].append(v)
+        vars_by_pair[(sec_id, subj_id, day, start_str)].append(v)
+
+    candidates = []
+    seen_placements = set()
+    objective_base = sum(objective_terms) if objective_terms else 0
+    objective_extra_terms = []
+
+    for idx in range(candidate_count):
+        if objective_extra_terms:
+            model.Minimize(objective_base + sum(objective_extra_terms))
+
+        result = _solve_once(
+            model,
+            X,
+            block_dur,
+            section_by_id,
+            subject_by_id,
+            block_group,
+            unscheduled_vars,
+            max_time,
+        )
+        status_name = result["status_name"]
+        if status_name not in ("OPTIMAL", "FEASIBLE"):
+            break
+
+        placement = normalize_placement(result["schedule"])
+        if placement in seen_placements:
+            present_indicators = []
+            for visible_tuple in placement:
+                matching = vars_by_visible.get(visible_tuple, [])
+                if not matching:
+                    continue
+                present = model.NewBoolVar(f"dup{len(present_indicators)}_{idx}")
+                model.AddMaxEquality(present, matching)
+                present_indicators.append(present)
+            if present_indicators:
+                model.Add(sum(present_indicators) <= len(present_indicators) - 1)
+            continue
+
+        seen_placements.add(placement)
+        candidates.append(
+            {
+                "schedule": result["schedule"],
+                "unscheduled": result["unscheduled"],
+                "objectiveValue": result["objectiveValue"],
+                "solveTimeSeconds": result["solveTimeSeconds"],
+            }
+        )
+
+        # No-good cut: prevent reproducing the normalized visible placement.
+        present_indicators = []
+        for visible_tuple in placement:
+            matching = vars_by_visible.get(visible_tuple, [])
+            if not matching:
+                continue
+            present = model.NewBoolVar(f"p{len(present_indicators)}_{idx}")
+            model.AddMaxEquality(present, matching)
+            present_indicators.append(present)
+        if present_indicators:
+            model.Add(sum(present_indicators) <= len(present_indicators) - 1)
+
+        # Mild soft penalty for reusing prior (sectionId, subjectId, day, startTime) pairs.
+        for visible_tuple in placement:
+            sec_id, subj_id, _load_type, day, start_str = visible_tuple
+            pair_vars = vars_by_pair.get((sec_id, subj_id, day, start_str), [])
+            if pair_vars:
+                objective_extra_terms.append(sum(pair_vars))
+
+    if not candidates:
+        return {
+            "status": "no-candidates",
+            "message": "No distinct schedule candidates could be generated with the current constraints.",
+            "solveTimeSeconds": 0,
             "unscheduled": [],
         }
 
-    # ═══════════════════════════════════════════
-    # EXTRACT
-    # ═══════════════════════════════════════════
-    schedule = []
-    value = solver.Value  # local alias (faster inner loop)
-    for key, v in X:
-        if value(v) == 1:
-            sec_id, subj_id, kind, sess_idx, day, start_min, room_id, fac_id = key
-            dur = block_dur[key]
-            schedule.append({
-                "sectionId": sec_id,
-                "sectionCode": section_by_id[sec_id].sectionCode,
-                "subjectId": subj_id,
-                "facultyId": fac_id,
-                "roomId": room_id,
-                "day": day,
-                "startTime": min_to_hhmm(start_min),
-                "endTime": min_to_hhmm(start_min + dur),
-                "loadType": "laboratory" if kind == "lab" else "lecture",
-            })
-
-    unscheduled_list = []
-    for u, group_key in unscheduled_vars:
-        if value(u) == 1:
-            sec_id, subj_id, kind, sess_idx = group_key
-            subj = subject_by_id.get(subj_id)
-            sec = section_by_id.get(sec_id)
-            unscheduled_list.append({
-                "sectionId": sec_id,
-                "sectionCode": sec.sectionCode if sec else "?",
-                "subjectId": subj_id,
-                "subjectCode": subj.subjectCode if subj else "?",
-                "kind": kind,
-                "sessionIndex": sess_idx,
-            })
-
-    print(
-        f"[solver] assigned={len(schedule)}/{len(block_group)} blocks, "
-        f"unscheduled={len(unscheduled_list)}"
-    )
-
-    return {
+    response = {
         "status": "success",
-        "solveTimeSeconds": solver.WallTime(),
-        "schedule": schedule,
-        "unscheduled": unscheduled_list,
-        "solveStatus": status_name,
+        "solveTimeSeconds": sum(c["solveTimeSeconds"] for c in candidates),
+        "schedule": candidates[0]["schedule"],
+        "unscheduled": candidates[0]["unscheduled"],
+        "candidates": candidates,
     }
+    if len(candidates) == 1:
+        response["warning"] = "onlyOneCandidate"
+    return response
