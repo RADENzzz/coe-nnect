@@ -74,6 +74,11 @@ import {
   type BulkScheduleAction,
 } from './hooks/useBulkScheduleActions';
 import { countSelectedStatuses } from './utils/bulk-actions.util.ts';
+import {
+  getSelectableScheduleIds,
+  normalizeEntryStatus,
+  type SelectionStatus,
+} from './utils/selection.util.ts';
 import TimetableMoreMenu, {
   type TimetableMoreMenuItem,
 } from './components/TimetableMoreMenu';
@@ -228,6 +233,8 @@ export default function TimetablePage({ readOnly = false }: Props) {
   );
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<Set<string>>(new Set<string>());
+  const [selectionStatus, setSelectionStatus] = useState<SelectionStatus | null>(null);
+  const selectMode = selectedScheduleIds.size > 0;
   const [bulkConfirmAction, setBulkConfirmAction] =
     useState<BulkConfirmAction>(null);
   const [publishNote, setPublishNote] = useState('');
@@ -1620,17 +1627,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     (viewMode === 'byDepartment' && subMode === 'byFaculty');
   const writable = !readOnly && !activeVersion;
 
-  const selectableScheduleIds = useMemo(() => {
-    if (!writable) return new Set<string>();
-    return new Set(
-      entries
-        .filter(
-          (entry) =>
-            !foreignEntryIds.has(entry.id) && entry.status !== 'published',
-        )
-        .map((entry) => entry.id),
-    );
-  }, [entries, foreignEntryIds, writable]);
+  const selectableScheduleIds = useMemo(
+    () =>
+      getSelectableScheduleIds(entries, foreignEntryIds, writable, selectionStatus),
+    [entries, foreignEntryIds, writable, selectionStatus],
+  );
 
   const statusCounts = useMemo(
     () => countSelectedStatuses(entries, selectedScheduleIds),
@@ -1639,33 +1640,66 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   useEffect(() => {
     setSelectedScheduleIds(new Set<string>());
+    setSelectionStatus(null);
   }, [activeTerm?.termId, myDeptId, activeVersion?.versionId]);
 
   const handleToggleSelect = useCallback(
     (entry: ScheduleEntry) => {
+      if (foreignEntryIds.has(entry.id) || !writable) return;
+      if (
+        selectionStatus !== null &&
+        normalizeEntryStatus(entry) !== selectionStatus
+      ) {
+        feedback.error(
+          `Selection is locked to ${selectionStatus} rows. Clear the selection to switch.`,
+        );
+        return;
+      }
       if (!selectableScheduleIds.has(entry.id)) return;
-      setSelectedScheduleIds((previous) => {
-        const next = new Set(previous);
-        if (next.has(entry.id)) next.delete(entry.id);
-        else next.add(entry.id);
-        return next;
-      });
+
+      const next = new Set(selectedScheduleIds);
+      if (next.has(entry.id)) {
+        next.delete(entry.id);
+        if (next.size === 0) setSelectionStatus(null);
+      } else {
+        next.add(entry.id);
+        if (selectionStatus === null) {
+          setSelectionStatus(normalizeEntryStatus(entry));
+        }
+      }
+      setSelectedScheduleIds(next);
     },
-    [selectableScheduleIds],
+    [
+      feedback,
+      foreignEntryIds,
+      selectableScheduleIds,
+      selectedScheduleIds,
+      selectionStatus,
+      writable,
+    ],
   );
 
-  const handleClearSelection = useCallback(
-    () => setSelectedScheduleIds(new Set<string>()),
-    [],
+  const handleEntryActivation = useCallback(
+    (entry: ScheduleEntry) => {
+      if (selectMode) handleToggleSelect(entry); else handleClick(entry);
+    },
+    [handleClick, handleToggleSelect, selectMode],
   );
 
-  const handleBulkSucceeded = useCallback((ids: string[]) => {
-    setSelectedScheduleIds((previous) => {
-      const next = new Set(previous);
-      for (const id of ids) next.delete(id);
-      return next;
-    });
+  const handleClearSelection = useCallback(() => {
+    setSelectedScheduleIds(new Set<string>());
+    setSelectionStatus(null);
   }, []);
+
+  const handleBulkSucceeded = useCallback(
+    (ids: string[]) => {
+      const next = new Set(selectedScheduleIds);
+      for (const id of ids) next.delete(id);
+      setSelectedScheduleIds(next);
+      if (next.size === 0) setSelectionStatus(null);
+    },
+    [selectedScheduleIds],
+  );
 
   const { pendingAction, runBulkAction } = useBulkScheduleActions({
     termId: activeTerm?.termId,
@@ -2213,10 +2247,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
               {layoutMode === 'agenda' ? (
                 <AgendaView
                   entries={entries}
-                  onEntryClick={handleClick}
+                  onEntryClick={handleEntryActivation}
                   onRequestChange={(entry) => setRequestChangeEntry(entry)}
                   requestChangeEntryIds={requestChangeEntryIds}
-                  selectableEntryIds={selectableScheduleIds}
+                  selectableEntryIds={selectMode ? undefined : selectableScheduleIds}
                   selectedEntryIds={selectedScheduleIds}
                   onToggleSelect={handleToggleSelect}
                 />
@@ -2228,7 +2262,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                     density={gridDensity}
                     fitToContainer
                     onEntryMove={writable ? handleMove : undefined}
-                    onEntryClick={handleClick}
+                    onEntryClick={handleEntryActivation}
                     onRequestChange={(entry) => setRequestChangeEntry(entry)}
                     requestChangeEntryIds={requestChangeEntryIds}
                     readOnlyEntryIds={
@@ -2237,7 +2271,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
                         : foreignEntryIds
                     }
                     busy={moveBusy}
-                    selectableEntryIds={selectableScheduleIds}
+                    selectableEntryIds={selectMode ? undefined : selectableScheduleIds}
                     selectedEntryIds={selectedScheduleIds}
                     onToggleSelect={handleToggleSelect}
                   />

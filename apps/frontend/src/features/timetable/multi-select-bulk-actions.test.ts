@@ -292,3 +292,20 @@ test('missing entry status is treated as draft', () => {
   assert.equal(normalizeEntryStatus(entry('x', undefined)), 'draft');
   assert.equal(normalizeEntryStatus(entry('y', 'published')), 'published');
 });
+
+test('selection enters body-click mode after the first checkbox tick', () => {
+  assert.match(page, /const \[selectionStatus, setSelectionStatus\] = useState<SelectionStatus \| null>\(null\)/);
+  assert.match(page, /const selectMode = selectedScheduleIds\.size > 0/);
+  assert.match(page, /getSelectableScheduleIds\(entries, foreignEntryIds, writable, selectionStatus\)/);
+  assert.match(page, /selectableEntryIds=\{selectMode \? undefined : selectableScheduleIds\}/);
+  assert.match(page, /const handleEntryActivation = useCallback/);
+  assert.match(page, /if \(selectMode\) handleToggleSelect\(entry\); else handleClick\(entry\)/);
+  assert.match(page, /onEntryClick=\{handleEntryActivation\}/);
+  assert.match(page, /Selection is locked to/);
+  assert.match(page, /setSelectionStatus\(null\)/);
+});
+
+test('selected rows stay visible when checkboxes are hidden', () => {
+  assert.match(classBlock, /selected &&/);
+  assert.match(agendaCard, /selected &&/);
+});

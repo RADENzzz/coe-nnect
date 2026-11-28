@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import Icon from '../../../components/ui/Icon';
 import { formatTime } from '../utils/time.util';
 import type { ScheduleEntry } from '../types';
@@ -37,7 +38,12 @@ export default function AgendaClassCard({
   const isLab = entry.loadType === 'laboratory';
 
   return (
-    <div className="w-full bg-white border border-slate-200 hover:border-slate-300 active:bg-slate-50 transition-colors flex items-stretch overflow-hidden">
+    <div
+      className={clsx(
+        'w-full bg-white border border-slate-200 hover:border-slate-300 active:bg-slate-50 transition-colors flex items-stretch overflow-hidden',
+        selected && 'outline outline-2 outline-primary',
+      )}
+    >
       {selectable && (
         <input
           type="checkbox"

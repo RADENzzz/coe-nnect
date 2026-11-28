@@ -198,6 +198,7 @@ function ClassBlockBase({
           isLab &&
             '[background-image:repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.15)_5px,rgba(255,255,255,0.15)_10px)]',
           ringClass,
+          selected && 'outline outline-2 outline-primary',
           dragging && 'cursor-grabbing shadow-2xl',
         )}
       >
@@ -258,6 +259,7 @@ function ClassBlockBase({
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
         ringClass,
+        selected && 'outline outline-2 outline-primary',
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
