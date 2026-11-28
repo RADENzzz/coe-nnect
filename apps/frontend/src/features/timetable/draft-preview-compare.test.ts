@@ -50,3 +50,16 @@ test('saved draft preview compare picker and delete dialog are wired', () => {
   assert.match(drawer, /onDelete/);
   assert.match(drawer, /aria-label="Saved timetable drafts"/);
 });
+
+test('version compare modal reuses draft labels and global feedback', () => {
+  const modal = read(
+    'apps/frontend/src/features/timetable/components/VersionCompareModal.tsx',
+  );
+
+  assert.match(modal, /termId\?: string \| null/);
+  assert.match(modal, /compareVersionSources\(sourceA!, sourceB!, deptId, termId/);
+  assert.match(modal, /label \?\? sourceLabel/);
+  assert.match(modal, /useFeedback\(\)/);
+  assert.match(modal, /feedback\.failed/);
+  assert.doesNotMatch(modal, /Failed to load comparison/);
+});

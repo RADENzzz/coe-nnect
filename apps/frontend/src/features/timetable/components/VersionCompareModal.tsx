@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Modal from '../../../components/ui/Modal';
 import Icon from '../../../components/ui/Icon';
+import { useFeedback } from '../../../components/ui/FeedbackToast';
+import { extractApiError } from '../../../lib/api-error';
 import {
   compareVersionSources,
   type ScheduleVersionEntry,
@@ -24,6 +26,7 @@ interface VersionCompareModalProps {
   sourceB: VersionSource | null;
   departments: Department[];
   scopeDeptId: string;
+  termId?: string | null;
 }
 
 function formatDateTime(iso: string | null | undefined): string {
@@ -45,6 +48,13 @@ function displayNumber(value: number | null | undefined): string {
 function sourceLabel(source: VersionSource | null): string {
   if (!source) return 'Unknown source';
   return `${source.kind.charAt(0).toUpperCase() + source.kind.slice(1)} source`;
+}
+
+function resolvedSourceLabel(
+  source: VersionSource | null,
+  summary: VersionCompareResult['versionA'] | null,
+): string {
+  return summary?.label ?? sourceLabel(source);
 }
 
 function entryLabel(e: ScheduleVersionEntry): string {
@@ -73,7 +83,9 @@ export default function VersionCompareModal({
   sourceB,
   departments,
   scopeDeptId,
+  termId,
 }: VersionCompareModalProps) {
+  const feedback = useFeedback();
   const isDepartmentHead = useAuthStore(
     (s) => s.profile?.role === 'department_head',
   );
@@ -95,11 +107,19 @@ export default function VersionCompareModal({
       sourceB?.kind,
       sourceB?.id,
       deptId,
+      termId,
     ],
-    queryFn: () => compareVersionSources(sourceA!, sourceB!, deptId || undefined),
+    queryFn: () =>
+      compareVersionSources(sourceA!, sourceB!, deptId, termId ?? undefined),
     enabled: canLoad,
     staleTime: 60 * 1000,
   });
+
+  useEffect(() => {
+    if (error) {
+      feedback.failed(extractApiError(error, 'Could not load comparison.'));
+    }
+  }, [error, feedback]);
 
   const entriesA = useMemo(
     () =>
@@ -198,12 +218,6 @@ export default function VersionCompareModal({
         </div>
       )}
 
-      {error && (
-        <div className="p-4 rounded bg-red-50 border border-red-200 text-sm text-red-800">
-          Failed to load comparison: {(error as Error).message}
-        </div>
-      )}
-
       {data && (
         <div className="space-y-5">
           {/* Header — synthesized published/live sources may lack some metadata. */}
@@ -211,8 +225,10 @@ export default function VersionCompareModal({
             <div className="p-3 border border-surface-variant rounded bg-surface-container-lowest">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                  <Icon name="history" size={11} />
-                  {sourceLabel(sourceA)}
+                  {sourceA?.kind === 'history' && (
+                    <Icon name="history" size={11} />
+                  )}
+                  {resolvedSourceLabel(sourceA, data.versionA)}
                   {typeof data.versionA.versionNumber === 'number'
                     ? ` · v${data.versionA.versionNumber}`
                     : ''}
@@ -225,16 +241,21 @@ export default function VersionCompareModal({
                 {displayNumber(data.versionA.entryCount)} entries ·{' '}
                 {formatDateTime(data.versionA.lastModifiedAt)}
               </p>
-              <p className="text-xs text-on-surface-variant">
-                by {data.versionA.finalizedByName ?? 'unknown'}
-              </p>
+              {(sourceA?.kind === 'published' ||
+                sourceA?.kind === 'history') && (
+                <p className="text-xs text-on-surface-variant">
+                  by {data.versionA.finalizedByName ?? 'unknown'}
+                </p>
+              )}
             </div>
 
             <div className="p-3 border border-surface-variant rounded bg-surface-container-lowest">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">
-                  <Icon name="history" size={11} />
-                  {sourceLabel(sourceB)}
+                  {sourceB?.kind === 'history' && (
+                    <Icon name="history" size={11} />
+                  )}
+                  {resolvedSourceLabel(sourceB, data.versionB)}
                   {typeof data.versionB.versionNumber === 'number'
                     ? ` · v${data.versionB.versionNumber}`
                     : ''}
@@ -247,9 +268,12 @@ export default function VersionCompareModal({
                 {displayNumber(data.versionB.entryCount)} entries ·{' '}
                 {formatDateTime(data.versionB.lastModifiedAt)}
               </p>
-              <p className="text-xs text-on-surface-variant">
-                by {data.versionB.finalizedByName ?? 'unknown'}
-              </p>
+              {(sourceB?.kind === 'published' ||
+                sourceB?.kind === 'history') && (
+                <p className="text-xs text-on-surface-variant">
+                  by {data.versionB.finalizedByName ?? 'unknown'}
+                </p>
+              )}
             </div>
           </div>
 
