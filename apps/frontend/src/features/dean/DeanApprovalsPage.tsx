@@ -12,19 +12,16 @@ import {
   fetchUnfinalizeRequests,
   unfinalizeRequestLabel,
   unfinalizeRequesterName,
-  type ScheduleUnfinalizeRequest,
 } from '../../api/schedule-unfinalize.api';
 import {
   fetchPublishRequests,
   publishRequestLabel,
   publishRequesterName,
-  type SchedulePublishRequest,
 } from '../../api/schedule-publish-request.api';
 import {
   fetchChangeRequests,
   changeRequestLabel,
   changeRequesterName,
-  type ScheduleChangeRequest,
 } from '../../api/schedule-change-request.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -45,6 +42,12 @@ import {
   clearRequestDeepLinkParams,
   reviewRowAction,
 } from './dean-approval-actions';
+import {
+  filterRequestRows,
+  REQUEST_KIND_LABELS,
+  type RequestRow,
+  type RequestStatusFilter,
+} from './dean-request-bulk';
 import type { Day, LoadType, ScheduleEntry } from '../timetable/types';
 
 const STATUS_LABELS: Record<
@@ -67,12 +70,6 @@ const REQUEST_STATUS_TONES: Record<
   cancelled: 'neutral',
 };
 
-const REQUEST_KIND_LABELS: Record<RequestRow['kind'], string> = {
-  publish: 'Publish',
-  unfinalize: 'Unfinalize',
-  change: 'Change',
-};
-
 const DAY_MAP: Record<string, Day> = {
   Monday: 'MON',
   Tuesday: 'TUE',
@@ -85,19 +82,8 @@ const DAY_MAP: Record<string, Day> = {
 
 type ApprovalTab = 'publish' | 'unfinalize' | 'change' | 'review' | 'finalized' | 'all';
 type StatusFilter = 'all' | 'draft' | 'review' | 'finalized' | 'published';
-type RequestStatusFilter =
-  | 'pending'
-  | 'approved'
-  | 'rejected'
-  | 'cancelled'
-  | 'all';
 type BatchAction = 'finalize' | 'unfinalize-published';
 type DeepLinkParam = 'publishRequest' | 'request' | 'changeRequest';
-
-type RequestRow =
-  | { kind: 'publish'; request: SchedulePublishRequest }
-  | { kind: 'unfinalize'; request: ScheduleUnfinalizeRequest }
-  | { kind: 'change'; request: ScheduleChangeRequest };
 
 const STATUS_VALUES: StatusFilter[] = [
   'all',
@@ -137,23 +123,6 @@ function requestRequester(row: RequestRow): string {
 function requestDetail(row: RequestRow): string {
   if (row.kind === 'publish') return row.request.note ?? 'No note provided.';
   return row.request.reason || 'No reason provided.';
-}
-
-function filterRequestRows<T extends RequestRow>(
-  rows: T[],
-  status: RequestStatusFilter,
-  query: string,
-): T[] {
-  const q = query.trim().toLowerCase();
-  return rows.filter((row) => {
-    if (status !== 'all' && row.request.status !== status) return false;
-    if (q) {
-      const code = (row.request.schedule?.subject?.subjectCode ?? '').toLowerCase();
-      const title = (row.request.schedule?.subject?.title ?? '').toLowerCase();
-      if (!code.includes(q) && !title.includes(q)) return false;
-    }
-    return true;
-  });
 }
 
 /** Adapt a RawSchedule row to the shape consumed by ApprovalDetailDrawer. */
@@ -516,7 +485,7 @@ export default function DeanApprovalsPage() {
   }, [activeTab, publishRequests, unfinalizeRequests, changeRequests]);
 
   const filteredRequests = useMemo(
-    () => filterRequestRows(requestRowsByTab, requestStatusFilter, searchQuery),
+    () => filterRequestRows(requestRowsByTab, requestStatusFilter, searchQuery, deptFilter),
     [requestRowsByTab, requestStatusFilter, searchQuery],
   );
 
