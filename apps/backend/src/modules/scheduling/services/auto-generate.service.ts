@@ -278,6 +278,13 @@ export class AutoGenerateService {
       });
     } catch (err) {
       this.autoGenerateInFlight.delete(key);
+      try {
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
+      } catch (releaseErr) {
+        this.logger.warn(
+          `Failed to release auto-generate lock after pre-section error for term=${termId} dept=${deptId}: ${(releaseErr as Error).message}`,
+        );
+      }
       throw err;
     }
 

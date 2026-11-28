@@ -704,15 +704,46 @@ describe('AutoGenerateService candidate mode', () => {
         solveTimeSeconds: 0.1,
       }),
     };
-    const { service } = makeService({ recipients, solverClient });
+    const { service, rpc } = makeService({ recipients, solverClient });
 
     await expect(
       service.autoGenerate(termId, deptId, userId),
     ).rejects.toThrow('department head lookup failed');
 
+    expect(rpcCalls(rpc, 'release_auto_generate_lock').length).toBeGreaterThan(0);
+
     const result: any = await service.autoGenerate(termId, deptId, userId);
 
     expect(result.success).toBe(true);
+  });
+
+  it('releases the legacy lock without masking a pre-section error when release fails', async () => {
+    const recipients = {
+      departmentHeadsOf: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('department head lookup failed'))
+        .mockResolvedValue(['dh-1']),
+      administrators: jest.fn().mockResolvedValue([]),
+      collegeDean: jest.fn().mockResolvedValue([]),
+      uniq: jest.fn((arr: string[]) => Array.from(new Set(arr))),
+    };
+    const solverClient = {
+      solve: jest.fn().mockResolvedValue({
+        status: 'success',
+        schedule: [],
+        unscheduled: [],
+        solveTimeSeconds: 0.1,
+      }),
+    };
+    const release = jest.fn().mockRejectedValue(new Error('release failed'));
+    const rpc = makeRpc({ release_auto_generate_lock: release });
+    const { service } = makeService({ recipients, solverClient, rpc });
+
+    await expect(
+      service.autoGenerate(termId, deptId, userId),
+    ).rejects.toThrow('department head lookup failed');
+
+    expect(release).toHaveBeenCalled();
   });
 
   it('uses only the dept-scoped acquire signature when that RPC is available', async () => {
