@@ -5,6 +5,10 @@ import {
   countSelectedStatuses,
   getBulkActionEligibleIds,
 } from './utils/bulk-actions.util.ts';
+import {
+  getSelectableScheduleIds,
+  normalizeEntryStatus,
+} from './utils/selection.util.ts';
 
 const read = (path: string) =>
   readFileSync(new URL('../../../../../' + path, import.meta.url), 'utf8');
@@ -254,4 +258,37 @@ test('timetable grid lets vertical wheel scroll chain to the page', () => {
   assert.match(grid, /ref=\{containerRef\}/);
   assert.match(grid, /className="flex-1 overflow-auto"/);
   assert.doesNotMatch(grid, /overflow-auto overscroll-contain/);
+});
+
+test('selectable ids include published rows and lock to one status', () => {
+  const entries = [
+    entry('d', 'draft'),
+    entry('r', 'review'),
+    entry('f', 'finalized'),
+    entry('p', 'published'),
+    entry('foreign', 'draft'),
+  ];
+  const foreign = new Set(['foreign']);
+
+  assert.deepEqual(
+    [...getSelectableScheduleIds(entries, foreign, true, null)],
+    ['d', 'r', 'f', 'p'],
+  );
+  assert.deepEqual(
+    [...getSelectableScheduleIds(entries, foreign, true, 'draft')],
+    ['d'],
+  );
+  assert.deepEqual(
+    [...getSelectableScheduleIds(entries, foreign, true, 'published')],
+    ['p'],
+  );
+  assert.deepEqual(
+    [...getSelectableScheduleIds(entries, new Set(), false, null)],
+    [],
+  );
+});
+
+test('missing entry status is treated as draft', () => {
+  assert.equal(normalizeEntryStatus(entry('x', undefined)), 'draft');
+  assert.equal(normalizeEntryStatus(entry('y', 'published')), 'published');
 });
