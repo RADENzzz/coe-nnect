@@ -52,11 +52,12 @@ test('default generate snapshots live rows and skips pre-abandon', () => {
   );
   assert.match(perform, /candidateCount/, 'candidate count must be sent');
 
-  assert.match(utils, /candidateCount: 2 \| 3 \| 5/);
-  assert.match(utils, /onCandidateCountChange: \(count: 2 \| 3 \| 5\) => void/);
-  assert.match(utils, /\[2, 3, 5\] as const/, 'exact count presets');
-  assert.match(utils, /onCandidateCountChange\(count\)/);
-  assert.match(utils, /disabled=\{isGenerating\}/, 'count selector disabled while generating');
+  assert.doesNotMatch(utils, /candidateCount: 2 \| 3 \| 5/);
+  assert.doesNotMatch(utils, /onCandidateCountChange/);
+  assert.doesNotMatch(utils, /<select/);
+  assert.doesNotMatch(utils, />Options/);
+  assert.match(utils, /getGenerationProgressMessage/);
+  assert.match(utils, /aria-busy=\{isGenerating\}/);
 });
 
 test('candidate chooser is rendered instead of legacy preview in candidate mode', () => {
@@ -140,5 +141,54 @@ test('blocked minors and room deficits still short-circuit candidate generation'
     generation,
     /confirmAutoGenerateCandidate\(\s*termId: string,\s*deptId: string,\s*payload: \{ generationToken: string; candidate: AutoGenerateCandidate \}/,
     'confirm API must remain compatible with the chooser payload',
+  );
+});
+
+test('auto-generate opens options dialog and uses the selected count immediately', () => {
+  assert.match(
+    page,
+    /import AutoGenerateOptionsDialog from '\.\/auto-schedule\/AutoGenerateOptionsDialog'/,
+  );
+  assert.match(
+    page,
+    /const \[generateDialogOpen, setGenerateDialogOpen\] = useState\(false\)/,
+  );
+
+  const perform = section(
+    'const performAutoGenerate = useCallback(',
+    'const handleAutoGenerate = useCallback(',
+  );
+  assert.match(
+    perform,
+    /candidateCount: options\?\.candidateCount \?\? candidateCount/,
+  );
+
+  const handle = section(
+    'const handleAutoGenerate = useCallback(',
+    'const handleConfirmGenerate = useCallback(',
+  );
+  assert.match(handle, /setGenerateDialogOpen\(true\)/);
+  assert.match(handle, /deptSections\.length === 0/);
+  assert.match(handle, /setAlertState\(/);
+  assert.doesNotMatch(handle, /performAutoGenerate/);
+
+  const confirm = section(
+    'const handleConfirmGenerate = useCallback(',
+    'const performLegacyAutoGenerate = useCallback(',
+  );
+  assert.match(confirm, /setGenerateDialogOpen\(false\)/);
+  assert.match(confirm, /setCandidateCount\(count\)/);
+  assert.match(
+    confirm,
+    /performAutoGenerate\(\{\s*candidateCount: count\s*\}\)/,
+  );
+
+  assert.match(page, /<AutoGenerateOptionsDialog/);
+  assert.match(page, /open=\{generateDialogOpen\}/);
+  assert.match(page, /count=\{candidateCount\}/);
+  assert.match(page, /onGenerate=\{handleConfirmGenerate\}/);
+  assert.doesNotMatch(
+    page,
+    /<AutoGenerateButton[\s\S]{0,600}candidateCount=/,
   );
 });
