@@ -73,6 +73,10 @@ import {
   useBulkScheduleActions,
   type BulkScheduleAction,
 } from './hooks/useBulkScheduleActions';
+import { countSelectedStatuses } from './utils/bulk-actions.util.ts';
+import TimetableMoreMenu, {
+  type TimetableMoreMenuItem,
+} from './components/TimetableMoreMenu';
 import AutoSchedulePreview from './auto-schedule/AutoSchedulePreview';
 import AutoScheduleCandidateChooser from './auto-schedule/AutoScheduleCandidateChooser';
 import AutoGenerateOptionsDialog from './auto-schedule/AutoGenerateOptionsDialog';
@@ -1628,6 +1632,11 @@ export default function TimetablePage({ readOnly = false }: Props) {
     );
   }, [entries, foreignEntryIds, writable]);
 
+  const statusCounts = useMemo(
+    () => countSelectedStatuses(entries, selectedScheduleIds),
+    [entries, selectedScheduleIds],
+  );
+
   useEffect(() => {
     setSelectedScheduleIds(new Set<string>());
   }, [activeTerm?.termId, myDeptId, activeVersion?.versionId]);
@@ -1668,9 +1677,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
 
   const handleBulkAction = useCallback(
     (action: BulkScheduleAction) => {
+      if (action === 'cancel-finalization') {
+        void runBulkAction(action);
+        return;
+      }
       if (
         action === 'delete' ||
         action === 'request-publish' ||
+        action === 'request-change' ||
         action === 'clear-auto-drafts'
       ) {
         setPublishNote('');
@@ -1688,7 +1702,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     if (!action) return;
     void runBulkAction(
       action,
-      action === 'request-publish' ? publishNote : undefined,
+      action === 'request-publish' || action === 'request-change' ? publishNote : undefined,
     );
     setPublishNote('');
   }, [bulkConfirmAction, publishNote, runBulkAction]);
@@ -1716,6 +1730,49 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const coveragePercent = coverage?.totals.percent ?? 100;
   const showCoveragePill =
     !!coverage && coverage.termSemester !== null && !isLoading && !error;
+
+  const moreMenuItems: TimetableMoreMenuItem[] = [
+    ...(activeTerm && !activeVersion
+      ? [
+          {
+            key: 'versions',
+            label: 'Versions',
+            onSelect: () => setVersionsOpen(true),
+            title: 'View version history',
+          },
+        ]
+      : []),
+    ...(writable && activeTerm && isDepartmentHead
+      ? [
+          {
+            key: 'clear-auto-drafts',
+            label: 'Clear auto-drafts',
+            onSelect: () => {
+              setPublishNote('');
+              setBulkConfirmAction('clear-auto-drafts');
+            },
+            disabled: isGenerating,
+            title: isGenerating
+              ? 'Wait for the current generation to finish'
+              : 'Clear auto-generated drafts for this term',
+          },
+        ]
+      : []),
+    ...(writable && activeTerm
+      ? [
+          {
+            key: 'focus-plot',
+            label: 'Focus Plot',
+            onSelect: () => setFocusModeOpen(true),
+            disabled: isGenerating,
+            title: isGenerating
+              ? 'Wait for the current generation to finish'
+              : 'Open the full-screen plotting workspace',
+            dataTour: 'tt-focus',
+          },
+        ]
+      : []),
+  ];
 
   // ── Layout: full-height flex ──
   return (
@@ -1815,17 +1872,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
               </button>
             )}
 
-            {activeTerm && !activeVersion && (
-              <button
-                onClick={() => setVersionsOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 border border-surface-variant text-sm font-semibold text-on-surface hover:bg-surface-container-low transition rounded-lg"
-                title="View version history"
-              >
-                <Icon name="history" size={16} />
-                <span className="hidden sm:inline">Versions</span>
-              </button>
-            )}
-
             {writable && activeTerm && isDepartmentHead && (
               <div className="inline-flex" data-tour="tt-auto">
                 <AutoGenerateButton
@@ -1839,42 +1885,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               </div>
             )}
 
-            {writable && activeTerm && isDepartmentHead && (
-              <button
-                type="button"
-                onClick={() => {
-                  setPublishNote('');
-                  setBulkConfirmAction('clear-auto-drafts');
-                }}
-                disabled={isGenerating}
-                title={
-                  isGenerating
-                    ? 'Wait for the current generation to finish'
-                    : 'Clear auto-generated drafts for this term'
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-surface-variant text-sm font-semibold text-on-surface hover:bg-surface-container-low transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Icon name="auto_delete" size={16} />
-                <span>Clear auto-drafts</span>
-              </button>
-            )}
-
-            {writable && activeTerm && (
-              <button
-                data-tour="tt-focus"
-                onClick={() => setFocusModeOpen(true)}
-                disabled={isGenerating}
-                title={
-                  isGenerating
-                    ? 'Wait for the current generation to finish'
-                    : 'Open the full-screen plotting workspace'
-                }
-                className="flex items-center gap-2 px-3 py-2 border border-primary/40 text-sm font-semibold text-primary hover:bg-primary/5 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Icon name="center_focus_strong" size={16} />
-                <span className="hidden sm:inline">Focus Plot</span>
-              </button>
-            )}
+            <TimetableMoreMenu items={moreMenuItems} />
 
             {writable && activeTerm && (
               <button
@@ -2634,6 +2645,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         {selectedScheduleIds.size > 0 && (
           <BulkActionBar
             count={selectedScheduleIds.size}
+            statusCounts={statusCounts}
             pendingAction={pendingAction}
             onAction={handleBulkAction}
             onClearSelection={handleClearSelection}

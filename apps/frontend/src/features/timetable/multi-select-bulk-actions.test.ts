@@ -223,3 +223,18 @@ test('header More menu is accessible and closeable', () => {
   assert.match(contextMenu, /dataTour/);
   assert.doesNotMatch(contextMenu, /alert\(|confirm\(|prompt\(|setSearchParams|navigate\(/);
 });
+
+const contextPage = read(
+  'apps/frontend/src/features/timetable/TimetablePage.tsx',
+);
+
+test('timetable page wires contextual actions and the header More menu', () => {
+  assert.match(contextPage, /countSelectedStatuses\(entries, selectedScheduleIds\)/);
+  assert.match(contextPage, /statusCounts=\{statusCounts\}/);
+  assert.match(contextPage, /<TimetableMoreMenu/);
+  assert.match(contextPage, /'cancel-finalization'/);
+  assert.match(contextPage, /'request-change'/);
+  assert.match(contextPage, /action === 'request-publish' \|\| action === 'request-change'/);
+  assert.doesNotMatch(contextPage, /bulk[A-Za-z]*\([^)]*setSearchParams/);
+  assert.doesNotMatch(contextPage, /bulk[A-Za-z]*\([^)]*navigate\(/);
+});
