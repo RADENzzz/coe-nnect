@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useThemeStore, type Theme } from './theme.store';
+import { useThemeStore, type Theme } from './theme.store.ts';
 
 export const APPEARANCE_STORAGE_KEY = 'coe-nnect:appearance';
 export const APPEARANCE_CSS_STORAGE_KEY = 'coe-nnect:appearance-css:v2';
@@ -16,6 +16,8 @@ export interface Appearance {
   glass: boolean;
   /** Whether the interactive 3D building is rendered in the landing hero. */
   show3dBuilding: boolean;
+  /** Compact the desktop sidebar so every link fits without inner scrolling. */
+  sidebarFitAllContent: boolean;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -23,6 +25,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   surfaceTint: 'default',
   glass: false,
   show3dBuilding: true,
+  sidebarFitAllContent: false,
 };
 
 export interface AccentPreset {
@@ -425,9 +428,10 @@ export function applyAppearance(a: Appearance): void {
   if (typeof document === 'undefined') return;
   const css = buildAppearanceCss(a);
 
-  // The glass theme is class-driven; its rules live in globals.css so they
-  // can be removed cleanly without regenerating the variable maps.
+  // The glass theme and sidebar fit mode are class-driven; their rules live
+  // in globals.css so they can be removed without regenerating the maps.
   document.documentElement.classList.toggle('glass', a.glass);
+  document.documentElement.classList.toggle('sidebar-fit-all', a.sidebarFitAllContent);
 
   let el = document.getElementById(STYLE_ELEMENT_ID) as HTMLStyleElement | null;
   if (!el) {
@@ -494,6 +498,7 @@ function readStoredAppearance(): Appearance {
         : 'default',
       glass: parsed?.glass === true,
       show3dBuilding: parsed?.show3dBuilding !== false,
+      sidebarFitAllContent: parsed?.sidebarFitAllContent === true,
     };
   } catch {
     return DEFAULT_APPEARANCE;
@@ -518,6 +523,7 @@ interface AppearanceState {
   setSurfaceTint: (tint: SurfaceTint) => void;
   setGlass: (glass: boolean) => void;
   setShow3dBuilding: (show: boolean) => void;
+  setSidebarFitAllContent: (enabled: boolean) => void;
   resetAppearance: () => void;
   setLogo: (dataUrl: string | null) => void;
 }
@@ -563,9 +569,22 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => ({
     set({ appearance });
   },
 
+  setSidebarFitAllContent: (enabled) => {
+    const appearance = { ...get().appearance, sidebarFitAllContent: enabled };
+    applyAppearance(appearance);
+    persistAppearance(appearance);
+    set({ appearance });
+  },
+
   resetAppearance: () => {
-    // "Reset colours" leaves the experimental theme switch untouched.
-    const appearance = { ...DEFAULT_APPEARANCE, glass: get().appearance.glass };
+    // "Reset colours" leaves the non-colour preferences untouched.
+    const current = get().appearance;
+    const appearance = {
+      ...DEFAULT_APPEARANCE,
+      glass: current.glass,
+      show3dBuilding: current.show3dBuilding,
+      sidebarFitAllContent: current.sidebarFitAllContent,
+    };
     applyAppearance(appearance);
     persistAppearance(appearance);
     set({ appearance });

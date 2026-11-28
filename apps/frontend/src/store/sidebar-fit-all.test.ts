@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const STORAGE_KEY = 'coe-nnect:appearance';
+
+type StorageLike = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+};
+
+function memoryStorage(seed: Record<string, string> = {}): StorageLike {
+  const values = new Map(Object.entries(seed));
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+    removeItem: (key) => {
+      values.delete(key);
+    },
+  };
+}
+
+function installStorage(storage: StorageLike) {
+  (globalThis as { localStorage?: StorageLike }).localStorage = storage;
+}
+
+async function freshAppearanceStore(storage: StorageLike = memoryStorage()) {
+  installStorage(storage);
+  const tag = `${Date.now()}-${Math.random()}`;
+  return import(`./appearance.store.ts?test=${tag}`);
+}
+
+test('fresh browsers keep the sidebar scroll default', async () => {
+  const { DEFAULT_APPEARANCE } = await freshAppearanceStore();
+  assert.equal(DEFAULT_APPEARANCE.sidebarFitAllContent, false);
+});
+
+test('old appearance JSON without the new key keeps scrolling', async () => {
+  const storage = memoryStorage({
+    [STORAGE_KEY]: JSON.stringify({ accent: '#a16207', glass: true }),
+  });
+  const { useAppearanceStore } = await freshAppearanceStore(storage);
+  assert.equal(
+    useAppearanceStore.getState().appearance.sidebarFitAllContent,
+    false,
+  );
+});
+
+test('stored fit preference is restored', async () => {
+  const storage = memoryStorage({
+    [STORAGE_KEY]: JSON.stringify({ sidebarFitAllContent: true }),
+  });
+  const { useAppearanceStore } = await freshAppearanceStore(storage);
+  assert.equal(
+    useAppearanceStore.getState().appearance.sidebarFitAllContent,
+    true,
+  );
+});
+
+test('setter persists the fit preference and reset preserves non-colour preferences', async () => {
+  const storage = memoryStorage();
+  const { useAppearanceStore } = await freshAppearanceStore(storage);
+
+  useAppearanceStore.getState().setSidebarFitAllContent(true);
+  useAppearanceStore.getState().setGlass(true);
+  useAppearanceStore.getState().setShow3dBuilding(false);
+  useAppearanceStore.getState().setAccent('#a16207');
+  useAppearanceStore.getState().resetAppearance();
+
+  const state = useAppearanceStore.getState().appearance;
+  assert.equal(state.sidebarFitAllContent, true);
+  assert.equal(state.glass, true);
+  assert.equal(state.show3dBuilding, false);
+  assert.equal(
+    JSON.parse(storage.getItem(STORAGE_KEY) ?? '{}').sidebarFitAllContent,
+    true,
+  );
+});
+
+test('applyAppearance toggles the root fit class', () => {
+  const source = readFileSync(
+    new URL('./appearance.store.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    source,
+    /classList\.toggle\(\s*['"]sidebar-fit-all['"]\s*,\s*a\.sidebarFitAllContent\s*\)/,
+  );
+});
