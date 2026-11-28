@@ -30,6 +30,8 @@ test('save as draft flow is wired', () => {
   assert.match(page, /label: 'Save as draft…'/);
   assert.match(page, /handleOpenSaveDraft/);
   assert.match(page, /handleSaveDraft/);
+  assert.match(page, /saveDraftRows[\s\S]*?String\(entry\.deptId\) === myDeptId/);
+  assert.match(page, /entryCount=\{\s*saveDraftRows\.length\s*\}/);
   assert.match(page, /saveDraftSnapshot\(/);
   assert.match(page, /feedback\.success\(/);
   assert.match(page, /feedback\.error\(/);

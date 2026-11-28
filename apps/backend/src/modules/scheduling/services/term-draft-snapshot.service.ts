@@ -296,6 +296,22 @@ export class TermDraftSnapshotService {
     );
     const excludeScheduleIds = editableRows.map((row) => String(row.scheduleId));
     const keptAsIs = currentRows.length - editableRows.length;
+    const conflicts: DraftLoadConflict[] = [];
+
+    // A pre-existing request belongs to another workflow. It blocks the load
+    // whether the row would be overwritten or removed, and is never cancelled
+    // by this load.
+    for (const row of editableRows) {
+      if (!row.pendingFacultyRequestId) continue;
+      conflicts.push({
+        entry: this.toDraftSnapshotEntry(row, 0),
+        targetScheduleId: String(row.scheduleId),
+        action: 'conflict',
+        reason:
+          `The live row ${row.scheduleId} has a pending faculty request ` +
+          `(${row.pendingFacultyRequestId}); it was not changed or cancelled.`,
+      });
+    }
 
     const byBaseKey = new Map<string, Schedule[]>();
     for (const row of currentRows) {
@@ -309,7 +325,6 @@ export class TermDraftSnapshotService {
     }
 
     const ready: PreparedLoad[] = [];
-    const conflicts: DraftLoadConflict[] = [];
     const createdGates: FacultyGate[] = [];
     const claimed = new Set<Schedule>();
     let matched = 0;
@@ -391,14 +406,6 @@ export class TermDraftSnapshotService {
         );
         continue;
       }
-      if (target?.pendingFacultyRequestId) {
-        conflict(
-          'The live row has a pending faculty request ' +
-            `(${target.pendingFacultyRequestId}); it was not overwritten.`,
-        );
-        continue;
-      }
-
       let gate: FacultyGate | null = null;
       if (mode === 'apply' && faculty.value.facultyId) {
         try {

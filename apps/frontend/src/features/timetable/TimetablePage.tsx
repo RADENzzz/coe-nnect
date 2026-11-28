@@ -657,6 +657,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
     );
   }, [allEntries, isDepartmentHead, myDeptId, activeVersion]);
 
+  const saveDraftRows = useMemo(
+    () =>
+      allEntries.filter(
+        (entry) =>
+          (entry.status === 'draft' || entry.status === 'review') &&
+          !!entry.deptId &&
+          String(entry.deptId) === myDeptId,
+      ),
+    [allEntries, myDeptId],
+  );
+
   // Reuse resolves conflicts only into writable draft rows. Published, review,
   // finalized, pending-request, and foreign-department rows stay protected.
   const reuseReadOnlyEntryIds = useMemo(() => {
@@ -1495,11 +1506,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
       feedback.error('Choose a term, department, and draft name first.');
       return;
     }
-    if (
-      allEntries.filter(
-        (entry) => entry.status === 'draft' || entry.status === 'review',
-      ).length === 0
-    ) {
+    if (saveDraftRows.length === 0) {
       feedback.error('There are no draft or review rows to save.');
       return;
     }
@@ -1524,7 +1531,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     } finally {
       setSavingDraft(false);
     }
-  }, [activeTerm, allEntries, draftName, feedback, myDeptId, queryClient]);
+  }, [activeTerm, draftName, feedback, myDeptId, queryClient, saveDraftRows]);
 
   const handleOpenDrafts = useCallback(() => {
     setDraftsOpen(true);
@@ -2596,11 +2603,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
               : ''
           }
-          entryCount={
-            allEntries.filter(
-              (entry) => entry.status === 'draft' || entry.status === 'review',
-            ).length
-          }
+          entryCount={saveDraftRows.length}
           name={draftName}
           busy={savingDraft}
           onNameChange={setDraftName}
