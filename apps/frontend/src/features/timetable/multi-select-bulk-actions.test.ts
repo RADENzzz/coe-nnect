@@ -83,6 +83,7 @@ test('bulk confirmation modal uses the shared Modal and supports one publish not
   assert.match(modal, /from '..\/..\/..\/components\/ui\/Modal'/);
   assert.match(modal, /action === 'request-publish'/);
   assert.match(modal, /onNoteChange/);
+  assert.match(modal, /auto-generated draft/i);
   assert.doesNotMatch(modal, /alert\(|confirm\(|prompt\(/);
 });
 
@@ -106,4 +107,16 @@ test('grid and agenda forward selection props to row cards', () => {
     assert.match(source, /selectedEntryIds/);
     assert.match(source, /onToggleSelect/);
   }
+});
+
+const page = read('apps/frontend/src/features/timetable/TimetablePage.tsx');
+
+test('timetable page owns selection and keeps deep links untouched during bulk actions', () => {
+  assert.match(page, /const \[selectedScheduleIds, setSelectedScheduleIds\] = useState<Set<string>>\(new Set<string>\(\)\)/);
+  assert.match(page, /useBulkScheduleActions\(/);
+  assert.match(page, /<BulkActionBar/);
+  assert.match(page, /<BulkActionConfirmModal/);
+  assert.match(page, /Clear auto-drafts/);
+  assert.doesNotMatch(page, /bulk[A-Za-z]*\([^)]*setSearchParams/);
+  assert.doesNotMatch(page, /bulk[A-Za-z]*\([^)]*navigate\(/);
 });

@@ -52,6 +52,10 @@ export default function BulkActionConfirmModal({
 
   const copy = ACTION_COPY[action];
   const rowLabel = `row${count === 1 ? '' : 's'}`;
+  const description =
+    action === 'clear-auto-drafts'
+      ? `This will clear ${count} auto-generated draft${count === 1 ? '' : 's'}.`
+      : `This affects ${count} selected ${rowLabel}.`;
 
   return (
     <Modal
@@ -60,7 +64,7 @@ export default function BulkActionConfirmModal({
       busy={busy}
       size="sm"
       title={copy.title}
-      description={`This affects ${count} selected ${rowLabel}.`}
+      description={description}
       footer={
         <>
           <button
@@ -95,7 +99,7 @@ export default function BulkActionConfirmModal({
             {action === 'request-publish' &&
               `Send ${count} selected ${rowLabel} to the Dean for publication approval.`}
             {action === 'clear-auto-drafts' &&
-              `Remove auto-generated drafts for the current term and department. ${count} ${rowLabel} currently selected.`}
+              `${count} draft${count === 1 ? '' : 's'} will be removed.`}
           </p>
         </div>
 
