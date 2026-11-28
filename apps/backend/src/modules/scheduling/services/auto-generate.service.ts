@@ -2373,6 +2373,16 @@ export class AutoGenerateService {
     const counts = new Map<string, number>();
     const countKey = (sectionId: string, subjectId: string, loadType: string) =>
       `${sectionId}:${subjectId}:${loadType}`;
+    // solver.py registers one group per (section, subject, kind, sessionIndex).
+    // Duplicate prospectus rows for the same subject collapse into that same
+    // group, so deduplicate here instead of counting every prospectus row.
+    const groupKey = (
+      sectionId: string,
+      subjectId: string,
+      loadType: string,
+      sessionIndex: number,
+    ) => JSON.stringify([sectionId, subjectId, loadType, sessionIndex]);
+    const groupKeys = new Set<string>();
 
     const subjectById = new Map<string, any>(
       (problem?.subjects ?? []).map((subject: any) => [
@@ -2408,10 +2418,22 @@ export class AutoGenerateService {
       sessions: number,
     ) => {
       if (!(Number(units) > 0)) return;
-      const key = countKey(sectionId, subjectId, loadType);
-      const alreadyLoaded = existingByKey.get(key) ?? 0;
-      const remaining = Math.max(0, Number(sessions ?? 0) - alreadyLoaded);
-      counts.set(key, (counts.get(key) ?? 0) + remaining);
+      const alreadyLoaded = Math.max(
+        0,
+        Math.trunc(
+          Number(
+            existingByKey.get(countKey(sectionId, subjectId, loadType)) ?? 0,
+          ),
+        ),
+      );
+      const total = Math.max(0, Math.trunc(Number(sessions ?? 0)));
+      for (
+        let sessionIndex = alreadyLoaded;
+        sessionIndex < total;
+        sessionIndex++
+      ) {
+        groupKeys.add(groupKey(sectionId, subjectId, loadType, sessionIndex));
+      }
     };
 
     for (const section of problem?.sections ?? []) {
@@ -2444,6 +2466,12 @@ export class AutoGenerateService {
           prospectus.lab_sessions_per_week ?? 1,
         );
       }
+    }
+
+    for (const serialized of groupKeys) {
+      const [sectionId, subjectId, loadType] = JSON.parse(serialized);
+      const key = countKey(sectionId, subjectId, loadType);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 
     return counts;
