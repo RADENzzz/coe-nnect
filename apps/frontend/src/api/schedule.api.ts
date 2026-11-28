@@ -800,32 +800,6 @@ export async function compareVersionSources(
   return data.data;
 }
 
-export async function preflightReuse(
-  versionId: string,
-  termId: string,
-  deptId: string,
-): Promise<ReusePreflightResult> {
-  const { data } = await api.request({
-    method: 'POST',
-    url: `/v1/schedules/published-versions/${versionId}/preflight`,
-    data: { termId, deptId },
-  });
-  return data.data;
-}
-
-export async function applyReuse(
-  versionId: string,
-  termId: string,
-  deptId: string,
-): Promise<ReuseApplyResult> {
-  const { data } = await api.request({
-    method: 'POST',
-    url: `/v1/schedules/published-versions/${versionId}/reuse`,
-    data: { termId, deptId, confirmed: true },
-  });
-  return data.data;
-}
-
 // ────────────────────────────────────────────
 // Term-scoped draft snapshots
 // ────────────────────────────────────────────
@@ -909,6 +883,32 @@ export async function applyDraftSnapshot(
   const { data } = await api.request({
     method: 'POST',
     url: `/v1/schedules/draft-snapshots/${snapshotId}/load`,
+    data: { termId, deptId, confirmed: true },
+  });
+  return data.data;
+}
+
+export async function preflightReuse(
+  versionId: string,
+  termId: string,
+  deptId: string,
+): Promise<ReusePreflightResult> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: `/v1/schedules/published-versions/${versionId}/preflight`,
+    data: { termId, deptId },
+  });
+  return data.data;
+}
+
+export async function applyReuse(
+  versionId: string,
+  termId: string,
+  deptId: string,
+): Promise<ReuseApplyResult> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: `/v1/schedules/published-versions/${versionId}/reuse`,
     data: { termId, deptId, confirmed: true },
   });
   return data.data;

@@ -5,6 +5,7 @@ import {
   ScheduleReuseService,
   type ReuseCandidate,
 } from '../src/modules/scheduling/services/schedule-reuse.service';
+import { ScheduleCatalogResolver } from '../src/modules/scheduling/services/schedule-catalog-resolver.service';
 import type { PublishedVersionEntry } from '../src/modules/scheduling/services/term-published-version.service';
 import { createFakeRepository } from './fakes/repository.fake';
 import { otherDepartmentHeadProfile } from './helpers/profiles';
@@ -136,6 +137,7 @@ describe('ScheduleReuseService', () => {
   let roomRepo: Repo;
   let facultyRepo: Repo;
   let sectionRepo: Repo;
+  let catalog: ScheduleCatalogResolver;
   let publishedVersions: { entriesFor: jest.Mock };
   let ruleContextBuilder: { build: jest.Mock };
   let constraints: { evaluate: jest.Mock };
@@ -149,10 +151,7 @@ describe('ScheduleReuseService', () => {
   function createService(client = supabase) {
     return new ScheduleReuseService(
       scheduleRepo as any,
-      subjectRepo as any,
-      roomRepo as any,
-      facultyRepo as any,
-      sectionRepo as any,
+      catalog as any,
       publishedVersions as any,
       ruleContextBuilder as any,
       constraints as any,
@@ -180,6 +179,12 @@ describe('ScheduleReuseService', () => {
       { sectionId: 'SEC1', sectionCode: 'SEC1', isActive: true },
       { sectionId: 'SEC2', sectionCode: 'SEC2', isActive: true },
     ]);
+    catalog = new ScheduleCatalogResolver(
+      subjectRepo as any,
+      roomRepo as any,
+      facultyRepo as any,
+      sectionRepo as any,
+    );
 
     publishedVersions = { entriesFor: jest.fn(async () => []) };
     ruleContextBuilder = { build: jest.fn(async (input: any) => ({ input })) };
