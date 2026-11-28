@@ -70,8 +70,11 @@ export class PublishedVersionController {
     @Query('b') b: string,
     @Req() req: any,
     @Query('deptId') deptId?: string,
+    @Query('termId') termId?: string,
   ) {
-    return { data: await this.compare.compareSources(a, b, req.profile, deptId) };
+    return {
+      data: await this.compare.compareSources(a, b, req.profile, deptId, termId),
+    };
   }
 
   /** Draft-only preview of reusing published rows into a target term. */
