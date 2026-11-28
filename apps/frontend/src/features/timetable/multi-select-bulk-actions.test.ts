@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { getBulkActionEligibleIds } from './utils/bulk-actions.util.ts';
 
+const read = (path: string) =>
+  readFileSync(new URL('../../../../../' + path, import.meta.url), 'utf8');
+
 const entry = (id: string, status?: 'draft' | 'review' | 'finalized' | 'published') =>
   ({ id, status }) as never;
 
@@ -31,4 +34,36 @@ test('frontend test script registers the bulk-actions test file', () => {
     packageJson.scripts.test,
     /(?:^|\s)src\/features\/timetable\/multi-select-bulk-actions\.test\.ts(?:\s|$)/,
   );
+});
+
+const hook = read('apps/frontend/src/features/timetable/hooks/useBulkScheduleActions.ts');
+
+test('bulk hook fans out through existing single-row APIs only', () => {
+  assert.match(hook, /Promise\.allSettled\(/);
+  assert.match(hook, /deleteSchedule\(id\)/);
+  assert.match(hook, /updateScheduleStatus\(id, 'review'\)/);
+  assert.match(hook, /updateScheduleStatus\(id, 'finalized'\)/);
+  assert.match(hook, /createPublishRequest\(id, note\)/);
+  assert.match(hook, /clearAutoDrafts\(termId, deptId\)/);
+  assert.doesNotMatch(hook, /alert\(|confirm\(|prompt\(|setSearchParams|navigate\(/);
+});
+
+test('bulk hook refreshes dependent queries and reports partial failures globally', () => {
+  for (const key of [
+    'schedules',
+    'faculty-requests',
+    'flagged',
+    'unplotted-minors',
+    'schedule-versions',
+    'coverage',
+    'schedule-unfinalize-requests',
+    'schedule-publish-requests',
+    'schedule-change-requests',
+  ]) {
+    assert.match(hook, new RegExp(`\\['${key}'\\]`));
+  }
+  assert.match(hook, /feedback\.error\(/);
+  assert.match(hook, /feedback\.success\(/);
+  assert.match(hook, /feedback\.failed\(/);
+  assert.match(hook, /onSucceeded\(succeededIds\)/);
 });
