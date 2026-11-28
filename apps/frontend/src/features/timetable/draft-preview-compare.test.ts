@@ -63,3 +63,20 @@ test('version compare modal reuses draft labels and global feedback', () => {
   assert.match(modal, /feedback\.failed/);
   assert.doesNotMatch(modal, /Failed to load comparison/);
 });
+
+test('timetable page wires draft preview compare and delete', () => {
+  const page = read('apps/frontend/src/features/timetable/TimetablePage.tsx');
+
+  assert.match(page, /handlePreviewDraft/);
+  assert.match(page, /handleOpenDraftCompare/);
+  assert.match(page, /handlePickDraftCompare/);
+  assert.match(page, /handleOpenDeleteDraft/);
+  assert.match(page, /handleDeleteDraft/);
+  assert.match(page, /deleteDraftSnapshot\(/);
+  assert.match(page, /<DraftPreviewModal/);
+  assert.match(page, /<DraftComparePicker/);
+  assert.match(page, /<DeleteDraftModal/);
+  assert.match(page, /termId=\{compareTermId \?\? undefined\}/);
+  assert.match(page, /\['term-draft-snapshots', activeTerm\.termId, myDeptId\]/);
+  assert.doesNotMatch(page, /alert\(|confirm\(|prompt\(/);
+});

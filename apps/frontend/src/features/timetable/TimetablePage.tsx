@@ -29,6 +29,7 @@ import {
   fetchDraftSnapshots,
   preflightDraftSnapshot,
   applyDraftSnapshot,
+  deleteDraftSnapshot,
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
@@ -105,6 +106,9 @@ import ReuseSummaryModal from './components/ReuseSummaryModal';
 import SaveDraftDialog from './components/SaveDraftDialog';
 import SavedDraftDrawer from './components/SavedDraftDrawer';
 import DraftLoadSummaryModal from './components/DraftLoadSummaryModal';
+import DraftPreviewModal from './components/DraftPreviewModal';
+import DraftComparePicker from './components/DraftComparePicker';
+import DeleteDraftModal from './components/DeleteDraftModal';
 import PublishedReuseConflictWorkspace from './components/PublishedReuseConflictWorkspace';
 import CoveragePanel from './components/CoveragePanel';
 import TimetableFilterBar from './components/TimetableFilterBar';
@@ -303,6 +307,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     useState<ScheduleVersionSummary | null>(null);
   const [compareA, setCompareA] = useState<VersionSource | null>(null);
   const [compareB, setCompareB] = useState<VersionSource | null>(null);
+  const [compareTermId, setCompareTermId] = useState<string | null>(null);
 
   const [reuseVersion, setReuseVersion] =
     useState<PublishedVersionSummary | null>(null);
@@ -322,6 +327,16 @@ export default function TimetablePage({ readOnly = false }: Props) {
   } | null>(null);
   const [busySnapshotId, setBusySnapshotId] = useState<string | null>(null);
   const [applyingDraft, setApplyingDraft] = useState(false);
+  const [previewDraft, setPreviewDraft] =
+    useState<DraftSnapshotSummary | null>(null);
+  const [compareDraft, setCompareDraft] =
+    useState<DraftSnapshotSummary | null>(null);
+  const [comparePickerOpen, setComparePickerOpen] = useState(false);
+  const [deleteDraft, setDeleteDraft] =
+    useState<DraftSnapshotSummary | null>(null);
+  const [deletingSnapshotId, setDeletingSnapshotId] = useState<string | null>(
+    null,
+  );
 
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
@@ -1397,6 +1412,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     (a: VersionSource, b: VersionSource) => {
       setCompareA(buildVersionSource(a));
       setCompareB(buildVersionSource(b));
+      setCompareTermId(null);
       setVersionsOpen(false);
     },
     [],
@@ -1628,6 +1644,83 @@ export default function TimetablePage({ readOnly = false }: Props) {
     myDeptId,
     queryClient,
     scopeDeptId,
+  ]);
+
+  const handlePreviewDraft = useCallback((snapshot: DraftSnapshotSummary) => {
+    setPreviewDraft(snapshot);
+  }, []);
+
+  const handleOpenDraftCompare = useCallback(
+    (snapshot: DraftSnapshotSummary) => {
+      setCompareDraft(snapshot);
+      setComparePickerOpen(true);
+    },
+    [],
+  );
+
+  const handlePickDraftCompare = useCallback(
+    (target: VersionSource) => {
+      if (!compareDraft) return;
+      if (!activeTerm?.termId) {
+        feedback.error('No active term is available for comparison.');
+        return;
+      }
+      setCompareA({ kind: 'draft', id: compareDraft.snapshotId });
+      setCompareB(buildVersionSource(target));
+      setCompareTermId(activeTerm.termId);
+      setComparePickerOpen(false);
+      setCompareDraft(null);
+    },
+    [activeTerm?.termId, compareDraft, feedback],
+  );
+
+  const handleOpenDeleteDraft = useCallback((snapshot: DraftSnapshotSummary) => {
+    setDeleteDraft(snapshot);
+  }, []);
+
+  const handleDeleteDraft = useCallback(async () => {
+    const snapshot = deleteDraft;
+    if (!snapshot || !activeTerm?.termId || !myDeptId) {
+      feedback.error('No active term or department is available for deletion.');
+      return;
+    }
+
+    setDeletingSnapshotId(snapshot.snapshotId);
+    try {
+      await deleteDraftSnapshot(snapshot.snapshotId, activeTerm.termId, myDeptId);
+
+      const deletedFromA =
+        compareA?.kind === 'draft' && compareA.id === snapshot.snapshotId;
+      const deletedFromB =
+        compareB?.kind === 'draft' && compareB.id === snapshot.snapshotId;
+      setPreviewDraft((current) =>
+        current?.snapshotId === snapshot.snapshotId ? null : current,
+      );
+      setCompareDraft((current) =>
+        current?.snapshotId === snapshot.snapshotId ? null : current,
+      );
+      if (deletedFromA) setCompareA(null);
+      if (deletedFromB) setCompareB(null);
+      if (deletedFromA || deletedFromB) setCompareTermId(null);
+      setDeleteDraft(null);
+
+      await queryClient.invalidateQueries({
+        queryKey: ['term-draft-snapshots', activeTerm.termId, myDeptId],
+      });
+      feedback.success(`Draft "${snapshot.name}" deleted.`);
+    } catch (err) {
+      feedback.failed(reuseErrorMessage(err, 'Could not delete the saved draft.'));
+    } finally {
+      setDeletingSnapshotId(null);
+    }
+  }, [
+    activeTerm,
+    compareA,
+    compareB,
+    deleteDraft,
+    feedback,
+    myDeptId,
+    queryClient,
   ]);
 
   // ── Keyboard shortcuts ──
@@ -2578,11 +2671,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
           onClose={() => {
             setCompareA(null);
             setCompareB(null);
+            setCompareTermId(null);
           }}
           sourceA={compareA}
           sourceB={compareB}
           scopeDeptId={scopeDeptId}
           departments={departments}
+          termId={compareTermId ?? undefined}
         />
 
         <ReuseSummaryModal
@@ -2623,6 +2718,9 @@ export default function TimetablePage({ readOnly = false }: Props) {
           snapshots={draftSnapshots}
           busySnapshotId={busySnapshotId}
           onLoad={handlePreflightDraft}
+          onPreview={handlePreviewDraft}
+          onCompare={handleOpenDraftCompare}
+          onDelete={handleOpenDeleteDraft}
         />
 
         <DraftLoadSummaryModal
@@ -2637,6 +2735,46 @@ export default function TimetablePage({ readOnly = false }: Props) {
           result={draftPreflight?.result ?? null}
           busy={applyingDraft}
           onConfirm={handleApplyDraft}
+        />
+
+        <DraftPreviewModal
+          open={!!previewDraft}
+          onClose={() => setPreviewDraft(null)}
+          onCompareWithLive={(source) => {
+            if (!previewDraft) return;
+            setCompareA({ kind: 'draft', id: previewDraft.snapshotId });
+            setCompareB(source);
+            setCompareTermId(activeTerm?.termId ?? null);
+            setPreviewDraft(null);
+          }}
+          snapshot={previewDraft}
+          termId={activeTerm?.termId ?? ''}
+          deptId={myDeptId}
+          termLabel={
+            activeTerm
+              ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+              : ''
+          }
+        />
+
+        <DraftComparePicker
+          open={comparePickerOpen}
+          source={compareDraft}
+          snapshots={draftSnapshots}
+          termId={activeTerm?.termId ?? ''}
+          onClose={() => {
+            setComparePickerOpen(false);
+            setCompareDraft(null);
+          }}
+          onPick={handlePickDraftCompare}
+        />
+
+        <DeleteDraftModal
+          open={!!deleteDraft}
+          snapshot={deleteDraft}
+          busy={deletingSnapshotId === deleteDraft?.snapshotId}
+          onClose={() => setDeleteDraft(null)}
+          onConfirm={handleDeleteDraft}
         />
 
         {activeTerm && (

@@ -126,6 +126,26 @@ async function openDrafts(page: Page) {
   return drawer;
 }
 
+const draftPreview = (page: Page) =>
+  page.getByRole('dialog', { name: 'Saved draft preview' });
+
+async function clickDraftAction(
+  drawer: ReturnType<typeof draftDrawer>,
+  name: string,
+  action: 'View saved rows' | 'Compare' | 'Delete',
+) {
+  const row = drawer.locator('li').filter({ hasText: name }).first();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: action, exact: true }).click();
+  return row;
+}
+
+async function savedNames(
+  drawer: ReturnType<typeof draftDrawer>,
+): Promise<string[]> {
+  return drawer.locator('li p.font-bold').allTextContents();
+}
+
 async function saveThroughUi(page: Page, name: string): Promise<SnapshotSummary> {
   await openMore(page);
   await moreItem(page, 'Save as draft…').click();
@@ -690,4 +710,138 @@ test('rejects loading a snapshot into a different term', async ({ page }) => {
   );
   expect(response.status()).toBe(409);
   expect(await response.text()).toContain('belongs to term');
+});
+
+test('views the full saved draft table', async ({ page }) => {
+  await insertSchedule({
+    day: 'Monday',
+    start: '10:00:00',
+    end: '11:30:00',
+    status: 'draft',
+  });
+  await insertSchedule({
+    day: 'Tuesday',
+    start: '13:00:00',
+    end: '14:30:00',
+    status: 'review',
+  });
+
+  await loginAs(page, 'head');
+  await openTimetable(page);
+  await saveThroughUi(page, 'Preview Draft');
+
+  const drawer = await openDrafts(page);
+  await clickDraftAction(drawer, 'Preview Draft', 'View saved rows');
+  const preview = draftPreview(page);
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText('E2E 101');
+  await expect(preview).toContainText('10:00 AM');
+  await expect(preview).toContainText('1:00 PM');
+});
+
+test('compares a saved draft with the live timetable', async ({ page }) => {
+  await insertSchedule({
+    day: 'Monday',
+    start: '10:00:00',
+    end: '11:30:00',
+    status: 'draft',
+  });
+  await loginAs(page, 'head');
+  await openTimetable(page);
+  await saveThroughUi(page, 'Compare Live');
+
+  const drawer = await openDrafts(page);
+  await clickDraftAction(drawer, 'Compare Live', 'Compare');
+  const picker = page.getByRole('dialog', {
+    name: 'Choose a draft to compare',
+  });
+  await expect(picker).toBeVisible();
+
+  const compareResponse = page.waitForResponse(
+    (response) => /\/v1\/schedules\/version-compare/.test(response.url()),
+    { timeout: 30_000 },
+  );
+  await picker
+    .getByRole('button', { name: 'Live timetable', exact: true })
+    .click();
+  expect((await compareResponse).ok()).toBeTruthy();
+
+  const compare = page.getByRole('dialog', { name: 'Compare sources' });
+  await expect(compare).toContainText('Compare Live');
+  await expect(compare).toContainText('Live timetable');
+});
+
+test('compares two saved drafts', async ({ page }) => {
+  const scheduleId = await insertSchedule({
+    day: 'Monday',
+    start: '10:00:00',
+    end: '11:30:00',
+    status: 'draft',
+  });
+  await loginAs(page, 'head');
+  await openTimetable(page);
+  await saveThroughUi(page, 'Before Draft');
+
+  await updateSchedule(scheduleId, {
+    day_of_week: 'Tuesday',
+    start_time: '13:00:00',
+    end_time: '14:30:00',
+  });
+  await saveThroughUi(page, 'After Draft');
+
+  const drawer = await openDrafts(page);
+  await clickDraftAction(drawer, 'Before Draft', 'Compare');
+  const picker = page.getByRole('dialog', {
+    name: 'Choose a draft to compare',
+  });
+  await picker.getByRole('button', { name: 'After Draft', exact: true }).click();
+
+  const compare = page.getByRole('dialog', { name: 'Compare sources' });
+  await expect(compare).toContainText('Before Draft');
+  await expect(compare).toContainText('After Draft');
+  await expect(compare).toContainText('added');
+  await expect(compare).toContainText('removed');
+});
+
+test('deletes only the selected saved draft and leaves live rows unchanged', async ({
+  page,
+}) => {
+  await insertSchedule({
+    day: 'Monday',
+    start: '10:00:00',
+    end: '11:30:00',
+    status: 'draft',
+  });
+  await loginAs(page, 'head');
+  await openTimetable(page);
+  await saveThroughUi(page, 'Keep Me');
+  await saveThroughUi(page, 'Remove Me');
+
+  const liveBefore = await liveSchedules();
+  const drawer = await openDrafts(page);
+  await clickDraftAction(drawer, 'Remove Me', 'Delete');
+
+  let dialog = page.getByRole('dialog', { name: 'Delete saved draft?' });
+  await expect(dialog).toContainText('Remove Me');
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(await savedNames(drawer)).toContain('Remove Me');
+
+  await clickDraftAction(drawer, 'Remove Me', 'Delete');
+  dialog = page.getByRole('dialog', { name: 'Delete saved draft?' });
+  const deleteResponse = page.waitForResponse(
+    (response) =>
+      /\/v1\/schedules\/draft-snapshots\/[^/]+/.test(response.url()) &&
+      response.request().method() === 'DELETE',
+    { timeout: 30_000 },
+  );
+  await dialog
+    .getByRole('button', { name: 'Delete saved draft', exact: true })
+    .click();
+  expect((await deleteResponse).ok()).toBeTruthy();
+  await expect(dialog).toBeHidden();
+
+  expect(await savedNames(drawer)).not.toContain('Remove Me');
+  expect(await savedNames(drawer)).toContain('Keep Me');
+  expect(await liveSchedules()).toEqual(liveBefore);
 });
