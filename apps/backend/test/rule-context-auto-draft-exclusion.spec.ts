@@ -1,6 +1,9 @@
 import 'reflect-metadata';
 
-import { RuleContextBuilder } from '../src/modules/scheduling/services/rule-context.builder';
+import {
+  createRuleContextCache,
+  RuleContextBuilder,
+} from '../src/modules/scheduling/services/rule-context.builder';
 
 type QueryResult = { data: any; error: any };
 
@@ -75,6 +78,7 @@ function createSupabaseMock() {
 
   const client = {
     from: jest.fn((table: string) => {
+      calls.push({ table, op: 'from', args: [table] });
       if (table === 'schedule') {
         let selectClause = '';
         const filters: Array<{ op: string; args: any[] }> = [];
@@ -86,6 +90,7 @@ function createSupabaseMock() {
           }),
           eq: jest.fn((...args: any[]) => {
             filters.push({ op: 'eq', args });
+            calls.push({ table, op: 'eq', args });
             return q;
           }),
           in: jest.fn((...args: any[]) => {
@@ -124,7 +129,10 @@ function createSupabaseMock() {
             }
 
             const notIn = filters.find(
-              (f) => f.op === 'not' && f.args[0] === 'schedule_id' && f.args[1] === 'in',
+              (f) =>
+                f.op === 'not' &&
+                f.args[0] === 'schedule_id' &&
+                f.args[1] === 'in',
             );
             if (notIn) {
               const raw = String(notIn.args[2] ?? '');
@@ -142,10 +150,16 @@ function createSupabaseMock() {
                 schedule_id: r.schedule_id,
                 subject: { lecture_units: 3, lab_units: 0 },
               }));
-              return Promise.resolve({ data, error: null }).then(resolve, reject);
+              return Promise.resolve({ data, error: null }).then(
+                resolve,
+                reject,
+              );
             }
 
-            return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+            return Promise.resolve({ data: rows, error: null }).then(
+              resolve,
+              reject,
+            );
           },
         };
         return q;
@@ -216,9 +230,9 @@ describe('RuleContextBuilder auto-draft exclusion', () => {
       excludeScheduleIds: ['drop-1'],
     } as any);
 
-    expect(
-      context.existingSchedule.map((row) => row.scheduleId),
-    ).not.toContain('drop-1');
+    expect(context.existingSchedule.map((row) => row.scheduleId)).not.toContain(
+      'drop-1',
+    );
     expect(context.existingSchedule.map((row) => row.scheduleId)).toContain(
       'keep-1',
     );
@@ -263,5 +277,83 @@ describe('RuleContextBuilder auto-draft exclusion', () => {
     });
 
     expect(context.scheduleDeptId).toBe('dept-4');
+  });
+
+  it('reuses repeated catalog and config loads when a cache is shared', async () => {
+    const { client, calls } = createSupabaseMock();
+    const builder = new RuleContextBuilder({
+      getAdminClient: () => client,
+    } as any);
+    const cache = createRuleContextCache();
+    const input = {
+      termId: 'term-1',
+      subjectId: 'sub-1',
+      facultyId: 'fac-1',
+      section: 'SEC-1',
+      dayOfWeek: 'Monday',
+      startTime: '08:00',
+      endTime: '09:00',
+      cache,
+    };
+
+    const first = await builder.build(input);
+    const second = await builder.build({ ...input, cache });
+    const fromCount = (table: string) =>
+      calls.filter((call) => call.op === 'from' && call.args[0] === table)
+        .length;
+
+    expect(second).toEqual(first);
+    expect(fromCount('scheduling_setting')).toBe(1);
+    expect(fromCount('subject')).toBe(1);
+    expect(fromCount('section')).toBe(1);
+  });
+
+  it('separates cached schedule loads by day', async () => {
+    const { client, calls } = createSupabaseMock();
+    const builder = new RuleContextBuilder({
+      getAdminClient: () => client,
+    } as any);
+    const cache = createRuleContextCache();
+    const base = {
+      termId: 'term-1',
+      subjectId: 'sub-1',
+      facultyId: 'fac-1',
+      section: 'SEC-1',
+      startTime: '08:00',
+      endTime: '09:00',
+      cache,
+    };
+
+    await builder.build({ ...base, dayOfWeek: 'Monday' });
+    await builder.build({ ...base, dayOfWeek: 'Tuesday' });
+
+    const dayFilters = calls
+      .filter((call) => call.op === 'eq' && call.args[0] === 'day_of_week')
+      .map((call) => call.args[1]);
+    expect(new Set(dayFilters)).toEqual(new Set(['Monday', 'Tuesday']));
+  });
+
+  it('does not cache when no cache is supplied', async () => {
+    const { client, calls } = createSupabaseMock();
+    const builder = new RuleContextBuilder({
+      getAdminClient: () => client,
+    } as any);
+    const input = {
+      termId: 'term-1',
+      subjectId: 'sub-1',
+      facultyId: 'fac-1',
+      section: 'SEC-1',
+      dayOfWeek: 'Monday',
+      startTime: '08:00',
+      endTime: '09:00',
+    };
+
+    await builder.build(input);
+    await builder.build(input);
+
+    const configCalls = calls.filter(
+      (call) => call.op === 'from' && call.args[0] === 'scheduling_setting',
+    );
+    expect(configCalls).toHaveLength(2);
   });
 });
