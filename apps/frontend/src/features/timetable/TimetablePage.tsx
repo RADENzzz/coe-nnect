@@ -1693,21 +1693,30 @@ export default function TimetablePage({ readOnly = false }: Props) {
         compareA?.kind === 'draft' && compareA.id === snapshot.snapshotId;
       const deletedFromB =
         compareB?.kind === 'draft' && compareB.id === snapshot.snapshotId;
+      const deletedFromPicker =
+        compareDraft?.snapshotId === snapshot.snapshotId;
       setPreviewDraft((current) =>
         current?.snapshotId === snapshot.snapshotId ? null : current,
       );
       setCompareDraft((current) =>
         current?.snapshotId === snapshot.snapshotId ? null : current,
       );
+      if (deletedFromPicker) setComparePickerOpen(false);
       if (deletedFromA) setCompareA(null);
       if (deletedFromB) setCompareB(null);
       if (deletedFromA || deletedFromB) setCompareTermId(null);
       setDeleteDraft(null);
 
-      await queryClient.invalidateQueries({
-        queryKey: ['term-draft-snapshots', activeTerm.termId, myDeptId],
-      });
-      feedback.success(`Draft "${snapshot.name}" deleted.`);
+      try {
+        await queryClient.invalidateQueries({
+          queryKey: ['term-draft-snapshots', activeTerm.termId, myDeptId],
+        });
+        feedback.success(`Draft "${snapshot.name}" deleted.`);
+      } catch {
+        feedback.failed(
+          `Draft "${snapshot.name}" deleted, but the saved draft list could not be refreshed.`,
+        );
+      }
     } catch (err) {
       feedback.failed(reuseErrorMessage(err, 'Could not delete the saved draft.'));
     } finally {
@@ -1717,6 +1726,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
     activeTerm,
     compareA,
     compareB,
+    compareDraft,
     deleteDraft,
     feedback,
     myDeptId,

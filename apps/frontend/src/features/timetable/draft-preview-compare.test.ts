@@ -80,3 +80,26 @@ test('timetable page wires draft preview compare and delete', () => {
   assert.match(page, /\['term-draft-snapshots', activeTerm\.termId, myDeptId\]/);
   assert.doesNotMatch(page, /alert\(|confirm\(|prompt\(/);
 });
+
+test('draft deletion separates refresh failures from delete failures', () => {
+  const page = read('apps/frontend/src/features/timetable/TimetablePage.tsx');
+  const start = page.indexOf(
+    'const handleDeleteDraft = useCallback(async () => {',
+  );
+  assert.ok(start >= 0, 'handleDeleteDraft must exist');
+
+  const depsStart = page.indexOf('\n  }, [', start);
+  assert.ok(depsStart >= 0, 'handleDeleteDraft dependency list must exist');
+  const handler = page.slice(start, depsStart);
+  const deps = page.slice(depsStart, page.indexOf(']);', depsStart));
+
+  assert.match(
+    handler,
+    /deleted, but the .*draft list could not be refreshed/,
+    'refresh failure must be reported separately from delete failure',
+  );
+  assert.match(handler, /feedback\.success/);
+  assert.match(handler, /compareDraft\?\.snapshotId === snapshot\.snapshotId/);
+  assert.match(handler, /setComparePickerOpen\(false\)/);
+  assert.match(deps, /compareDraft/);
+});
