@@ -210,3 +210,16 @@ test('selection bar shows status mix and contextual actions', () => {
   assert.match(contextBar, /Request change/);
   assert.doesNotMatch(contextBar, /Send to IDP/);
 });
+
+const contextMenu = read(
+  'apps/frontend/src/features/timetable/components/TimetableMoreMenu.tsx',
+);
+
+test('header More menu is accessible and closeable', () => {
+  assert.match(contextMenu, /aria-haspopup="menu"/);
+  assert.match(contextMenu, /aria-expanded/);
+  assert.match(contextMenu, /Escape/);
+  assert.match(contextMenu, /pointerdown/);
+  assert.match(contextMenu, /dataTour/);
+  assert.doesNotMatch(contextMenu, /alert\(|confirm\(|prompt\(|setSearchParams|navigate\(/);
+});
