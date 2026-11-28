@@ -67,3 +67,21 @@ test('bulk hook refreshes dependent queries and reports partial failures globall
   assert.match(hook, /feedback\.failed\(/);
   assert.match(hook, /onSucceeded\(succeededIds\)/);
 });
+
+const bar = read('apps/frontend/src/features/timetable/components/BulkActionBar.tsx');
+const modal = read('apps/frontend/src/features/timetable/components/BulkActionConfirmModal.tsx');
+
+test('bulk bar exposes selected-row actions and no IDP action', () => {
+  for (const label of ['Delete', 'Review', 'Finalize', 'Request publish', 'Clear selection']) {
+    assert.ok(bar.includes(label));
+  }
+  assert.doesNotMatch(bar, /Send to IDP/);
+  assert.match(bar, /above-bottom-nav/);
+});
+
+test('bulk confirmation modal uses the shared Modal and supports one publish note', () => {
+  assert.match(modal, /from '..\/..\/..\/components\/ui\/Modal'/);
+  assert.match(modal, /action === 'request-publish'/);
+  assert.match(modal, /onNoteChange/);
+  assert.doesNotMatch(modal, /alert\(|confirm\(|prompt\(/);
+});
