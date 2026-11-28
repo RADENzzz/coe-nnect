@@ -356,4 +356,31 @@ describe('RuleContextBuilder auto-draft exclusion', () => {
     );
     expect(configCalls).toHaveLength(2);
   });
+
+  it('returns an independent existingSchedule array when a cache is shared', async () => {
+    const { client } = createSupabaseMock();
+    const builder = new RuleContextBuilder({
+      getAdminClient: () => client,
+    } as any);
+    const cache = createRuleContextCache();
+    const input = {
+      termId: 'term-1',
+      subjectId: 'sub-1',
+      facultyId: 'fac-1',
+      section: 'SEC-1',
+      dayOfWeek: 'Monday',
+      startTime: '08:00',
+      endTime: '09:00',
+      cache,
+    };
+
+    const first = await builder.build(input);
+    const second = await builder.build({ ...input, cache });
+    first.existingSchedule.push({ scheduleId: 'synthetic' } as any);
+
+    expect(first.existingSchedule).not.toBe(second.existingSchedule);
+    expect(second.existingSchedule.map((row) => row.scheduleId)).not.toContain(
+      'synthetic',
+    );
+  });
 });

@@ -158,7 +158,7 @@ export class RuleContextBuilder {
       room,
       timeSlot,
       loadType: input.loadType ?? null,
-      existingSchedule,
+      existingSchedule: [...existingSchedule],
       facultyCommitments,
       minorBlocks,
       subjectRestrictions,
