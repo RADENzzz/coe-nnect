@@ -58,6 +58,7 @@ export default function DraftComparePicker({
       <div className="space-y-2">
         <button
           type="button"
+          aria-label="Live timetable"
           disabled={!canPick}
           onClick={() => onPick({ kind: 'live', id: termId })}
           className="flex w-full items-center justify-between border border-primary px-3 py-2 text-left text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
@@ -72,6 +73,7 @@ export default function DraftComparePicker({
           <button
             key={snapshot.snapshotId}
             type="button"
+            aria-label={snapshot.name}
             disabled={!canPick}
             onClick={() =>
               onPick({ kind: 'draft', id: snapshot.snapshotId })

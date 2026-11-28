@@ -51,6 +51,15 @@ test('saved draft preview compare picker and delete dialog are wired', () => {
   assert.match(drawer, /aria-label="Saved timetable drafts"/);
 });
 
+test('compare picker exposes exact accessible names', () => {
+  const picker = read(
+    'apps/frontend/src/features/timetable/components/DraftComparePicker.tsx',
+  );
+
+  assert.match(picker, /aria-label="Live timetable"/);
+  assert.match(picker, /aria-label=\{snapshot\.name\}/);
+});
+
 test('version compare modal reuses draft labels and global feedback', () => {
   const modal = read(
     'apps/frontend/src/features/timetable/components/VersionCompareModal.tsx',
