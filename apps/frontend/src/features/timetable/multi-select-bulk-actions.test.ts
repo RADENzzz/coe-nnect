@@ -322,3 +322,12 @@ test('bulk unfinalize fans out through the existing single-row API and invalidat
   assert.match(contextHook, /onSucceeded\(succeededIds\)/);
   assert.doesNotMatch(contextHook, /alert\(|confirm\(|prompt\(|setSearchParams|navigate\(|useState<[^>]*success/i);
 });
+
+test('bulk bar and modal expose Request unfinalize with one shared reason', () => {
+  assert.match(contextBar, /statusCounts\.published/);
+  assert.match(contextBar, /Request unfinalize/);
+  assert.match(contextModal, /'request-unfinalize'/);
+  assert.match(contextModal, /Reason for the unfinalize request/);
+  assert.match(contextModal, /note\.trim\(\)\.length < 5/);
+  assert.match(contextPage, /action === 'request-unfinalize'/);
+});

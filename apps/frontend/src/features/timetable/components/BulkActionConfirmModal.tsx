@@ -5,6 +5,7 @@ export type BulkConfirmAction =
   | 'delete'
   | 'request-publish'
   | 'request-change'
+  | 'request-unfinalize'
   | 'clear-auto-drafts'
   | null;
 
@@ -37,6 +38,12 @@ const ACTION_COPY = {
     icon: 'send',
     tone: 'text-amber-700',
   },
+  'request-unfinalize': {
+    title: 'Request unfinalize',
+    confirmLabel: 'Send request',
+    icon: 'undo',
+    tone: 'text-amber-700',
+  },
   'clear-auto-drafts': {
     title: 'Clear auto-drafts',
     confirmLabel: 'Clear auto-drafts',
@@ -59,7 +66,9 @@ export default function BulkActionConfirmModal({
 
   const copy = ACTION_COPY[action];
   const isChange = action === 'request-change';
-  const noteTooShort = isChange && note.trim().length < 5;
+  const isUnfinalize = action === 'request-unfinalize';
+  const needsReason = isChange || isUnfinalize;
+  const noteTooShort = needsReason && note.trim().length < 5;
   const noteTooLong = note.length > 500;
   const rowLabel = `row${count === 1 ? '' : 's'}`;
   const description =
@@ -110,15 +119,21 @@ export default function BulkActionConfirmModal({
               `Send ${count} selected ${rowLabel} to the Dean for publication approval.`}
             {isChange &&
               `Send ${count} selected ${rowLabel} to the Dean with a shared change reason.`}
+            {isUnfinalize &&
+              `Only the Dean can unfinalize published rows. Send ${count} selected ${rowLabel} with a shared reason; the Dean will approve or reject the request.`}
             {action === 'clear-auto-drafts' &&
               `${count} draft${count === 1 ? '' : 's'} will be removed.`}
           </p>
         </div>
 
-        {(action === 'request-publish' || isChange) && (
+        {(action === 'request-publish' || needsReason) && (
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-on-surface-variant">
-              {isChange ? 'Reason for the change' : 'Note for the Dean (optional)'}
+              {isChange
+                ? 'Reason for the change'
+                : isUnfinalize
+                  ? 'Reason for the unfinalize request'
+                  : 'Note for the Dean (optional)'}
             </span>
             <textarea
               value={note}
@@ -129,12 +144,14 @@ export default function BulkActionConfirmModal({
               placeholder={
                 isChange
                   ? 'e.g. Faculty reassignment approved by the department'
-                  : 'Add context for the approval request'
+                  : isUnfinalize
+                    ? 'e.g. Room reassignment approved after publication'
+                    : 'Add context for the approval request'
               }
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none disabled:opacity-50"
             />
             <span className={`block text-xs ${noteTooLong ? 'text-rose-600' : 'text-slate-500'}`}>
-              {isChange && noteTooShort ? 'Enter at least 5 characters. ' : ''}
+              {needsReason && noteTooShort ? 'Enter at least 5 characters. ' : ''}
               {note.length}/500
             </span>
           </label>

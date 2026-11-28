@@ -49,6 +49,11 @@ export default function BulkActionBar({
           {statusCounts.finalized} finalized
         </span>
       )}
+      {statusCounts.published > 0 && (
+        <span className="rounded-full bg-amber-900/60 px-2 py-0.5 text-[11px] font-medium text-amber-200 whitespace-nowrap">
+          {statusCounts.published} published
+        </span>
+      )}
       <div className="h-6 w-px bg-slate-700 shrink-0" />
       <button
         type="button"
@@ -112,6 +117,18 @@ export default function BulkActionBar({
         >
           <Icon name="edit" size={14} className="text-indigo-300" />
           <span>Request change</span>
+        </button>
+      )}
+      {statusCounts.published > 0 && (
+        <button
+          type="button"
+          onClick={() => onAction('request-unfinalize')}
+          disabled={disabled}
+          className={buttonClass}
+          title="Request unfinalize from the Dean"
+        >
+          <Icon name="undo" size={14} className="text-amber-400" />
+          <span>Request unfinalize</span>
         </button>
       )}
       <div className="h-6 w-px bg-slate-700 shrink-0" />

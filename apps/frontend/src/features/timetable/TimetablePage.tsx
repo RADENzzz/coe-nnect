@@ -1719,6 +1719,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
         action === 'delete' ||
         action === 'request-publish' ||
         action === 'request-change' ||
+        action === 'request-unfinalize' ||
         action === 'clear-auto-drafts'
       ) {
         setPublishNote('');
@@ -1736,7 +1737,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
     if (!action) return;
     void runBulkAction(
       action,
-      action === 'request-publish' || action === 'request-change' ? publishNote : undefined,
+      action === 'request-publish' || action === 'request-change' ||
+      action === 'request-unfinalize'
+        ? publishNote
+        : undefined,
     );
     setPublishNote('');
   }, [bulkConfirmAction, publishNote, runBulkAction]);
