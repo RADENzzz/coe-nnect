@@ -37,4 +37,8 @@ test('Dean page decides publish requests only through the approval workspace', (
   assert.match(source, /next\.delete\('changeRequest'\)/);
   assert.doesNotMatch(source, /navigate\(`\/dean\/timetable\?focus=/);
   assert.match(source, /activeTab !== 'review' && activeTab !== 'finalized' && activeTab !== 'all'/);
+  assert.match(source, /isRequestTab \? \(/);
+  assert.match(source, /Bulk request actions/);
+  assert.match(source, /Approve \{effectiveSelectedRequestKeys\.size\}/);
+  assert.match(source, /Reject \{effectiveSelectedRequestKeys\.size\}/);
 });

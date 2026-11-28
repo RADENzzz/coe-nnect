@@ -269,3 +269,23 @@ test('dean approvals wires pending-only request selection and department filter'
     'Department filter renders before the request-tab-only controls',
   );
 });
+
+test('dean approvals fans bulk request decisions through the existing endpoints', () => {
+  const source = readFileSync(
+    new URL(
+      '../../../../../apps/frontend/src/features/dean/DeanApprovalsPage.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(source, /respondToPublishRequest/);
+  assert.match(source, /respondToUnfinalizeRequest/);
+  assert.match(source, /respondToChangeRequest/);
+  assert.match(source, /type RequestDecision = 'approve' \| 'reject'/);
+  assert.match(source, /const performRequestDecision = useCallback/);
+  assert.match(source, /Promise\.allSettled/);
+  assert.match(source, /requestDecisionResultMessage/);
+  assert.match(source, /Remarks \(required\)/);
+  assert.doesNotMatch(source, /window\.confirm/);
+});

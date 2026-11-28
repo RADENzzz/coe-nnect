@@ -10,6 +10,7 @@ import { getScheduleDeptId } from '../../api/schedule-ownership';
 import { publishIdpSchedule } from '../../api/idp.api';
 import {
   fetchUnfinalizeRequests,
+  respondToUnfinalizeRequest,
   unfinalizeRequestLabel,
   unfinalizeRequesterName,
 } from '../../api/schedule-unfinalize.api';
@@ -17,11 +18,13 @@ import {
   fetchPublishRequests,
   publishRequestLabel,
   publishRequesterName,
+  respondToPublishRequest,
 } from '../../api/schedule-publish-request.api';
 import {
   fetchChangeRequests,
   changeRequestLabel,
   changeRequesterName,
+  respondToChangeRequest,
 } from '../../api/schedule-change-request.api';
 import { fetchSections } from '../../api/sections.api';
 import { fetchFaculty } from '../../api/faculty.api';
@@ -46,6 +49,8 @@ import {
   filterRequestRows,
   isPendingRequest,
   REQUEST_KIND_LABELS,
+  requestDecisionResultMessage,
+  requestKindBreakdown,
   requestSelectionKey,
   type RequestRow,
   type RequestStatusFilter,
@@ -85,6 +90,7 @@ const DAY_MAP: Record<string, Day> = {
 type ApprovalTab = 'publish' | 'unfinalize' | 'change' | 'review' | 'finalized' | 'all';
 type StatusFilter = 'all' | 'draft' | 'review' | 'finalized' | 'published';
 type BatchAction = 'finalize' | 'unfinalize-published';
+type RequestDecision = 'approve' | 'reject';
 type DeepLinkParam = 'publishRequest' | 'request' | 'changeRequest';
 
 const STATUS_VALUES: StatusFilter[] = [
@@ -103,12 +109,22 @@ const REQUEST_STATUS_VALUES: RequestStatusFilter[] = [
   'all',
 ];
 
-interface PendingConfirmation {
+interface ScheduleConfirmation {
   action: BatchAction | 'return-to-draft';
   ids: string[];
   /** Short human label for the modal title, e.g. "3 schedules". */
   itemCount: number;
 }
+
+interface RequestConfirmation {
+  action: 'request-decision';
+  decision: RequestDecision;
+  rows: RequestRow[];
+  remarks?: string;
+  itemCount: number;
+}
+
+type PendingConfirmation = ScheduleConfirmation | RequestConfirmation;
 
 function requestLabel(row: RequestRow): string {
   if (row.kind === 'publish') return publishRequestLabel(row.request);
@@ -214,6 +230,8 @@ export default function DeanApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pendingConfirm, setPendingConfirm] =
     useState<PendingConfirmation | null>(null);
+  const [requestDecisionPending, setRequestDecisionPending] = useState(false);
+  const [requestRemarks, setRequestRemarks] = useState('');
 
   const clearDeepLinkParam = useCallback(
     (param: DeepLinkParam) => {
@@ -625,7 +643,10 @@ export default function DeanApprovalsPage() {
     });
   };
 
-  const closeConfirm = () => setPendingConfirm(null);
+  const closeConfirm = () => {
+    setPendingConfirm(null);
+    setRequestRemarks('');
+  };
 
   const performAction = useCallback(
     async (action: BatchAction | 'return-to-draft', ids: string[]) => {
@@ -688,12 +709,104 @@ export default function DeanApprovalsPage() {
     [qc, feedback],
   );
 
+  const openRequestConfirm = (decision: RequestDecision) => {
+    if (effectiveSelectedRequestRows.length === 0 || requestDecisionPending) return;
+    setRequestRemarks('');
+    setPendingConfirm({
+      action: 'request-decision',
+      decision,
+      rows: effectiveSelectedRequestRows,
+      itemCount: effectiveSelectedRequestRows.length,
+    });
+  };
+
+  const performRequestDecision = useCallback(
+    async (
+      decision: RequestDecision,
+      rows: RequestRow[],
+      remarks?: string,
+    ): Promise<void> => {
+      if (rows.length === 0) return;
+      setRequestDecisionPending(true);
+      try {
+        const results = await Promise.allSettled(
+          rows.map((row) => {
+            const requestId = row.request.requestId;
+            if (row.kind === 'publish') {
+              return respondToPublishRequest(requestId, decision, remarks).then(() =>
+                requestSelectionKey(row),
+              );
+            }
+            if (row.kind === 'unfinalize') {
+              return respondToUnfinalizeRequest(requestId, decision, remarks).then(
+                () => requestSelectionKey(row),
+              );
+            }
+            return respondToChangeRequest(requestId, decision, remarks).then(() =>
+              requestSelectionKey(row),
+            );
+          }),
+        );
+
+        const succeededKeys = results
+          .filter(
+            (r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled',
+          )
+          .map((r) => r.value);
+        const failures = results.filter(
+          (r): r is PromiseRejectedResult => r.status === 'rejected',
+        );
+
+        qc.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
+        qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
+        qc.invalidateQueries({ queryKey: ['schedule-change-requests'] });
+
+        if (succeededKeys.length > 0) {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            for (const key of succeededKeys) next.delete(key);
+            return next;
+          });
+        }
+
+        const message = requestDecisionResultMessage(
+          decision,
+          succeededKeys.length,
+          failures.length,
+          failures.length > 0
+            ? extractApiError(failures[0].reason, 'Request decision failed.')
+            : undefined,
+        );
+        if (failures.length === 0) {
+          feedback.success(message);
+        } else {
+          feedback.failed(message);
+        }
+      } finally {
+        setRequestDecisionPending(false);
+      }
+    },
+    [feedback, qc],
+  );
+
   const handleConfirm = useCallback(async () => {
     if (!pendingConfirm) return;
+    if (pendingConfirm.action === 'request-decision') {
+      const { decision, rows } = pendingConfirm;
+      const remarks = requestRemarks.trim();
+      closeConfirm();
+      await performRequestDecision(decision, rows, remarks || undefined);
+      return;
+    }
     const { action, ids } = pendingConfirm;
     closeConfirm();
     await performAction(action, ids);
-  }, [pendingConfirm, performAction]);
+  }, [
+    pendingConfirm,
+    performAction,
+    performRequestDecision,
+    requestRemarks,
+  ]);
 
   const handleBatch = (action: BatchAction | 'return-to-draft') => {
     openConfirm(action, Array.from(effectiveSelectedIds));
@@ -903,7 +1016,25 @@ export default function DeanApprovalsPage() {
   };
 
   // ── Confirmation copy per action ──
-  const getConfirmCopy = (action: BatchAction | 'return-to-draft', count: number) => {
+  const getConfirmCopy = (confirmation: PendingConfirmation) => {
+    const { action, itemCount: count } = confirmation;
+    if (action === 'request-decision') {
+      const verb = confirmation.decision === 'approve' ? 'Approve' : 'Reject';
+      const noun = count === 1 ? 'request' : 'requests';
+      return {
+        title: `${verb} ${count} ${noun}?`,
+        body: `Selected: ${requestKindBreakdown(confirmation.rows)}. ${
+          confirmation.decision === 'reject'
+            ? 'Remarks are required and will be recorded with each rejection.'
+            : 'This will approve every selected pending request.'
+        }`,
+        confirmLabel: `${verb} ${count}`,
+        tone:
+          confirmation.decision === 'reject'
+            ? ('danger' as const)
+            : ('primary' as const),
+      };
+    }
     const noun = count === 1 ? 'schedule' : 'schedules';
     switch (action) {
       case 'finalize':
@@ -932,9 +1063,7 @@ export default function DeanApprovalsPage() {
     }
   };
 
-  const confirmCopy = pendingConfirm
-    ? getConfirmCopy(pendingConfirm.action, pendingConfirm.itemCount)
-    : null;
+  const confirmCopy = pendingConfirm ? getConfirmCopy(pendingConfirm) : null;
 
   const tabs: { id: ApprovalTab; label: string }[] = [
     { id: 'publish', label: `Publish requests (${publishPendingCount})` },
@@ -1212,6 +1341,56 @@ export default function DeanApprovalsPage() {
         </div>
       )}
 
+      {/* ── Floating request decision bar — request tabs only ── */}
+      {isRequestTab && effectiveSelectedRequestKeys.size > 0 && (
+        <div className="fixed above-bottom-nav left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
+          <div
+            role="toolbar"
+            aria-label="Bulk request actions"
+            className="bg-slate-900 text-white rounded-xl shadow-2xl px-4 py-3 flex items-center gap-3"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white/10 font-bold text-sm tabular-nums">
+                {effectiveSelectedRequestKeys.size}
+              </span>
+              <span className="text-sm font-semibold whitespace-nowrap">
+                selected
+              </span>
+            </div>
+
+            <div className="flex-1 flex items-center gap-2 ml-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => openRequestConfirm('approve')}
+                disabled={requestDecisionPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold transition"
+              >
+                <Icon name="check_circle" size={14} />
+                Approve {effectiveSelectedRequestKeys.size}
+              </button>
+              <button
+                type="button"
+                onClick={() => openRequestConfirm('reject')}
+                disabled={requestDecisionPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-semibold transition"
+              >
+                <Icon name="close" size={14} />
+                Reject {effectiveSelectedRequestKeys.size}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-white/70 hover:text-white transition shrink-0"
+              aria-label="Clear selection"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Floating BulkActionBar — schedule tabs only, never requests ── */}
       {!(activeTab !== 'review' && activeTab !== 'finalized' && activeTab !== 'all') && effectiveSelectedIds.size > 0 && (
         <div className="fixed above-bottom-nav left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
@@ -1270,7 +1449,7 @@ export default function DeanApprovalsPage() {
         </div>
       )}
 
-      {/* ── Confirmation Modal (schedule batch actions only) ── */}
+      {/* ── Confirmation Modal (bulk schedule and request actions) ── */}
       <Modal
         open={!!pendingConfirm}
         onClose={closeConfirm}
@@ -1281,14 +1460,21 @@ export default function DeanApprovalsPage() {
             <button
               type="button"
               onClick={closeConfirm}
-              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition rounded-lg"
+              disabled={requestDecisionPending}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition rounded-lg"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleConfirm}
-              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition ${
+              disabled={
+                requestDecisionPending ||
+                (pendingConfirm?.action === 'request-decision' &&
+                  pendingConfirm.decision === 'reject' &&
+                  requestRemarks.trim().length === 0)
+              }
+              className={`px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50 transition ${
                 confirmCopy?.tone === 'danger'
                   ? 'bg-red-600 hover:bg-red-700'
                   : 'bg-primary hover:opacity-90'
@@ -1300,6 +1486,26 @@ export default function DeanApprovalsPage() {
         }
       >
         <p className="text-sm text-slate-600">{confirmCopy?.body}</p>
+        {pendingConfirm?.action === 'request-decision' &&
+          pendingConfirm.decision === 'reject' && (
+            <div className="mt-4">
+              <label
+                htmlFor="bulk-reject-remarks"
+                className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider"
+              >
+                Remarks (required)
+              </label>
+              <textarea
+                id="bulk-reject-remarks"
+                value={requestRemarks}
+                onChange={(e) => setRequestRemarks(e.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="Explain why these requests are being rejected"
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
       </Modal>
 
       {/* One drawer for every tab; the drawer owns all decisions and feedback. */}
