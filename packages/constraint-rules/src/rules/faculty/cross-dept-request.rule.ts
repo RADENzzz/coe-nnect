@@ -9,11 +9,12 @@ import type { RuleResult } from '../../types/rule-result.type';
  *
  * Silent when:
  *   - no faculty is assigned
- *   - the faculty and subject are from the same department
+ *   - the faculty belongs to the department receiving the schedule
+ *     (`scheduleDeptId`, defaulting to the subject's catalog owner)
  *   - a matching approved request exists
  *
- * Hard fail when the faculty and subject span departments and no
- * approved request exists.
+ * Hard fail when the faculty is foreign to the receiving department and
+ * no approved request exists.
  *
  * Source: SRS FR 5.1.8 (Request Faculty from Another Department),
  *         PM's taxonomy, Required flag "Cross-department faculty
@@ -29,12 +30,15 @@ export const crossDeptRequestRule: ConstraintRule = {
 
   validate(ctx: RuleContext): RuleResult {
     const { faculty, subject, termId, approvedFacultyRequests } = ctx;
+    const targetDeptId = ctx.scheduleDeptId ?? subject.deptId;
 
     if (!faculty) return { status: 'pass' };
     if (!faculty.deptId) return { status: 'pass' };
 
-    // Same department — no request needed.
-    if (faculty.deptId === subject.deptId) {
+    // Same department — no request needed. A catalog-owned minor can be
+    // scheduled by the department running the term/prospectus, so compare
+    // against the receiving department when it is known.
+    if (faculty.deptId === targetDeptId) {
       return { status: 'pass' };
     }
 
@@ -55,6 +59,7 @@ export const crossDeptRequestRule: ConstraintRule = {
         facultyId: faculty.facultyId,
         facultyDeptId: faculty.deptId,
         subjectDeptId: subject.deptId,
+        scheduleDeptId: ctx.scheduleDeptId ?? null,
         subjectId: subject.subjectId,
         termId,
       },

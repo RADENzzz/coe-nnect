@@ -866,6 +866,27 @@ describe('AutoGenerateService.confirmAutoGenerateCandidate', () => {
     expect((from.mock.calls as any[]).some(([table]) => table === 'schedule')).toBe(true);
   });
 
+  it('does not double-count duplicate prospectus rows for the same section subject', async () => {
+    const duplicateProspectusProblem = {
+      ...baseProblem,
+      prospectus: [
+        ...baseProblem.prospectus,
+        { ...baseProblem.prospectus[0], prospectusId: 'prospectus-2' },
+      ],
+    };
+    const { service } = makeService({
+      problem: duplicateProspectusProblem,
+      tableResponses: { subject: subjectResponse },
+    });
+
+    await expect(
+      service.confirmAutoGenerateCandidate(termId, deptId, userId, {
+        generationToken: makeToken(),
+        candidate: baseCandidate as any,
+      }),
+    ).resolves.toEqual({ success: true });
+  });
+
   it('rejects a truncated candidate before any schedule write', async () => {
     const { service, from } = makeService({
       problem: labProblem,

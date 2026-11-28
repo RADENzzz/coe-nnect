@@ -381,5 +381,100 @@ class ExistingSubjectLoadCountTests(unittest.TestCase):
         self.assertEqual(result.get("warning"), "onlyOneCandidate")
 
 
+class UnscheduledBlockTests(unittest.TestCase):
+    def _request(self, **overrides):
+        payload = {
+            "termId": "term-1",
+            "deptId": "dept-1",
+            "sections": [
+                {
+                    "sectionId": "section-1",
+                    "sectionCode": "CPE 1-A",
+                    "programId": "program-1",
+                    "yearLevel": 1,
+                }
+            ],
+            "subjects": [
+                {
+                    "subjectId": "subject-1",
+                    "subjectCode": "CPE 101",
+                    "title": "Test Subject",
+                    "totalUnits": 3,
+                    "lectureUnits": 3,
+                    "labUnits": 0,
+                    "deptId": "dept-1",
+                }
+            ],
+            "prospectus": [
+                {
+                    "prospectusId": "prospectus-1",
+                    "programId": "program-1",
+                    "subjectId": "subject-1",
+                    "yearLevel": 1,
+                    "semester": "1st",
+                    "lecture_sessions_per_week": 1,
+                    "lecture_minutes_per_session": 60,
+                }
+            ],
+            "faculty": [
+                {
+                    "facultyId": "faculty-1",
+                    "firstName": "Test",
+                    "lastName": "Faculty",
+                    "deptId": "dept-1",
+                }
+            ],
+            "qualifications": [
+                {"facultyId": "faculty-1", "subjectId": "subject-1"}
+            ],
+            "rooms": [
+                {
+                    "roomId": "room-1",
+                    "roomNumber": "101",
+                    "roomType": "lecture_room",
+                }
+            ],
+            "timeSlots": [
+                {"day": "Monday", "startTime": "07:00", "endTime": "08:00"},
+                {"day": "Tuesday", "startTime": "07:00", "endTime": "08:00"},
+            ],
+            "config": {},
+        }
+        payload.update(overrides)
+        return SolveRequest(**payload)
+
+    def test_block_without_qualified_faculty_is_reported_unscheduled(self):
+        result = solve_schedule(self._request(qualifications=[]))
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["schedule"], [])
+        self.assertEqual(len(result["unscheduled"]), 1)
+        self.assertEqual(result["unscheduled"][0]["sectionId"], "section-1")
+        self.assertEqual(result["unscheduled"][0]["subjectId"], "subject-1")
+        self.assertEqual(result["unscheduled"][0]["kind"], "lecture")
+        self.assertEqual(result["unscheduled"][0]["sessionIndex"], 0)
+
+    def test_block_without_compatible_room_is_reported_unscheduled(self):
+        result = solve_schedule(
+            self._request(
+                rooms=[
+                    {
+                        "roomId": "room-2",
+                        "roomNumber": "Drafting",
+                        "roomType": "drafting_room",
+                    }
+                ]
+            )
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["schedule"], [])
+        self.assertEqual(len(result["unscheduled"]), 1)
+        self.assertEqual(result["unscheduled"][0]["sectionId"], "section-1")
+        self.assertEqual(result["unscheduled"][0]["subjectId"], "subject-1")
+        self.assertEqual(result["unscheduled"][0]["kind"], "lecture")
+        self.assertEqual(result["unscheduled"][0]["sessionIndex"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

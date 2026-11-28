@@ -19,6 +19,11 @@ interface Props {
   isDragging?: boolean;
   disabled?: boolean;
   isForeign?: boolean;
+  /** Show a leading selection checkbox when bulk selection is active. */
+  selectable?: boolean;
+  /** Checked state of the selection checkbox. */
+  selected?: boolean;
+  onToggleSelect?: (entry: ScheduleEntry) => void;
   /** Visual compare tone; overrides conflict/warning/foreign rings when set. */
   diffTone?: CompareDiffTone;
 }
@@ -35,6 +40,9 @@ function ClassBlockBase({
   isDragging,
   disabled = false,
   isForeign = false,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
   diffTone,
 }: Props) {
   const metrics = useGridMetrics();
@@ -106,7 +114,7 @@ function ClassBlockBase({
     contain: 'layout style paint',
     backgroundColor: entry.color,
     opacity: dragging ? 0.4 : 1,
-    zIndex: dragging ? 9999 : 1,
+    zIndex: dragging ? 9999 : selected ? 3 : 1,
     fontSize: metrics.blockFontSize,
   };
 
@@ -148,13 +156,27 @@ function ClassBlockBase({
         className={clsx(
           'inline-flex items-center justify-center rounded bg-black/50 text-white leading-none transition-opacity',
           'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100',
-          'hover:bg-black/70 focus:outline-none focus-visible:ring-1 focus-visible:ring-white',
+          'hover:bg-black/70 focus-visible:ring-1 focus-visible:ring-white',
           positionClass,
         )}
       >
         <Icon name="feedback" size={11} />
       </button>
     ) : null;
+
+  // Selection must not bubble to the row click handler or the drag sensor.
+  const selectionCheckbox = selectable ? (
+    <input
+      type="checkbox"
+      checked={selected}
+      onChange={() => onToggleSelect?.(entry)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      aria-label={`Select ${entry.subjectCode}`}
+      className="relative z-10 h-3 w-3 shrink-0 cursor-pointer accent-primary"
+    />
+  ) : null;
 
   // ── Tiny block: collapse into a single dot + short code ──
   if (isTiny) {
@@ -171,14 +193,16 @@ function ClassBlockBase({
         className={clsx(
           'group rounded-md px-1 py-0.5 text-white leading-tight select-none',
           'overflow-hidden flex items-center gap-1 cursor-pointer',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
+          'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
           locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
           isLab &&
             '[background-image:repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.15)_5px,rgba(255,255,255,0.15)_10px)]',
           ringClass,
+          selected && 'outline outline-[3px] outline-primary outline-offset-2',
           dragging && 'cursor-grabbing shadow-2xl',
         )}
       >
+        {selectionCheckbox}
         {hasAnyBadge && (
           <span
             className={clsx(
@@ -230,11 +254,12 @@ function ClassBlockBase({
       className={clsx(
         'group rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
+        'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
         locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
         ringClass,
+        selected && 'outline outline-[3px] outline-primary outline-offset-2',
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >
@@ -298,13 +323,21 @@ function ClassBlockBase({
       )}
 
       {/* Line 1: subject code + section */}
-      <div className={clsx('font-bold truncate', hasAnyBadge && 'pl-5')}>
-        {entry.subjectCode}
-        {entry.sectionCode && showSecondary && (
-          <span className="font-normal opacity-90 ml-1">
-            · {entry.sectionCode}
-          </span>
+      <div
+        className={clsx(
+          'flex items-center gap-1 font-bold',
+          hasAnyBadge && 'pl-5',
         )}
+      >
+        {selectionCheckbox}
+        <span className="truncate">
+          {entry.subjectCode}
+          {entry.sectionCode && showSecondary && (
+            <span className="font-normal opacity-90 ml-1">
+              · {entry.sectionCode}
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Line 2: faculty */}

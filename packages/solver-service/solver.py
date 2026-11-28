@@ -227,6 +227,28 @@ def _has_conflict(intervals: list, start: int, end: int) -> bool:
     return False
 
 
+def unscheduled_from_groups(
+    group_keys,
+    subject_by_id: dict,
+    section_by_id: dict,
+) -> list[dict]:
+    result = []
+    for sec_id, subj_id, kind, sess_idx in group_keys:
+        subj = subject_by_id.get(subj_id)
+        sec = section_by_id.get(sec_id)
+        result.append(
+            {
+                "sectionId": sec_id,
+                "sectionCode": sec.sectionCode if sec else "?",
+                "subjectId": subj_id,
+                "subjectCode": subj.subjectCode if subj else "?",
+                "kind": kind,
+                "sessionIndex": sess_idx,
+            }
+        )
+    return result
+
+
 def normalize_placement(schedule: list[dict]) -> tuple:
     return tuple(
         sorted(
@@ -501,6 +523,14 @@ def solve_schedule(req: SolveRequest) -> dict:
             if not blocks:
                 continue
             has_unsatisfied_blocks = True
+
+            # Register every required block before pruning by faculty/room
+            # availability. A group with no viable placement must still be
+            # reported as unscheduled so confirm-time session counts match.
+            for block in blocks:
+                group_key = (sec_id, subj_id, block["kind"], block["sessionIndex"])
+                block_group[group_key]
+
             possible_faculty = subject_faculty.get(subj_id, [])
             if not possible_faculty:
                 print(f"[solver] WARN: no qualified faculty for {subj.subjectCode}")
@@ -517,9 +547,6 @@ def solve_schedule(req: SolveRequest) -> dict:
                     continue
 
                 group_key = (sec_id, subj_id, kind, sess_idx)
-                # Register so that an all-pruned group still produces an
-                # unscheduled flag (matches original semantics exactly).
-                block_group[group_key]
 
                 for day, start_min in parsed_slots:
                     end_min = start_min + dur
@@ -601,6 +628,16 @@ def solve_schedule(req: SolveRequest) -> dict:
     print(f"[solver] variables created: {len(X)}")
 
     if not X:
+        if block_group:
+            return {
+                "status": "success",
+                "solveTimeSeconds": 0,
+                "schedule": [],
+                "unscheduled": unscheduled_from_groups(
+                    block_group.keys(), subject_by_id, section_by_id
+                ),
+                "solveStatus": "ALL_UNSCHEDULED",
+            }
         if has_subject_blocks and not has_unsatisfied_blocks:
             return {
                 "status": "success",

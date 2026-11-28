@@ -278,6 +278,13 @@ export class AutoGenerateService {
       });
     } catch (err) {
       this.autoGenerateInFlight.delete(key);
+      try {
+        await this.releaseAutoGenerateLock(termId, deptId, userId);
+      } catch (releaseErr) {
+        this.logger.warn(
+          `Failed to release auto-generate lock after pre-section error for term=${termId} dept=${deptId}: ${(releaseErr as Error).message}`,
+        );
+      }
       throw err;
     }
 
@@ -349,6 +356,7 @@ export class AutoGenerateService {
 
           const validation = await this.validateGeneratedSchedule(
             termId,
+            deptId,
             solveResult.schedule,
             new Set<string>(),
           );
@@ -803,6 +811,7 @@ export class AutoGenerateService {
               const validation = await Promise.race([
                 this.validateGeneratedSchedule(
                   termId,
+                  deptId,
                   candidateSchedule,
                   ownAutoDraftIds,
                 ),
@@ -1262,6 +1271,20 @@ export class AutoGenerateService {
       ),
     );
 
+    // The solver derives block durations from prospectus minutes, while H-9,
+    // H-10, and H-11 validate against scheduling_setting. Pass the configured
+    // durations to the solver so generated blocks cannot be rejected by the
+    // validator for using stale prospectus minutes.
+    const solverLectureBlockMinutes = num(
+      'lecture_block_minutes',
+      SCHEDULING_SETTING_DEFAULTS.lecture_block_minutes,
+    );
+    const solverLabSplitMinutes =
+      num(
+        'lab_split_hours',
+        SCHEDULING_SETTING_DEFAULTS.lab_split_hours,
+      ) * 60;
+
     return {
       termId,
       deptId,
@@ -1288,11 +1311,9 @@ export class AutoGenerateService {
         yearLevel: p.year_level,
         semester: p.semester,
         lecture_sessions_per_week: Number(p.lecture_sessions_per_week ?? 1),
-        lecture_minutes_per_session: Number(
-          p.lecture_minutes_per_session ?? 90,
-        ),
+        lecture_minutes_per_session: solverLectureBlockMinutes,
         lab_sessions_per_week: Number(p.lab_sessions_per_week ?? 1),
-        lab_minutes_per_session: Number(p.lab_minutes_per_session ?? 180),
+        lab_minutes_per_session: solverLabSplitMinutes,
       })),
       faculty: (faculty ?? []).map((f) => ({
         facultyId: String(f.faculty_id),
@@ -1346,10 +1367,7 @@ export class AutoGenerateService {
           SCHEDULING_SETTING_DEFAULTS.lunch_start,
         ),
         lunchEnd: str('lunch_end', SCHEDULING_SETTING_DEFAULTS.lunch_end),
-        lectureBlockMinutes: num(
-          'lecture_block_minutes',
-          SCHEDULING_SETTING_DEFAULTS.lecture_block_minutes,
-        ),
+        lectureBlockMinutes: solverLectureBlockMinutes,
         labSplitHours: num(
           'lab_split_hours',
           SCHEDULING_SETTING_DEFAULTS.lab_split_hours,
@@ -1479,6 +1497,7 @@ export class AutoGenerateService {
 
   private async validateGeneratedSchedule(
     termId: string,
+    deptId: string,
     schedule: Array<{
       sectionId: string;
       sectionCode: string;
@@ -1516,6 +1535,7 @@ export class AutoGenerateService {
       try {
         const context = await this.ruleContextBuilder.build({
           termId,
+          scheduleDeptId: deptId,
           subjectId: block.subjectId,
           facultyId: block.facultyId,
           roomId: block.roomId,
@@ -2353,6 +2373,16 @@ export class AutoGenerateService {
     const counts = new Map<string, number>();
     const countKey = (sectionId: string, subjectId: string, loadType: string) =>
       `${sectionId}:${subjectId}:${loadType}`;
+    // solver.py registers one group per (section, subject, kind, sessionIndex).
+    // Duplicate prospectus rows for the same subject collapse into that same
+    // group, so deduplicate here instead of counting every prospectus row.
+    const groupKey = (
+      sectionId: string,
+      subjectId: string,
+      loadType: string,
+      sessionIndex: number,
+    ) => JSON.stringify([sectionId, subjectId, loadType, sessionIndex]);
+    const groupKeys = new Set<string>();
 
     const subjectById = new Map<string, any>(
       (problem?.subjects ?? []).map((subject: any) => [
@@ -2388,10 +2418,22 @@ export class AutoGenerateService {
       sessions: number,
     ) => {
       if (!(Number(units) > 0)) return;
-      const key = countKey(sectionId, subjectId, loadType);
-      const alreadyLoaded = existingByKey.get(key) ?? 0;
-      const remaining = Math.max(0, Number(sessions ?? 0) - alreadyLoaded);
-      counts.set(key, (counts.get(key) ?? 0) + remaining);
+      const alreadyLoaded = Math.max(
+        0,
+        Math.trunc(
+          Number(
+            existingByKey.get(countKey(sectionId, subjectId, loadType)) ?? 0,
+          ),
+        ),
+      );
+      const total = Math.max(0, Math.trunc(Number(sessions ?? 0)));
+      for (
+        let sessionIndex = alreadyLoaded;
+        sessionIndex < total;
+        sessionIndex++
+      ) {
+        groupKeys.add(groupKey(sectionId, subjectId, loadType, sessionIndex));
+      }
     };
 
     for (const section of problem?.sections ?? []) {
@@ -2424,6 +2466,12 @@ export class AutoGenerateService {
           prospectus.lab_sessions_per_week ?? 1,
         );
       }
+    }
+
+    for (const serialized of groupKeys) {
+      const [sectionId, subjectId, loadType] = JSON.parse(serialized);
+      const key = countKey(sectionId, subjectId, loadType);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 
     return counts;
@@ -2705,6 +2753,7 @@ export class AutoGenerateService {
       // Step 8: revalidate against live data.
       const validation = await this.validateGeneratedSchedule(
         termId,
+        deptId,
         schedule.map((b: any) => ({
           sectionId: String(b.sectionId),
           sectionCode: String(b.sectionCode ?? b.section ?? ''),

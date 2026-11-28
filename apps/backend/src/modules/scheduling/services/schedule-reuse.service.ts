@@ -379,6 +379,7 @@ export class ScheduleReuseService {
     const externalRoomName = room.value.externalName ?? null;
     const contextInput = {
       termId: dto.termId,
+      scheduleDeptId: String(dto.deptId),
       subjectId: subject.id,
       facultyId: faculty.value.facultyId,
       roomId: room.value.roomId,

@@ -85,6 +85,7 @@ export interface BaseContextOverrides {
   approvedFacultyRequests?: ApprovedFacultyRequestContext[];
   config?: Partial<SchedulingConfig>;
   excludeScheduleId?: string;
+  scheduleDeptId?: string | null;
 }
 
 export function baseContext(overrides: BaseContextOverrides = {}): RuleContext {
@@ -111,5 +112,6 @@ export function baseContext(overrides: BaseContextOverrides = {}): RuleContext {
     approvedFacultyRequests: overrides.approvedFacultyRequests ?? [],
     config: { ...defaultConfig, ...(overrides.config ?? {}) },
     excludeScheduleId: overrides.excludeScheduleId,
+    scheduleDeptId: overrides.scheduleDeptId ?? null,
   };
 }

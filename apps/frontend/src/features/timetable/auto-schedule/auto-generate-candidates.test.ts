@@ -83,3 +83,25 @@ test('candidate schedule uses raw solver blocks and chooser maps them for previe
   assert.match(chooser, /DAY_MAP/, 'chooser must map raw day names through DAY_MAP');
   assert.match(chooser, /TimetableGrid/, 'chooser still renders TimetableGrid');
 });
+
+test('generate options dialog uses accessible count radios and a non-generating cancel', () => {
+  const dialog = read(
+    'apps/frontend/src/features/timetable/auto-schedule/AutoGenerateOptionsDialog.tsx',
+  );
+
+  assert.match(dialog, /import Modal from/);
+  assert.match(dialog, /title="Generate options"/);
+  assert.match(dialog, /useState<2 \| 3 \| 5>\(count\)/);
+  assert.match(dialog, /\[2, 3, 5\] as const/, 'fixed count presets');
+  assert.match(dialog, /<fieldset/);
+  assert.match(
+    dialog,
+    /<legend[^>]*>Number of schedule options to generate<\/legend>/,
+  );
+  assert.match(dialog, /type="radio"/);
+  assert.match(dialog, /onGenerate\(draftCount\)/, 'Generate passes the draft count');
+  assert.match(dialog, /onClick=\{onClose\}/, 'Cancel only closes');
+  assert.doesNotMatch(dialog, /<select/, 'no header-style select in the dialog');
+  assert.doesNotMatch(dialog, /\balert\(|\bconfirm\(|\bprompt\(/);
+  assert.doesNotMatch(dialog, /useState[^\n]*(success|failure)/i);
+});
