@@ -65,7 +65,7 @@ export default function AgendaView({
         const list = grouped.get(day) ?? [];
         return (
           <section key={day}>
-            <header className="flex items-center justify-between mb-2 px-1 sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm py-1.5 -mx-1 px-1">
+            <header className="flex items-center justify-between mb-2 px-1 sticky top-0 z-20 bg-slate-50/95 backdrop-blur-sm py-1.5 -mx-1 px-1">
               <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
                 {DAY_LABEL[day]}
               </h2>

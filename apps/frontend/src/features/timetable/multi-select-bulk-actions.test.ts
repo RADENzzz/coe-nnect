@@ -348,12 +348,30 @@ test('bulk hook rejects overlapping runs and menu respects pending action', () =
 
 test('selected grid blocks keep their outline while focused', () => {
   assert.doesNotMatch(classBlock, /focus:outline-none/);
-  assert.match(classBlock, /focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white/);
-  assert.match(classBlock, /outline-\[3px\] outline-primary outline-offset-2/);
+  assert.match(
+    classBlock,
+    /'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest'/,
+  );
+  assert.equal(
+    classBlock.match(
+      /'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest'/g,
+    )?.length,
+    2,
+  );
+  assert.match(classBlock, /selected && 'outline outline-\[3px\] outline-primary outline-offset-2'/);
+  assert.equal(
+    classBlock.match(/selected && 'outline outline-\[3px\] outline-primary outline-offset-2'/g)?.length,
+    2,
+  );
   assert.match(classBlock, /zIndex: dragging \? 9999 : selected \? 3 : 1/);
+  assert.match(classBlock, /hover:bg-black\/70 focus-visible:ring-1 focus-visible:ring-white/);
 });
 
 test('selected agenda cards use the same visible outline', () => {
   assert.match(agendaCard, /selected && 'relative z-10 outline outline-\[3px\] outline-primary outline-offset-2'/);
   assert.doesNotMatch(agendaCard, /outline outline-2 outline-primary/);
+});
+
+test('selected agenda cards stay below the sticky day header', () => {
+  assert.match(agenda, /sticky top-0 z-20 bg-slate-50\/95 backdrop-blur-sm/);
 });
