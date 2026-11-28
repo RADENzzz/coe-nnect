@@ -8,8 +8,6 @@ import RequireDesktop from './features/import/components/RequireDesktop';
 import PresenceProvider from './components/presence/PresenceProvider';
 import { useAuthStore } from './store/auth.store';
 import { ROUTE_LOADERS } from './lib/route-prefetch';
-import { AnimatePresence, motion } from 'motion/react';
-import Icon from './components/ui/Icon';
 import { FeedbackProvider } from './components/ui/FeedbackToast';
 
 // The public landing page is the entry point, so it stays in the initial
@@ -93,37 +91,8 @@ function DeanRouteGuard() {
 }
 
 function App() {
-  const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
-
   return (
     <>
-      <AnimatePresence>
-        {isLoggingOut && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-6"
-            role="status"
-            aria-live="polite"
-            aria-label="Logging out"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 4 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="flex min-w-64 flex-col items-center rounded-2xl border border-white/15 bg-slate-950/95 px-8 py-7 text-white shadow-2xl"
-            >
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-white/15 bg-white/10">
-                <Icon name="logout" size={26} color="inherit" />
-              </div>
-              <p className="text-base font-bold">Logging out…</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       <MaintenanceGate>
         <FeedbackProvider>
           {/* Session-scoped Realtime presence + last-seen heartbeat. Sits above

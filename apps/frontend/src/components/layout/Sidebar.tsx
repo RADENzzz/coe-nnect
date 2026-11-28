@@ -309,14 +309,14 @@ export default function Sidebar({ nav }: SidebarProps) {
       {/* Brand + pin (pin only when expanded) */}
       <div
         className={clsx(
-          'border-b border-white/20 flex items-center',
+          'app-sidebar__brand border-b border-white/20 flex items-center',
           collapsed
             ? 'px-3 py-4 justify-center'
             : 'px-5 py-5 justify-between gap-2',
         )}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
+          <div className="app-sidebar__logo relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
             {brandLogo ? (
               <img
                 src={brandLogo}
@@ -373,7 +373,7 @@ export default function Sidebar({ nav }: SidebarProps) {
       </div>
 
       {/* Main Nav */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="app-sidebar__main-nav flex-1 overflow-y-auto py-2">
         {groups.map((group, index) => (
           <div key={group.label} className={clsx(index > 0 && 'mt-1')}>
             {!collapsed ? (
@@ -405,7 +405,7 @@ export default function Sidebar({ nav }: SidebarProps) {
         attention={attention}
         activePath={activePath}
         tone="footer"
-        className="border-t border-white/20 py-2"
+        className="app-sidebar__footer border-t border-white/20 py-2"
       />
     </nav>
   );

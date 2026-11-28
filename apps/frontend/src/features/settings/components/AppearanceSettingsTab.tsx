@@ -91,6 +91,9 @@ export default function AppearanceSettingsTab({
   const setAccent = useAppearanceStore((s) => s.setAccent);
   const setSurfaceTint = useAppearanceStore((s) => s.setSurfaceTint);
   const setGlass = useAppearanceStore((s) => s.setGlass);
+  const setSidebarFitAllContent = useAppearanceStore(
+    (s) => s.setSidebarFitAllContent,
+  );
   const resetAppearance = useAppearanceStore((s) => s.resetAppearance);
   const setLogo = useAppearanceStore((s) => s.setLogo);
   const theme = useThemeStore((s) => s.theme);
@@ -398,6 +401,37 @@ export default function AppearanceSettingsTab({
               <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
             </label>
           </div>
+        </div>
+      </Section>
+
+      {/* ── Sidebar ── */}
+      <Section
+        title="Sidebar"
+        description="Choose how the desktop navigation fits on screen."
+        icon="menu"
+      >
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-surface-variant bg-surface-container-low/50 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-on-surface">
+              Fit all sidebar links
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-on-surface-variant">
+              Scrolling is the default. Turn this on to compact the navigation
+              so every link fits without an inner scrollbar. Short windows keep
+              scrolling so links remain reachable.
+            </p>
+          </div>
+          <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={appearance.sidebarFitAllContent}
+              onChange={(e) => setSidebarFitAllContent(e.target.checked)}
+              aria-label="Fit all sidebar links"
+            />
+            <span className="h-5 w-9 rounded-full bg-slate-300 transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40 peer-focus-visible:ring-offset-2" />
+            <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+          </label>
         </div>
       </Section>
 

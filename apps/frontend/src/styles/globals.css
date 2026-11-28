@@ -3026,6 +3026,58 @@ html.glass .overlay-backdrop-blur-sm {
 }
 
 /* ============================================================
+   Sidebar fit-all
+   Opt-in compact desktop rail. Scrolling stays the default; at
+   ordinary window heights the compact rail fits every link, and
+   short windows keep the inner scroll so links stay reachable.
+   ============================================================ */
+
+@media (min-height: 600px) {
+  html.sidebar-fit-all .app-sidebar .app-sidebar__brand {
+    padding: 0.75rem;
+  }
+
+  html.sidebar-fit-all .app-sidebar .app-sidebar__logo {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  html.sidebar-fit-all .app-sidebar .app-sidebar__main-nav {
+    padding: 0.25rem;
+    overflow: visible;
+  }
+
+  html.sidebar-fit-all .app-sidebar .app-sidebar__main-nav > div > p {
+    padding-top: 0.25rem;
+    padding-bottom: 0.125rem;
+    font-size: 0.5625rem;
+    line-height: 0.75rem;
+  }
+
+  html.sidebar-fit-all .app-sidebar .app-sidebar__main-nav > div + div {
+    margin-top: 0.125rem;
+  }
+
+  html.sidebar-fit-all .app-sidebar .app-sidebar__main-nav a,
+  html.sidebar-fit-all .app-sidebar .app-sidebar__footer a {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  html.sidebar-fit-all .app-sidebar .app-sidebar__footer {
+    padding: 0.25rem;
+  }
+}
+
+@media (max-height: 599px) {
+  html.sidebar-fit-all .app-sidebar .app-sidebar__main-nav {
+    overflow-y: auto;
+  }
+}
+
+/* ============================================================
    Guided tours
    A dimmed backdrop plus a cut-out spotlight around the real
    control, with a floating card. Portalled to <body> by
