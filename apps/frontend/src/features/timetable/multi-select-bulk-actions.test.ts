@@ -120,3 +120,9 @@ test('timetable page owns selection and keeps deep links untouched during bulk a
   assert.doesNotMatch(page, /bulk[A-Za-z]*\([^)]*setSearchParams/);
   assert.doesNotMatch(page, /bulk[A-Za-z]*\([^)]*navigate\(/);
 });
+
+test('the fixed manual plotting notice is gone', () => {
+  assert.doesNotMatch(page, /need manual plotting/);
+  assert.doesNotMatch(page, /Plot manually →/);
+  assert.doesNotMatch(page, /fetchUnscheduled\(activeTerm!\.termId, myDeptId \|\| undefined\)/);
+});

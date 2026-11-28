@@ -444,12 +444,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
     [schedules, myDeptId],
   );
 
-  const { data: unscheduledRecords = [] } = useQuery({
-    queryKey: ['unscheduled', activeTerm?.termId, myDeptId],
-    queryFn: () => fetchUnscheduled(activeTerm!.termId, myDeptId || undefined),
-    enabled: !!user && !!activeTerm && !activeVersion,
-  });
-
   const { data: subjects = [] } = useQuery({
     queryKey: ['subjects'],
     queryFn: () => fetchSubjects(false),
@@ -2636,63 +2630,6 @@ export default function TimetablePage({ readOnly = false }: Props) {
             </div>
           )}
         </Modal>
-
-        {!activeVersion && unscheduledRecords.length > 0 && !autoPreview && (
-          <div className="fixed above-bottom-nav right-4 z-40 max-w-md w-[calc(100vw-2rem)] md:w-auto">
-            <details className="bg-white border border-amber-200 shadow-lg rounded-lg overflow-hidden">
-              <summary className="px-4 py-3 cursor-pointer bg-amber-50 text-amber-900 font-semibold text-sm flex items-center gap-2 hover:bg-amber-100 transition select-none">
-                <Icon name="warning" size={16} />
-                <span className="flex-1">
-                  {unscheduledRecords.length} session
-                  {unscheduledRecords.length === 1 ? '' : 's'} need manual plotting
-                </span>
-                <Icon name="expand_more" size={16} />
-              </summary>
-              <ul className="max-h-80 overflow-y-auto divide-y divide-amber-100">
-                {unscheduledRecords.map((u) => (
-                  <li key={u.unscheduledId} className="px-4 py-3 text-xs">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-mono font-bold text-primary">
-                        {u.subjectCode}
-                      </span>
-                      <span className="text-[10px] uppercase tracking-wider text-on-surface-variant">
-                        {u.kind}
-                      </span>
-                    </div>
-                    <div className="text-on-surface-variant truncate mt-0.5">
-                      {u.subjectTitle}
-                    </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-[11px] text-on-surface-variant">
-                        {u.sectionCode}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAlertState({
-                            title: 'Plot manually',
-                            subtitle: `${u.subjectCode} · ${u.sectionCode}`,
-                            tone: 'info',
-                            items: [
-                              {
-                                message:
-                                  "Open the Plot Subject modal, pick this subject, and choose a slot. The scheduler couldn't find one for it.",
-                                tone: 'info',
-                              },
-                            ],
-                          })
-                        }
-                        className="text-[11px] font-semibold text-primary hover:underline"
-                      >
-                        Plot manually →
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          </div>
-        )}
 
         {selectedScheduleIds.size > 0 && (
           <BulkActionBar
