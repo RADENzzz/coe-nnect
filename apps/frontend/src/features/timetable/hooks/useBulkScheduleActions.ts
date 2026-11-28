@@ -6,6 +6,7 @@ import {
   updateScheduleStatus,
 } from '../../../api/schedule.api';
 import { createPublishRequest } from '../../../api/schedule-publish-request.api';
+import { createChangeRequest } from '../../../api/schedule-change-request.api';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
 import { extractApiError } from '../../../lib/api-error';
 import type { ScheduleEntry } from '../types';
@@ -94,6 +95,7 @@ export function useBulkScheduleActions({
           feedback.error('No selected row is eligible for this action.');
           return;
         }
+        const skipped = selectedIds.size - ids.length;
 
         const results = await Promise.allSettled(
           ids.map((id) => {
@@ -106,6 +108,10 @@ export function useBulkScheduleActions({
                 return updateScheduleStatus(id, 'finalized');
               case 'request-publish':
                 return createPublishRequest(id, note);
+              case 'cancel-finalization':
+                return updateScheduleStatus(id, 'draft');
+              case 'request-change':
+                return createChangeRequest(id, note ?? '');
             }
           }),
         );
@@ -115,14 +121,15 @@ export function useBulkScheduleActions({
         const failures = results.filter(
           (result): result is PromiseRejectedResult => result.status === 'rejected',
         );
+        const skippedSuffix = skipped > 0 ? ` ${skipped} skipped.` : '';
         await refreshDependentQueries();
         if (failures.length === 0) {
           feedback.success(
-            `Updated ${succeededIds.length} selected row${succeededIds.length === 1 ? '' : 's'}.`,
+            `Updated ${succeededIds.length} selected row${succeededIds.length === 1 ? '' : 's'}.${skippedSuffix}`,
           );
         } else {
           feedback.failed(
-            `${succeededIds.length} succeeded, ${failures.length} failed. ${extractApiError(failures[0].reason, 'Bulk action failed.')}`,
+            `${succeededIds.length} succeeded, ${failures.length} failed.${skippedSuffix} ${extractApiError(failures[0].reason, 'Bulk action failed.')}`,
           );
         }
         // Only fulfilled rows leave the selection; failed rows stay selected.

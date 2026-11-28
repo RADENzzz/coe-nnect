@@ -164,3 +164,23 @@ test('status counts only include selected draft, review, and finalized rows', ()
     finalized: 1,
   });
 });
+
+const contextHook = read(
+  'apps/frontend/src/features/timetable/hooks/useBulkScheduleActions.ts',
+);
+
+test('bulk hook supports cancel finalization and shared-reason change requests', () => {
+  assert.match(contextHook, /updateScheduleStatus\(id, 'draft'\)/);
+  assert.match(contextHook, /createChangeRequest\(id, note \?\? ''\)/);
+  assert.match(contextHook, /from .*schedule-change-request\.api/);
+  assert.match(contextHook, /const skipped = selectedIds\.size - ids\.length/);
+  assert.match(contextHook, /skipped/);
+  assert.doesNotMatch(contextHook, /alert\(|confirm\(|prompt\(|setSearchParams|navigate\(/);
+});
+
+test('bulk hook reports skipped rows without native dialogs', () => {
+  assert.match(contextHook, /Updated \$\{succeededIds\.length\} selected row/);
+  assert.match(contextHook, /\$\{skipped\} skipped/);
+  assert.match(contextHook, /feedback\.success\(/);
+  assert.match(contextHook, /feedback\.failed\(/);
+});
