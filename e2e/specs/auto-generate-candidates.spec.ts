@@ -220,15 +220,27 @@ test('live grid stays unchanged until a candidate is accepted', async ({
   expect(beforeRows.length).toBeGreaterThan(0);
   expectForeignDraftIntact(beforeRows);
 
-  await page
-    .getByLabel('Number of schedule options to generate')
-    .selectOption('3');
+  await page.getByRole('button', { name: 'Auto-Generate' }).click();
+  const cancelledDialog = page.getByRole('dialog', { name: 'Generate options' });
+  await expect(cancelledDialog).toBeVisible();
+  await cancelledDialog.getByRole('radio', { name: '5', exact: true }).check();
+  await cancelledDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(cancelledDialog).toBeHidden();
   await expect(
-    page.getByLabel('Number of schedule options to generate'),
-  ).toHaveValue('3');
+    page.getByRole('heading', { name: 'Generated schedule options' }),
+  ).toBeHidden();
+
+  await page.getByRole('button', { name: 'Auto-Generate' }).click();
+  const firstDialog = page.getByRole('dialog', { name: 'Generate options' });
+  await expect(firstDialog).toBeVisible();
+  await expect(
+    firstDialog.getByRole('radio', { name: '3', exact: true }),
+  ).toBeChecked();
 
   const firstGeneration = generationResponse(page);
-  await page.getByRole('button', { name: 'Auto-Generate' }).click();
+  await firstDialog.getByRole('radio', { name: '3', exact: true }).check();
+  await firstDialog.getByRole('button', { name: 'Generate' }).click();
+  await expect(firstDialog).toBeHidden();
   const generated = await firstGeneration;
   expect(generated.ok(), await generated.text()).toBeTruthy();
 
@@ -293,6 +305,13 @@ test('live grid stays unchanged until a candidate is accepted', async ({
   // the exact post-accept snapshot rather than re-deriving expectations.
   const secondGeneration = generationResponse(page);
   await page.getByRole('button', { name: 'Auto-Generate' }).click();
+  const secondDialog = page.getByRole('dialog', { name: 'Generate options' });
+  await expect(secondDialog).toBeVisible();
+  await expect(
+    secondDialog.getByRole('radio', { name: '3', exact: true }),
+  ).toBeChecked();
+  await secondDialog.getByRole('button', { name: 'Generate' }).click();
+  await expect(secondDialog).toBeHidden();
   const regenerated = await secondGeneration;
   expect(regenerated.ok(), await regenerated.text()).toBeTruthy();
   await expect(chooser).toBeVisible();
