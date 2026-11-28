@@ -85,3 +85,25 @@ test('bulk confirmation modal uses the shared Modal and supports one publish not
   assert.match(modal, /onNoteChange/);
   assert.doesNotMatch(modal, /alert\(|confirm\(|prompt\(/);
 });
+
+const classBlock = read('apps/frontend/src/features/timetable/components/ClassBlock.tsx');
+const agendaCard = read('apps/frontend/src/features/timetable/views/AgendaClassCard.tsx');
+const grid = read('apps/frontend/src/features/timetable/components/TimetableGrid.tsx');
+const agenda = read('apps/frontend/src/features/timetable/views/AgendaView.tsx');
+
+test('row checkboxes do not open the drawer or start a drag', () => {
+  for (const source of [classBlock, agendaCard]) {
+    assert.match(source, /type="checkbox"/);
+    assert.match(source, /onToggleSelect\?\.\(entry\)/);
+    assert.match(source, /stopPropagation\(\)/);
+    assert.match(source, /onPointerDown/);
+  }
+});
+
+test('grid and agenda forward selection props to row cards', () => {
+  for (const source of [grid, agenda]) {
+    assert.match(source, /selectableEntryIds/);
+    assert.match(source, /selectedEntryIds/);
+    assert.match(source, /onToggleSelect/);
+  }
+});

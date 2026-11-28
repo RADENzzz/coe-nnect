@@ -41,6 +41,11 @@ interface Props {
   onEntryClick?: (entry: ScheduleEntry) => void;
   /** Open the Dean change-request form for an eligible locked entry. */
   onRequestChange?: (entry: ScheduleEntry) => void;
+  /** IDs of entries that show a selection checkbox. */
+  selectableEntryIds?: Set<string>;
+  /** IDs of entries whose selection checkbox is checked. */
+  selectedEntryIds?: Set<string>;
+  onToggleSelect?: (entry: ScheduleEntry) => void;
   /** IDs of entries eligible for the change-request quick action. */
   requestChangeEntryIds?: Set<string>;
   /** IDs of entries the current user cannot drag (foreign dept, etc.). */
@@ -138,6 +143,9 @@ export default function TimetableGrid({
   onEntryMove,
   onEntryClick,
   onRequestChange,
+  selectableEntryIds,
+  selectedEntryIds,
+  onToggleSelect,
   requestChangeEntryIds,
   readOnlyEntryIds,
   diffToneByEntryId,
@@ -158,6 +166,9 @@ export default function TimetableGrid({
         onEntryMove={onEntryMove}
         onEntryClick={onEntryClick}
         onRequestChange={onRequestChange}
+        selectableEntryIds={selectableEntryIds}
+        selectedEntryIds={selectedEntryIds}
+        onToggleSelect={onToggleSelect}
         requestChangeEntryIds={requestChangeEntryIds}
         readOnlyEntryIds={readOnlyEntryIds}
         diffToneByEntryId={diffToneByEntryId}
@@ -174,6 +185,9 @@ interface GridBodyProps {
   onEntryMove?: Props['onEntryMove'];
   onEntryClick?: Props['onEntryClick'];
   onRequestChange?: Props['onRequestChange'];
+  selectableEntryIds?: Props['selectableEntryIds'];
+  selectedEntryIds?: Props['selectedEntryIds'];
+  onToggleSelect?: Props['onToggleSelect'];
   requestChangeEntryIds?: Set<string>;
   readOnlyEntryIds?: Set<string>;
   diffToneByEntryId?: Map<string, CompareDiffTone>;
@@ -187,6 +201,9 @@ function GridBody({
   onEntryMove,
   onEntryClick,
   onRequestChange,
+  selectableEntryIds,
+  selectedEntryIds,
+  onToggleSelect,
   requestChangeEntryIds,
   readOnlyEntryIds,
   diffToneByEntryId,
@@ -565,6 +582,9 @@ function GridBody({
                       overlapCount={overlapCount}
                       onClick={onEntryClick}
                       onRequestChange={onRequestChange}
+                      selectable={selectableEntryIds?.has(entry.id) ?? false}
+                      selected={selectedEntryIds?.has(entry.id) ?? false}
+                      onToggleSelect={onToggleSelect}
                       requestChangeEntryIds={requestChangeEntryIds}
                       isDragging={draggingId === entry.id}
                       disabled={locked || !isDesktopLike || isForeign || busy}

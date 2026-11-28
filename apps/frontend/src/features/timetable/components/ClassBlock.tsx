@@ -19,6 +19,11 @@ interface Props {
   isDragging?: boolean;
   disabled?: boolean;
   isForeign?: boolean;
+  /** Show a leading selection checkbox when bulk selection is active. */
+  selectable?: boolean;
+  /** Checked state of the selection checkbox. */
+  selected?: boolean;
+  onToggleSelect?: (entry: ScheduleEntry) => void;
   /** Visual compare tone; overrides conflict/warning/foreign rings when set. */
   diffTone?: CompareDiffTone;
 }
@@ -35,6 +40,9 @@ function ClassBlockBase({
   isDragging,
   disabled = false,
   isForeign = false,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
   diffTone,
 }: Props) {
   const metrics = useGridMetrics();
@@ -156,6 +164,20 @@ function ClassBlockBase({
       </button>
     ) : null;
 
+  // Selection must not bubble to the row click handler or the drag sensor.
+  const selectionCheckbox = selectable ? (
+    <input
+      type="checkbox"
+      checked={selected}
+      onChange={() => onToggleSelect?.(entry)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      aria-label={`Select ${entry.subjectCode}`}
+      className="relative z-10 h-3 w-3 shrink-0 cursor-pointer accent-primary"
+    />
+  ) : null;
+
   // ── Tiny block: collapse into a single dot + short code ──
   if (isTiny) {
     return (
@@ -179,6 +201,7 @@ function ClassBlockBase({
           dragging && 'cursor-grabbing shadow-2xl',
         )}
       >
+        {selectionCheckbox}
         {hasAnyBadge && (
           <span
             className={clsx(
@@ -298,13 +321,21 @@ function ClassBlockBase({
       )}
 
       {/* Line 1: subject code + section */}
-      <div className={clsx('font-bold truncate', hasAnyBadge && 'pl-5')}>
-        {entry.subjectCode}
-        {entry.sectionCode && showSecondary && (
-          <span className="font-normal opacity-90 ml-1">
-            · {entry.sectionCode}
-          </span>
+      <div
+        className={clsx(
+          'flex items-center gap-1 font-bold',
+          hasAnyBadge && 'pl-5',
         )}
+      >
+        {selectionCheckbox}
+        <span className="truncate">
+          {entry.subjectCode}
+          {entry.sectionCode && showSecondary && (
+            <span className="font-normal opacity-90 ml-1">
+              · {entry.sectionCode}
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Line 2: faculty */}

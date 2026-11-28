@@ -8,6 +8,9 @@ interface Props {
   entries: ScheduleEntry[];
   onEntryClick: (entry: ScheduleEntry) => void;
   onRequestChange?: (entry: ScheduleEntry) => void;
+  selectableEntryIds?: Set<string>;
+  selectedEntryIds?: Set<string>;
+  onToggleSelect?: (entry: ScheduleEntry) => void;
   requestChangeEntryIds?: Set<string>;
 }
 
@@ -27,6 +30,9 @@ export default function AgendaView({
   entries,
   onEntryClick,
   onRequestChange,
+  selectableEntryIds,
+  selectedEntryIds,
+  onToggleSelect,
   requestChangeEntryIds,
 }: Props) {
   const grouped = useMemo(() => {
@@ -71,7 +77,13 @@ export default function AgendaView({
             <div className="space-y-2">
               {list.map((e) => (
                 <div key={e.id} className="group relative">
-                  <AgendaClassCard entry={e} onClick={onEntryClick} />
+                  <AgendaClassCard
+                    entry={e}
+                    onClick={onEntryClick}
+                    selectable={selectableEntryIds?.has(e.id) ?? false}
+                    selected={selectedEntryIds?.has(e.id) ?? false}
+                    onToggleSelect={onToggleSelect}
+                  />
                   {!!onRequestChange && requestChangeEntryIds?.has(e.id) && (
                     <button
                       type="button"
