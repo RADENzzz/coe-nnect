@@ -864,6 +864,7 @@ Key constraints and behavior:
 | `subject_restriction`       | `restriction_id`             | Pairwise subject restriction with an optional term.                            |
 | `system_status`             | `status_id`                  | Singleton row holding the system-wide status banner.                           |
 | `term`                      | `term_id`                    | Academic term with school year, dates, and semester.                           |
+| `term_draft_snapshot`       | `term_draft_snapshot_id`     | Named JSONB draft of draft/review timetable rows, scoped to term and department; backend-only access. |
 | `time_slot`                 | `timeslot_id`                | Reusable day/start/end slot with generated duration.                           |
 | `user_notification_setting` | `(user_id, trigger_key)`     | Per-user notification opt-in.                                                  |
 | `user_presence`             | `user_id`                    | Persisted last-seen heartbeat for presence labels.                             |

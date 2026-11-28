@@ -11,6 +11,7 @@ import { User } from '../users/entities/user.entity';
 import { SchedulePublishService } from './services/schedule-publish.service';
 import { SchedulePublishController } from './schedule-publish.controller';
 import { PublishedVersionController } from './controllers/published-version.controller';
+import { DraftSnapshotController } from './controllers/draft-snapshot.controller';
 import { SchedulingService } from './scheduling.service';
 import { SchedulingController } from './scheduling.controller';
 import { AutoGenerateService } from './services/auto-generate.service';
@@ -27,8 +28,11 @@ import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-reques
 import { SchedulePublishRequest } from './entities/schedule-publish-request.entity';
 import { ScheduleChangeRequest } from './entities/schedule-change-request.entity';
 import { TermPublishedVersion } from './entities/term-published-version.entity';
+import { TermDraftSnapshot } from './entities/term-draft-snapshot.entity';
 import { TermPublishedVersionService } from './services/term-published-version.service';
 import { ScheduleReuseService } from './services/schedule-reuse.service';
+import { ScheduleCatalogResolver } from './services/schedule-catalog-resolver.service';
+import { TermDraftSnapshotService } from './services/term-draft-snapshot.service';
 import { VersionCompareService } from './services/version-compare.service';
 import { TermLifecycleService } from './services/term-lifecycle.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
@@ -47,6 +51,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       SchedulePublishRequest,
       ScheduleChangeRequest,
       TermPublishedVersion,
+      TermDraftSnapshot,
       TimeSlot,
       Term,
       Subject,
@@ -65,6 +70,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     SchedulePublishController,
     ScheduleChangeRequestController,
     PublishedVersionController,
+    DraftSnapshotController,
     SchedulingController,
   ],
   providers: [
@@ -80,6 +86,8 @@ import { DepartmentsModule } from '../departments/departments.module';
     SchedulingCoverageService,
     TermPublishedVersionService,
     ScheduleReuseService,
+    ScheduleCatalogResolver,
+    TermDraftSnapshotService,
     VersionCompareService,
     TermLifecycleService,
     SolverClient,
@@ -92,6 +100,8 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleChangeRequestService,
     TermPublishedVersionService,
     ScheduleReuseService,
+    ScheduleCatalogResolver,
+    TermDraftSnapshotService,
     VersionCompareService,
     TermLifecycleService,
   ],

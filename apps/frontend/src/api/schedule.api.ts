@@ -800,6 +800,94 @@ export async function compareVersionSources(
   return data.data;
 }
 
+// ────────────────────────────────────────────
+// Term-scoped draft snapshots
+// ────────────────────────────────────────────
+
+export type DraftSnapshotEntry = Omit<PublishedVersionEntry, 'status'> & {
+  status: 'draft' | 'review';
+};
+
+export type DraftLoadConflict = {
+  entry: DraftSnapshotEntry;
+  targetScheduleId: string | null;
+  action: 'conflict';
+  reason: string;
+};
+
+export type DraftLoadResult = {
+  matched: number;
+  ready: number;
+  create: number;
+  update: number;
+  remove: number;
+  keptAsIs: number;
+  warnings: number;
+  conflicts: DraftLoadConflict[];
+  failed: boolean;
+  summary: string;
+};
+
+export type DraftSnapshotSummary = {
+  snapshotId: string;
+  termId: string;
+  termName: string;
+  semester: string | null;
+  schoolYear: string;
+  name: string;
+  entryCount: number;
+  createdAt: string;
+};
+
+export async function fetchDraftSnapshots(
+  termId: string,
+  deptId: string,
+): Promise<DraftSnapshotSummary[]> {
+  const { data } = await api.get('/v1/schedules/draft-snapshots', {
+    params: { termId, deptId },
+  });
+  return data.data;
+}
+
+export async function saveDraftSnapshot(input: {
+  termId: string;
+  deptId: string;
+  name: string;
+}): Promise<DraftSnapshotSummary> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: '/v1/schedules/draft-snapshots',
+    data: input,
+  });
+  return data.data;
+}
+
+export async function preflightDraftSnapshot(
+  snapshotId: string,
+  termId: string,
+  deptId: string,
+): Promise<DraftLoadResult> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: `/v1/schedules/draft-snapshots/${snapshotId}/preflight`,
+    data: { termId, deptId },
+  });
+  return data.data;
+}
+
+export async function applyDraftSnapshot(
+  snapshotId: string,
+  termId: string,
+  deptId: string,
+): Promise<DraftLoadResult> {
+  const { data } = await api.request({
+    method: 'POST',
+    url: `/v1/schedules/draft-snapshots/${snapshotId}/load`,
+    data: { termId, deptId, confirmed: true },
+  });
+  return data.data;
+}
+
 export async function preflightReuse(
   versionId: string,
   termId: string,
