@@ -114,7 +114,7 @@ function ClassBlockBase({
     contain: 'layout style paint',
     backgroundColor: entry.color,
     opacity: dragging ? 0.4 : 1,
-    zIndex: dragging ? 9999 : 1,
+    zIndex: dragging ? 9999 : selected ? 3 : 1,
     fontSize: metrics.blockFontSize,
   };
 
@@ -156,7 +156,7 @@ function ClassBlockBase({
         className={clsx(
           'inline-flex items-center justify-center rounded bg-black/50 text-white leading-none transition-opacity',
           'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100',
-          'hover:bg-black/70 focus:outline-none focus-visible:ring-1 focus-visible:ring-white',
+          'hover:bg-black/70 focus-visible:ring-1 focus-visible:ring-white',
           positionClass,
         )}
       >
@@ -193,12 +193,12 @@ function ClassBlockBase({
         className={clsx(
           'group rounded-md px-1 py-0.5 text-white leading-tight select-none',
           'overflow-hidden flex items-center gap-1 cursor-pointer',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
+          'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
           locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
           isLab &&
             '[background-image:repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.15)_5px,rgba(255,255,255,0.15)_10px)]',
           ringClass,
-          selected && 'outline outline-2 outline-primary',
+          selected && 'outline outline-[3px] outline-primary outline-offset-2',
           dragging && 'cursor-grabbing shadow-2xl',
         )}
       >
@@ -254,12 +254,12 @@ function ClassBlockBase({
       className={clsx(
         'group rounded-md px-1.5 py-1 text-white leading-tight select-none',
         'transition-shadow duration-150 hover:shadow-lg overflow-hidden flex flex-col gap-0.5',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
+        'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white focus-visible:ring-offset-surface-container-lowest',
         locked || isForeign ? 'cursor-pointer' : 'cursor-grab',
         isLab &&
           '[background-image:repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(255,255,255,0.15)_6px,rgba(255,255,255,0.15)_12px)]',
         ringClass,
-        selected && 'outline outline-2 outline-primary',
+        selected && 'outline outline-[3px] outline-primary outline-offset-2',
         dragging && 'cursor-grabbing shadow-2xl',
       )}
     >

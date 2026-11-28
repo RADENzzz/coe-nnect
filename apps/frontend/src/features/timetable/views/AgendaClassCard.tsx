@@ -41,7 +41,7 @@ export default function AgendaClassCard({
     <div
       className={clsx(
         'w-full bg-white border border-slate-200 hover:border-slate-300 active:bg-slate-50 transition-colors flex items-stretch overflow-hidden',
-        selected && 'outline outline-2 outline-primary',
+        selected && 'relative z-10 outline outline-[3px] outline-primary outline-offset-2',
       )}
     >
       {selectable && (

@@ -345,3 +345,15 @@ test('bulk hook rejects overlapping runs and menu respects pending action', () =
   assert.match(hook, /runningRef\.current = false/);
   assert.match(contextPage, /disabled: isGenerating \|\| pendingAction !== null/);
 });
+
+test('selected grid blocks keep their outline while focused', () => {
+  assert.doesNotMatch(classBlock, /focus:outline-none/);
+  assert.match(classBlock, /focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-white/);
+  assert.match(classBlock, /outline-\[3px\] outline-primary outline-offset-2/);
+  assert.match(classBlock, /zIndex: dragging \? 9999 : selected \? 3 : 1/);
+});
+
+test('selected agenda cards use the same visible outline', () => {
+  assert.match(agendaCard, /selected && 'relative z-10 outline outline-\[3px\] outline-primary outline-offset-2'/);
+  assert.doesNotMatch(agendaCard, /outline outline-2 outline-primary/);
+});
