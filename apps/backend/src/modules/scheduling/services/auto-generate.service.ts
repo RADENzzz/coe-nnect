@@ -356,6 +356,7 @@ export class AutoGenerateService {
 
           const validation = await this.validateGeneratedSchedule(
             termId,
+            deptId,
             solveResult.schedule,
             new Set<string>(),
           );
@@ -810,6 +811,7 @@ export class AutoGenerateService {
               const validation = await Promise.race([
                 this.validateGeneratedSchedule(
                   termId,
+                  deptId,
                   candidateSchedule,
                   ownAutoDraftIds,
                 ),
@@ -1495,6 +1497,7 @@ export class AutoGenerateService {
 
   private async validateGeneratedSchedule(
     termId: string,
+    deptId: string,
     schedule: Array<{
       sectionId: string;
       sectionCode: string;
@@ -1532,6 +1535,7 @@ export class AutoGenerateService {
       try {
         const context = await this.ruleContextBuilder.build({
           termId,
+          scheduleDeptId: deptId,
           subjectId: block.subjectId,
           facultyId: block.facultyId,
           roomId: block.roomId,
@@ -2721,6 +2725,7 @@ export class AutoGenerateService {
       // Step 8: revalidate against live data.
       const validation = await this.validateGeneratedSchedule(
         termId,
+        deptId,
         schedule.map((b: any) => ({
           sectionId: String(b.sectionId),
           sectionCode: String(b.sectionCode ?? b.section ?? ''),

@@ -187,6 +187,8 @@ export interface FacultyUnavailabilityContext {
  */
 export interface RuleContext {
   termId: string;
+  /** Department receiving the schedule; falls back to subject owner when absent. */
+  scheduleDeptId?: string | null;
   subject: SubjectContext;
   section: SectionContext;
   faculty: FacultyContext | null;

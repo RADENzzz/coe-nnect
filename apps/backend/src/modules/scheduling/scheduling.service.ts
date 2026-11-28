@@ -310,6 +310,7 @@ export class SchedulingService {
 
     const context = await this.ruleContextBuilder.build({
       termId: dto.termId,
+      scheduleDeptId,
       subjectId: dto.subjectId,
       facultyId: dto.facultyId,
       roomId: dto.roomId,
@@ -507,6 +508,7 @@ export class SchedulingService {
 
       const context = await this.ruleContextBuilder.build({
         termId: dto.termId,
+        scheduleDeptId,
         subjectId: dto.subjectId,
         facultyId: dto.facultyId,
         roomId: dto.roomId,

@@ -244,4 +244,24 @@ describe('RuleContextBuilder auto-draft exclusion', () => {
     // keep-1 gives 3 lecture units * 1 hour = 3; drop-1 excluded
     expect(context.faculty?.assignedHours).toBe(3);
   });
+
+  it('forwards scheduleDeptId for F-8', async () => {
+    const { client } = createSupabaseMock();
+    const builder = new RuleContextBuilder({
+      getAdminClient: () => client,
+    } as any);
+
+    const context = await builder.build({
+      termId: 'term-1',
+      scheduleDeptId: 'dept-4',
+      subjectId: 'sub-1',
+      facultyId: 'fac-1',
+      section: 'SEC-1',
+      dayOfWeek: 'Monday',
+      startTime: '08:00',
+      endTime: '09:00',
+    });
+
+    expect(context.scheduleDeptId).toBe('dept-4');
+  });
 });

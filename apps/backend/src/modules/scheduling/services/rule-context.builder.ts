@@ -17,6 +17,8 @@ import {
 
 export interface BuildContextInput {
   termId: string;
+  /** Department receiving the schedule; used by F-8 instead of catalog owner. */
+  scheduleDeptId?: string | null;
   subjectId: string;
   facultyId?: string;
   roomId?: string;
@@ -88,6 +90,7 @@ export class RuleContextBuilder {
 
     return {
       termId: input.termId,
+      scheduleDeptId: input.scheduleDeptId ?? null,
       subject,
       section,
       faculty,
