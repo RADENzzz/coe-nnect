@@ -184,3 +184,16 @@ test('bulk hook reports skipped rows without native dialogs', () => {
   assert.match(contextHook, /feedback\.success\(/);
   assert.match(contextHook, /feedback\.failed\(/);
 });
+
+const contextModal = read(
+  'apps/frontend/src/features/timetable/components/BulkActionConfirmModal.tsx',
+);
+
+test('bulk modal handles a shared change reason', () => {
+  assert.match(contextModal, /'request-change'/);
+  assert.match(contextModal, /note\.trim\(\)\.length < 5/);
+  assert.match(contextModal, /Reason for the change/);
+  assert.match(contextModal, /Note for the Dean/);
+  assert.match(contextModal, /auto-generated draft/);
+  assert.doesNotMatch(contextModal, /alert\(|confirm\(|prompt\(/);
+});

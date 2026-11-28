@@ -4,6 +4,7 @@ import Modal from '../../../components/ui/Modal';
 export type BulkConfirmAction =
   | 'delete'
   | 'request-publish'
+  | 'request-change'
   | 'clear-auto-drafts'
   | null;
 
@@ -30,6 +31,12 @@ const ACTION_COPY = {
     icon: 'send',
     tone: 'text-amber-700',
   },
+  'request-change': {
+    title: 'Request change',
+    confirmLabel: 'Send request',
+    icon: 'send',
+    tone: 'text-amber-700',
+  },
   'clear-auto-drafts': {
     title: 'Clear auto-drafts',
     confirmLabel: 'Clear auto-drafts',
@@ -51,6 +58,9 @@ export default function BulkActionConfirmModal({
   if (!action) return null;
 
   const copy = ACTION_COPY[action];
+  const isChange = action === 'request-change';
+  const noteTooShort = isChange && note.trim().length < 5;
+  const noteTooLong = note.length > 500;
   const rowLabel = `row${count === 1 ? '' : 's'}`;
   const description =
     action === 'clear-auto-drafts'
@@ -78,7 +88,7 @@ export default function BulkActionConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || noteTooShort || noteTooLong}
             className="px-4 py-2 text-sm font-semibold bg-primary text-white hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? 'Working…' : copy.confirmLabel}
@@ -98,15 +108,17 @@ export default function BulkActionConfirmModal({
               `Delete ${count} selected ${rowLabel}. This cannot be undone.`}
             {action === 'request-publish' &&
               `Send ${count} selected ${rowLabel} to the Dean for publication approval.`}
+            {isChange &&
+              `Send ${count} selected ${rowLabel} to the Dean with a shared change reason.`}
             {action === 'clear-auto-drafts' &&
               `${count} draft${count === 1 ? '' : 's'} will be removed.`}
           </p>
         </div>
 
-        {action === 'request-publish' && (
+        {(action === 'request-publish' || isChange) && (
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-on-surface-variant">
-              Note for the Dean (optional)
+              {isChange ? 'Reason for the change' : 'Note for the Dean (optional)'}
             </span>
             <textarea
               value={note}
@@ -114,9 +126,17 @@ export default function BulkActionConfirmModal({
               rows={4}
               maxLength={500}
               disabled={busy}
-              placeholder="Add context for the approval request"
+              placeholder={
+                isChange
+                  ? 'e.g. Faculty reassignment approved by the department'
+                  : 'Add context for the approval request'
+              }
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none disabled:opacity-50"
             />
+            <span className={`block text-xs ${noteTooLong ? 'text-rose-600' : 'text-slate-500'}`}>
+              {isChange && noteTooShort ? 'Enter at least 5 characters. ' : ''}
+              {note.length}/500
+            </span>
           </label>
         )}
       </div>
