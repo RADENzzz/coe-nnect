@@ -19,3 +19,28 @@ test('draft snapshot API client is wired', () => {
   assert.match(api, /draft-snapshots\/\$\{snapshotId\}\/load/);
   assert.match(api, /confirmed: true/);
 });
+
+test('save as draft flow is wired', () => {
+  const page = read('apps/frontend/src/features/timetable/TimetablePage.tsx');
+  const dialog = read(
+    'apps/frontend/src/features/timetable/components/SaveDraftDialog.tsx',
+  );
+
+  assert.match(page, /key: 'save-draft'/);
+  assert.match(page, /label: 'Save as draft…'/);
+  assert.match(page, /handleOpenSaveDraft/);
+  assert.match(page, /handleSaveDraft/);
+  assert.match(page, /saveDraftSnapshot\(/);
+  assert.match(page, /feedback\.success\(/);
+  assert.match(page, /feedback\.error\(/);
+  assert.match(
+    page,
+    /\['term-draft-snapshots', activeTerm\.termId, myDeptId\]/,
+  );
+  assert.doesNotMatch(page, /alert\(|confirm\(|prompt\(/);
+  assert.match(dialog, /<Modal/);
+  assert.match(dialog, /Save timetable draft/);
+  assert.match(dialog, /Draft name/);
+  assert.match(dialog, /entryCount/);
+  assert.match(page, /dataTour: 'tt-focus'/);
+});

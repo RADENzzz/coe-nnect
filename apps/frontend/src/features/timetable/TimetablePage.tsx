@@ -25,6 +25,7 @@ import {
   fetchCoverage,
   preflightReuse,
   applyReuse,
+  saveDraftSnapshot,
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
@@ -35,6 +36,7 @@ import {
   type ReuseConflict,
   type ReusePreflightResult,
   type ReuseApplyResult,
+  type DraftSnapshotSummary,
   type VersionSource,
   type AutoGenerateCandidate,
 } from '../../api/schedule.api';
@@ -96,6 +98,7 @@ import VersionHistoryDrawer from './components/VersionHistoryDrawer';
 import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
 import ReuseSummaryModal from './components/ReuseSummaryModal';
+import SaveDraftDialog from './components/SaveDraftDialog';
 import PublishedReuseConflictWorkspace from './components/PublishedReuseConflictWorkspace';
 import CoveragePanel from './components/CoveragePanel';
 import TimetableFilterBar from './components/TimetableFilterBar';
@@ -299,6 +302,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
     useState<ReusePreflightResult | null>(null);
   const [reuseConflicts, setReuseConflicts] = useState<ReuseConflict[]>([]);
   const [reuseApplying, setReuseApplying] = useState(false);
+
+  const [saveDraftOpen, setSaveDraftOpen] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
 
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
@@ -1456,6 +1463,48 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm, feedback, myDeptId, queryClient, reusePreflight, reuseVersion]);
 
+  const handleOpenSaveDraft = useCallback(() => {
+    setDraftName('');
+    setSaveDraftOpen(true);
+  }, []);
+
+  const handleSaveDraft = useCallback(async () => {
+    const name = draftName.trim();
+    if (!activeTerm?.termId || !myDeptId || !name) {
+      feedback.error('Choose a term, department, and draft name first.');
+      return;
+    }
+    if (
+      allEntries.filter(
+        (entry) => entry.status === 'draft' || entry.status === 'review',
+      ).length === 0
+    ) {
+      feedback.error('There are no draft or review rows to save.');
+      return;
+    }
+
+    setSavingDraft(true);
+    try {
+      const saved: DraftSnapshotSummary = await saveDraftSnapshot({
+        termId: activeTerm.termId,
+        deptId: myDeptId,
+        name,
+      });
+      feedback.success(
+        `Draft "${saved.name}" saved for ${activeTerm.termName}.`,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ['term-draft-snapshots', activeTerm.termId, myDeptId],
+      });
+      setSaveDraftOpen(false);
+      setDraftName('');
+    } catch (err) {
+      feedback.error(reuseErrorMessage(err, 'Could not save the timetable draft.'));
+    } finally {
+      setSavingDraft(false);
+    }
+  }, [activeTerm, allEntries, draftName, feedback, myDeptId, queryClient]);
+
   // ── Keyboard shortcuts ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1792,6 +1841,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
               : pendingAction !== null
                 ? 'Wait for the current action to finish'
                 : 'Clear auto-generated drafts for this term',
+          },
+        ]
+      : []),
+    ...(writable && activeTerm && isDepartmentHead && myDeptId
+      ? [
+          {
+            key: 'save-draft',
+            label: 'Save as draft…',
+            onSelect: handleOpenSaveDraft,
+            disabled: savingDraft,
+            title: 'Save the current draft and review rows for this term',
           },
         ]
       : []),
@@ -2399,6 +2459,25 @@ export default function TimetablePage({ readOnly = false }: Props) {
           result={reusePreflight}
           busy={reuseApplying}
           onConfirm={handleApplyReuse}
+        />
+
+        <SaveDraftDialog
+          open={saveDraftOpen}
+          onClose={() => setSaveDraftOpen(false)}
+          termLabel={
+            activeTerm
+              ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+              : ''
+          }
+          entryCount={
+            allEntries.filter(
+              (entry) => entry.status === 'draft' || entry.status === 'review',
+            ).length
+          }
+          name={draftName}
+          busy={savingDraft}
+          onNameChange={setDraftName}
+          onSave={handleSaveDraft}
         />
 
         {activeTerm && (
