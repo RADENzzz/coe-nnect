@@ -21,7 +21,7 @@ describe('draft snapshot save and list contract', () => {
     assert.equal(
       (controller.match(/@Roles\('department_head', 'administrator'\)/g) ?? [])
         .length,
-      2,
+      4,
     );
     assert.match(
       controller,
@@ -57,5 +57,53 @@ describe('draft snapshot save and list contract', () => {
     assert.match(service, /termName:/);
     assert.match(service, /semester:/);
     assert.match(service, /schoolYear:/);
+  });
+
+  it('preflights and applies an all-or-nothing draft load', () => {
+    const controller = read(
+      'apps/backend/src/modules/scheduling/controllers/draft-snapshot.controller.ts',
+    );
+    const service = read(
+      'apps/backend/src/modules/scheduling/services/term-draft-snapshot.service.ts',
+    );
+
+    assert.match(
+      service,
+      /async preflight\(snapshotId: string, dto: DraftSnapshotTargetDto, actor: any\)/,
+    );
+    assert.match(
+      service,
+      /async apply\(snapshotId: string, dto: ApplyDraftSnapshotDto, actor: any\)/,
+    );
+    assert.match(service, /dto\.confirmed !== true/);
+    assert.match(service, /snapshot\.termId/);
+    assert.match(
+      service,
+      /filter\(item => item\?\.status === 'draft' \|\| item\?\.status === 'review'\)/,
+    );
+    assert.match(service, /excludeScheduleIds:/);
+    assert.match(service, /existingSchedule\.push\(/);
+    assert.match(service, /engine\.hardConflicts\.length > 0/);
+    assert.match(service, /engine\.softWarnings/);
+    assert.match(service, /prospectus/);
+    assert.match(service, /cancelOrphanedFacultyRequest\(/);
+    assert.match(service, /this\.dataSource\.transaction\(/);
+    assert.match(service, /finalized or published/);
+    assert.match(service, /pending faculty request/);
+
+    assert.match(
+      controller,
+      /@Post\('draft-snapshots\/:snapshotId\/preflight'\)/,
+    );
+    assert.match(controller, /@Post\('draft-snapshots\/:snapshotId\/load'\)/);
+    assert.match(
+      controller,
+      /@Auditable\(\{ action: 'schedule\.draft_load', source: 'Scheduling' \}\)/,
+    );
+    assert.equal(
+      (controller.match(/@Roles\('department_head', 'administrator'\)/g) ?? [])
+        .length,
+      4,
+    );
   });
 });
