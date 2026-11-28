@@ -6,7 +6,8 @@ export type BulkRowAction =
   | 'finalize'
   | 'request-publish'
   | 'cancel-finalization'
-  | 'request-change';
+  | 'request-change'
+  | 'request-unfinalize';
 
 type RowStatus = NonNullable<ScheduleEntry['status']>;
 
@@ -17,6 +18,7 @@ const ELIGIBLE_STATUSES: Record<BulkRowAction, ReadonlySet<RowStatus>> = {
   'request-publish': new Set(['finalized']),
   'cancel-finalization': new Set(['finalized']),
   'request-change': new Set(['review', 'finalized']),
+  'request-unfinalize': new Set(['published']),
 };
 
 /** Ids of selected rows whose status permits the requested bulk action. */
@@ -38,18 +40,23 @@ export interface BulkStatusCounts {
   draft: number;
   review: number;
   finalized: number;
+  published: number;
 }
 
-/** Counts selected rows by status, ignoring published rows. */
+/** Counts selected rows by status. */
 export function countSelectedStatuses(
   entries: ScheduleEntry[],
   selectedIds: Set<string>,
 ): BulkStatusCounts {
-  const counts: BulkStatusCounts = { draft: 0, review: 0, finalized: 0 };
+  const counts: BulkStatusCounts = {
+    draft: 0,
+    review: 0,
+    finalized: 0,
+    published: 0,
+  };
   for (const entry of entries) {
     if (!selectedIds.has(entry.id)) continue;
     const status = entry.status ?? 'draft';
-    if (status === 'published') continue;
     counts[status] += 1;
   }
   return counts;

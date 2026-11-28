@@ -7,6 +7,7 @@ import {
 } from '../../../api/schedule.api';
 import { createPublishRequest } from '../../../api/schedule-publish-request.api';
 import { createChangeRequest } from '../../../api/schedule-change-request.api';
+import { createUnfinalizeRequest } from '../../../api/schedule-unfinalize.api';
 import { useFeedback } from '../../../components/ui/FeedbackToast';
 import { extractApiError } from '../../../lib/api-error';
 import type { ScheduleEntry } from '../types';
@@ -67,6 +68,9 @@ export function useBulkScheduleActions({
         ),
         ...affectedIds.flatMap((id) => [
           queryClient.invalidateQueries({
+            queryKey: ['schedule-unfinalize-request', id],
+          }),
+          queryClient.invalidateQueries({
             queryKey: ['schedule-publish-request', id],
           }),
           queryClient.invalidateQueries({
@@ -123,6 +127,8 @@ export function useBulkScheduleActions({
                 return updateScheduleStatus(id, 'draft');
               case 'request-change':
                 return createChangeRequest(id, note ?? '');
+              case 'request-unfinalize':
+                return createUnfinalizeRequest(id, note ?? '');
             }
           }),
         );

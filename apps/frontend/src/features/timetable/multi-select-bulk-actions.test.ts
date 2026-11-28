@@ -30,6 +30,10 @@ test('bulk actions only return rows whose status allows the action', () => {
   assert.deepEqual(getBulkActionEligibleIds('review', entries, selected), ['d']);
   assert.deepEqual(getBulkActionEligibleIds('finalize', entries, selected), ['d', 'r']);
   assert.deepEqual(getBulkActionEligibleIds('request-publish', entries, selected), ['f']);
+  assert.deepEqual(
+    getBulkActionEligibleIds('request-unfinalize', entries, selected),
+    ['p'],
+  );
 });
 
 test('frontend test script registers the bulk-actions test file', () => {
@@ -153,7 +157,7 @@ test('new bulk actions use the existing single-row status rules', () => {
   );
 });
 
-test('status counts only include selected draft, review, and finalized rows', () => {
+test('status counts include selected draft, review, finalized, and published rows', () => {
   const entries = [
     entry('d', 'draft'),
     entry('r', 'review'),
@@ -166,6 +170,7 @@ test('status counts only include selected draft, review, and finalized rows', ()
     draft: 1,
     review: 1,
     finalized: 1,
+    published: 1,
   });
 });
 
@@ -308,4 +313,12 @@ test('selection enters body-click mode after the first checkbox tick', () => {
 test('selected rows stay visible when checkboxes are hidden', () => {
   assert.match(classBlock, /selected &&/);
   assert.match(agendaCard, /selected &&/);
+});
+
+test('bulk unfinalize fans out through the existing single-row API and invalidates per-entry state', () => {
+  assert.match(contextHook, /createUnfinalizeRequest\(id, note \?\? ''\)/);
+  assert.match(contextHook, /from .*schedule-unfinalize\.api/);
+  assert.match(contextHook, /queryKey: \['schedule-unfinalize-request', id\]/);
+  assert.match(contextHook, /onSucceeded\(succeededIds\)/);
+  assert.doesNotMatch(contextHook, /alert\(|confirm\(|prompt\(|setSearchParams|navigate\(|useState<[^>]*success/i);
 });
