@@ -30,6 +30,7 @@ import { TermPublishedVersion } from './entities/term-published-version.entity';
 import { TermDraftSnapshot } from './entities/term-draft-snapshot.entity';
 import { TermPublishedVersionService } from './services/term-published-version.service';
 import { ScheduleReuseService } from './services/schedule-reuse.service';
+import { ScheduleCatalogResolver } from './services/schedule-catalog-resolver.service';
 import { VersionCompareService } from './services/version-compare.service';
 import { TermLifecycleService } from './services/term-lifecycle.service';
 import { ScheduleUnfinalizeService } from './services/schedule-unfinalize.service';
@@ -82,6 +83,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     SchedulingCoverageService,
     TermPublishedVersionService,
     ScheduleReuseService,
+    ScheduleCatalogResolver,
     VersionCompareService,
     TermLifecycleService,
     SolverClient,
@@ -94,6 +96,7 @@ import { DepartmentsModule } from '../departments/departments.module';
     ScheduleChangeRequestService,
     TermPublishedVersionService,
     ScheduleReuseService,
+    ScheduleCatalogResolver,
     VersionCompareService,
     TermLifecycleService,
   ],
