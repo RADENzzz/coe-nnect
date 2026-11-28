@@ -1735,13 +1735,10 @@ export default function TimetablePage({ readOnly = false }: Props) {
     const action = bulkConfirmAction;
     setBulkConfirmAction(null);
     if (!action) return;
-    void runBulkAction(
-      action,
+    const needsNote =
       action === 'request-publish' || action === 'request-change' ||
-      action === 'request-unfinalize'
-        ? publishNote
-        : undefined,
-    );
+      action === 'request-unfinalize';
+    void runBulkAction(action, needsNote ? publishNote : undefined);
     setPublishNote('');
   }, [bulkConfirmAction, publishNote, runBulkAction]);
 
