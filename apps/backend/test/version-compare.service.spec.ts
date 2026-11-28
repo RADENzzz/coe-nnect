@@ -83,6 +83,7 @@ describe('VersionCompareService', () => {
   let termRepo: Repo;
   let published: TermPublishedVersionService;
   let versionService: ScheduleVersionService;
+  let drafts: { detail: jest.Mock };
   let service: VersionCompareService;
 
   beforeEach(() => {
@@ -124,10 +125,24 @@ describe('VersionCompareService', () => {
       historyRepo as any,
       supabase as any,
     );
+    drafts = {
+      detail: jest.fn(async (snapshotId: string) => ({
+        snapshotId,
+        termId: '1',
+        termName: 'First Semester',
+        semester: '1st',
+        schoolYear: '2026-2027',
+        name: 'Working A',
+        entryCount: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        entries: [],
+      })),
+    };
     service = new VersionCompareService(
       published as any,
       versionService as any,
       scheduleRepo as any,
+      drafts as any,
     );
   });
 
@@ -226,15 +241,124 @@ describe('VersionCompareService', () => {
     assert.equal(deanResult.unchanged, 3);
   });
 
-  it('rejects an unknown source prefix', async () => {
+  it('parses draft sources and still rejects unknown prefixes', () => {
     assert.deepEqual(parseSource('published:9'), { kind: 'published', id: '9' });
     assert.deepEqual(parseSource('history:11'), { kind: 'history', id: '11' });
     assert.deepEqual(parseSource('live:1'), { kind: 'live', id: '1' });
-    assert.throws(() => parseSource('draft:1'), /unknown source/i);
-    await assert.rejects(
-      () => service.compareSources('draft:1', 'published:9', deanProfile),
-      /unknown source/i,
+    assert.deepEqual(parseSource('draft:1'), { kind: 'draft', id: '1' });
+    assert.throws(() => parseSource('mystery:1'), /unknown source/i);
+  });
+
+  it('compares a draft with the editable live rows in the same term', async () => {
+    drafts.detail.mockImplementation(async (snapshotId: string) => ({
+      snapshotId,
+      termId: '1',
+      termName: 'First Semester',
+      semester: '1st',
+      schoolYear: '2026-2027',
+      name: 'Working A',
+      entryCount: 2,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      entries: [
+        entry({ subject_id: 'S1', section_id: 'SEC1', status: 'draft', dept_id: '1' }),
+        entry({ subject_id: 'S2', section_id: 'SEC2', status: 'review', dept_id: '1' }),
+      ],
+    }));
+    scheduleRepo.rows.push(
+      liveRow('live-draft', 'S1', 'SEC1', 'lecture', '1', { status: 'draft' }),
+      liveRow('live-review', 'S2', 'SEC2', 'laboratory', '1', { status: 'review' }),
+      liveRow('live-published', 'S3', 'SEC3', 'lecture', '1', { status: 'published' }),
     );
+
+    const result = await service.compareSources(
+      'draft:7',
+      'live:1',
+      departmentHeadProfile,
+      '2',
+      '1',
+    );
+
+    assert.equal(result.versionA.label, 'Working A');
+    assert.equal(result.versionB.label, 'Live timetable');
+    assert.equal(result.entriesB.length, 2);
+    assert.ok(
+      result.entriesB.every(
+        (item) => item.status === 'draft' || item.status === 'review',
+      ),
+    );
+    assert.equal(drafts.detail.mock.calls.length, 1);
+    assert.equal(drafts.detail.mock.calls[0][0], '7');
+    assert.equal(drafts.detail.mock.calls[0][1], '1');
+    assert.equal(drafts.detail.mock.calls[0][2], '1');
+    assert.deepEqual(drafts.detail.mock.calls[0][3], departmentHeadProfile);
+  });
+
+  it('compares two drafts with the clicked draft before the picked draft', async () => {
+    drafts.detail.mockImplementation(async (snapshotId: string) => ({
+      snapshotId,
+      termId: '1',
+      termName: 'First Semester',
+      semester: '1st',
+      schoolYear: '2026-2027',
+      name: snapshotId === '7' ? 'Before Draft' : 'After Draft',
+      entryCount: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      entries: [
+        entry({
+          subject_id: snapshotId === '7' ? 'S1' : 'S2',
+          section_id: snapshotId === '7' ? 'SEC1' : 'SEC2',
+          status: 'draft',
+          dept_id: '1',
+        }),
+      ],
+    }));
+
+    const result = await service.compareSources(
+      'draft:7',
+      'draft:8',
+      departmentHeadProfile,
+      '1',
+      '1',
+    );
+
+    assert.equal(result.versionA.label, 'Before Draft');
+    assert.equal(result.versionB.label, 'After Draft');
+    assert.equal(result.added.length, 1);
+    assert.equal(result.removed.length, 1);
+  });
+
+  it('rejects invalid draft comparison guards', async () => {
+    await assert.rejects(
+      () =>
+        service.compareSources(
+          'draft:7',
+          'published:9',
+          departmentHeadProfile,
+          '1',
+          '1',
+        ),
+      /between draft and live or draft/i,
+    );
+    await assert.rejects(
+      () =>
+        service.compareSources('draft:7', 'live:1', departmentHeadProfile, '1'),
+      /termId is required/i,
+    );
+    await assert.rejects(
+      () =>
+        service.compareSources('draft:7', 'live:2', departmentHeadProfile, '1', '1'),
+      /same term/i,
+    );
+    await assert.rejects(
+      () => service.compareSources('draft:7', 'live:1', deanProfile, '2', '1'),
+      /department_head or administrator/i,
+    );
+    await assert.rejects(
+      () =>
+        service.compareSources('draft:7', 'live:1', { role: 'administrator' }, null, '1'),
+      /department id|department/i,
+    );
+    assert.equal(drafts.detail.mock.calls.length, 0);
   });
 
   it('rejects a source without a colon or id', async () => {

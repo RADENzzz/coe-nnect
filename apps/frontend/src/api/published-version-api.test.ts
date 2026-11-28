@@ -11,7 +11,7 @@ test('published version API client is wired to archive, compare, reuse, and summ
 
   assert.match(
     api,
-    /export type VersionSource = \{ kind: 'published' \| 'history' \| 'live'; id: string \}/,
+    /export type VersionSource = \{ kind: 'published' \| 'history' \| 'live' \| 'draft'; id: string \}/,
   );
   assert.match(api, /fetchPublishedVersions[\s\S]*?\/v1\/schedules\/published-versions/);
   assert.match(api, /compareVersionSources[\s\S]*?\/v1\/schedules\/version-compare/);

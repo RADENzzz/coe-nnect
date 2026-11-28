@@ -1,5 +1,5 @@
 // apps/backend/src/modules/scheduling/services/version-compare.service.ts
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
 
@@ -18,8 +18,9 @@ import {
   TermPublishedVersionService,
   type PublishedVersionEntry,
 } from './term-published-version.service';
+import { TermDraftSnapshotService } from './term-draft-snapshot.service';
 
-export type VersionSourceKind = 'published' | 'history' | 'live';
+export type VersionSourceKind = 'published' | 'history' | 'live' | 'draft';
 export type VersionSource = { kind: VersionSourceKind; id: string };
 
 type ComparableEntry = Omit<PublishedVersionEntry, 'session_index'> & {
@@ -31,9 +32,9 @@ type NormalizedSource = {
   summary: ComparedVersionSummary;
 };
 
-const SOURCE_KINDS: VersionSourceKind[] = ['published', 'history', 'live'];
+const SOURCE_KINDS: VersionSourceKind[] = ['published', 'history', 'live', 'draft'];
 
-/** Parse `published:<id>`, `history:<id>`, or `live:<termId>`. */
+/** Parse `published:<id>`, `history:<id>`, `live:<termId>`, or `draft:<snapshotId>`. */
 export function parseSource(value: string): VersionSource {
   const raw = String(value ?? '');
   const separator = raw.indexOf(':');
@@ -64,6 +65,7 @@ export class VersionCompareService {
     private readonly scheduleVersions: ScheduleVersionService,
     @InjectRepository(Schedule)
     private readonly scheduleRepo: Repository<Schedule>,
+    private readonly drafts: TermDraftSnapshotService,
   ) {}
 
   async compareSources(
@@ -71,18 +73,68 @@ export class VersionCompareService {
     sourceB: string,
     actor: any,
     requestedDeptId?: string | null,
+    requestedTermId?: string | null,
   ): Promise<VersionCompareResult> {
-    const deptId = resolveVersionDeptId(actor, requestedDeptId);
-    const [a, b] = await Promise.all([
-      this.normalize(parseSource(sourceA), actor, deptId),
-      this.normalize(parseSource(sourceB), actor, deptId),
-    ]);
+    const a = parseSource(sourceA);
+    const b = parseSource(sourceB);
+    const hasDraft = a.kind === 'draft' || b.kind === 'draft';
 
+    if (!hasDraft) {
+      const deptId = resolveVersionDeptId(actor, requestedDeptId);
+      const [normalA, normalB] = await Promise.all([
+        this.normalize(a, actor, deptId),
+        this.normalize(b, actor, deptId),
+      ]);
+      return compareEntries(
+        normalA.entries as Array<Record<string, unknown>>,
+        normalB.entries as Array<Record<string, unknown>>,
+        normalA.summary,
+        normalB.summary,
+      );
+    }
+
+    if (actor?.role !== 'department_head' && actor?.role !== 'administrator') {
+      throw new ForbiddenException(
+        'Only department_head or administrator roles may compare saved drafts.',
+      );
+    }
+    const deptId = resolveVersionDeptId(actor, requestedDeptId);
+    if (deptId === null) {
+      throw new BadRequestException(
+        'A department id is required to compare saved drafts.',
+      );
+    }
+    const termId = String(requestedTermId ?? '').trim();
+    if (!termId) {
+      throw new BadRequestException(
+        'termId is required when comparing saved drafts.',
+      );
+    }
+    for (const source of [a, b]) {
+      if (
+        source.kind !== 'draft' &&
+        source.kind !== 'live'
+      ) {
+        throw new BadRequestException(
+          'A saved draft can only be compared between draft and live or draft sources.',
+        );
+      }
+      if (source.kind === 'live' && source.id !== termId) {
+        throw new BadRequestException(
+          'A live source must be in the same term as the saved draft.',
+        );
+      }
+    }
+
+    const [normalA, normalB] = await Promise.all([
+      this.normalize(a, actor, deptId, termId, true),
+      this.normalize(b, actor, deptId, termId, true),
+    ]);
     return compareEntries(
-      a.entries as Array<Record<string, unknown>>,
-      b.entries as Array<Record<string, unknown>>,
-      a.summary,
-      b.summary,
+      normalA.entries as Array<Record<string, unknown>>,
+      normalB.entries as Array<Record<string, unknown>>,
+      normalA.summary,
+      normalB.summary,
     );
   }
 
@@ -90,8 +142,31 @@ export class VersionCompareService {
     source: VersionSource,
     actor: any,
     deptId: string | null,
+    draftTermId?: string,
+    draftComparison = false,
   ): Promise<NormalizedSource> {
     switch (source.kind) {
+      case 'draft': {
+        const detail = await this.drafts.detail(
+          source.id,
+          String(draftTermId ?? ''),
+          deptId as string,
+          actor,
+        );
+        const entries = this.withSessionIndexes(
+          detail.entries as ComparableEntry[],
+        );
+        const summary = this.summary(
+          detail.snapshotId,
+          null,
+          null,
+          null,
+          detail.entryCount,
+        );
+        summary.label = detail.name;
+        summary.termId = detail.termId;
+        return { entries, summary };
+      }
       case 'published': {
         const entries = this.withSessionIndexes(
           filterVersionEntries(
@@ -134,22 +209,27 @@ export class VersionCompareService {
           relations: ['subject', 'faculty', 'room', 'sectionRef'],
           order: { scheduleId: 'ASC' },
         });
+        const mapped = rows.map((row) => this.toEntry(row));
+        const candidates = draftComparison
+          ? mapped.filter(
+              (item) => item.status === 'draft' || item.status === 'review',
+            )
+          : mapped;
         const entries = this.withSessionIndexes(
-          filterVersionEntries(
-            rows.map((row) => this.toEntry(row)),
-            deptId,
-          ),
+          filterVersionEntries(candidates, deptId),
         );
-        return {
-          entries,
-          summary: this.summary(
-            `live:${source.id}`,
-            null,
-            null,
-            null,
-            entries.length,
-          ),
-        };
+        const summary = this.summary(
+          `live:${source.id}`,
+          null,
+          null,
+          null,
+          entries.length,
+        );
+        if (draftComparison) {
+          summary.label = 'Live timetable';
+          summary.termId = source.id;
+        }
+        return { entries, summary };
       }
     }
   }

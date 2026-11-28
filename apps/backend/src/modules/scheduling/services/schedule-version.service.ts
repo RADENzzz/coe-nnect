@@ -19,6 +19,8 @@ export type ComparedVersionSummary = {
   finalizedByName: string | null;
   lastModifiedAt: string | null;
   entryCount: number;
+  label?: string | null;
+  termId?: string | null;
 };
 
 export type VersionCompareResult = {

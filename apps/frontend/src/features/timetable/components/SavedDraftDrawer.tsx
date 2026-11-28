@@ -8,6 +8,9 @@ export interface SavedDraftDrawerProps {
   snapshots: DraftSnapshotSummary[];
   busySnapshotId: string | null;
   onLoad: (snapshot: DraftSnapshotSummary) => void;
+  onPreview?: (snapshot: DraftSnapshotSummary) => void;
+  onCompare?: (snapshot: DraftSnapshotSummary) => void;
+  onDelete?: (snapshot: DraftSnapshotSummary) => void;
 }
 
 function formatSavedAt(value: string): string {
@@ -23,6 +26,9 @@ export default function SavedDraftDrawer({
   snapshots,
   busySnapshotId,
   onLoad,
+  onPreview,
+  onCompare,
+  onDelete,
 }: SavedDraftDrawerProps) {
   if (!open) return null;
 
@@ -109,6 +115,32 @@ export default function SavedDraftDrawer({
                       {snapshot.schoolYear} · {snapshot.semester ?? '—'} ·{' '}
                       {snapshot.termName}
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || !onPreview}
+                        onClick={() => onPreview?.(snapshot)}
+                        className="border border-outline-variant px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        View saved rows
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || !onCompare}
+                        onClick={() => onCompare?.(snapshot)}
+                        className="border border-outline-variant px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Compare
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || !onDelete}
+                        onClick={() => onDelete?.(snapshot)}
+                        className="border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </li>
                 );
               })}

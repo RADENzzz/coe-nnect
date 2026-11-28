@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const read = (path: string) =>
-  readFileSync(new URL(`../../../../../${path}`, import.meta.url), 'utf8');
+  readFileSync(new URL(`../../../../../${path}`, import.meta.url), 'utf8').replace(
+    /\r\n/g,
+    '\n',
+  );
 
 test('reuse summary, conflict workspace, and page handlers are wired', () => {
   const page = read('apps/frontend/src/features/timetable/TimetablePage.tsx');

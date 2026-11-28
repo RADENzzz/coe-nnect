@@ -641,6 +641,8 @@ export interface VersionCompareResult {
     finalizedByName: string | null;
     lastModifiedAt: string;
     entryCount: number;
+    label?: string | null;
+    termId?: string | null;
   };
   versionB: {
     versionId: string;
@@ -648,6 +650,8 @@ export interface VersionCompareResult {
     finalizedByName: string | null;
     lastModifiedAt: string;
     entryCount: number;
+    label?: string | null;
+    termId?: string | null;
   };
   entriesA: ScheduleVersionEntry[];
   entriesB: ScheduleVersionEntry[];
@@ -734,7 +738,7 @@ export type PublishedVersionEntry = {
   session_index: number;
 };
 
-export type VersionSource = { kind: 'published' | 'history' | 'live'; id: string };
+export type VersionSource = { kind: 'published' | 'history' | 'live' | 'draft'; id: string };
 
 export type ReuseConflict = {
   entry: PublishedVersionEntry;
@@ -788,12 +792,14 @@ export async function compareVersionSources(
   a: VersionSource,
   b: VersionSource,
   deptId?: string | null,
+  termId?: string | null,
 ): Promise<VersionCompareResult> {
   const params: Record<string, string> = {
     a: `${a.kind}:${a.id}`,
     b: `${b.kind}:${b.id}`,
   };
   if (deptId?.trim()) params.deptId = deptId;
+  if (termId?.trim()) params.termId = termId;
   const { data } = await api.get('/v1/schedules/version-compare', {
     params,
   });
@@ -839,6 +845,10 @@ export type DraftSnapshotSummary = {
   createdAt: string;
 };
 
+export type DraftSnapshotDetail = DraftSnapshotSummary & {
+  entries: DraftSnapshotEntry[];
+};
+
 export async function fetchDraftSnapshots(
   termId: string,
   deptId: string,
@@ -847,6 +857,30 @@ export async function fetchDraftSnapshots(
     params: { termId, deptId },
   });
   return data.data;
+}
+
+export async function fetchDraftSnapshot(
+  snapshotId: string,
+  termId: string,
+  deptId: string,
+): Promise<DraftSnapshotDetail> {
+  const { data } = await api.get(
+    `/v1/schedules/draft-snapshots/${snapshotId}/entries`,
+    { params: { termId, deptId } },
+  );
+  return data.data;
+}
+
+export async function deleteDraftSnapshot(
+  snapshotId: string,
+  termId: string,
+  deptId: string,
+): Promise<void> {
+  await api.request({
+    method: 'DELETE',
+    url: `/v1/schedules/draft-snapshots/${snapshotId}`,
+    params: { termId, deptId },
+  });
 }
 
 export async function saveDraftSnapshot(input: {

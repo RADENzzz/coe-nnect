@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -48,6 +49,34 @@ export class DraftSnapshotController {
   @Auditable({ action: 'schedule.draft_save', source: 'Scheduling' })
   async save(@Body() dto: SaveDraftSnapshotDto, @Req() req: any) {
     return { data: await this.drafts.save(dto, req.profile) };
+  }
+
+  /** Read-only rows for previewing or comparing a saved draft. */
+  @Get('draft-snapshots/:snapshotId/entries')
+  @Roles('department_head', 'administrator')
+  async entries(
+    @Param('snapshotId') snapshotId: string,
+    @Query('termId') termId: string,
+    @Query('deptId') deptId: string,
+    @Req() req: any,
+  ) {
+    return {
+      data: await this.drafts.detail(snapshotId, termId, deptId, req.profile),
+    };
+  }
+
+  /** Delete only the saved snapshot; live timetable rows are untouched. */
+  @Delete('draft-snapshots/:snapshotId')
+  @Roles('department_head', 'administrator')
+  @Auditable({ action: 'schedule.draft_delete', source: 'Scheduling' })
+  async remove(
+    @Param('snapshotId') snapshotId: string,
+    @Query('termId') termId: string,
+    @Query('deptId') deptId: string,
+    @Req() req: any,
+  ) {
+    await this.drafts.delete(snapshotId, termId, deptId, req.profile);
+    return { data: { deleted: true } };
   }
 
   /** Read-only validation of a saved draft against the current term. */
