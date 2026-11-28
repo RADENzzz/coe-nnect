@@ -1,8 +1,10 @@
 import Icon from '../../../components/ui/Icon';
 import type { BulkScheduleAction } from '../hooks/useBulkScheduleActions';
+import type { BulkStatusCounts } from '../utils/bulk-actions.util';
 
 interface BulkActionBarProps {
   count: number;
+  statusCounts: BulkStatusCounts;
   pendingAction: BulkScheduleAction | null;
   onAction: (action: BulkScheduleAction) => void;
   onClearSelection: () => void;
@@ -11,6 +13,7 @@ interface BulkActionBarProps {
 /** Floating bar shown while timetable rows are selected. */
 export default function BulkActionBar({
   count,
+  statusCounts,
   pendingAction,
   onAction,
   onClearSelection,
@@ -31,6 +34,21 @@ export default function BulkActionBar({
       <span className="text-xs sm:text-sm font-semibold px-2 whitespace-nowrap">
         {count} selected
       </span>
+      {statusCounts.draft > 0 && (
+        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-slate-200 whitespace-nowrap">
+          {statusCounts.draft} draft
+        </span>
+      )}
+      {statusCounts.review > 0 && (
+        <span className="rounded-full bg-sky-900/60 px-2 py-0.5 text-[11px] font-medium text-sky-200 whitespace-nowrap">
+          {statusCounts.review} review
+        </span>
+      )}
+      {statusCounts.finalized > 0 && (
+        <span className="rounded-full bg-emerald-900/60 px-2 py-0.5 text-[11px] font-medium text-emerald-200 whitespace-nowrap">
+          {statusCounts.finalized} finalized
+        </span>
+      )}
       <div className="h-6 w-px bg-slate-700 shrink-0" />
       <button
         type="button"
@@ -72,6 +90,30 @@ export default function BulkActionBar({
         <Icon name="send" size={14} className="text-amber-400" />
         <span>Request publish</span>
       </button>
+      {statusCounts.finalized > 0 && (
+        <button
+          type="button"
+          onClick={() => onAction('cancel-finalization')}
+          disabled={disabled}
+          className={buttonClass}
+          title="Cancel finalization for selected"
+        >
+          <Icon name="undo" size={14} className="text-amber-300" />
+          <span>Cancel finalization</span>
+        </button>
+      )}
+      {statusCounts.review + statusCounts.finalized > 0 && (
+        <button
+          type="button"
+          onClick={() => onAction('request-change')}
+          disabled={disabled}
+          className={buttonClass}
+          title="Request change for selected"
+        >
+          <Icon name="edit" size={14} className="text-indigo-300" />
+          <span>Request change</span>
+        </button>
+      )}
       <div className="h-6 w-px bg-slate-700 shrink-0" />
       <button
         type="button"

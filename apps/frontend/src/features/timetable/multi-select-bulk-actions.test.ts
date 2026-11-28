@@ -197,3 +197,16 @@ test('bulk modal handles a shared change reason', () => {
   assert.match(contextModal, /auto-generated draft/);
   assert.doesNotMatch(contextModal, /alert\(|confirm\(|prompt\(/);
 });
+
+const contextBar = read(
+  'apps/frontend/src/features/timetable/components/BulkActionBar.tsx',
+);
+
+test('selection bar shows status mix and contextual actions', () => {
+  assert.match(contextBar, /statusCounts\.draft/);
+  assert.match(contextBar, /statusCounts\.review/);
+  assert.match(contextBar, /statusCounts\.finalized/);
+  assert.match(contextBar, /Cancel finalization/);
+  assert.match(contextBar, /Request change/);
+  assert.doesNotMatch(contextBar, /Send to IDP/);
+});
