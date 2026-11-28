@@ -111,3 +111,17 @@ tmp/
 *.tgz
 *.tar.gz
 test-results
+
+# ─────────────────────────────────────────────
+# Agent / assistant helper workspaces
+# Kept locally for reference, never shipped as product source.
+# ─────────────────────────────────────────────
+.superpowers/
+.agents/
+.claude/
+.codex/
+.gemini/
+.cursor/
+.cursorrules
+.windsurf/
+docs/superpowers/
