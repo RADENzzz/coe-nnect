@@ -1262,6 +1262,20 @@ export class AutoGenerateService {
       ),
     );
 
+    // The solver derives block durations from prospectus minutes, while H-9,
+    // H-10, and H-11 validate against scheduling_setting. Pass the configured
+    // durations to the solver so generated blocks cannot be rejected by the
+    // validator for using stale prospectus minutes.
+    const solverLectureBlockMinutes = num(
+      'lecture_block_minutes',
+      SCHEDULING_SETTING_DEFAULTS.lecture_block_minutes,
+    );
+    const solverLabSplitMinutes =
+      num(
+        'lab_split_hours',
+        SCHEDULING_SETTING_DEFAULTS.lab_split_hours,
+      ) * 60;
+
     return {
       termId,
       deptId,
@@ -1288,11 +1302,9 @@ export class AutoGenerateService {
         yearLevel: p.year_level,
         semester: p.semester,
         lecture_sessions_per_week: Number(p.lecture_sessions_per_week ?? 1),
-        lecture_minutes_per_session: Number(
-          p.lecture_minutes_per_session ?? 90,
-        ),
+        lecture_minutes_per_session: solverLectureBlockMinutes,
         lab_sessions_per_week: Number(p.lab_sessions_per_week ?? 1),
-        lab_minutes_per_session: Number(p.lab_minutes_per_session ?? 180),
+        lab_minutes_per_session: solverLabSplitMinutes,
       })),
       faculty: (faculty ?? []).map((f) => ({
         facultyId: String(f.faculty_id),
@@ -1346,10 +1358,7 @@ export class AutoGenerateService {
           SCHEDULING_SETTING_DEFAULTS.lunch_start,
         ),
         lunchEnd: str('lunch_end', SCHEDULING_SETTING_DEFAULTS.lunch_end),
-        lectureBlockMinutes: num(
-          'lecture_block_minutes',
-          SCHEDULING_SETTING_DEFAULTS.lecture_block_minutes,
-        ),
+        lectureBlockMinutes: solverLectureBlockMinutes,
         labSplitHours: num(
           'lab_split_hours',
           SCHEDULING_SETTING_DEFAULTS.lab_split_hours,

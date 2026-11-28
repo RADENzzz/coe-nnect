@@ -87,6 +87,127 @@ describe('AutoGenerateService candidate mode', () => {
     };
   }
 
+  function makeSupabaseWithTableData(tableData: Record<string, any[]>) {
+    const fromBuilders: Record<string, any> = {};
+    const makeTableBuilder = (rows: any[]) => {
+      const builder: any = {
+        select: jest.fn(() => builder),
+        insert: jest.fn(() => builder),
+        delete: jest.fn(() => builder),
+        eq: jest.fn(() => builder),
+        neq: jest.fn(() => builder),
+        in: jest.fn(() => builder),
+        like: jest.fn(() => builder),
+        or: jest.fn(() => builder),
+        maybeSingle: jest.fn(async () => ({ data: rows[0] ?? null, error: null })),
+        single: jest.fn(async () => ({ data: rows[0] ?? null, error: null })),
+      };
+      builder.then = (resolve: any, reject: any) =>
+        Promise.resolve({ data: rows, error: null, count: rows.length }).then(
+          resolve,
+          reject,
+        );
+      return builder;
+    };
+    const rpc = makeRpc();
+    const from = jest.fn((table: string) => {
+      if (!fromBuilders[table]) {
+        fromBuilders[table] = makeTableBuilder(tableData[table] ?? []);
+      }
+      return fromBuilders[table];
+    });
+    const db = { from, rpc };
+    return {
+      getAdminClient: jest.fn(() => db),
+      db,
+      fromBuilders,
+    };
+  }
+
+  const solverProblemTableData = {
+    program: [
+      {
+        program_id: 'prog-1',
+        program_code: 'TEST',
+        program_name: 'Test Program',
+        dept_id: deptId,
+      },
+    ],
+    section: [
+      {
+        section_id: 'sec-1',
+        section_code: '1A',
+        program_id: 'prog-1',
+        year_level: 1,
+      },
+    ],
+    term: [
+      {
+        term_id: termId,
+        semester: '1st',
+        term_name: 'Test Term',
+      },
+    ],
+    prospectus: [
+      {
+        prospectus_id: 'pros-1',
+        program_id: 'prog-1',
+        subject_id: 'sub-1',
+        year_level: 1,
+        semester: '1st',
+        lecture_sessions_per_week: 1,
+        lecture_minutes_per_session: 90,
+        lab_sessions_per_week: 1,
+        lab_minutes_per_session: 120,
+      },
+    ],
+    subject: [
+      {
+        subject_id: 'sub-1',
+        subject_code: 'TEST 101',
+        title: 'Test Subject',
+        total_units: 4,
+        lecture_units: 1,
+        lab_units: 1,
+        required_room_type: null,
+        dept_id: deptId,
+        source_dept: null,
+        is_elective: false,
+        is_placeholder: false,
+      },
+    ],
+    faculty: [
+      {
+        faculty_id: 'fac-1',
+        first_name: 'Test',
+        last_name: 'Faculty',
+        dept_id: deptId,
+        classification: 'regular',
+        required_hours: 18,
+        designation_id: null,
+      },
+    ],
+    faculty_qualification: [{ faculty_id: 'fac-1', subject_id: 'sub-1' }],
+    faculty_unavailability: [],
+    faculty_preference: [],
+    room: [
+      {
+        room_id: 'room-1',
+        room_number: 'R1',
+        building: 'Test Hall',
+        room_type: 'laboratory',
+        capacity: 30,
+        dept_id: deptId,
+      },
+    ],
+    room_preference: [],
+    schedule: [],
+    scheduling_setting: [
+      { setting_key: 'lecture_block_minutes', value: 60 },
+      { setting_key: 'lab_split_hours', value: 3 },
+    ],
+  };
+
   function makeService(overrides: Record<string, any> = {}) {
     const rpc = overrides.rpc ?? makeRpc();
     const supabase = overrides.supabase ?? makeSupabase(rpc);
@@ -149,23 +270,25 @@ describe('AutoGenerateService candidate mode', () => {
     );
 
     // Avoid full problem building complexity by stubbing the private method.
-    jest.spyOn(service as any, 'buildSolverProblem').mockResolvedValue({
-      termId,
-      deptId,
-      sections: [],
-      subjects: [],
-      prospectus: [],
-      faculty: [],
-      qualifications: [],
-      preferences: [],
-      rooms: [],
-      roomPreferences: [],
-      timeSlots: [],
-      config: {},
-      existingSchedule: [],
-      existingSubjectLoadCounts: [],
-      unavailability: [],
-    });
+    if (!overrides.skipBuildSolverProblemStub) {
+      jest.spyOn(service as any, 'buildSolverProblem').mockResolvedValue({
+        termId,
+        deptId,
+        sections: [],
+        subjects: [],
+        prospectus: [],
+        faculty: [],
+        qualifications: [],
+        preferences: [],
+        rooms: [],
+        roomPreferences: [],
+        timeSlots: [],
+        config: {},
+        existingSchedule: [],
+        existingSubjectLoadCounts: [],
+        unavailability: [],
+      });
+    }
     jest.spyOn(service as any, 'analyzeRoomSufficiency').mockReturnValue({
       sufficient: true,
       deficits: [],
@@ -204,6 +327,28 @@ describe('AutoGenerateService candidate mode', () => {
       rpc,
     };
   }
+
+  it('passes configured lecture block minutes to the solver instead of stale prospectus minutes', async () => {
+    const { service } = makeService({
+      supabase: makeSupabaseWithTableData(solverProblemTableData),
+      skipBuildSolverProblemStub: true,
+    });
+
+    const problem = await (service as any).buildSolverProblem(termId, deptId);
+
+    expect(problem.prospectus[0].lecture_minutes_per_session).toBe(60);
+  });
+
+  it('passes configured lab split minutes to the solver instead of stale prospectus minutes', async () => {
+    const { service } = makeService({
+      supabase: makeSupabaseWithTableData(solverProblemTableData),
+      skipBuildSolverProblemStub: true,
+    });
+
+    const problem = await (service as any).buildSolverProblem(termId, deptId);
+
+    expect(problem.prospectus[0].lab_minutes_per_session).toBe(180);
+  });
 
   it('does not delete or insert schedule rows in candidate mode', async () => {
     const { service, supabase } = makeService();
