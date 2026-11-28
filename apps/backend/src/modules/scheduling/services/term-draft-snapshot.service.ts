@@ -21,7 +21,10 @@ import {
 } from '../dto/draft-snapshot.dto';
 import { Schedule } from '../entities/schedule.entity';
 import { TermDraftSnapshot } from '../entities/term-draft-snapshot.entity';
-import { RuleContextBuilder } from './rule-context.builder';
+import {
+  createRuleContextCache,
+  RuleContextBuilder,
+} from './rule-context.builder';
 import { ScheduleCatalogResolver } from './schedule-catalog-resolver.service';
 import { ScheduleFacultyService } from './schedule-faculty.service';
 import { PublishedVersionEntry } from './term-published-version.service';
@@ -412,6 +415,7 @@ export class TermDraftSnapshotService {
     const ready: PreparedLoad[] = [];
     const createdGates: FacultyGate[] = [];
     const claimed = new Set<Schedule>();
+    const validationCache = createRuleContextCache();
     let matched = 0;
     let warnings = 0;
 
@@ -539,6 +543,7 @@ export class TermDraftSnapshotService {
           endTime,
           loadType: loadType ?? undefined,
           excludeScheduleIds: excludeScheduleIds,
+          cache: validationCache,
         });
         context.existingSchedule.push(...ready.map((item) => item.synthetic));
         engine = this.constraints.evaluate(context);

@@ -303,4 +303,95 @@ describe('TermDraftSnapshotService', () => {
       /not found/i,
     );
   });
+
+  it('shares one validation cache across saved draft rows', async () => {
+    const snapshotRepo = createFakeRepository(
+      [
+        {
+          termDraftSnapshotId: 'snap-1',
+          termId: '1',
+          deptId: '2',
+          name: 'Working A',
+          termName: 'First Semester',
+          semester: '1st',
+          schoolYear: '2026-2027',
+          snapshot: {
+            snapshot_version: 1,
+            entries: [
+              snapshotEntry(),
+              {
+                ...snapshotEntry(),
+                schedule_id: 'snapshot-2',
+                session_index: 1,
+              },
+            ],
+          },
+          createdBy: 'u1',
+          createdAt: new Date(),
+        },
+      ],
+      { idKey: 'termDraftSnapshotId' },
+    );
+    const catalog = new ScheduleCatalogResolver(
+      createFakeRepository([
+        {
+          subjectId: 'S1',
+          subjectCode: 'CODE-S1',
+          title: 'Subject S1',
+          deptId: '2',
+          isActive: true,
+        },
+      ]) as any,
+      createFakeRepository([
+        {
+          roomId: '101',
+          roomNumber: 'R-101',
+          building: 'Main',
+          isActive: true,
+        },
+      ]) as any,
+      createFakeRepository([]) as any,
+      createFakeRepository([
+        { sectionId: 'SEC1', sectionCode: 'SEC1', isActive: true },
+      ]) as any,
+    );
+    const ruleContextBuilder = {
+      build: jest.fn(async () => ({ existingSchedule: [] })),
+    };
+    const service = new TermDraftSnapshotService(
+      snapshotRepo as any,
+      {} as any,
+      createFakeRepository([], { idKey: 'scheduleId' }) as any,
+      supabaseFake() as any,
+      catalog as any,
+      ruleContextBuilder as any,
+      {
+        evaluate: jest.fn(() => ({
+          valid: true,
+          hardConflicts: [],
+          softWarnings: [],
+          evaluations: [],
+        })),
+      } as any,
+      { isActive: jest.fn(async () => true) } as any,
+      {
+        ensureCrossDeptFacultyRequest: jest.fn(async () => null),
+        cancelOrphanedFacultyRequest: jest.fn(async () => undefined),
+      } as any,
+      { transaction: jest.fn(async (callback: any) => callback({})) } as any,
+    );
+
+    const result = await service.preflight('snap-1', target as any, actor);
+
+    assert.equal(result.failed, false);
+    assert.equal(ruleContextBuilder.build.mock.calls.length, 2);
+    const [firstCache, secondCache] = ruleContextBuilder.build.mock.calls.map(
+      (call: any[]) => call[0].cache,
+    );
+    assert.ok(firstCache);
+    assert.equal(firstCache, secondCache);
+    assert.ok(firstCache.subjects instanceof Map);
+    assert.ok(firstCache.existingSchedule instanceof Map);
+    assert.ok('config' in firstCache);
+  });
 });
