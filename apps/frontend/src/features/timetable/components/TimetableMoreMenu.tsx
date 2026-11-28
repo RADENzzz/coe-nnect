@@ -13,8 +13,10 @@ export interface TimetableMoreMenuItem {
 /** Compact overflow menu for secondary timetable header actions. */
 export default function TimetableMoreMenu({
   items,
+  triggerDataTour,
 }: {
   items: TimetableMoreMenuItem[];
+  triggerDataTour?: string;
 }): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,6 +49,7 @@ export default function TimetableMoreMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? 'timetable-more-menu' : undefined}
+        data-tour={open ? undefined : triggerDataTour}
         title="More actions"
         className="flex items-center gap-1.5 px-3 py-2 border border-surface-variant text-sm font-semibold text-on-surface hover:bg-surface-container-low transition rounded-lg"
       >

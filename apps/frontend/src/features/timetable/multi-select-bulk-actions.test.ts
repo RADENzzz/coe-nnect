@@ -331,3 +331,17 @@ test('bulk bar and modal expose Request unfinalize with one shared reason', () =
   assert.match(contextModal, /note\.trim\(\)\.length < 5/);
   assert.match(contextPage, /action === 'request-unfinalize'/);
 });
+
+test('focus tour target is visible while the More menu is closed', () => {
+  assert.match(contextMenu, /triggerDataTour/);
+  assert.match(contextMenu, /data-tour=\{open \? undefined : triggerDataTour\}/);
+  assert.match(contextPage, /triggerDataTour="tt-focus"/);
+});
+
+test('bulk hook rejects overlapping runs and menu respects pending action', () => {
+  assert.match(hook, /useRef\(false\)/);
+  assert.match(hook, /if \(runningRef\.current\)/);
+  assert.match(hook, /runningRef\.current = true/);
+  assert.match(hook, /runningRef\.current = false/);
+  assert.match(contextPage, /disabled: isGenerating \|\| pendingAction !== null/);
+});

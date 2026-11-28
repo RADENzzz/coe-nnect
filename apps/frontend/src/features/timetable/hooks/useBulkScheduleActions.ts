@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   clearAutoDrafts,
@@ -59,6 +59,7 @@ export function useBulkScheduleActions({
   const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] =
     useState<BulkScheduleAction | null>(null);
+  const runningRef = useRef(false);
 
   const refreshDependentQueries = useCallback(
     async (affectedIds: string[] = []) => {
@@ -84,6 +85,11 @@ export function useBulkScheduleActions({
 
   const runBulkAction = useCallback(
     async (action: BulkScheduleAction, note?: string): Promise<void> => {
+      if (runningRef.current) {
+        feedback.error('Another bulk action is already running.');
+        return;
+      }
+      runningRef.current = true;
       setPendingAction(action);
       try {
         if (action === 'clear-auto-drafts') {
@@ -154,6 +160,7 @@ export function useBulkScheduleActions({
           onSucceeded(succeededIds);
         }
       } finally {
+        runningRef.current = false;
         setPendingAction(null);
       }
     },

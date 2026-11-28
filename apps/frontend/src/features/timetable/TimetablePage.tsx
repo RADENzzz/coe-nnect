@@ -1786,10 +1786,12 @@ export default function TimetablePage({ readOnly = false }: Props) {
               setPublishNote('');
               setBulkConfirmAction('clear-auto-drafts');
             },
-            disabled: isGenerating,
+            disabled: isGenerating || pendingAction !== null,
             title: isGenerating
               ? 'Wait for the current generation to finish'
-              : 'Clear auto-generated drafts for this term',
+              : pendingAction !== null
+                ? 'Wait for the current action to finish'
+                : 'Clear auto-generated drafts for this term',
           },
         ]
       : []),
@@ -1920,7 +1922,7 @@ export default function TimetablePage({ readOnly = false }: Props) {
               </div>
             )}
 
-            <TimetableMoreMenu items={moreMenuItems} />
+            <TimetableMoreMenu items={moreMenuItems} triggerDataTour="tt-focus" />
 
             {writable && activeTerm && (
               <button
