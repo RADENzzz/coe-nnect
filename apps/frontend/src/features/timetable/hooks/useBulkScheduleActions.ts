@@ -59,13 +59,24 @@ export function useBulkScheduleActions({
   const [pendingAction, setPendingAction] =
     useState<BulkScheduleAction | null>(null);
 
-  const refreshDependentQueries = useCallback(async () => {
-    await Promise.all(
-      DEPENDENT_QUERY_KEYS.map((queryKey) =>
-        queryClient.invalidateQueries({ queryKey }),
-      ),
-    );
-  }, [queryClient]);
+  const refreshDependentQueries = useCallback(
+    async (affectedIds: string[] = []) => {
+      await Promise.all([
+        ...DEPENDENT_QUERY_KEYS.map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+        ...affectedIds.flatMap((id) => [
+          queryClient.invalidateQueries({
+            queryKey: ['schedule-publish-request', id],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ['schedule-change-request', id],
+          }),
+        ]),
+      ]);
+    },
+    [queryClient],
+  );
 
   const runBulkAction = useCallback(
     async (action: BulkScheduleAction, note?: string): Promise<void> => {
@@ -122,7 +133,7 @@ export function useBulkScheduleActions({
           (result): result is PromiseRejectedResult => result.status === 'rejected',
         );
         const skippedSuffix = skipped > 0 ? ` ${skipped} skipped.` : '';
-        await refreshDependentQueries();
+        await refreshDependentQueries(ids);
         if (failures.length === 0) {
           feedback.success(
             `Updated ${succeededIds.length} selected row${succeededIds.length === 1 ? '' : 's'}.${skippedSuffix}`,

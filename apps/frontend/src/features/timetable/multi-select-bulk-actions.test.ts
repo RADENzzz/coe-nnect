@@ -238,3 +238,14 @@ test('timetable page wires contextual actions and the header More menu', () => {
   assert.doesNotMatch(contextPage, /bulk[A-Za-z]*\([^)]*setSearchParams/);
   assert.doesNotMatch(contextPage, /bulk[A-Za-z]*\([^)]*navigate\(/);
 });
+
+const invalidationHook = read(
+  'apps/frontend/src/features/timetable/hooks/useBulkScheduleActions.ts',
+);
+
+test('bulk hook invalidates per-entry request queries for affected rows', () => {
+  assert.match(invalidationHook, /refreshDependentQueries\(ids\)/);
+  assert.match(invalidationHook, /queryKey: \['schedule-publish-request', id\]/);
+  assert.match(invalidationHook, /queryKey: \['schedule-change-request', id\]/);
+  assert.doesNotMatch(invalidationHook, /entry\?\.id/);
+});
