@@ -26,6 +26,9 @@ import {
   preflightReuse,
   applyReuse,
   saveDraftSnapshot,
+  fetchDraftSnapshots,
+  preflightDraftSnapshot,
+  applyDraftSnapshot,
   type RawSchedule,
   type UnscheduledBlock,
   type ScheduleVersionSummary,
@@ -37,6 +40,7 @@ import {
   type ReusePreflightResult,
   type ReuseApplyResult,
   type DraftSnapshotSummary,
+  type DraftLoadResult,
   type VersionSource,
   type AutoGenerateCandidate,
 } from '../../api/schedule.api';
@@ -99,6 +103,8 @@ import VersionViewBanner from './components/VersionViewBanner';
 import VersionCompareModal from './components/VersionCompareModal';
 import ReuseSummaryModal from './components/ReuseSummaryModal';
 import SaveDraftDialog from './components/SaveDraftDialog';
+import SavedDraftDrawer from './components/SavedDraftDrawer';
+import DraftLoadSummaryModal from './components/DraftLoadSummaryModal';
 import PublishedReuseConflictWorkspace from './components/PublishedReuseConflictWorkspace';
 import CoveragePanel from './components/CoveragePanel';
 import TimetableFilterBar from './components/TimetableFilterBar';
@@ -307,6 +313,14 @@ export default function TimetablePage({ readOnly = false }: Props) {
   const [draftName, setDraftName] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
 
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [draftPreflight, setDraftPreflight] = useState<{
+    snapshot: DraftSnapshotSummary;
+    result: DraftLoadResult;
+  } | null>(null);
+  const [busySnapshotId, setBusySnapshotId] = useState<string | null>(null);
+  const [applyingDraft, setApplyingDraft] = useState(false);
+
   const [alertState, setAlertState] = useState<AlertState | null>(null);
 
   // ── beforeunload during auto-generate ──
@@ -417,6 +431,13 @@ export default function TimetablePage({ readOnly = false }: Props) {
     queryKey: ['active-term'],
     queryFn: fetchActiveTerm,
     enabled: !!user,
+  });
+
+  const { data: draftSnapshots = [] } = useQuery({
+    queryKey: ['term-draft-snapshots', activeTerm?.termId, myDeptId],
+    queryFn: () => fetchDraftSnapshots(activeTerm!.termId, myDeptId),
+    enabled:
+      draftsOpen && !!activeTerm?.termId && isDepartmentHead && !!myDeptId,
   });
 
   const {
@@ -1505,6 +1526,101 @@ export default function TimetablePage({ readOnly = false }: Props) {
     }
   }, [activeTerm, allEntries, draftName, feedback, myDeptId, queryClient]);
 
+  const handleOpenDrafts = useCallback(() => {
+    setDraftsOpen(true);
+  }, []);
+
+  const handlePreflightDraft = useCallback(
+    async (snapshot: DraftSnapshotSummary) => {
+      if (!activeTerm?.termId || !myDeptId) {
+        feedback.error('No active term or department is available for loading.');
+        return;
+      }
+      setBusySnapshotId(snapshot.snapshotId);
+      setDraftPreflight(null);
+      try {
+        const result = await preflightDraftSnapshot(
+          snapshot.snapshotId,
+          activeTerm.termId,
+          myDeptId,
+        );
+        setDraftPreflight({ snapshot, result });
+        if (result.failed || result.conflicts.length > 0) {
+          feedback.error(
+            result.summary || 'This draft cannot be loaded without conflicts.',
+          );
+        }
+      } catch (err) {
+        feedback.error(
+          reuseErrorMessage(err, 'Could not check the saved draft.'),
+        );
+      } finally {
+        setBusySnapshotId(null);
+      }
+    },
+    [activeTerm?.termId, feedback, myDeptId],
+  );
+
+  const handleApplyDraft = useCallback(async () => {
+    if (
+      !draftPreflight ||
+      draftPreflight.result.failed ||
+      draftPreflight.result.conflicts.length > 0 ||
+      !activeTerm?.termId ||
+      !myDeptId
+    ) {
+      return;
+    }
+
+    setApplyingDraft(true);
+    try {
+      const result = await applyDraftSnapshot(
+        draftPreflight.snapshot.snapshotId,
+        activeTerm.termId,
+        myDeptId,
+      );
+      if (result.failed || result.conflicts.length > 0) {
+        feedback.error(
+          result.summary || 'Draft load was rejected; no rows were changed.',
+        );
+        return;
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['schedules', activeTerm.termId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['unscheduled', activeTerm.termId, myDeptId],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['faculty-requests'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['coverage', activeTerm.termId, scopeDeptId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['term-draft-snapshots', activeTerm.termId, myDeptId],
+        }),
+      ]);
+
+      const loadedName = draftPreflight.snapshot.name;
+      setDraftsOpen(false);
+      setDraftPreflight(null);
+      feedback.success(
+        `Draft "${loadedName}" loaded for ${activeTerm.termName}.`,
+      );
+    } catch (err) {
+      feedback.error(reuseErrorMessage(err, 'Could not load the saved draft.'));
+    } finally {
+      setApplyingDraft(false);
+    }
+  }, [
+    activeTerm,
+    draftPreflight,
+    feedback,
+    myDeptId,
+    queryClient,
+    scopeDeptId,
+  ]);
+
   // ── Keyboard shortcuts ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1852,6 +1968,17 @@ export default function TimetablePage({ readOnly = false }: Props) {
             onSelect: handleOpenSaveDraft,
             disabled: savingDraft,
             title: 'Save the current draft and review rows for this term',
+          },
+        ]
+      : []),
+    ...(writable && activeTerm && isDepartmentHead && myDeptId
+      ? [
+          {
+            key: 'load-draft',
+            label: 'Load drafts…',
+            onSelect: handleOpenDrafts,
+            disabled: applyingDraft,
+            title: 'Restore named drafts saved for this term',
           },
         ]
       : []),
@@ -2478,6 +2605,33 @@ export default function TimetablePage({ readOnly = false }: Props) {
           busy={savingDraft}
           onNameChange={setDraftName}
           onSave={handleSaveDraft}
+        />
+
+        <SavedDraftDrawer
+          open={draftsOpen}
+          onClose={() => setDraftsOpen(false)}
+          termLabel={
+            activeTerm
+              ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+              : ''
+          }
+          snapshots={draftSnapshots}
+          busySnapshotId={busySnapshotId}
+          onLoad={handlePreflightDraft}
+        />
+
+        <DraftLoadSummaryModal
+          open={!!draftPreflight}
+          onClose={() => setDraftPreflight(null)}
+          snapshotName={draftPreflight?.snapshot.name ?? ''}
+          termLabel={
+            activeTerm
+              ? `${activeTerm.termName} — AY ${activeTerm.schoolYear}`
+              : ''
+          }
+          result={draftPreflight?.result ?? null}
+          busy={applyingDraft}
+          onConfirm={handleApplyDraft}
         />
 
         {activeTerm && (

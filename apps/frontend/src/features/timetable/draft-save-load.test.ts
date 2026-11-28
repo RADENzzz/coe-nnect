@@ -44,3 +44,40 @@ test('save as draft flow is wired', () => {
   assert.match(dialog, /entryCount/);
   assert.match(page, /dataTour: 'tt-focus'/);
 });
+
+test('load drafts flow is wired', () => {
+  const page = read('apps/frontend/src/features/timetable/TimetablePage.tsx');
+  const drawer = read(
+    'apps/frontend/src/features/timetable/components/SavedDraftDrawer.tsx',
+  );
+  const summary = read(
+    'apps/frontend/src/features/timetable/components/DraftLoadSummaryModal.tsx',
+  );
+
+  assert.match(page, /key: 'load-draft'/);
+  assert.match(page, /label: 'Load drafts…'/);
+  assert.match(page, /handleOpenDrafts/);
+  assert.match(page, /handlePreflightDraft/);
+  assert.match(page, /handleApplyDraft/);
+  assert.match(page, /preflightDraftSnapshot\(/);
+  assert.match(page, /applyDraftSnapshot\(/);
+  assert.match(page, /\['schedules', activeTerm\.termId\]/);
+  assert.match(page, /\['unscheduled', activeTerm\.termId, myDeptId\]/);
+  assert.match(page, /\['faculty-requests'\]/);
+  assert.match(
+    page,
+    /\['term-draft-snapshots', activeTerm\.termId, myDeptId\]/,
+  );
+  assert.match(drawer, /role="dialog"/);
+  assert.match(drawer, /aria-label="Saved timetable drafts"/);
+  assert.match(drawer, /schoolYear/);
+  assert.match(drawer, /semester/);
+  assert.match(summary, /conflicts\.length/);
+  assert.match(summary, /result\.summary/);
+  assert.match(summary, /Load this draft/);
+  assert.match(
+    summary,
+    /disabled=\{busy \|\| !result \|\| result\.failed \|\| result\.conflicts\.length > 0\}/,
+  );
+  assert.doesNotMatch(page + drawer + summary, /alert\(|confirm\(|prompt\(/);
+});
