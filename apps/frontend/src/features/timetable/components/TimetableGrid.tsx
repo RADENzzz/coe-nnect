@@ -388,7 +388,7 @@ function GridBody({
         )}
         <div
           ref={containerRef}
-          className="flex-1 overflow-auto overscroll-contain"
+          className="flex-1 overflow-auto"
         >
           <div
             className="relative"

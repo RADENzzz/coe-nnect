@@ -249,3 +249,9 @@ test('bulk hook invalidates per-entry request queries for affected rows', () => 
   assert.match(invalidationHook, /queryKey: \['schedule-change-request', id\]/);
   assert.doesNotMatch(invalidationHook, /entry\?\.id/);
 });
+
+test('timetable grid lets vertical wheel scroll chain to the page', () => {
+  assert.match(grid, /ref=\{containerRef\}/);
+  assert.match(grid, /className="flex-1 overflow-auto"/);
+  assert.doesNotMatch(grid, /overflow-auto overscroll-contain/);
+});
