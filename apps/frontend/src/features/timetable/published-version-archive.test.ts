@@ -64,3 +64,14 @@ test('published archive drawer, source compare modal, and page handlers are wire
   assert.match(page, /scopeDeptId=/);
   assert.match(page, /departments=/);
 });
+
+test('archive E2E opens Versions through the More menu', () => {
+  const spec = read('e2e/specs/published-version.spec.ts');
+  assert.match(spec, /getByRole\('button', \{ name: 'More', exact: true \}\)\.click\(\)/);
+  assert.match(spec, /getByRole\('menu', \{ name: 'More actions' \}\)/);
+  assert.match(
+    spec,
+    /getByRole\('menuitem', \{ name: 'Versions', exact: true \}\)\s*\.click\(\)/,
+  );
+  assert.doesNotMatch(spec, /getByRole\('button', \{ name: 'Versions', exact: true \}\)/);
+});

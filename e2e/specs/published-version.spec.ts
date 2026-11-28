@@ -461,7 +461,11 @@ async function deanApprove(browser: Browser): Promise<{
 async function openArchive(page: Page): Promise<ReturnType<typeof archiveDrawer>> {
   await loginAs(page, 'head');
   await openTimetable(page);
-  await page.getByRole('button', { name: 'Versions', exact: true }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page
+    .getByRole('menu', { name: 'More actions' })
+    .getByRole('menuitem', { name: 'Versions', exact: true })
+    .click();
   return archiveDrawer(page);
 }
 
