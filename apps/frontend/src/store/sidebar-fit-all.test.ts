@@ -90,3 +90,20 @@ test('applyAppearance toggles the root fit class', () => {
     /classList\.toggle\(\s*['"]sidebar-fit-all['"]\s*,\s*a\.sidebarFitAllContent\s*\)/,
   );
 });
+
+test('appearance settings exposes the labelled sidebar fit switch', () => {
+  const settings = readFileSync(
+    new URL(
+      '../features/settings/components/AppearanceSettingsTab.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(settings, /title="Sidebar"/);
+  assert.match(settings, /Fit all sidebar links/);
+  assert.match(settings, /aria-label="Fit all sidebar links"/);
+  assert.match(settings, /checked=\{appearance\.sidebarFitAllContent\}/);
+  assert.match(settings, /setSidebarFitAllContent\(e\.target\.checked\)/);
+  assert.match(settings, /short windows/i);
+});
