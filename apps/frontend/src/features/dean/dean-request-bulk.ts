@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import type { SchedulePublishRequest } from '../../api/schedule-publish-request.api';
 import type { ScheduleUnfinalizeRequest } from '../../api/schedule-unfinalize.api';
 import type { ScheduleChangeRequest } from '../../api/schedule-change-request.api';
@@ -96,6 +97,32 @@ export async function runRequestDecisions(
   });
 
   return { succeededKeys, failures };
+}
+
+export function invalidateDecisionQueries(
+  queryClient: Pick<QueryClient, 'invalidateQueries'>,
+  scheduleIds: readonly string[],
+): void {
+  for (const queryKey of [
+    ['schedule-publish-requests'],
+    ['schedule-unfinalize-requests'],
+    ['schedule-change-requests'],
+    ['schedules'],
+    ['coverage'],
+    ['flagged'],
+  ]) {
+    queryClient.invalidateQueries({ queryKey });
+  }
+
+  for (const scheduleId of new Set(scheduleIds)) {
+    for (const queryKey of [
+      ['schedule-publish-request', scheduleId],
+      ['schedule-unfinalize-request', scheduleId],
+      ['schedule-change-request', scheduleId],
+    ]) {
+      queryClient.invalidateQueries({ queryKey });
+    }
+  }
 }
 
 export function filterRequestRows<T extends RequestRow>(

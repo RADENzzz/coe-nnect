@@ -47,6 +47,7 @@ import {
 } from './dean-approval-actions';
 import {
   filterRequestRows,
+  invalidateDecisionQueries,
   isPendingRequest,
   REQUEST_KIND_LABELS,
   requestDecisionResultMessage,
@@ -741,9 +742,10 @@ export default function DeanApprovalsPage() {
           remarks,
         );
 
-        qc.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
-        qc.invalidateQueries({ queryKey: ['schedule-unfinalize-requests'] });
-        qc.invalidateQueries({ queryKey: ['schedule-change-requests'] });
+        const succeededRows = rows.filter((row) =>
+          succeededKeys.includes(requestSelectionKey(row)),
+        );
+        invalidateDecisionQueries(qc, succeededRows.map((row) => row.request.scheduleId));
 
         if (succeededKeys.length > 0) {
           setSelectedIds((prev) => {

@@ -30,6 +30,7 @@ import { useFeedback } from '../../../components/ui/FeedbackToast';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import { extractApiError } from '../../../lib/api-error';
 import { lockBodyScroll } from '../../../lib/body-scroll-lock';
+import { invalidateDecisionQueries } from '../dean-request-bulk';
 import type { ScheduleEntry } from '../../timetable/types';
 import { formatTime } from '../../timetable/utils/time.util';
 
@@ -202,26 +203,6 @@ export default function ApprovalDetailDrawer({
     staleTime: 15_000,
   });
 
-  const invalidateDecisionQueries = (changedScheduleId: string) => {
-    queryClient.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
-    queryClient.invalidateQueries({
-      queryKey: ['schedule-publish-request', changedScheduleId],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['schedule-unfinalize-requests'],
-    });
-    queryClient.invalidateQueries({
-      queryKey: ['schedule-unfinalize-request', changedScheduleId],
-    });
-    queryClient.invalidateQueries({ queryKey: ['schedule-change-requests'] });
-    queryClient.invalidateQueries({
-      queryKey: ['schedule-change-request', changedScheduleId],
-    });
-    queryClient.invalidateQueries({ queryKey: ['schedules'] });
-    queryClient.invalidateQueries({ queryKey: ['coverage'] });
-    queryClient.invalidateQueries({ queryKey: ['flagged'] });
-  };
-
   const decisionMutation = useMutation<
     SchedulePublishRequest | ScheduleUnfinalizeRequest | ScheduleChangeRequest,
     Error,
@@ -249,7 +230,8 @@ export default function ApprovalDetailDrawer({
       );
     },
     onSuccess: (_saved, variables) => {
-      invalidateDecisionQueries(variables.target.request.scheduleId);
+      const changedScheduleId = variables.target.request.scheduleId;
+      invalidateDecisionQueries(queryClient, [changedScheduleId]);
       feedback.success(
         `${
           variables.action === 'approve' ? 'Approved' : 'Rejected'
@@ -278,7 +260,8 @@ export default function ApprovalDetailDrawer({
         action === 'finalize' ? 'finalized' : 'draft',
       ),
     onSuccess: (_saved, variables) => {
-      invalidateDecisionQueries(variables.scheduleId);
+      const changedScheduleId = variables.scheduleId;
+      invalidateDecisionQueries(queryClient, [changedScheduleId]);
       feedback.success(scheduleEffect(variables.action));
       onDecided?.();
     },

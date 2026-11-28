@@ -16,6 +16,7 @@ import type {
 } from '../../api/schedule-change-request.api';
 import {
   filterRequestRows,
+  invalidateDecisionQueries,
   isPendingRequest,
   requestDecisionResultMessage,
   requestKindBreakdown,
@@ -409,4 +410,54 @@ test('dean approvals derives actionable request rows and uses the decision runne
     /selectedPendingRequestRows\(filteredRequests, selectedIds\)/,
   );
   assert.match(source, /runRequestDecisions\(\s*rows,\s*decision/);
+});
+
+test('decision invalidation covers shared and per-schedule queries once', () => {
+  const invalidated: unknown[][] = [];
+  const queryClient = {
+    invalidateQueries: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+      invalidated.push([...queryKey]);
+    },
+  } as unknown as Parameters<typeof invalidateDecisionQueries>[0];
+
+  invalidateDecisionQueries(queryClient, [
+    'schedule-a',
+    'schedule-b',
+    'schedule-a',
+  ]);
+
+  assert.deepEqual(invalidated, [
+    ['schedule-publish-requests'],
+    ['schedule-unfinalize-requests'],
+    ['schedule-change-requests'],
+    ['schedules'],
+    ['coverage'],
+    ['flagged'],
+    ['schedule-publish-request', 'schedule-a'],
+    ['schedule-unfinalize-request', 'schedule-a'],
+    ['schedule-change-request', 'schedule-a'],
+    ['schedule-publish-request', 'schedule-b'],
+    ['schedule-unfinalize-request', 'schedule-b'],
+    ['schedule-change-request', 'schedule-b'],
+  ]);
+});
+
+test('bulk and drawer decisions reuse the same invalidation helper', () => {
+  const page = readFileSync(
+    new URL('./DeanApprovalsPage.tsx', import.meta.url),
+    'utf8',
+  );
+  const drawer = readFileSync(
+    new URL('./components/ApprovalDetailDrawer.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(
+    page,
+    /invalidateDecisionQueries\(qc, succeededRows\.map\(\(row\) => row\.request\.scheduleId\)\)/,
+  );
+  assert.match(
+    drawer,
+    /invalidateDecisionQueries\(queryClient, \[changedScheduleId\]\)/,
+  );
 });
