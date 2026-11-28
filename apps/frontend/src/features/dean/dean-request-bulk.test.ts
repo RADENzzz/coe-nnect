@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import type {
@@ -234,5 +235,37 @@ test('decision result message reports success counts and the first failure', () 
   assert.equal(
     requestDecisionResultMessage('reject', 0, 2),
     '0 succeeded, 2 failed.',
+  );
+});
+
+test('dean approvals wires pending-only request selection and department filter', () => {
+  const source = readFileSync(
+    new URL(
+      '../../../../../apps/frontend/src/features/dean/DeanApprovalsPage.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(source, /rowKey=\{\(row\) => requestSelectionKey\(row\)\}/);
+  assert.match(source, /isRowSelectable=\{isPendingRequest\}/);
+  assert.match(source, /selectedKeys=\{effectiveSelectedRequestKeys\}/);
+  assert.match(source, /onSelectionChange=\{setSelectedIds\}/);
+  assert.match(
+    source,
+    /filterRequestRows\(requestRowsByTab, requestStatusFilter, searchQuery, deptFilter\)/,
+  );
+  assert.match(
+    source,
+    /\[requestRowsByTab, requestStatusFilter, searchQuery, deptFilter\]/,
+  );
+
+  const departmentLabel = source.search(/\r?\n\s*Department\r?\n/);
+  const requestBranch = source.indexOf('{isRequestTab ? (');
+  assert.ok(departmentLabel !== -1, 'Department filter label is rendered');
+  assert.ok(requestBranch !== -1, 'request-tab branch is present');
+  assert.ok(
+    departmentLabel < requestBranch,
+    'Department filter renders before the request-tab-only controls',
   );
 });

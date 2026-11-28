@@ -44,7 +44,9 @@ import {
 } from './dean-approval-actions';
 import {
   filterRequestRows,
+  isPendingRequest,
   REQUEST_KIND_LABELS,
+  requestSelectionKey,
   type RequestRow,
   type RequestStatusFilter,
 } from './dean-request-bulk';
@@ -486,7 +488,7 @@ export default function DeanApprovalsPage() {
 
   const filteredRequests = useMemo(
     () => filterRequestRows(requestRowsByTab, requestStatusFilter, searchQuery, deptFilter),
-    [requestRowsByTab, requestStatusFilter, searchQuery],
+    [requestRowsByTab, requestStatusFilter, searchQuery, deptFilter],
   );
 
   const requestsLoadingForTab =
@@ -533,6 +535,17 @@ export default function DeanApprovalsPage() {
     }
     return next;
   }, [filtered, selectedIds]);
+
+  const effectiveSelectedRequestRows = useMemo(
+    () =>
+      filteredRequests.filter((row) => selectedIds.has(requestSelectionKey(row))),
+    [filteredRequests, selectedIds],
+  );
+
+  const effectiveSelectedRequestKeys = useMemo(
+    () => new Set(effectiveSelectedRequestRows.map(requestSelectionKey)),
+    [effectiveSelectedRequestRows],
+  );
 
   // ── Selected rows breakdown ──
   const selectedRows = useMemo(
@@ -1007,6 +1020,26 @@ export default function DeanApprovalsPage() {
               </div>
             </div>
 
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                Department
+              </label>
+              <select
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              >
+                <option value="">All departments</option>
+                {departments
+                  .filter((d) => d.isActive)
+                  .map((d) => (
+                    <option key={d.deptId} value={d.deptId}>
+                      [{d.deptCode}] {d.deptName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
             {isRequestTab ? (
               <div className="min-w-[160px]">
                 <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
@@ -1028,26 +1061,6 @@ export default function DeanApprovalsPage() {
               </div>
             ) : (
               <>
-                <div className="min-w-[180px]">
-                  <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                    Department
-                  </label>
-                  <select
-                    value={deptFilter}
-                    onChange={(e) => setDeptFilter(e.target.value)}
-                    className="w-full bg-surface-container-low border border-surface-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">All departments</option>
-                    {departments
-                      .filter((d) => d.isActive)
-                      .map((d) => (
-                        <option key={d.deptId} value={d.deptId}>
-                          [{d.deptCode}] {d.deptName}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
                 <div className="min-w-[140px]">
                   <label className="block text-xs font-semibold text-on-surface-variant mb-1.5 uppercase tracking-wider">
                     Status
@@ -1141,7 +1154,7 @@ export default function DeanApprovalsPage() {
           <ResponsiveTable<RequestRow>
             columns={requestColumns}
             rows={filteredRequests}
-            rowKey={(row) => row.request.requestId}
+            rowKey={(row) => requestSelectionKey(row)}
             rowTitle={(row) => requestLabel(row)}
             rowSubtitle={(row) =>
               row.request.schedule?.subject?.title ?? 'Schedule entry'
@@ -1151,7 +1164,10 @@ export default function DeanApprovalsPage() {
             emptyMessage={`No ${activeTab} requests yet.`}
             noMatchMessage="No requests match your filters."
             getActions={getRequestActions}
-            selectable={false}
+            selectable
+            selectedKeys={effectiveSelectedRequestKeys}
+            onSelectionChange={setSelectedIds}
+            isRowSelectable={isPendingRequest}
             onRowClick={(row) => setDrawerTarget(row)}
           />
         </div>
