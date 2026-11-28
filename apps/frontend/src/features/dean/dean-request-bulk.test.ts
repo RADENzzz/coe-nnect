@@ -20,6 +20,8 @@ import {
   requestDecisionResultMessage,
   requestKindBreakdown,
   requestSelectionKey,
+  runRequestDecisions,
+  selectedPendingRequestRows,
   type RequestRow,
 } from './dean-request-bulk.ts';
 
@@ -288,4 +290,123 @@ test('dean approvals fans bulk request decisions through the existing endpoints'
   assert.match(source, /requestDecisionResultMessage/);
   assert.match(source, /Remarks \(required\)/);
   assert.doesNotMatch(source, /window\.confirm/);
+});
+
+test('selected request rows exclude resolved and unselected rows', () => {
+  const pending = publishRow();
+  const approved = publishRow({
+    requestId: 'publish-2',
+    status: 'approved',
+  });
+  const unselected = changeRow();
+  const keys = new Set([
+    requestSelectionKey(pending),
+    requestSelectionKey(approved),
+  ]);
+
+  assert.deepEqual(
+    selectedPendingRequestRows([pending, approved, unselected], keys).map(
+      requestSelectionKey,
+    ),
+    ['publish:publish-1'],
+  );
+});
+
+test('bulk decisions route each kind to its own endpoint and preserve failure keys', async () => {
+  const calls: Array<{
+    kind: string;
+    id: string;
+    decision: string;
+    remarks?: string;
+  }> = [];
+  const responders = {
+    publish: async (
+      id: string,
+      decision: string,
+      remarks?: string,
+    ): Promise<null> => {
+      calls.push({ kind: 'publish', id, decision, remarks });
+      if (id === 'publish-2') throw new Error('stale request');
+      return null;
+    },
+    unfinalize: async (
+      id: string,
+      decision: string,
+      remarks?: string,
+    ): Promise<null> => {
+      calls.push({ kind: 'unfinalize', id, decision, remarks });
+      return null;
+    },
+    change: async (
+      id: string,
+      decision: string,
+      remarks?: string,
+    ): Promise<null> => {
+      calls.push({ kind: 'change', id, decision, remarks });
+      return null;
+    },
+  };
+
+  const result = await runRequestDecisions(
+    [
+      publishRow(),
+      publishRow({ requestId: 'publish-2' }),
+      unfinalizeRow(),
+      changeRow(),
+    ],
+    'reject',
+    responders,
+    'Schedule correction required.',
+  );
+
+  assert.deepEqual(calls, [
+    {
+      kind: 'publish',
+      id: 'publish-1',
+      decision: 'reject',
+      remarks: 'Schedule correction required.',
+    },
+    {
+      kind: 'publish',
+      id: 'publish-2',
+      decision: 'reject',
+      remarks: 'Schedule correction required.',
+    },
+    {
+      kind: 'unfinalize',
+      id: 'unfinalize-1',
+      decision: 'reject',
+      remarks: 'Schedule correction required.',
+    },
+    {
+      kind: 'change',
+      id: 'change-1',
+      decision: 'reject',
+      remarks: 'Schedule correction required.',
+    },
+  ]);
+  assert.deepEqual(result.succeededKeys, [
+    'publish:publish-1',
+    'unfinalize:unfinalize-1',
+    'change:change-1',
+  ]);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].key, 'publish:publish-2');
+  assert.match(String(result.failures[0].reason), /stale request/);
+});
+
+test('dean approvals derives actionable request rows and uses the decision runner', () => {
+  const source = readFileSync(
+    new URL(
+      '../../../../../apps/frontend/src/features/dean/DeanApprovalsPage.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(
+    source,
+    /selectedPendingRequestRows\(filteredRequests, selectedIds\)/,
+  );
+  assert.match(source, /runRequestDecisions\(\s*rows,\s*decision/);
 });

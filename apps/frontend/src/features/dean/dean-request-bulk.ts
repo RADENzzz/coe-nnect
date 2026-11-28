@@ -9,6 +9,8 @@ export type RequestStatusFilter =
   | 'cancelled'
   | 'all';
 
+export type RequestDecision = 'approve' | 'reject';
+
 export type RequestRow =
   | { kind: 'publish'; request: SchedulePublishRequest }
   | { kind: 'unfinalize'; request: ScheduleUnfinalizeRequest }
@@ -26,6 +28,74 @@ export function requestSelectionKey(row: RequestRow): string {
 
 export function isPendingRequest(row: RequestRow): boolean {
   return row.request.status === 'pending';
+}
+
+export function selectedPendingRequestRows(
+  rows: RequestRow[],
+  selectedKeys: Set<string>,
+): RequestRow[] {
+  return rows.filter(
+    (row) =>
+      isPendingRequest(row) && selectedKeys.has(requestSelectionKey(row)),
+  );
+}
+
+export interface RequestDecisionResponders {
+  publish: (
+    requestId: string,
+    decision: RequestDecision,
+    remarks?: string,
+  ) => Promise<unknown>;
+  unfinalize: (
+    requestId: string,
+    decision: RequestDecision,
+    remarks?: string,
+  ) => Promise<unknown>;
+  change: (
+    requestId: string,
+    decision: RequestDecision,
+    remarks?: string,
+  ) => Promise<unknown>;
+}
+
+export interface RequestDecisionFailure {
+  key: string;
+  reason: unknown;
+}
+
+export interface RequestDecisionOutcome {
+  succeededKeys: string[];
+  failures: RequestDecisionFailure[];
+}
+
+export async function runRequestDecisions(
+  rows: RequestRow[],
+  decision: RequestDecision,
+  responders: RequestDecisionResponders,
+  remarks?: string,
+): Promise<RequestDecisionOutcome> {
+  const results = await Promise.allSettled(
+    rows.map((row) =>
+      responders[row.kind](row.request.requestId, decision, remarks).then(() =>
+        requestSelectionKey(row),
+      ),
+    ),
+  );
+
+  const succeededKeys: string[] = [];
+  const failures: RequestDecisionFailure[] = [];
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      succeededKeys.push(result.value);
+    } else {
+      failures.push({
+        key: requestSelectionKey(rows[index]),
+        reason: result.reason,
+      });
+    }
+  });
+
+  return { succeededKeys, failures };
 }
 
 export function filterRequestRows<T extends RequestRow>(
@@ -68,7 +138,7 @@ export function requestKindBreakdown(rows: RequestRow[]): string {
 }
 
 export function requestDecisionResultMessage(
-  decision: 'approve' | 'reject',
+  decision: RequestDecision,
   succeeded: number,
   failures: number,
   error?: string,

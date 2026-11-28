@@ -52,6 +52,8 @@ import {
   requestDecisionResultMessage,
   requestKindBreakdown,
   requestSelectionKey,
+  runRequestDecisions,
+  selectedPendingRequestRows,
   type RequestRow,
   type RequestStatusFilter,
 } from './dean-request-bulk';
@@ -555,8 +557,7 @@ export default function DeanApprovalsPage() {
   }, [filtered, selectedIds]);
 
   const effectiveSelectedRequestRows = useMemo(
-    () =>
-      filteredRequests.filter((row) => selectedIds.has(requestSelectionKey(row))),
+    () => selectedPendingRequestRows(filteredRequests, selectedIds),
     [filteredRequests, selectedIds],
   );
 
@@ -729,32 +730,15 @@ export default function DeanApprovalsPage() {
       if (rows.length === 0) return;
       setRequestDecisionPending(true);
       try {
-        const results = await Promise.allSettled(
-          rows.map((row) => {
-            const requestId = row.request.requestId;
-            if (row.kind === 'publish') {
-              return respondToPublishRequest(requestId, decision, remarks).then(() =>
-                requestSelectionKey(row),
-              );
-            }
-            if (row.kind === 'unfinalize') {
-              return respondToUnfinalizeRequest(requestId, decision, remarks).then(
-                () => requestSelectionKey(row),
-              );
-            }
-            return respondToChangeRequest(requestId, decision, remarks).then(() =>
-              requestSelectionKey(row),
-            );
-          }),
-        );
-
-        const succeededKeys = results
-          .filter(
-            (r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled',
-          )
-          .map((r) => r.value);
-        const failures = results.filter(
-          (r): r is PromiseRejectedResult => r.status === 'rejected',
+        const { succeededKeys, failures } = await runRequestDecisions(
+          rows,
+          decision,
+          {
+            publish: respondToPublishRequest,
+            unfinalize: respondToUnfinalizeRequest,
+            change: respondToChangeRequest,
+          },
+          remarks,
         );
 
         qc.invalidateQueries({ queryKey: ['schedule-publish-requests'] });
