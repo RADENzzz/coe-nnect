@@ -133,6 +133,8 @@ function buildVersionSource(selection: VersionSource): VersionSource {
       return { kind: 'history', id: selection.id };
     case 'live':
       return { kind: 'live', id: selection.id };
+    case 'draft':
+      return { kind: 'draft', id: selection.id };
   }
 }
 
