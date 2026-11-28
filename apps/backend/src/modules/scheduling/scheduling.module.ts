@@ -27,6 +27,7 @@ import { ScheduleUnfinalizeRequest } from './entities/schedule-unfinalize-reques
 import { SchedulePublishRequest } from './entities/schedule-publish-request.entity';
 import { ScheduleChangeRequest } from './entities/schedule-change-request.entity';
 import { TermPublishedVersion } from './entities/term-published-version.entity';
+import { TermDraftSnapshot } from './entities/term-draft-snapshot.entity';
 import { TermPublishedVersionService } from './services/term-published-version.service';
 import { ScheduleReuseService } from './services/schedule-reuse.service';
 import { VersionCompareService } from './services/version-compare.service';
@@ -47,6 +48,7 @@ import { DepartmentsModule } from '../departments/departments.module';
       SchedulePublishRequest,
       ScheduleChangeRequest,
       TermPublishedVersion,
+      TermDraftSnapshot,
       TimeSlot,
       Term,
       Subject,
