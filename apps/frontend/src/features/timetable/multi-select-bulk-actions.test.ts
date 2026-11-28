@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { getBulkActionEligibleIds } from './utils/bulk-actions.util.ts';
+import {
+  countSelectedStatuses,
+  getBulkActionEligibleIds,
+} from './utils/bulk-actions.util.ts';
 
 const read = (path: string) =>
   readFileSync(new URL('../../../../../' + path, import.meta.url), 'utf8');
@@ -125,4 +128,39 @@ test('the fixed manual plotting notice is gone', () => {
   assert.doesNotMatch(page, /need manual plotting/);
   assert.doesNotMatch(page, /Plot manually →/);
   assert.doesNotMatch(page, /fetchUnscheduled\(activeTerm!\.termId, myDeptId \|\| undefined\)/);
+});
+
+test('new bulk actions use the existing single-row status rules', () => {
+  const entries = [
+    entry('d', 'draft'),
+    entry('r', 'review'),
+    entry('f', 'finalized'),
+    entry('p', 'published'),
+    entry('unselected', 'finalized'),
+  ];
+
+  assert.deepEqual(
+    getBulkActionEligibleIds('cancel-finalization', entries, selected),
+    ['f'],
+  );
+  assert.deepEqual(
+    getBulkActionEligibleIds('request-change', entries, selected),
+    ['r', 'f'],
+  );
+});
+
+test('status counts only include selected draft, review, and finalized rows', () => {
+  const entries = [
+    entry('d', 'draft'),
+    entry('r', 'review'),
+    entry('f', 'finalized'),
+    entry('p', 'published'),
+    entry('unselected', 'draft'),
+  ];
+
+  assert.deepEqual(countSelectedStatuses(entries, new Set(['d', 'r', 'f', 'p'])), {
+    draft: 1,
+    review: 1,
+    finalized: 1,
+  });
 });
