@@ -18,10 +18,16 @@ describe('draft snapshot save and list contract', () => {
     assert.match(controller, /@Controller\('v1\/schedules'\)/);
     assert.match(controller, /@Get\('draft-snapshots'\)/);
     assert.match(controller, /@Post\('draft-snapshots'\)/);
+    assert.match(controller, /@Get\('draft-snapshots\/:snapshotId\/entries'\)/);
+    assert.match(controller, /@Delete\('draft-snapshots\/:snapshotId'\)/);
+    assert.match(
+      controller,
+      /@Auditable\(\{ action: 'schedule\.draft_delete', source: 'Scheduling' \}\)/,
+    );
     assert.equal(
       (controller.match(/@Roles\('department_head', 'administrator'\)/g) ?? [])
         .length,
-      4,
+      6,
     );
     assert.match(
       controller,
@@ -49,6 +55,15 @@ describe('draft snapshot save and list contract', () => {
       service,
       /async list\(termId: string, deptId: string, actor: any\)/,
     );
+    assert.match(
+      service,
+      /async detail\(snapshotId: string, termId: string, deptId: string, actor: any\)/,
+    );
+    assert.match(
+      service,
+      /async delete\(snapshotId: string, termId: string, deptId: string, actor: any\)/,
+    );
+    assert.match(service, /item\?\.status === 'draft' \|\| item\?\.status === 'review'/);
     assert.match(service, /status:\s*In\(\['draft', 'review'\]\)/);
     assert.match(service, /is_active/);
     assert.match(service, /throw new BadRequestException/);
@@ -103,7 +118,7 @@ describe('draft snapshot save and list contract', () => {
     assert.equal(
       (controller.match(/@Roles\('department_head', 'administrator'\)/g) ?? [])
         .length,
-      4,
+      6,
     );
   });
 });

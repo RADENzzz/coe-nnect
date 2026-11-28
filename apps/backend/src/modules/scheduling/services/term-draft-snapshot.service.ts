@@ -43,6 +43,10 @@ export type DraftSnapshotSummary = {
   createdAt: string;
 };
 
+export type DraftSnapshotDetail = DraftSnapshotSummary & {
+  entries: DraftSnapshotEntry[];
+};
+
 export type DraftLoadConflict = {
   entry: DraftSnapshotEntry;
   targetScheduleId: string | null;
@@ -186,6 +190,34 @@ export class TermDraftSnapshotService {
     return snapshots.map((snapshot) => this.toSummary(snapshot));
   }
 
+  /** Read-only view of the saved draft/review rows. Never writes live rows. */
+  async detail(snapshotId: string, termId: string, deptId: string, actor: any): Promise<DraftSnapshotDetail> {
+    const snapshot = await this.requireSnapshotForInspection(
+      snapshotId,
+      termId,
+      deptId,
+      actor,
+    );
+    const entries = this.editableEntries(snapshot);
+    return {
+      ...this.toSummary(snapshot),
+      entries,
+      entryCount: entries.length,
+    };
+  }
+
+  /** Remove only the saved snapshot; live timetable state is untouched. */
+  async delete(snapshotId: string, termId: string, deptId: string, actor: any): Promise<void> {
+    await this.requireSnapshotForInspection(snapshotId, termId, deptId, actor);
+    const result = await this.snapshotRepo.delete({
+      termDraftSnapshotId: snapshotId,
+      deptId,
+    });
+    if (Number(result.affected ?? 0) === 0) {
+      throw new NotFoundException(`Saved draft ${snapshotId} not found.`);
+    }
+  }
+
   async preflight(snapshotId: string, dto: DraftSnapshotTargetDto, actor: any): Promise<DraftLoadResult> {
     return (await this.assess(snapshotId, dto, actor, 'preflight')).result;
   }
@@ -246,6 +278,59 @@ export class TermDraftSnapshotService {
     }
 
     return assessment.result;
+  }
+
+  private async requireSnapshotForInspection(
+    snapshotId: string,
+    termId: string,
+    deptId: string,
+    actor: any,
+  ): Promise<TermDraftSnapshot> {
+    this.assertActor(actor, deptId);
+    await this.assertActiveTerm(termId);
+    const snapshot = await this.snapshotRepo.findOne({
+      where: {
+        termDraftSnapshotId: snapshotId,
+        deptId,
+      },
+    });
+    if (!snapshot) {
+      throw new NotFoundException(`Saved draft ${snapshotId} not found.`);
+    }
+    if (String(snapshot.termId) !== String(termId)) {
+      throw new ConflictException(
+        `Saved draft ${snapshotId} belongs to term ${snapshot.termId}; it cannot be used for term ${termId}.`,
+      );
+    }
+    return snapshot;
+  }
+
+  private editableEntries(snapshot: TermDraftSnapshot): DraftSnapshotEntry[] {
+    const rawEntries = Array.isArray(
+      (snapshot.snapshot as { entries?: unknown })?.entries,
+    )
+      ? ((snapshot.snapshot as { entries: unknown[] }).entries as DraftSnapshotEntry[])
+      : [];
+    return rawEntries
+      .filter(item => item?.status === 'draft' || item?.status === 'review')
+      .sort((a, b) => {
+        const columns: Array<[string | number | null | undefined, string | number | null | undefined]> = [
+          [a.subject_code, b.subject_code],
+          [a.section_code, b.section_code],
+          [a.load_type, b.load_type],
+          [a.session_index, b.session_index],
+          [a.day_of_week, b.day_of_week],
+          [a.start_time, b.start_time],
+        ];
+        for (const [left, right] of columns) {
+          const delta =
+            typeof left === 'number' && typeof right === 'number'
+              ? left - right
+              : String(left ?? '').localeCompare(String(right ?? ''));
+          if (delta !== 0) return delta;
+        }
+        return 0;
+      });
   }
 
   private async assess(
