@@ -107,3 +107,36 @@ test('appearance settings exposes the labelled sidebar fit switch', () => {
   assert.match(settings, /setSidebarFitAllContent\(e\.target\.checked\)/);
   assert.match(settings, /short windows/i);
 });
+
+test('sidebar keeps its tour hook and exposes compact CSS hooks', () => {
+  const sidebar = readFileSync(
+    new URL('../components/layout/Sidebar.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(sidebar, /data-tour="sidebar"/);
+  assert.match(sidebar, /handleTogglePin/);
+  assert.match(sidebar, /filterNavByRole/);
+  assert.match(sidebar, /resolveActiveNavPath/);
+  assert.match(sidebar, /app-sidebar__brand/);
+  assert.match(sidebar, /app-sidebar__logo/);
+  assert.match(sidebar, /app-sidebar__main-nav/);
+  assert.match(sidebar, /app-sidebar__footer/);
+});
+
+test('fit mode removes inner scroll on normal heights and restores it on short windows', () => {
+  const css = readFileSync(
+    new URL('../styles/globals.css', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(css, /Sidebar fit-all/);
+  assert.match(css, /@media \(min-height:\s*600px\)/);
+  assert.match(
+    css,
+    /html\.sidebar-fit-all\s+\.app-sidebar\s+\.app-sidebar__main-nav/,
+  );
+  assert.match(css, /overflow:\s*visible/);
+  assert.match(css, /@media \(max-height:\s*599px\)/);
+  assert.match(css, /overflow-y:\s*auto/);
+});
